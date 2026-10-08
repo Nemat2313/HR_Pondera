@@ -1,0 +1,904 @@
+{
+  "headers": [
+    {
+      "idx": 0,
+      "name": "Sıra No"
+    },
+    {
+      "idx": 1,
+      "name": "Sicil No"
+    },
+    {
+      "idx": 2,
+      "name": "RHI Id"
+    },
+    {
+      "idx": 3,
+      "name": "Saren No"
+    },
+    {
+      "idx": 4,
+      "name": "Genel Durumu"
+    },
+    {
+      "idx": 5,
+      "name": "Güncel Durumu"
+    },
+    {
+      "idx": 6,
+      "name": "Region"
+    },
+    {
+      "idx": 7,
+      "name": "Proje Adı"
+    },
+    {
+      "idx": 8,
+      "name": "Çalışma Lokasyon Durumu"
+    },
+    {
+      "idx": 9,
+      "name": "Kategori"
+    },
+    {
+      "idx": 10,
+      "name": "Firma"
+    },
+    {
+      "idx": 11,
+      "name": "Departman"
+    },
+    {
+      "idx": 12,
+      "name": "Uyruk"
+    },
+    {
+      "idx": 13,
+      "name": "Adı"
+    },
+    {
+      "idx": 14,
+      "name": "Soyadı"
+    },
+    {
+      "idx": 15,
+      "name": "Baba Adı"
+    },
+    {
+      "idx": 16,
+      "name": "Ad Soyad"
+    },
+    {
+      "idx": 17,
+      "name": "Soyadı (Kiril)"
+    },
+    {
+      "idx": 18,
+      "name": "Adı (Kiril)"
+    },
+    {
+      "idx": 19,
+      "name": "Baba Adı (Kiril)"
+    },
+    {
+      "idx": 20,
+      "name": "Tam Adı (Kiril)"
+    },
+    {
+      "idx": 21,
+      "name": "Görevi"
+    },
+    {
+      "idx": 22,
+      "name": "RHI Görevi"
+    },
+    {
+      "idx": 23,
+      "name": "Sorumlu Kişi"
+    },
+    {
+      "idx": 24,
+      "name": "Grup Şefi"
+    },
+    {
+      "idx": 25,
+      "name": "Endirekt / Direkt"
+    },
+    {
+      "idx": 26,
+      "name": "RHI Endirekt / Direkt"
+    },
+    {
+      "idx": 27,
+      "name": "İşe Giriş Tarihi"
+    },
+    {
+      "idx": 28,
+      "name": "Şantiye Giriş Tarihi"
+    },
+    {
+      "idx": 29,
+      "name": "Çıkış Tarihi"
+    },
+    {
+      "idx": 30,
+      "name": "Çıkış Sebebi"
+    },
+    {
+      "idx": 31,
+      "name": "Gündüz / Gece Durumu"
+    },
+    {
+      "idx": 32,
+      "name": "Propusk No"
+    },
+    {
+      "idx": 33,
+      "name": "Propusk Başvuru Tarihi"
+    },
+    {
+      "idx": 34,
+      "name": "Propusk AlınışTarihi"
+    },
+    {
+      "idx": 35,
+      "name": "Propusk Bitiş Tarihi"
+    },
+    {
+      "idx": 36,
+      "name": "Propusk Origin"
+    },
+    {
+      "idx": 37,
+      "name": "HSE Eğitime Giriş Tarihi"
+    },
+    {
+      "idx": 38,
+      "name": "HSE Eğitim Tarihi"
+    },
+    {
+      "idx": 39,
+      "name": "HSE Notu"
+    },
+    {
+      "idx": 40,
+      "name": "Cinsiyet"
+    },
+    {
+      "idx": 41,
+      "name": "Doğum Tarihi"
+    },
+    {
+      "idx": 42,
+      "name": "Pasaport Seri No"
+    },
+    {
+      "idx": 43,
+      "name": "Pasaport No"
+    },
+    {
+      "idx": 44,
+      "name": "Pasaport Düzenleme Tarihi"
+    },
+    {
+      "idx": 45,
+      "name": "Pasaport Geçerlilik Tarihi"
+    },
+    {
+      "idx": 46,
+      "name": "Pasaportu Veren Makam (Kiril)"
+    },
+    {
+      "idx": 47,
+      "name": "Pasaport Yenileme Başvuru Tarihi"
+    },
+    {
+      "idx": 48,
+      "name": "Pasaport Yenileme Alis Tarihi"
+    },
+    {
+      "idx": 49,
+      "name": "KodPozdravleniya"
+    },
+    {
+      "idx": 50,
+      "name": "TC Kimlik No"
+    },
+    {
+      "idx": 51,
+      "name": "Pasaport Tercüme Gönderim Tarihi"
+    },
+    {
+      "idx": 52,
+      "name": "Pasaport Tercüme Geliş Tarihi"
+    },
+    {
+      "idx": 53,
+      "name": "Doğum Yeri"
+    },
+    {
+      "idx": 54,
+      "name": "Yaşadığı Adres"
+    },
+    {
+      "idx": 55,
+      "name": "Migrasyon Seri No"
+    },
+    {
+      "idx": 56,
+      "name": "Migrasyon No"
+    },
+    {
+      "idx": 57,
+      "name": "Sınır Kapısı"
+    },
+    {
+      "idx": 58,
+      "name": "Migrasyon Giriş Tarihi"
+    },
+    {
+      "idx": 59,
+      "name": "Registrasyon Doldurma Tarihi"
+    },
+    {
+      "idx": 60,
+      "name": "Registrasyon Dosyalama Tarihi"
+    },
+    {
+      "idx": 61,
+      "name": "Registrasyon Alış Tarihi"
+    },
+    {
+      "idx": 62,
+      "name": "Registrasyon Bitiş Tarihi"
+    },
+    {
+      "idx": 63,
+      "name": "Registrasyon Çıkış Tarihi"
+    },
+    {
+      "idx": 64,
+      "name": "Registrasyon Firması"
+    },
+    {
+      "idx": 65,
+      "name": "Registrasyon Adresi (Kiril)"
+    },
+    {
+      "idx": 66,
+      "name": "Önceki Registrasyon Adresi (Kiril)"
+    },
+    {
+      "idx": 67,
+      "name": "CNILS No"
+    },
+    {
+      "idx": 68,
+      "name": "INN No"
+    },
+    {
+      "idx": 69,
+      "name": "INN Başvuru Tarihi"
+    },
+    {
+      "idx": 70,
+      "name": "INN Alış Tarihi"
+    },
+    {
+      "idx": 71,
+      "name": "Vize Seri No"
+    },
+    {
+      "idx": 72,
+      "name": "Vize No"
+    },
+    {
+      "idx": 73,
+      "name": "Vize Alış Tarihi"
+    },
+    {
+      "idx": 74,
+      "name": "Vize Başlangıç Tarihi"
+    },
+    {
+      "idx": 75,
+      "name": "Vize Bitiş Tarihi"
+    },
+    {
+      "idx": 76,
+      "name": "Vize Türü"
+    },
+    {
+      "idx": 77,
+      "name": "Vize Çeşidi"
+    },
+    {
+      "idx": 78,
+      "name": "Vize Firması"
+    },
+    {
+      "idx": 79,
+      "name": "Uzatım Vize Başvuru Tarihi"
+    },
+    {
+      "idx": 80,
+      "name": "Patent Başvuru Tarihi"
+    },
+    {
+      "idx": 81,
+      "name": "Patent Alış Tarihi"
+    },
+    {
+      "idx": 82,
+      "name": "Çalışma Kart Seri No"
+    },
+    {
+      "idx": 83,
+      "name": "Çalışma Kart No"
+    },
+    {
+      "idx": 84,
+      "name": "Çalışma Kart Alış Tarihi"
+    },
+    {
+      "idx": 85,
+      "name": "Çalışma Kart Başlangıç Tarihi"
+    },
+    {
+      "idx": 86,
+      "name": "Çalışma Kart Bitiş Tarihi"
+    },
+    {
+      "idx": 87,
+      "name": "Patent Form Seri No"
+    },
+    {
+      "idx": 88,
+      "name": "Patent Form No"
+    },
+    {
+      "idx": 89,
+      "name": "Çalışma Kart Türü"
+    },
+    {
+      "idx": 90,
+      "name": "Çalışma Kart Bölgesi"
+    },
+    {
+      "idx": 91,
+      "name": "Çalışma Kartı Veren Makam"
+    },
+    {
+      "idx": 92,
+      "name": "Çalışma Kart Görevi"
+    },
+    {
+      "idx": 93,
+      "name": "Çalışma Kart Firması"
+    },
+    {
+      "idx": 94,
+      "name": "Patent Ödeme Tarihi"
+    },
+    {
+      "idx": 95,
+      "name": "Patent Çeki Bitiş Tarihi"
+    },
+    {
+      "idx": 96,
+      "name": "Patent Çeki Başlangıç Tarihi"
+    },
+    {
+      "idx": 97,
+      "name": "Daktiloskopiya Başvuru Tarihi"
+    },
+    {
+      "idx": 98,
+      "name": "Daktiloskopiya Alış Tarihi"
+    },
+    {
+      "idx": 99,
+      "name": "Daktiloskopiya Başlangıç Tarihi"
+    },
+    {
+      "idx": 100,
+      "name": "Daktiloskopiya Seri No"
+    },
+    {
+      "idx": 101,
+      "name": "Daktiloskopiya Form Seri No"
+    },
+    {
+      "idx": 102,
+      "name": "Daktiloskopiya Veren Makam"
+    },
+    {
+      "idx": 103,
+      "name": "NFS den Bildirimin Alındığı Tarih"
+    },
+    {
+      "idx": 104,
+      "name": "Başvurunun NFS e Gönderilme Tarihi"
+    },
+    {
+      "idx": 105,
+      "name": "İş Sözleşmesi Numarası"
+    },
+    {
+      "idx": 106,
+      "name": "İş Sözleşmesi İmza Tarihi"
+    },
+    {
+      "idx": 107,
+      "name": "İş Sözleşmesi Giriş Tarihi"
+    },
+    {
+      "idx": 108,
+      "name": "Ek İş Sözleşmesi Tarihi"
+    },
+    {
+      "idx": 109,
+      "name": "İşe Giriş Emri No"
+    },
+    {
+      "idx": 110,
+      "name": "Resmi Maaş"
+    },
+    {
+      "idx": 111,
+      "name": "Resmi Maaş Yazılı"
+    },
+    {
+      "idx": 112,
+      "name": "TD Sözleşme UFMS Veriliş Tarihi"
+    },
+    {
+      "idx": 113,
+      "name": "Resmi Çıkış Tarihi"
+    },
+    {
+      "idx": 114,
+      "name": "Resmi Çıkış Sebebi"
+    },
+    {
+      "idx": 115,
+      "name": "Dop Sog No"
+    },
+    {
+      "idx": 116,
+      "name": "Resmi Çıkış Emri No"
+    },
+    {
+      "idx": 117,
+      "name": "Resmi Çıkış Bildirgesi"
+    },
+    {
+      "idx": 118,
+      "name": "İşe Giriş Bildirgesi"
+    },
+    {
+      "idx": 119,
+      "name": "Resmi Şubesi"
+    },
+    {
+      "idx": 120,
+      "name": "Resmi Firma"
+    },
+    {
+      "idx": 121,
+      "name": "Resmi Görevi"
+    },
+    {
+      "idx": 122,
+      "name": "Eski Resmi Görevi"
+    },
+    {
+      "idx": 123,
+      "name": "Transfer Tarihi"
+    },
+    {
+      "idx": 124,
+      "name": "Personelin Transfer Olduğu TOP"
+    },
+    {
+      "idx": 125,
+      "name": "Sağlıktan Geçtiği Tarih"
+    },
+    {
+      "idx": 126,
+      "name": "Sağlık Rapor Tarihi"
+    },
+    {
+      "idx": 127,
+      "name": "Sağlık Rapor Sonucu"
+    },
+    {
+      "idx": 128,
+      "name": "Sağlık 29n Giriş Tarihi"
+    },
+    {
+      "idx": 129,
+      "name": "Sağlık 29n Rapor Alış Tarihi"
+    },
+    {
+      "idx": 130,
+      "name": "Sağlık 29n Sonucu"
+    },
+    {
+      "idx": 131,
+      "name": "Psikoloji Testi Geçtiği Tarih"
+    },
+    {
+      "idx": 132,
+      "name": "Psikoloji Testi Alındığı Tarih"
+    },
+    {
+      "idx": 133,
+      "name": "Kan Test Tarihi"
+    },
+    {
+      "idx": 134,
+      "name": "Narkoloji Idrar Test Tarihi"
+    },
+    {
+      "idx": 135,
+      "name": "Narkoloji"
+    },
+    {
+      "idx": 136,
+      "name": "Röntgen Tarihi"
+    },
+    {
+      "idx": 137,
+      "name": "Sağlık Açıklama"
+    },
+    {
+      "idx": 138,
+      "name": "Dil Sınavı Geçtiği Tarih"
+    },
+    {
+      "idx": 139,
+      "name": "Dil Sertifikası Geliş Tarihi"
+    },
+    {
+      "idx": 140,
+      "name": "Dil Sertifikası Referans No"
+    },
+    {
+      "idx": 141,
+      "name": "Dil Sertifikası Başlangıç Tarihi"
+    },
+    {
+      "idx": 142,
+      "name": "Dil Sertifikası Bitiş Tarihi"
+    },
+    {
+      "idx": 143,
+      "name": "Dil Sertifikası Barkod No"
+    },
+    {
+      "idx": 144,
+      "name": "DMS Seri No"
+    },
+    {
+      "idx": 145,
+      "name": "DMS Kart  No"
+    },
+    {
+      "idx": 146,
+      "name": "DMS Başlangıç Tarihi"
+    },
+    {
+      "idx": 147,
+      "name": "DMS Bitiş Tarihi"
+    },
+    {
+      "idx": 148,
+      "name": "DMS Veriliş Tarihi"
+    },
+    {
+      "idx": 149,
+      "name": "DMS Başvuru Tarihi"
+    },
+    {
+      "idx": 150,
+      "name": "DMS Veren Firma"
+    },
+    {
+      "idx": 151,
+      "name": "Karantina Giriş Tarihi"
+    },
+    {
+      "idx": 152,
+      "name": "PCR Test1 Tarih"
+    },
+    {
+      "idx": 153,
+      "name": "PCR Test2 Tarih"
+    },
+    {
+      "idx": 154,
+      "name": "Karantina Çıkış Tarihi"
+    },
+    {
+      "idx": 155,
+      "name": "Karantina Yeri"
+    },
+    {
+      "idx": 156,
+      "name": "Kontakt Durumu"
+    },
+    {
+      "idx": 157,
+      "name": "Revirde Express Test Sonucu"
+    },
+    {
+      "idx": 158,
+      "name": "Antikor Test Sonucu"
+    },
+    {
+      "idx": 159,
+      "name": "PCR Test2 Sonucu"
+    },
+    {
+      "idx": 160,
+      "name": "PCR Test1 Sonucu"
+    },
+    {
+      "idx": 161,
+      "name": "Antikor Test Tarihi"
+    },
+    {
+      "idx": 162,
+      "name": "Revirde Express Test Tarihi"
+    },
+    {
+      "idx": 163,
+      "name": "Kontakt Durumu Süre Artışı"
+    },
+    {
+      "idx": 164,
+      "name": "Karantina Açıklama"
+    },
+    {
+      "idx": 165,
+      "name": "Tahmini Çıkış Tarihi"
+    },
+    {
+      "idx": 166,
+      "name": "Karantina Uzama Süresi"
+    },
+    {
+      "idx": 167,
+      "name": "Kamp No"
+    },
+    {
+      "idx": 168,
+      "name": "Oda No"
+    },
+    {
+      "idx": 169,
+      "name": "Personel Puan"
+    },
+    {
+      "idx": 170,
+      "name": "İzine Gidiş Tarihi"
+    },
+    {
+      "idx": 171,
+      "name": "İzin Dönüş Tarihi"
+    },
+    {
+      "idx": 172,
+      "name": "Telefon No (Memleketindeki)"
+    },
+    {
+      "idx": 173,
+      "name": "e-Mail"
+    },
+    {
+      "idx": 174,
+      "name": "Telefon No"
+    },
+    {
+      "idx": 175,
+      "name": "Genel Notlar"
+    },
+    {
+      "idx": 176,
+      "name": "Mevcut Bulunduğu Yer"
+    },
+    {
+      "idx": 177,
+      "name": "Uçuş Kalkış Noktası"
+    },
+    {
+      "idx": 178,
+      "name": "Uçuş Kalkış Saati"
+    },
+    {
+      "idx": 179,
+      "name": "Uçuş Varış Noktası"
+    },
+    {
+      "idx": 180,
+      "name": "Uçuş Varış Saati"
+    },
+    {
+      "idx": 181,
+      "name": "Uçuş Türü"
+    },
+    {
+      "idx": 182,
+      "name": "Passport Location"
+    },
+    {
+      "idx": 183,
+      "name": "Vize ID"
+    },
+    {
+      "idx": 184,
+      "name": "Hindistan TIN No"
+    },
+    {
+      "idx": 185,
+      "name": "Telefon No (Yakını)"
+    },
+    {
+      "idx": 186,
+      "name": "Memleket Adresi"
+    },
+    {
+      "idx": 187,
+      "name": "Aşıdan Geçtiği Tarih"
+    },
+    {
+      "idx": 188,
+      "name": "Aşı Rapor Tarihi"
+    },
+    {
+      "idx": 189,
+      "name": "RENCONS ID"
+    },
+    {
+      "idx": 190,
+      "name": "Propusk Başvuru Tarihi FSB"
+    },
+    {
+      "idx": 191,
+      "name": "Propusk Alınış Tarihi FSB"
+    },
+    {
+      "idx": 192,
+      "name": "Propusk Bitiş Tarihi FSB"
+    },
+    {
+      "idx": 193,
+      "name": "Daktiloskopiya Yenileme Tarihi"
+    },
+    {
+      "idx": 194,
+      "name": "Daktiloskopiya Bitis Tarihi"
+    },
+    {
+      "idx": 195,
+      "name": "Gosusluga Başvuru Tarihi"
+    },
+    {
+      "idx": 196,
+      "name": "Biometri Başvuru Tarihi"
+    },
+    {
+      "idx": 197,
+      "name": "Sibur KPP"
+    },
+    {
+      "idx": 198,
+      "name": "Col_198"
+    }
+  ],
+  "stats_mevcut": {
+    "uyruk": {
+      "HINDISTAN": 2181,
+      "OZBEKISTAN": 1267,
+      "AZERBAYCAN": 576,
+      "RUSYA": 361,
+      "TURKMENISTAN": 332,
+      "TURKIYE": 289,
+      "TACIKISTAN": 148,
+      "BANGLADES": 105,
+      "KIRGIZISTAN": 84,
+      "KAZAKISTAN": 18,
+      "BELARUS": 1,
+      "MOLDOVA": 1
+    },
+    "kategori": {
+      "Ekspat": 2942,
+      "SNG": 2062,
+      "Yerel": 359
+    },
+    "region": {
+      "Kazan": 2258,
+      "Svobodny-AGHK": 1215,
+      "Tobolsk": 1125,
+      "Ust Luga": 720,
+      "Merkez Ofis": 43,
+      "Irkutsk": 2
+    },
+    "departman": {
+      "202 Yapim Boru Grubu": 1718,
+      "206 Yapim Iskele Montaj Grubu": 530,
+      "203.1 Yapim Boru Kaynak Grubu": 325,
+      "201 Yapim Celik Montaj Grubu": 315,
+      "203 Yapim Kaynak Grubu": 278,
+      "218 Yapim Boya Grubu": 251,
+      "220 Yapim Elektrik Grubu": 236,
+      "222 Yapim Izolasyon Grubu": 157,
+      "264 BDF Projesi": 130,
+      "202.3 Test ve Precommissioning Grubu": 127,
+      "230 Yapim Insaat Grubu": 126,
+      "104 Is Sagligi ve Guvenligi": 106,
+      "103 Kalite Kontrol": 94,
+      "105 PTO": 88,
+      "213 Yapim Ekipman Mekanik Grubu": 83,
+      "211 Yapim Transport Grubu": 60,
+      "300.2 Kamp": 55,
+      "108 Personel Departmani": 50,
+      "109 Idari Isler Departmani": 50,
+      "101.1 Teknik Ofis Ambar Departmani": 49,
+      "101 Teknik Ofis Departmani": 49,
+      "203.2 Yapim Celik Kaynak Grubu": 45,
+      "300.1 Yemekhane": 45,
+      "107 Finans Departmani": 32,
+      "221.1 Yapim HVAC Grubu": 30
+    },
+    "endirekt_direkt": {
+      "Direkt": 4300,
+      "Endirekt": 859,
+      "Pasif": 202,
+      "": 2
+    },
+    "cinsiyet": {
+      "Erkek": 5201,
+      "Kadin": 162
+    },
+    "proje": {
+      "Svobodny-AGHK": 1215,
+      "DGP-02": 1125,
+      "NHNK mPE-300": 963,
+      "Ust Luga": 720,
+      "Kazan Katalizor": 487,
+      "Nizhnekamsk Polisterol": 427,
+      "NHNK SKLAD PROPILEN": 381,
+      "Merkez Ofis": 43,
+      "IZP": 2
+    },
+    "gorev": {
+      "Duz Isci": 921,
+      "Boru Ekipbasi": 662,
+      "Boru Montajcisi": 564,
+      "Kaynakci": 425,
+      "Iskele Ekipbasi": 364,
+      "Celik Ekipbasi": 231,
+      "Elektrikci": 179,
+      "Iskele Montaj Ustasi": 132,
+      "Puntaci": 107,
+      "Celik Montajcisi": 105,
+      "Kalipci": 75,
+      "Boru Formeni": 74,
+      "Boya Ekipbasi": 69,
+      "PTO Muhendisi": 65,
+      "Boyaci": 62,
+      "Izolasyon Sac Montajcisi": 45,
+      "Yemekhane Calisani": 42,
+      "Izolasyon Ekipbasi": 39,
+      "Izolasyon Iscisi": 34,
+      "Demirci": 33,
+      "Is Guvenligi Inspektoru": 31,
+      "Plaka Kaynakcisi": 29,
+      "Teknik Ofis Muhendisi": 29,
+      "Kaynak Formeni": 28,
+      "Is Guvenligi Uzmani": 28
+    }
+  }
+}

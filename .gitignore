@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output (CRITICAL: prevents indexing 25,000 files!)
+.next/
+out/
+build/
+dist/
+
+# Raw large database (>100MB violates GitHub file limits)
+pondera_hr.db
+hr_pondera.db
+pondera.db
+*.db-journal
+*.db-wal
+
+# Keep the compressed 18MB database for deployment
+!pondera_hr.db.gz
+
+# Excel raw source files
+*.xlsx
+*.xls
+
+# Logs & temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+scratch/
+
+# Environment files
+.env
+.env*.local
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

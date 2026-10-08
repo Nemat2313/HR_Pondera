@@ -1,0 +1,606 @@
+{
+  "Personel Listesi": [
+    {
+      "row": 1,
+      "count": 198,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "Sıra No"
+        },
+        {
+          "idx": 1,
+          "val": "Sicil No"
+        },
+        {
+          "idx": 2,
+          "val": "RHI Id"
+        },
+        {
+          "idx": 3,
+          "val": "Saren No"
+        },
+        {
+          "idx": 4,
+          "val": "Genel Durumu"
+        },
+        {
+          "idx": 5,
+          "val": "Güncel Durumu"
+        },
+        {
+          "idx": 6,
+          "val": "Region"
+        },
+        {
+          "idx": 7,
+          "val": "Proje Adı"
+        },
+        {
+          "idx": 8,
+          "val": "Çalışma Lokasyon Durumu"
+        },
+        {
+          "idx": 9,
+          "val": "Kategori"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "count": 146,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "1"
+        },
+        {
+          "idx": 1,
+          "val": "903397"
+        },
+        {
+          "idx": 2,
+          "val": ""
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Cikis"
+        },
+        {
+          "idx": 5,
+          "val": "Cikis"
+        },
+        {
+          "idx": 6,
+          "val": "Tobolsk"
+        },
+        {
+          "idx": 7,
+          "val": "DGP-02"
+        },
+        {
+          "idx": 8,
+          "val": "ZapSibNeftekhim DGP-2"
+        },
+        {
+          "idx": 9,
+          "val": "Ekspat"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "count": 156,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "2"
+        },
+        {
+          "idx": 1,
+          "val": "902770"
+        },
+        {
+          "idx": 2,
+          "val": "D11229"
+        },
+        {
+          "idx": 3,
+          "val": "10733"
+        },
+        {
+          "idx": 4,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 5,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 6,
+          "val": "Kazan"
+        },
+        {
+          "idx": 7,
+          "val": "Kazan Katalizor"
+        },
+        {
+          "idx": 8,
+          "val": "Kazan Katalizor"
+        },
+        {
+          "idx": 9,
+          "val": "Ekspat"
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "count": 152,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "3"
+        },
+        {
+          "idx": 1,
+          "val": "903161"
+        },
+        {
+          "idx": 2,
+          "val": "C71785"
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 5,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 6,
+          "val": "Ust Luga"
+        },
+        {
+          "idx": 7,
+          "val": "Ust Luga"
+        },
+        {
+          "idx": 8,
+          "val": "Ust Luga"
+        },
+        {
+          "idx": 9,
+          "val": "Ekspat"
+        }
+      ]
+    },
+    {
+      "row": 5,
+      "count": 161,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "4"
+        },
+        {
+          "idx": 1,
+          "val": "800127"
+        },
+        {
+          "idx": 2,
+          "val": ""
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 5,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 6,
+          "val": "Kazan"
+        },
+        {
+          "idx": 7,
+          "val": "Kazan Katalizor"
+        },
+        {
+          "idx": 8,
+          "val": "Kazan Katalizor"
+        },
+        {
+          "idx": 9,
+          "val": "SNG"
+        }
+      ]
+    },
+    {
+      "row": 6,
+      "count": 160,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "5"
+        },
+        {
+          "idx": 1,
+          "val": "800313"
+        },
+        {
+          "idx": 2,
+          "val": ""
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Cikis"
+        },
+        {
+          "idx": 5,
+          "val": "Cikis"
+        },
+        {
+          "idx": 6,
+          "val": "Tobolsk"
+        },
+        {
+          "idx": 7,
+          "val": "DGP-02"
+        },
+        {
+          "idx": 8,
+          "val": "ZapSibNeftekhim DGP-2"
+        },
+        {
+          "idx": 9,
+          "val": "SNG"
+        }
+      ]
+    },
+    {
+      "row": 7,
+      "count": 158,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "6"
+        },
+        {
+          "idx": 1,
+          "val": "800357"
+        },
+        {
+          "idx": 2,
+          "val": "977078"
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Cikis"
+        },
+        {
+          "idx": 5,
+          "val": "Cikis"
+        },
+        {
+          "idx": 6,
+          "val": "Amur"
+        },
+        {
+          "idx": 7,
+          "val": "GPZ"
+        },
+        {
+          "idx": 8,
+          "val": "Svobodniy"
+        },
+        {
+          "idx": 9,
+          "val": "SNG"
+        }
+      ]
+    },
+    {
+      "row": 8,
+      "count": 167,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "7"
+        },
+        {
+          "idx": 1,
+          "val": "903398"
+        },
+        {
+          "idx": 2,
+          "val": "B52482"
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 5,
+          "val": "Mevcut"
+        },
+        {
+          "idx": 6,
+          "val": "Kazan"
+        },
+        {
+          "idx": 7,
+          "val": "NHNK SKLAD PROPILEN"
+        },
+        {
+          "idx": 8,
+          "val": "NHNK SKLAD PROPILEN"
+        },
+        {
+          "idx": 9,
+          "val": "SNG"
+        }
+      ]
+    },
+    {
+      "row": 9,
+      "count": 165,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "8"
+        },
+        {
+          "idx": 1,
+          "val": "903399"
+        },
+        {
+          "idx": 2,
+          "val": "B52442"
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Cikis"
+        },
+        {
+          "idx": 5,
+          "val": "Cikis"
+        },
+        {
+          "idx": 6,
+          "val": "Kazan"
+        },
+        {
+          "idx": 7,
+          "val": "SIBUR Nijnekamsk"
+        },
+        {
+          "idx": 8,
+          "val": "Nijnekamsk"
+        },
+        {
+          "idx": 9,
+          "val": "SNG"
+        }
+      ]
+    },
+    {
+      "row": 10,
+      "count": 149,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "9"
+        },
+        {
+          "idx": 1,
+          "val": "800617"
+        },
+        {
+          "idx": 2,
+          "val": "977330"
+        },
+        {
+          "idx": 3,
+          "val": ""
+        },
+        {
+          "idx": 4,
+          "val": "Cikis"
+        },
+        {
+          "idx": 5,
+          "val": "Cikis"
+        },
+        {
+          "idx": 6,
+          "val": "Amur"
+        },
+        {
+          "idx": 7,
+          "val": "GPZ"
+        },
+        {
+          "idx": 8,
+          "val": "Svobodniy"
+        },
+        {
+          "idx": 9,
+          "val": "Ekspat"
+        }
+      ]
+    }
+  ],
+  "Sheet1": [
+    {
+      "row": 1,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "1"
+        },
+        {
+          "idx": 1,
+          "val": "Sıra No"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "2"
+        },
+        {
+          "idx": 1,
+          "val": "Sicil No"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "3"
+        },
+        {
+          "idx": 1,
+          "val": "RHI Id"
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "4"
+        },
+        {
+          "idx": 1,
+          "val": "Saren No"
+        }
+      ]
+    },
+    {
+      "row": 5,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "5"
+        },
+        {
+          "idx": 1,
+          "val": "Genel Durumu"
+        }
+      ]
+    },
+    {
+      "row": 6,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "6"
+        },
+        {
+          "idx": 1,
+          "val": "Güncel Durumu"
+        }
+      ]
+    },
+    {
+      "row": 7,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "7"
+        },
+        {
+          "idx": 1,
+          "val": "Region"
+        }
+      ]
+    },
+    {
+      "row": 8,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "8"
+        },
+        {
+          "idx": 1,
+          "val": "Proje Adı"
+        }
+      ]
+    },
+    {
+      "row": 9,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "9"
+        },
+        {
+          "idx": 1,
+          "val": "Çalışma Lokasyon Durumu"
+        }
+      ]
+    },
+    {
+      "row": 10,
+      "count": 2,
+      "sample": [
+        {
+          "idx": 0,
+          "val": "10"
+        },
+        {
+          "idx": 1,
+          "val": "Kategori"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.gitignore
+*.log
+scratch
+all_columns.txt
+tum liste 02 10 26.xlsx
