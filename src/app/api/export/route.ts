@@ -5,8 +5,24 @@ import * as XLSX from 'xlsx';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function toSnakeCase(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'i')
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
 function formatDateVal(val: any): string {
-  if (val === undefined || val === null || String(val).trim() === '') return '-';
+  if (val === undefined || val === null || String(val).trim() === '' || val === '-') return '-';
   const num = Number(val);
   if (!isNaN(num) && num > 30000 && num < 60000) {
     const date = new Date(Math.round((num - 25569) * 86400 * 1000));
@@ -26,15 +42,15 @@ function formatDateVal(val: any): string {
 const COLUMN_HEADER_MAP: Record<string, string> = {
   sira_no: 'Sıra No',
   sicil_no: 'Sicil No',
-  rhi_id: 'RHI ID',
+  rhi_id: 'Şirket ID',
   saren_no: 'Saren No',
   genel_durum: 'Genel Durum',
   guncel_durum: 'Güncel Durum',
-  region: 'Bölge',
+  region: 'Region',
   proje_adi: 'Proje Adı',
-  calisma_lokasyon: 'Çalışma Lokasyonu',
+  calisma_lokasyon: 'Çalışma Lokasyon Durumu',
   kategori: 'Kategori',
-  firma: 'Firma / Taşeron',
+  firma: 'Firma',
   departman: 'Departman',
   uyruk: 'Uyruk',
   adi: 'Adı',
@@ -43,21 +59,21 @@ const COLUMN_HEADER_MAP: Record<string, string> = {
   ad_soyad: 'Ad Soyad',
   tam_adi_kiril: 'Tam Adı (Kiril)',
   gorevi: 'Görevi',
-  rhi_gorevi: 'RHI Görevi',
+  rhi_gorevi: 'Ek Görev',
   sorumlu_kisi: 'Sorumlu Kişi',
   grup_sefi: 'Grup Şefi',
-  endirekt_direkt: 'Yaka (Direkt/Endirekt)',
+  endirekt_direkt: 'Endirekt / Direkt',
   ise_giris_tarihi: 'İşe Giriş Tarihi',
   santiye_giris_tarihi: 'Şantiye Giriş Tarihi',
   cikis_tarihi: 'Çıkış Tarihi',
   cikis_sebebi: 'Çıkış Sebebi',
-  gunduz_gece: 'Gündüz / Gece',
+  gunduz_gece: 'Gündüz / Gece Durumu',
   propusk_no: 'Propusk No',
   propusk_bitis_tarihi: 'Propusk Bitiş Tarihi',
   cinsiyet: 'Cinsiyet',
   dogum_tarihi: 'Doğum Tarihi',
   pasaport_no: 'Pasaport No',
-  pasaport_gecerlilik: 'Pasaport Geçerlilik',
+  pasaport_gecerlilik: 'Pasaport Geçerlilik Tarihi',
   tc_kimlik_no: 'TC Kimlik No',
   dogum_yeri: 'Doğum Yeri',
   migrasyon_no: 'Migrasyon No',
@@ -67,10 +83,46 @@ const COLUMN_HEADER_MAP: Record<string, string> = {
   patent_alis_tarihi: 'Patent Alış Tarihi',
   patent_bitis_tarihi: 'Patent Bitiş Tarihi',
   telefon_no: 'Telefon No',
-  email: 'E-Posta',
+  email: 'Email',
   kamp_no: 'Kamp No',
   oda_no: 'Oda No',
 };
+
+const COLUMN_ALIASES: Record<string, string> = {
+  sirket_id: 'rhi_id',
+  rhi_id: 'rhi_id',
+  rhi_id_1: 'rhi_id',
+  rhi_gorevi: 'rhi_gorevi',
+  ek_gorev: 'rhi_gorevi',
+  calisma_lokasyon_durumu: 'calisma_lokasyon',
+  calisma_lokasyonu: 'calisma_lokasyon',
+  calisma_lokasyon: 'calisma_lokasyon',
+  genel_durumu: 'genel_durum',
+  genel_durum: 'genel_durum',
+  guncel_durumu: 'guncel_durum',
+  guncel_durum: 'guncel_durum',
+  ad_soyad: 'ad_soyad',
+  adi_soyadi: 'ad_soyad',
+  tam_adi_kiril: 'tam_adi_kiril',
+  ise_giris_tarihi: 'ise_giris_tarihi',
+  santiye_giris_tarihi: 'santiye_giris_tarihi',
+  cikis_tarihi: 'cikis_tarihi',
+  cikis_sebebi: 'cikis_sebebi',
+  gunduz_gece_durumu: 'gunduz_gece',
+  gunduz_gece: 'gunduz_gece',
+  endirekt_direkt: 'endirekt_direkt',
+  yaka: 'endirekt_direkt',
+  proje_adi: 'proje_adi',
+  proje: 'proje_adi',
+  bolge: 'region',
+  region: 'region',
+};
+
+const REVERSE_HEADER_MAP: Record<string, string> = {};
+for (const [k, v] of Object.entries(COLUMN_HEADER_MAP)) {
+  REVERSE_HEADER_MAP[v] = k;
+  REVERSE_HEADER_MAP[toSnakeCase(v)] = k;
+}
 
 const DATE_FIELDS = new Set([
   'ise_giris_tarihi',
@@ -83,6 +135,69 @@ const DATE_FIELDS = new Set([
   'patent_alis_tarihi',
   'patent_bitis_tarihi',
 ]);
+
+function isDateField(key: string, header: string): boolean {
+  const k = key.toLowerCase();
+  const h = header.toLowerCase();
+  const s = toSnakeCase(key);
+  if (DATE_FIELDS.has(key) || DATE_FIELDS.has(s)) return true;
+  if (k.endsWith('tarihi') || k.endsWith('tarih') || k.endsWith('date')) return true;
+  if (h.endsWith('tarihi') || h.endsWith('tarih') || h.endsWith('date')) return true;
+  return false;
+}
+
+function resolveCellValue(
+  row: any,
+  parsedJson: Record<string, any>,
+  colKey: string
+): { val: any; header: string } {
+  const snake = toSnakeCase(colKey);
+  const mappedSnake = COLUMN_ALIASES[snake] || snake;
+  const mappedKeyFromHeader = REVERSE_HEADER_MAP[colKey] || REVERSE_HEADER_MAP[snake];
+
+  // Determine cleanest header label
+  let headerName = COLUMN_HEADER_MAP[colKey] || COLUMN_HEADER_MAP[mappedSnake] || colKey;
+  if (!headerName || headerName.includes('_')) {
+    headerName = colKey;
+  }
+
+  // 1. Direct row key
+  if (row[colKey] !== undefined && row[colKey] !== null && String(row[colKey]).trim() !== '') {
+    return { val: row[colKey], header: headerName };
+  }
+  // 2. Mapped snake column in SQL row
+  if (row[mappedSnake] !== undefined && row[mappedSnake] !== null && String(row[mappedSnake]).trim() !== '') {
+    return { val: row[mappedSnake], header: headerName };
+  }
+  // 3. Reverse header mapped key in SQL row
+  if (
+    mappedKeyFromHeader &&
+    row[mappedKeyFromHeader] !== undefined &&
+    row[mappedKeyFromHeader] !== null &&
+    String(row[mappedKeyFromHeader]).trim() !== ''
+  ) {
+    return { val: row[mappedKeyFromHeader], header: headerName };
+  }
+  // 4. Exact key in parsed JSON
+  if (parsedJson[colKey] !== undefined && parsedJson[colKey] !== null && String(parsedJson[colKey]).trim() !== '') {
+    return { val: parsedJson[colKey], header: headerName };
+  }
+  // 5. Header name in parsed JSON
+  if (headerName && parsedJson[headerName] !== undefined && parsedJson[headerName] !== null && String(parsedJson[headerName]).trim() !== '') {
+    return { val: parsedJson[headerName], header: headerName };
+  }
+  // 6. Case-insensitive / snake-case search in parsed JSON
+  const lowerKey = colKey.toLowerCase();
+  for (const [jk, jv] of Object.entries(parsedJson)) {
+    if (jk.toLowerCase() === lowerKey || toSnakeCase(jk) === snake) {
+      if (jv !== undefined && jv !== null && String(jv).trim() !== '') {
+        return { val: jv, header: headerName };
+      }
+    }
+  }
+
+  return { val: null, header: headerName };
+}
 
 export async function GET(request: Request) {
   try {
@@ -196,7 +311,7 @@ export async function GET(request: Request) {
     };
     const orderColumn = allowedSortCols[sortBy] || 'sira_no';
 
-    const selectCols = `sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no`;
+    const selectCols = `sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no, all_data_json`;
 
     const dataSql = `
       SELECT ${selectCols}
@@ -215,23 +330,35 @@ export async function GET(request: Request) {
       : [];
 
     const excelRows = rows.map((r) => {
+      let parsedJson: Record<string, any> = {};
+      if (r.all_data_json) {
+        try {
+          parsedJson = typeof r.all_data_json === 'string' ? JSON.parse(r.all_data_json) : r.all_data_json;
+        } catch {
+          parsedJson = {};
+        }
+      }
+
       const rowObj: Record<string, any> = {};
 
       if (requestedCols.length > 0) {
         for (const colKey of requestedCols) {
-          const rawVal = r[colKey];
-          const headerName = COLUMN_HEADER_MAP[colKey] || colKey;
-          rowObj[headerName] = DATE_FIELDS.has(colKey)
-            ? formatDateVal(rawVal)
-            : (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '' ? rawVal : '-');
+          const { val, header } = resolveCellValue(r, parsedJson, colKey);
+          rowObj[header] = isDateField(colKey, header)
+            ? formatDateVal(val)
+            : val !== undefined && val !== null && String(val).trim() !== ''
+            ? val
+            : '-';
         }
       } else {
         // Standard full columns
         for (const [colKey, headerName] of Object.entries(COLUMN_HEADER_MAP)) {
-          const rawVal = r[colKey];
-          rowObj[headerName] = DATE_FIELDS.has(colKey)
-            ? formatDateVal(rawVal)
-            : (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '' ? rawVal : '-');
+          const { val } = resolveCellValue(r, parsedJson, colKey);
+          rowObj[headerName] = isDateField(colKey, headerName)
+            ? formatDateVal(val)
+            : val !== undefined && val !== null && String(val).trim() !== ''
+            ? val
+            : '-';
         }
       }
 

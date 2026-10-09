@@ -712,7 +712,7 @@ export default function PersonnelListView({
       if (filterCollar !== 'all') params.set('collar', filterCollar);
 
       // Pass currently visible column keys so the exported Excel matches the user's active table configuration
-      const selectedColKeys = visibleColumnDefs.map((c) => c.key).filter(Boolean);
+      const selectedColKeys = visibleColumnDefs.map((c) => c.name || c.key).filter(Boolean);
       if (selectedColKeys.length > 0) {
         params.set('columns', selectedColKeys.join(','));
       }
