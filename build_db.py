@@ -3,6 +3,9 @@ import sqlite3
 import json
 import time
 import os
+import re
+import shutil
+import gzip
 from datetime import datetime, date
 
 EXCEL_PATH = r"C:\Users\nemat\Downloads\Telegram Desktop\tum liste 08 10 2026.xlsx"
@@ -18,35 +21,132 @@ def clean_val(val):
     s = str(val).strip()
     return s
 
+FIELD_ALIASES = {
+    'sira_no': ['sıra no', 'sira no', 'sn', '№', 'nomer', 'номер'],
+    'sicil_no': ['sicil no', 'sicil', 'tabel no', 'табельный номер', 'табельный', 'таб'],
+    'rhi_id': ['rhi id', 'rhi_id', 'rhi'],
+    'saren_no': ['saren no', 'saren'],
+    'genel_durum': ['genel durumu', 'genel durum', 'общий статус'],
+    'guncel_durum': ['güncel durumu', 'guncel durumu', 'güncel durum', 'текущий статус'],
+    'region': ['region', 'bölge', 'bolge', 'регион'],
+    'proje_adi': ['proje adı', 'proje adi', 'proje', 'проект'],
+    'calisma_lokasyon': ['çalışma lokasyon durumu', 'calisma lokasyon', 'lokasyon', 'локация'],
+    'kategori': ['kategori', 'категория'],
+    'firma': ['firma', 'şirket', 'sirket', 'фирма', 'компания'],
+    'departman': ['departman', 'департамент', 'отдел'],
+    'uyruk': ['uyruk', 'vatandaşlık', 'гражданство'],
+    'adi': ['adı', 'adi', 'isim', 'имя'],
+    'soyadi': ['soyadı', 'soyadi', 'фамилия'],
+    'baba_adi': ['baba adı', 'baba adi', 'отчество'],
+    'ad_soyad': ['ad soyad', 'adı soyadı', 'ad soyadı', 'fio', 'фио'],
+    'tam_adi_kiril': ['tam adı (kiril)', 'tam adi kiril', 'фио (кириллица)'],
+    'gorevi': ['görevi', 'gorevi', 'meslek', 'должность', 'профессия'],
+    'rhi_gorevi': ['rhi görevi', 'rhi gorevi'],
+    'sorumlu_kisi': ['sorumlu kişi', 'sorumlu kisi', 'ответственный'],
+    'grup_sefi': ['grup şefi', 'grup sefi', 'руководитель'],
+    'endirekt_direkt': ['endirekt / direkt', 'endirekt direkt', 'endirekt/direkt', 'endirekt', 'direkt'],
+    'ise_giris_tarihi': ['işe giriş tarihi', 'ise giris tarihi', 'giriş tarihi', 'дата приема'],
+    'santiye_giris_tarihi': ['şantiye giriş tarihi', 'santiye giris tarihi', 'дата заезда'],
+    'cikis_tarihi': ['çıkış tarihi', 'cikis tarihi', 'дата увольнения'],
+    'cikis_sebebi': ['çıkış sebebi', 'cikis sebebi', 'причина увольнения'],
+    'gunduz_gece': ['gündüz / gece', 'gunduz / gece', 'смена'],
+    'propusk_no': ['propusk no', 'пропуск №', 'пропуск'],
+    'propusk_bitis_tarihi': ['propusk bitiş tarihi', 'propusk bitis', 'пропуск окончание'],
+    'cinsiyet': ['cinsiyet', 'пол'],
+    'dogum_tarihi': ['doğum tarihi', 'dogum tarihi', 'дата рождения'],
+    'pasaport_no': ['pasaport no', 'паспорт №', 'номер паспорта'],
+    'pasaport_gecerlilik': ['pasaport geçerlilik', 'паспорт окончание', 'срок паспорта'],
+    'tc_kimlik_no': ['tc kimlik no', 'tc no', 'инн/снилс'],
+    'dogum_yeri': ['doğum yeri', 'dogum yeri', 'место рождения'],
+    'migrasyon_no': ['migrasyon no', 'миграционная карта'],
+    'inn_no': ['inn no', 'инн'],
+    'vize_no': ['vize no', 'виза №', 'номер визы'],
+    'vize_bitis_tarihi': ['vize bitiş tarihi', 'vize bitis', 'виза окончание', 'срок визы'],
+    'patent_alis_tarihi': ['patent alış tarihi', 'patent alis', 'патент выдача'],
+    'patent_bitis_tarihi': ['patent çeki bitiş tarihi', 'patent bitiş tarihi', 'patent bitis', 'патент окончание'],
+    'telefon_no': ['telefon no', 'telefon', 'телефон'],
+    'email': ['email', 'e-mail', 'почта'],
+    'kamp_no': ['kamp no', 'kamp', 'городок', 'общежитие'],
+    'oda_no': ['oda no', 'oda', 'комната']
+}
+
+def infer_region_from_project(project_name):
+    p = (project_name or '').upper()
+    if 'POLISTEROL' in p or 'NIZHNEKAMSK' in p or 'KAZAN' in p or 'ТАТАР' in p:
+        return 'Kazan'
+    if 'AMUR-AGHK' in p or 'АМУР АГХК' in p:
+        return 'Amur-AGHK'
+    if 'AMUR' in p or 'АМУР' in p:
+        return 'Amur'
+    if 'SVOBODNY' in p or 'СВОБОДНЫЙ' in p:
+        return 'Svobodny-AGHK'
+    if 'TOBOLSK' in p or 'ТОБОЛЬСК' in p:
+        return 'Tobolsk'
+    if 'UST LUGA' in p or 'UST-LUGA' in p or 'УСТЬ-ЛУГА' in p or 'УСТЬ ЛУГА' in p:
+        return 'Ust Luga'
+    if 'MURMANSK' in p or 'МУРМАНСК' in p:
+        return 'Murmansk'
+    if 'MERKEZ' in p or 'MOSKOVA' in p or 'МОСКВА' in p:
+        return 'Merkez Ofis'
+    return project_name or 'Diğer'
+
+def map_headers(raw_headers):
+    mapping = {}
+    cleaned = [re.sub(r'\s+', ' ', str(h or '')).strip().lower() for h in raw_headers]
+    for field, aliases in FIELD_ALIASES.items():
+        found_idx = None
+        # 1. Exact match
+        for idx, h in enumerate(cleaned):
+            if h in aliases:
+                found_idx = idx
+                break
+        # 2. Substring match
+        if found_idx is None:
+            for idx, h in enumerate(cleaned):
+                for alias in aliases:
+                    if len(alias) >= 4 and alias in h:
+                        found_idx = idx
+                        break
+                if found_idx is not None:
+                    break
+        mapping[field] = found_idx
+    return mapping
+
+def find_personnel_sheet(wb):
+    target_names = ["personel listesi", "personel", "employees", "сотрудники", "список сотрудников"]
+    for name in wb.sheetnames:
+        if name.strip().lower() in target_names or "personel" in name.lower() or "список" in name.lower():
+            return wb[name]
+    
+    # Check for sheet with employee headers
+    for name in wb.sheetnames:
+        if "pivot" in name.lower():
+            continue
+        ws = wb[name]
+        first_row = next(ws.iter_rows(values_only=True), None)
+        if first_row:
+            row_str = " ".join([str(c or '').lower() for c in first_row])
+            if any(k in row_str for k in ["sicil", "ad soyad", "uyruk", "genel durum"]):
+                return ws
+
+    for name in wb.sheetnames:
+        if "pivot" not in name.lower():
+            return wb[name]
+
+    return wb[wb.sheetnames[0]]
+
 def build_database():
     start_time = time.time()
-    print("Loading Excel workbook...")
     wb = openpyxl.load_workbook(EXCEL_PATH, read_only=True, data_only=True)
-    
-    # Read column definitions from Sheet1 if available
-    col_defs = []
-    if "Sheet1" in wb.sheetnames:
-        ws_cols = wb["Sheet1"]
-        for row in ws_cols.iter_rows(values_only=True):
-            if row[0] is not None and row[1] is not None:
-                col_defs.append({"index": int(row[0]), "name": str(row[1]).strip()})
-    
-    ws_data = wb["Personel Listesi"]
-    
-    # Remove existing DB if possible
-    if os.path.exists(DB_PATH):
-        try:
-            os.remove(DB_PATH)
-        except Exception:
-            pass
+    ws_data = find_personnel_sheet(wb)
 
-    conn = sqlite3.connect(DB_PATH)
+    temp_db_path = DB_PATH + ".tmp"
+    if os.path.exists(temp_db_path):
+        try: os.remove(temp_db_path)
+        except Exception: pass
+
+    conn = sqlite3.connect(temp_db_path)
     cursor = conn.cursor()
-
-    # Always drop existing tables to prevent duplicate records if file was locked
-    cursor.execute("DROP TABLE IF EXISTS personnel")
-    cursor.execute("DROP TABLE IF EXISTS columns_meta")
-    cursor.execute("DROP TABLE IF EXISTS system_info")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS system_info (
@@ -116,7 +216,6 @@ def build_database():
     );
     """)
 
-    # Create indexes for blazing-fast queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_genel_durum ON personnel(genel_durum);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_region ON personnel(region);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_proje ON personnel(proje_adi);")
@@ -131,8 +230,8 @@ def build_database():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_saren ON personnel(saren_no);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_ad_soyad ON personnel(ad_soyad);")
 
-    # Determine headers from row 1
     headers = []
+    col_map = {}
     rows_to_insert = []
     total_count = 0
     active_count = 0
@@ -140,6 +239,7 @@ def build_database():
     for i, row in enumerate(ws_data.iter_rows(values_only=True)):
         if i == 0:
             headers = [clean_val(c) or f"Col_{idx+1}" for idx, c in enumerate(row)]
+            col_map = map_headers(headers)
             continue
 
         if not any(row):
@@ -151,68 +251,90 @@ def build_database():
             h_name = headers[idx] if idx < len(headers) else f"Col_{idx+1}"
             row_dict[h_name] = clean_val(val)
 
-        genel_durum = clean_val(row[4]) if len(row) > 4 else ""
-        if genel_durum == "Mevcut":
-            active_count += 1
+        def get_f(f_name):
+            idx = col_map.get(f_name)
+            if idx is not None and idx < len(row):
+                return clean_val(row[idx])
+            return ""
 
-        sira_no_raw = clean_val(row[0]) if len(row) > 0 else ""
+        sira_no_raw = get_f('sira_no')
         try:
             sira_no = int(sira_no_raw)
         except ValueError:
             sira_no = total_count
 
+        genel_durum = get_f('genel_durum') or 'Mevcut'
+        guncel_durum = get_f('guncel_durum') or genel_durum
+        if genel_durum == 'Mevcut':
+            active_count += 1
+
+        proje_adi = get_f('proje_adi')
+        region = get_f('region')
+        if not region:
+            region = infer_region_from_project(proje_adi)
+
+        ad_soyad = get_f('ad_soyad')
+        adi = get_f('adi')
+        soyadi = get_f('soyadi')
+        if not ad_soyad and (adi or soyadi):
+            ad_soyad = f"{adi} {soyadi}".strip()
+        elif ad_soyad and not adi:
+            parts = ad_soyad.split()
+            adi = parts[0] if parts else ""
+            soyadi = " ".join(parts[1:]) if len(parts) > 1 else ""
+
         record = (
             sira_no,
-            clean_val(row[1]) if len(row) > 1 else "",
-            clean_val(row[2]) if len(row) > 2 else "",
-            clean_val(row[3]) if len(row) > 3 else "",
+            get_f('sicil_no'),
+            get_f('rhi_id'),
+            get_f('saren_no'),
             genel_durum,
-            clean_val(row[5]) if len(row) > 5 else "",
-            clean_val(row[6]) if len(row) > 6 else "",
-            clean_val(row[7]) if len(row) > 7 else "",
-            clean_val(row[8]) if len(row) > 8 else "",
-            clean_val(row[9]) if len(row) > 9 else "",
-            clean_val(row[10]) if len(row) > 10 else "",
-            clean_val(row[11]) if len(row) > 11 else "",
-            clean_val(row[12]) if len(row) > 12 else "",
-            clean_val(row[13]) if len(row) > 13 else "",
-            clean_val(row[14]) if len(row) > 14 else "",
-            clean_val(row[15]) if len(row) > 15 else "",
-            clean_val(row[16]) if len(row) > 16 else "",
-            clean_val(row[20]) if len(row) > 20 else "", # Tam Adı (Kiril)
-            clean_val(row[21]) if len(row) > 21 else "", # Görevi
-            clean_val(row[22]) if len(row) > 22 else "", # RHI Görevi
-            clean_val(row[23]) if len(row) > 23 else "", # Sorumlu Kişi
-            clean_val(row[24]) if len(row) > 24 else "", # Grup Şefi
-            clean_val(row[25]) if len(row) > 25 else "", # Endirekt / Direkt
-            clean_val(row[27]) if len(row) > 27 else "", # İşe Giriş Tarihi
-            clean_val(row[28]) if len(row) > 28 else "", # Şantiye Giriş Tarihi
-            clean_val(row[29]) if len(row) > 29 else "", # Çıkış Tarihi
-            clean_val(row[30]) if len(row) > 30 else "", # Çıkış Sebebi
-            clean_val(row[31]) if len(row) > 31 else "", # Gündüz / Gece
-            clean_val(row[32]) if len(row) > 32 else "", # Propusk No
-            clean_val(row[35]) if len(row) > 35 else "", # Propusk Bitiş Tarihi
-            clean_val(row[40]) if len(row) > 40 else "", # Cinsiyet
-            clean_val(row[41]) if len(row) > 41 else "", # Doğum Tarihi
-            clean_val(row[43]) if len(row) > 43 else "", # Pasaport No
-            clean_val(row[45]) if len(row) > 45 else "", # Pasaport Geçerlilik
-            clean_val(row[50]) if len(row) > 50 else "", # TC Kimlik No
-            clean_val(row[53]) if len(row) > 53 else "", # Doğum Yeri
-            clean_val(row[56]) if len(row) > 56 else "", # Migrasyon No
-            clean_val(row[68]) if len(row) > 68 else "", # INN No
-            clean_val(row[72]) if len(row) > 72 else "", # Vize No
-            clean_val(row[75]) if len(row) > 75 else "", # Vize Bitiş
-            clean_val(row[81]) if len(row) > 81 else "", # Patent Alış
-            clean_val(row[86]) if len(row) > 86 else "", # Patent Bitiş
-            clean_val(row[174]) if len(row) > 174 else "", # Telefon No
-            clean_val(row[173]) if len(row) > 173 else "", # e-Mail
-            clean_val(row[167]) if len(row) > 167 else "", # Kamp No
-            clean_val(row[168]) if len(row) > 168 else "", # Oda No
+            guncel_durum,
+            region,
+            proje_adi,
+            get_f('calisma_lokasyon'),
+            get_f('kategori'),
+            get_f('firma'),
+            get_f('departman'),
+            get_f('uyruk'),
+            adi,
+            soyadi,
+            get_f('baba_adi'),
+            ad_soyad,
+            get_f('tam_adi_kiril'),
+            get_f('gorevi'),
+            get_f('rhi_gorevi'),
+            get_f('sorumlu_kisi'),
+            get_f('grup_sefi'),
+            get_f('endirekt_direkt'),
+            get_f('ise_giris_tarihi'),
+            get_f('santiye_giris_tarihi'),
+            get_f('cikis_tarihi'),
+            get_f('cikis_sebebi'),
+            get_f('gunduz_gece'),
+            get_f('propusk_no'),
+            get_f('propusk_bitis_tarihi'),
+            get_f('cinsiyet'),
+            get_f('dogum_tarihi'),
+            get_f('pasaport_no'),
+            get_f('pasaport_gecerlilik'),
+            get_f('tc_kimlik_no'),
+            get_f('dogum_yeri'),
+            get_f('migrasyon_no'),
+            get_f('inn_no'),
+            get_f('vize_no'),
+            get_f('vize_bitis_tarihi'),
+            get_f('patent_alis_tarihi'),
+            get_f('patent_bitis_tarihi'),
+            get_f('telefon_no'),
+            get_f('email'),
+            get_f('kamp_no'),
+            get_f('oda_no'),
             json.dumps(row_dict, ensure_ascii=False)
         )
         rows_to_insert.append(record)
 
-        if len(rows_to_insert) >= 5000:
+        if len(rows_to_insert) >= 3000:
             cursor.executemany("""
             INSERT INTO personnel (
                 sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum,
@@ -229,7 +351,6 @@ def build_database():
             """, rows_to_insert)
             conn.commit()
             rows_to_insert = []
-            print(f"Inserted {total_count} rows...")
 
     if rows_to_insert:
         cursor.executemany("""
@@ -248,30 +369,6 @@ def build_database():
         """, rows_to_insert)
         conn.commit()
 
-    # Insert columns metadata
-    for col in col_defs:
-        # Assign logical groups based on index / name
-        idx = col["index"]
-        cname = col["name"]
-        group = "Diğer Detay Alanları"
-        if idx in [1, 2, 3, 4, 5, 6, 14, 15, 16, 17, 18, 19, 20, 21]:
-            group = "Temel Bilgiler"
-        elif idx in [7, 8, 9, 11, 120, 121, 168, 169, 176, 177]:
-            group = "Lokasyon & Şantiye"
-        elif idx in [10, 12, 22, 23, 24, 25, 26, 27, 32, 122]:
-            group = "Pozisyon & Meslek"
-        elif idx in [13, 41, 42, 43, 44, 45, 46, 50, 51, 54, 55, 173, 174, 175, 185, 186]:
-            group = "Özlük & Uyruk"
-        elif idx in [28, 29, 30, 31, 106, 107, 108, 110, 111, 114, 115, 171, 172]:
-            group = "Sözleşme & İşe Giriş/Çıkış"
-        elif idx in [33, 34, 35, 36, 56, 57, 58, 59, 60, 61, 62, 63, 68, 69, 72, 73, 74, 75, 76, 81, 82, 83, 84, 85, 86, 87, 95, 96, 98, 99]:
-            group = "Vize, İkamet & Yasal Belgeler"
-        elif idx in [38, 39, 40, 126, 127, 128, 132, 133, 134, 135, 139, 140, 145, 146, 152, 153, 155, 157]:
-            group = "Sağlık, İSG & Eğitim"
-
-        cursor.execute("INSERT OR REPLACE INTO columns_meta (col_index, col_name, col_group) VALUES (?, ?, ?)",
-                       (idx, cname, group))
-
     # Save system info
     cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)", (DATA_FRESHNESS,))
     cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', ?)", (SOURCE_FILE,))
@@ -281,8 +378,24 @@ def build_database():
     conn.commit()
     conn.close()
 
+    # Atomic move
+    if os.path.exists(DB_PATH):
+        try:
+            os.remove(DB_PATH)
+        except Exception:
+            pass
+    shutil.move(temp_db_path, DB_PATH)
+
+    # Automatically compress to .gz as well
+    try:
+        with open(DB_PATH, 'rb') as f_in:
+            with gzip.open(DB_PATH + '.gz', 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+    except Exception:
+        pass
+
     elapsed = time.time() - start_time
-    print(f"SUCCESS! Database created in {elapsed:.2f} seconds. Total: {total_count}, Active: {active_count}")
+    print(f"SUCCESS! Database created in {elapsed:.2f}s. Total: {total_count}, Active: {active_count}")
 
 if __name__ == "__main__":
     build_database()

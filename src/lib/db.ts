@@ -23,3 +23,13 @@ export function getDb() {
   }
   return dbInstance;
 }
+
+export function resetDb() {
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {}
+    dbInstance = null;
+  }
+}
+

@@ -4,6 +4,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import zlib from 'zlib';
+import { resetDb } from '@/lib/db';
 
 const execPromise = util.promisify(exec);
 
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const dataFreshness = ((formData.get('dataFreshness') as string) || '').trim() || '03.10.2026';
+    const dataFreshness = ((formData.get('dataFreshness') as string) || '').trim() || '08.10.2026';
 
     if (!file) {
       return NextResponse.json(
@@ -45,17 +46,24 @@ export async function POST(request: Request) {
     const safeFileName = file.name.replace(/['"\\]/g, '');
     const primaryCmd = process.platform === 'win32' ? 'python' : 'python3';
 
+    let buildError: string | null = null;
     try {
       const command = `${primaryCmd} -c "import build_db; build_db.EXCEL_PATH = r'${escapedTempPath}'; build_db.DATA_FRESHNESS = '${safeFreshness}'; build_db.SOURCE_FILE = '${safeFileName}'; build_db.build_database()"`;
       await execPromise(command, { cwd: process.cwd(), timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
-    } catch {
+    } catch (err: any) {
+      buildError = err?.stderr || err?.message || String(err);
       try {
         const fallbackCmd = primaryCmd === 'python3' ? 'python' : 'python3';
         const command = `${fallbackCmd} -c "import build_db; build_db.EXCEL_PATH = r'${escapedTempPath}'; build_db.DATA_FRESHNESS = '${safeFreshness}'; build_db.SOURCE_FILE = '${safeFileName}'; build_db.build_database()"`;
         await execPromise(command, { cwd: process.cwd(), timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
-      } catch {
+        buildError = null;
+      } catch (fallbackErr: any) {
+        buildError = fallbackErr?.stderr || fallbackErr?.message || buildError;
         return NextResponse.json(
-          { success: false, message: 'Excel dosyası işlenirken hata oluştu. Veri yapısı veya dosya boyutu kontrol edilmelidir.' },
+          {
+            success: false,
+            message: `Excel dosyası işlenirken hata oluştu: ${String(buildError || '').slice(0, 200)}`,
+          },
           { status: 500 }
         );
       }
@@ -65,6 +73,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // Invalidate cached database connection so next query immediately loads the updated database
+    resetDb();
+
     // Ensure system_info is updated directly in SQLite
     const dbPath = path.join(process.cwd(), 'pondera_hr.db');
     try {
@@ -72,6 +83,7 @@ export async function POST(request: Request) {
       const db = new DatabaseSync(dbPath);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)").run(safeFreshness);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', ?)").run(safeFileName);
+      try { db.close(); } catch {}
     } catch {}
 
     // Auto-update compressed archive pondera_hr.db.gz for Cloud deployments & backups

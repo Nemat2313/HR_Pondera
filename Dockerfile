@@ -44,7 +44,7 @@ RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 # Copy SQLite database (supports both compressed 18MB .gz and raw .db)
 COPY --from=builder --chown=nextjs:nodejs /app/pondera_hr.db* ./
 RUN if [ ! -f pondera_hr.db ] && [ -f pondera_hr.db.gz ]; then gzip -d -k pondera_hr.db.gz; fi
-RUN chown nextjs:nodejs pondera_hr.db*
+RUN chown -R nextjs:nodejs /app && chmod -R 775 /app
 
 USER nextjs
 
