@@ -43,15 +43,26 @@ export async function POST(request: Request) {
     const escapedTempPath = tempFilePath.replace(/\\/g, '\\\\');
     const safeFreshness = dataFreshness.replace(/['"\\]/g, '');
     const safeFileName = file.name.replace(/['"\\]/g, '');
+    const primaryCmd = process.platform === 'win32' ? 'python' : 'python3';
 
     try {
-      const command = `python -c "import build_db; build_db.EXCEL_PATH = r'${escapedTempPath}'; build_db.DATA_FRESHNESS = '${safeFreshness}'; build_db.SOURCE_FILE = '${safeFileName}'; build_db.build_database()"`;
-      await execPromise(command, { cwd: process.cwd() });
+      const command = `${primaryCmd} -c "import build_db; build_db.EXCEL_PATH = r'${escapedTempPath}'; build_db.DATA_FRESHNESS = '${safeFreshness}'; build_db.SOURCE_FILE = '${safeFileName}'; build_db.build_database()"`;
+      await execPromise(command, { cwd: process.cwd(), timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
     } catch {
-      return NextResponse.json(
-        { success: false, message: 'Excel dosyası işlenirken hata oluştu. Veri yapısı kontrol edilmelidir.' },
-        { status: 500 }
-      );
+      try {
+        const fallbackCmd = primaryCmd === 'python3' ? 'python' : 'python3';
+        const command = `${fallbackCmd} -c "import build_db; build_db.EXCEL_PATH = r'${escapedTempPath}'; build_db.DATA_FRESHNESS = '${safeFreshness}'; build_db.SOURCE_FILE = '${safeFileName}'; build_db.build_database()"`;
+        await execPromise(command, { cwd: process.cwd(), timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
+      } catch {
+        return NextResponse.json(
+          { success: false, message: 'Excel dosyası işlenirken hata oluştu. Veri yapısı veya dosya boyutu kontrol edilmelidir.' },
+          { status: 500 }
+        );
+      }
+    } finally {
+      if (fs.existsSync(tempFilePath)) {
+        try { fs.unlinkSync(tempFilePath); } catch {}
+      }
     }
 
     // Ensure system_info is updated directly in SQLite
