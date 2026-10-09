@@ -438,12 +438,43 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
                 />
                 <YAxis tick={{ fontSize: 10, fill: '#64748b' }} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#0F172A',
-                    borderRadius: '12px',
-                    border: '1px solid #334155',
-                    color: '#fff',
-                    fontSize: '11px',
+                  cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const total = payload.reduce((s: number, p: any) => s + (Number(p.value) || 0), 0);
+                      return (
+                        <div className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl text-xs text-slate-800 dark:text-slate-100 min-w-[220px] animate-in fade-in duration-100 select-none">
+                          <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                            <span className="font-bold text-slate-900 dark:text-white text-xs">{label}</span>
+                            <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/80 px-2 py-0.5 rounded-full border border-teal-200/50 dark:border-teal-800/50">
+                              Toplam: {total.toLocaleString('tr-TR')}
+                            </span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {payload.map((entry: any, i: number) => {
+                              const val = Number(entry.value) || 0;
+                              return (
+                                <div key={i} className="flex items-center justify-between gap-3 text-[11px]">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-xs shrink-0 shadow-xs"
+                                      style={{ backgroundColor: entry.color || entry.fill }}
+                                    />
+                                    <span className="text-slate-600 dark:text-slate-300 truncate font-medium">
+                                      {entry.name}:
+                                    </span>
+                                  </div>
+                                  <span className="font-bold font-mono text-slate-900 dark:text-white shrink-0">
+                                    {val.toLocaleString('tr-TR')}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
                   }}
                 />
                 <Bar dataKey="expiredCount" name="Süresi Doldu" stackId="a" fill="#F43F5E" />

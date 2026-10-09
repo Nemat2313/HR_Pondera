@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Globe, MapPin, ArrowRight, Sparkles, Navigation, Layers } from 'lucide-react';
+import { Globe, MapPin, ArrowRight, Sparkles, Navigation, Layers, ZoomIn } from 'lucide-react';
 
 interface CountryStat {
   label: string;
@@ -18,8 +18,10 @@ interface CountryMeta {
   key: string;
   displayName: string;
   flag: string;
-  leftPct: number; // percentage on eurasia_map.jpg (0 to 100)
-  topPct: number;  // percentage on eurasia_map.jpg (0 to 100)
+  anchorX: number; // Coğrafi gerçek koordinat (%)
+  anchorY: number;
+  badgeX: number;  // Açılmış, çakışmayan rozet konumu (%)
+  badgeY: number;
   corridor: string;
   color: string;
 }
@@ -29,8 +31,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'HINDISTAN',
     displayName: 'Hindistan',
     flag: '🇮🇳',
-    leftPct: 53.0,
-    topPct: 83.5,
+    anchorX: 52.8,
+    anchorY: 79.5,
+    badgeX: 49.0,
+    badgeY: 87.5,
     corridor: 'Güney Asya',
     color: '#F59E0B',
   },
@@ -38,8 +42,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'OZBEKISTAN',
     displayName: 'Özbekistan',
     flag: '🇺🇿',
-    leftPct: 45.0,
-    topPct: 58.5,
+    anchorX: 44.5,
+    anchorY: 59.5,
+    badgeX: 38.0,
+    badgeY: 54.5,
     corridor: 'Orta Asya (SNG)',
     color: '#06B6D4',
   },
@@ -47,8 +53,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'AZERBAYCAN',
     displayName: 'Azerbaycan',
     flag: '🇦🇿',
-    leftPct: 37.0,
-    topPct: 62.5,
+    anchorX: 36.8,
+    anchorY: 63.0,
+    badgeX: 33.5,
+    badgeY: 71.5,
     corridor: 'Kafkasya & Hazar',
     color: '#10B981',
   },
@@ -56,8 +64,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'RUSYA',
     displayName: 'Rusya',
     flag: '🇷🇺',
-    leftPct: 61.5,
-    topPct: 32.0,
+    anchorX: 62.0,
+    anchorY: 34.0,
+    badgeX: 63.5,
+    badgeY: 28.0,
     corridor: 'Avrasya / Saha',
     color: '#3B82F6',
   },
@@ -65,8 +75,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'TURKMENISTAN',
     displayName: 'Türkmenistan',
     flag: '🇹🇲',
-    leftPct: 42.5,
-    topPct: 65.5,
+    anchorX: 42.5,
+    anchorY: 66.0,
+    badgeX: 42.0,
+    badgeY: 76.5,
     corridor: 'Orta Asya (SNG)',
     color: '#14B8A6',
   },
@@ -74,8 +86,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'TURKIYE',
     displayName: 'Türkiye',
     flag: '🇹🇷',
-    leftPct: 29.5,
-    topPct: 64.5,
+    anchorX: 29.5,
+    anchorY: 64.5,
+    badgeX: 23.0,
+    badgeY: 67.5,
     corridor: 'Anadolu Kadrosu',
     color: '#EF4444',
   },
@@ -83,8 +97,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'TACIKISTAN',
     displayName: 'Tacikistan',
     flag: '🇹🇯',
-    leftPct: 49.0,
-    topPct: 65.5,
+    anchorX: 49.0,
+    anchorY: 66.0,
+    badgeX: 55.0,
+    badgeY: 71.5,
     corridor: 'Orta Asya (SNG)',
     color: '#8B5CF6',
   },
@@ -92,8 +108,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'BANGLADES',
     displayName: 'Bangladeş',
     flag: '🇧🇩',
-    leftPct: 59.0,
-    topPct: 80.5,
+    anchorX: 58.8,
+    anchorY: 80.5,
+    badgeX: 66.0,
+    badgeY: 81.5,
     corridor: 'Güney Asya',
     color: '#10B981',
   },
@@ -101,8 +119,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'KIRGIZISTAN',
     displayName: 'Kırgızistan',
     flag: '🇰🇬',
-    leftPct: 52.5,
-    topPct: 61.5,
+    anchorX: 52.5,
+    anchorY: 61.5,
+    badgeX: 61.0,
+    badgeY: 59.0,
     corridor: 'Orta Asya (SNG)',
     color: '#EC4899',
   },
@@ -110,8 +130,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'KAZAKISTAN',
     displayName: 'Kazakistan',
     flag: '🇰🇿',
-    leftPct: 46.5,
-    topPct: 52.5,
+    anchorX: 47.0,
+    anchorY: 53.0,
+    badgeX: 47.0,
+    badgeY: 45.0,
     corridor: 'Orta Asya (SNG)',
     color: '#0284C7',
   },
@@ -119,8 +141,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'MOLDOVA',
     displayName: 'Moldova',
     flag: '🇲🇩',
-    leftPct: 26.5,
-    topPct: 54.5,
+    anchorX: 27.0,
+    anchorY: 54.5,
+    badgeX: 20.0,
+    badgeY: 55.5,
     corridor: 'Doğu Avrupa',
     color: '#F97316',
   },
@@ -128,8 +152,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     key: 'BELARUS',
     displayName: 'Belarus',
     flag: '🇧🇾',
-    leftPct: 26.0,
-    topPct: 46.5,
+    anchorX: 26.0,
+    anchorY: 46.5,
+    badgeX: 19.5,
+    badgeY: 43.5,
     corridor: 'Doğu Avrupa',
     color: '#64748B',
   },
@@ -145,15 +171,17 @@ export default function WorldDemographicsMap({
 
   const total = totalEmployees || 1;
 
-  // Enhance nationalities with coordinates and flags
+  // Enhance nationalities with coordinates, leader lines and flags
   const mappedCountries = nationalities
     .map((item) => {
       const meta = COUNTRY_META[item.label] || {
         key: item.label,
         displayName: item.label,
         flag: '🌐',
-        leftPct: 50,
-        topPct: 50,
+        anchorX: 50,
+        anchorY: 50,
+        badgeX: 50,
+        badgeY: 50,
         corridor: 'Diğer',
         color: '#6366F1',
       };
@@ -166,9 +194,10 @@ export default function WorldDemographicsMap({
     })
     .sort((a, b) => b.count - a.count);
 
-  const filteredCountries = selectedCorridor === 'all'
-    ? mappedCountries
-    : mappedCountries.filter((c) => c.corridor.includes(selectedCorridor));
+  const filteredCountries =
+    selectedCorridor === 'all'
+      ? mappedCountries
+      : mappedCountries.filter((c) => c.corridor.includes(selectedCorridor));
 
   const hoveredCountry = mappedCountries.find((c) => c.key === hoveredCountryKey);
 
@@ -210,7 +239,7 @@ export default function WorldDemographicsMap({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-600 dark:text-teal-400 flex items-center justify-center shadow-xs">
                 <Globe className="w-4 h-4" />
               </div>
               <h2 className="font-bold text-base text-slate-900 dark:text-white tracking-tight">
@@ -221,7 +250,7 @@ export default function WorldDemographicsMap({
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Amerika kıtası elenmiş, Avrasya, Orta Asya, Kafkasya ve Güney Asya odaklı gerçek jeopolitik personel haritası.
+              Bağlantı çizgileriyle ayrıştırılmış ferah ülke rozetleri ve aydınlatılmış jeopolitik personel haritası.
             </p>
           </div>
 
@@ -243,54 +272,127 @@ export default function WorldDemographicsMap({
           </div>
         </div>
 
-        {/* Map Container with High-Resolution Geopolitical Map Image & Interactive Pin Overlays */}
-        <div className="relative w-full aspect-[16/9] min-h-[380px] max-h-[580px] mt-4 rounded-2xl overflow-hidden border border-slate-800/60 shadow-xl bg-slate-950 select-none">
-          {/* Base Real Geopolitical Eurasia Map Image */}
+        {/* Map Container: Brightened Modern Cartographic Canvas */}
+        <div className="relative w-full aspect-[16/9] min-h-[400px] max-h-[620px] mt-4 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-slate-900 select-none">
+          {/* Base Real Geopolitical Eurasia Map Image - Brightened & High Clarity */}
           <img
             src="/images/eurasia_map.jpg"
             alt="Eurasia Geopolitical Map"
-            className="w-full h-full object-cover object-center filter brightness-[0.92] contrast-[1.05]"
+            className="w-full h-full object-cover object-center filter brightness-[1.38] contrast-[1.08] saturate-[1.12]"
           />
 
-          {/* Subtle Contrast Gradient Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-slate-950/30 pointer-events-none" />
+          {/* Subtle Ambient Atmosphere Glow */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-sky-950/15 pointer-events-none" />
 
-          {/* Interactive Hotspot Beacons & Country Badges */}
+          {/* SVG LEADER LINES OVERLAY (Haritadaki noktalardan rozetlere uzanan şık çizgiler) */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none z-10"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <filter id="mapLineGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="0.3" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            {mappedCountries.map((c) => {
+              const isHovered = hoveredCountryKey === c.key;
+              const hasOffset = Math.hypot(c.badgeX - c.anchorX, c.badgeY - c.anchorY) > 1.2;
+
+              return (
+                <g key={`leader-line-${c.key}`}>
+                  {/* Coğrafi Konumdaki Sabit Radar Noktası */}
+                  <circle
+                    cx={c.anchorX}
+                    cy={c.anchorY}
+                    r={isHovered ? 1.2 : 0.8}
+                    fill={c.color}
+                    className="transition-all duration-200"
+                  />
+                  <circle
+                    cx={c.anchorX}
+                    cy={c.anchorY}
+                    r={isHovered ? 2.2 : 1.5}
+                    fill="none"
+                    stroke={c.color}
+                    strokeWidth="0.25"
+                    opacity={isHovered ? 0.9 : 0.55}
+                    className="animate-ping"
+                    style={{ transformOrigin: `${c.anchorX}% ${c.anchorY}%` }}
+                  />
+
+                  {/* Bağlantı Çizgisi (Leader Line) */}
+                  {hasOffset && (
+                    <>
+                      {/* Arka plan parlama çizgisi */}
+                      <line
+                        x1={c.anchorX}
+                        y1={c.anchorY}
+                        x2={c.badgeX}
+                        y2={c.badgeY}
+                        stroke={c.color}
+                        strokeWidth={isHovered ? 0.7 : 0.35}
+                        opacity={isHovered ? 0.6 : 0.28}
+                        filter="url(#mapLineGlow)"
+                      />
+                      {/* Ön plan kesikli şık hat */}
+                      <line
+                        x1={c.anchorX}
+                        y1={c.anchorY}
+                        x2={c.badgeX}
+                        y2={c.badgeY}
+                        stroke={c.color}
+                        strokeWidth={isHovered ? 0.45 : 0.26}
+                        strokeDasharray={isHovered ? 'none' : '0.8 0.6'}
+                        opacity={isHovered ? 1 : 0.75}
+                      />
+                      {/* Rozet bağlantı noktası */}
+                      <circle
+                        cx={c.badgeX}
+                        cy={c.badgeY}
+                        r={isHovered ? 0.6 : 0.4}
+                        fill={c.color}
+                      />
+                    </>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* INTERACTIVE CALLOUT BADGES (Araları açılmış, üst üste binmeyen ferah rozetler) */}
           {mappedCountries.map((country) => {
             const isHovered = hoveredCountryKey === country.key;
-            const isTopTier = country.count >= 1000;
-            const isMidTier = country.count >= 200 && country.count < 1000;
 
             return (
               <div
                 key={country.key}
                 style={{
-                  left: `${country.leftPct}%`,
-                  top: `${country.topPct}%`,
+                  left: `${country.badgeX}%`,
+                  top: `${country.badgeY}%`,
                   transform: 'translate(-50%, -50%)',
                 }}
-                className={`absolute z-10 transition-all duration-200 cursor-pointer ${
-                  isHovered ? 'z-30 scale-110' : ''
+                className={`absolute z-20 transition-all duration-200 cursor-pointer select-none ${
+                  isHovered ? 'z-30 scale-108' : ''
                 }`}
                 onClick={() => onNavigateToPersonnel('nationality', country.label)}
                 onMouseEnter={() => setHoveredCountryKey(country.key)}
                 onMouseLeave={() => setHoveredCountryKey(null)}
               >
-                {/* Pulsing Radar Ring */}
-                <span
-                  className="absolute -inset-1.5 rounded-full animate-ping opacity-60 pointer-events-none"
-                  style={{ backgroundColor: country.color }}
-                />
-
-                {/* Beacon Chip */}
+                {/* Modern High-Contrast Rozet Çipi */}
                 <div
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-full shadow-lg border backdrop-blur-md transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-lg border backdrop-blur-md transition-all ${
                     isHovered
-                      ? 'bg-white/95 text-slate-900 border-teal-400 ring-2 ring-teal-400/50 scale-105'
-                      : 'bg-slate-900/90 text-white border-white/20 hover:border-teal-400/80 hover:bg-slate-900'
+                      ? 'bg-white text-slate-900 border-teal-500 ring-2 ring-teal-400/50 shadow-2xl scale-105'
+                      : 'bg-white/95 text-slate-900 border-slate-300/80 hover:border-teal-400 hover:bg-white dark:bg-slate-900/90 dark:text-white dark:border-white/20 dark:hover:border-teal-400/80 dark:hover:bg-slate-900'
                   }`}
                 >
-                  <span className="text-sm leading-none drop-shadow-sm select-none">
+                  <span className="text-sm leading-none drop-shadow-xs select-none">
                     {country.flag}
                   </span>
                   <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
@@ -312,8 +414,8 @@ export default function WorldDemographicsMap({
             <div
               className="absolute pointer-events-none z-40 p-3.5 rounded-2xl bg-white/95 dark:bg-[#1E293B]/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-700 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150 min-w-[220px]"
               style={{
-                left: `${Math.min(82, Math.max(18, hoveredCountry.leftPct))}%`,
-                top: `${Math.min(75, Math.max(20, hoveredCountry.topPct - 8))}%`,
+                left: `${Math.min(82, Math.max(18, hoveredCountry.badgeX))}%`,
+                top: `${Math.min(75, Math.max(20, hoveredCountry.badgeY - 8))}%`,
                 transform: 'translate(-50%, -100%)',
               }}
             >
@@ -352,25 +454,25 @@ export default function WorldDemographicsMap({
           )}
 
           {/* Map Bottom Legend */}
-          <div className="absolute bottom-3 left-4 flex flex-wrap items-center gap-3 text-[11px] text-slate-300 bg-slate-900/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-white/10 select-none">
-            <span className="flex items-center gap-1.5 font-medium">
+          <div className="absolute bottom-3 left-4 flex flex-wrap items-center gap-3 text-[11px] text-slate-800 dark:text-slate-200 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-sm select-none">
+            <span className="flex items-center gap-1.5 font-semibold">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
               Lider Kadro (&gt;2.000)
             </span>
-            <span className="flex items-center gap-1.5 font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-teal-400" />
+            <span className="flex items-center gap-1.5 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
               Bölgesel Kadro (500 - 2.000)
             </span>
-            <span className="flex items-center gap-1.5 font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+            <span className="flex items-center gap-1.5 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
               Uzman Kadro (&lt;500)
             </span>
           </div>
 
           {/* Top Right Zoom / Focus Tag */}
-          <div className="absolute top-3 right-4 flex items-center gap-2 text-[11px] text-slate-300 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
-            <Navigation className="w-3.5 h-3.5 text-teal-400" />
-            <span>Avrasya / İpek Yolu Koridoru</span>
+          <div className="absolute top-3 right-4 flex items-center gap-2 text-[11px] text-slate-800 dark:text-slate-200 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-sm">
+            <Navigation className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+            <span className="font-semibold">Avrasya & İpek Yolu Koridoru</span>
           </div>
         </div>
       </div>
