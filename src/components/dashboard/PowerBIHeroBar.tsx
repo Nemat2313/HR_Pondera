@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 import { WcMaleIcon, WcFemaleIcon } from './PowerBIDualDonuts';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface PowerBIHeroBarProps {
   totalCount: number;
@@ -56,13 +57,19 @@ export default function PowerBIHeroBar({
   onRefresh,
   onOpenDetailList,
 }: PowerBIHeroBarProps) {
+  const { lang, t } = useLanguage();
   const [selectedMonthRange, setSelectedMonthRange] = useState<number>(8); // 3 to 8 months
 
   // Month range text calculation
-  const monthNames = ['Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim'];
+  const monthNamesTr = ['Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim'];
+  const monthNamesRu = ['Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь'];
+  const monthNames = lang === 'ru' ? monthNamesRu : monthNamesTr;
+
   const startIdx = Math.max(0, 8 - selectedMonthRange);
-  const startMonthName = monthNames[startIdx] || 'Mart';
-  const rangeText = `Son ${selectedMonthRange} Ay (${startMonthName} 2026 - Ekim 2026)`;
+  const startMonthName = monthNames[startIdx] || (lang === 'ru' ? 'Март' : 'Mart');
+  const rangeText = lang === 'ru'
+    ? `За последние ${selectedMonthRange} мес. (${startMonthName} 2026 - Октябрь 2026)`
+    : `Son ${selectedMonthRange} Ay (${startMonthName} 2026 - Ekim 2026)`;
 
   // In / Out ratio bar (latest month flow)
   const inLatest = monthlyEntries[monthlyEntries.length - 1]?.in_count || 128;
@@ -74,11 +81,14 @@ export default function PowerBIHeroBar({
   // Sparkline data for mini trend chart
   const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
   const allCounts = [4600, 4850, 5100, 5320, 5450, 5520, 5420, totalCount || 5363];
+  const monthLabelsTr = ['Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki'];
+  const monthLabelsRu = ['Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт'];
+  const activeMonthLabels = (lang === 'ru' ? monthLabelsRu : monthLabelsTr).slice(startIdx, 8);
+
   const sparklineData = months.slice(startIdx, 8).map((m, idx) => {
-    const monthLabels = ['Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki'].slice(startIdx, 8);
     const counts = allCounts.slice(startIdx, 8);
     return {
-      name: monthLabels[idx],
+      name: activeMonthLabels[idx],
       count: counts[idx] || totalCount || 5363,
     };
   });
@@ -97,14 +107,16 @@ export default function PowerBIHeroBar({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                Pondera Personel Sayıları
+                {lang === 'ru' ? 'Численность персонала Pondera' : 'Pondera Personel Sayıları'}
               </h1>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-teal-500/20 text-emerald-700 dark:text-teal-300 border border-emerald-200 dark:border-teal-500/40 text-[11px] font-bold">
-                {dataFreshness || '02.10.2026'}
+                {dataFreshness || '03.10.2026'}
               </span>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              Power BI Raporu İlhamlı Dinamik Saha & İK Analitik Paneli
+              {lang === 'ru' 
+                ? 'Динамическая аналитическая панель персонала и объектов' 
+                : 'Power BI Raporu İlhamlı Dinamik Saha & İK Analitik Paneli'}
             </p>
           </div>
         </div>
@@ -114,33 +126,33 @@ export default function PowerBIHeroBar({
           <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/90 rounded-xl border border-slate-200 dark:border-slate-700/80 overflow-x-auto max-w-full">
             <button
               onClick={() => setFirmFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 firmFilter === 'all'
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Tüm Kadro ({totalCount.toLocaleString('tr-TR')})
+              {lang === 'ru' ? 'Все компании' : 'Tüm Kadro'} ({totalCount.toLocaleString('tr-TR')})
             </button>
             <button
               onClick={() => setFirmFilter('main')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 firmFilter === 'main'
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              1. Pondera Ana Kadro ({mainFirmCount.toLocaleString('tr-TR')})
+              {lang === 'ru' ? '1. Штат Pondera' : '1. Pondera Ana Kadro'} ({mainFirmCount.toLocaleString('tr-TR')})
             </button>
             <button
               onClick={() => setFirmFilter('subcon')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 firmFilter === 'subcon'
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              2. Taşeronlar ({subconCount.toLocaleString('tr-TR')})
+              {lang === 'ru' ? '2. Субподрядчики' : '2. Taşeronlar'} ({subconCount.toLocaleString('tr-TR')})
             </button>
           </div>
 
@@ -149,10 +161,10 @@ export default function PowerBIHeroBar({
             <button
               onClick={onOpenDetailList}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 border border-emerald-200 dark:border-teal-500/40 text-emerald-700 dark:text-teal-300 text-xs font-extrabold transition-all shadow-xs shrink-0 cursor-pointer"
-              title="Filtrelenmiş Personel Listesini Gör"
+              title={lang === 'ru' ? 'Открыть список персонала' : 'Filtrelenmiş Personel Listesini Gör'}
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-teal-400" />
-              <span>Liste Oluştur / Detay</span>
+              <span>{lang === 'ru' ? 'Список персонала' : 'Liste Oluştur / Detay'}</span>
             </button>
           )}
         </div>
@@ -162,57 +174,59 @@ export default function PowerBIHeroBar({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-4 relative z-10">
         {/* Metric 1: Toplam Çalışan */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">Toplam Çalışan</span>
+          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">{t('kpi_total_personnel')}</span>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
             {totalCount.toLocaleString('tr-TR')}
           </div>
-          <span className="text-[10px] text-emerald-600 dark:text-teal-400 font-semibold mt-1">Aktif Mevcut</span>
+          <span className="text-[10px] text-emerald-600 dark:text-teal-400 font-semibold mt-1">{t('status_active')}</span>
         </div>
 
         {/* Metric 2: Yaş Ortalaması */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">Yaş Ortalaması</span>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">{avgAge}</div>
-          <span className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">Genç & Dinamik Kadro</span>
+          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">{t('kpi_avg_age')}</span>
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">{avgAge} {t('unit_age')}</div>
+          <span className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Молодой коллектив' : 'Genç & Dinamik Kadro'}</span>
         </div>
 
         {/* Metric 3: Ortalama Kıdem */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">Ortalama Kıdem</span>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">{avgTenure} Yıl</div>
-          <span className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">Şirket İçi Deneyim</span>
+          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">{t('kpi_avg_tenure')}</span>
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">{avgTenure} {t('unit_years')}</div>
+          <span className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Стаж в компании' : 'Şirket İçi Deneyim'}</span>
         </div>
 
-        {/* Metric 4: Turnover (Sirkülasyon) Oranı - Replaces redundant Gender */}
+        {/* Metric 4: Turnover (Sirkülasyon) Oranı */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">Aylık Ort. Turnover</span>
+            <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">
+              {lang === 'ru' ? 'Ср. текучесть' : 'Aylık Ort. Turnover'}
+            </span>
             <span className="text-[9px] px-1.5 py-0.5 rounded-full font-black bg-emerald-100 dark:bg-teal-900/60 text-emerald-800 dark:text-teal-300 border border-emerald-200 dark:border-teal-600/40">
-              {turnoverRate <= 8.5 ? 'Dengeli Devir' : 'İzlenmeli'}
+              {turnoverRate <= 8.5 ? (lang === 'ru' ? 'Баланс' : 'Dengeli Devir') : (lang === 'ru' ? 'Контроль' : 'İzlenmeli')}
             </span>
           </div>
           <div className="flex items-baseline gap-1.5 mt-1">
             <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
               %{turnoverRate.toFixed(1)}
             </div>
-            <span className="text-[10px] text-emerald-600 dark:text-teal-400 font-bold">Aylık Devir</span>
+            <span className="text-[10px] text-emerald-600 dark:text-teal-400 font-bold">{lang === 'ru' ? 'В месяц' : 'Aylık Devir'}</span>
           </div>
           <div className="flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-400 mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-            <span>2026 Çıkış: <strong className="text-slate-800 dark:text-slate-200">{annualExits.toLocaleString('tr-TR')} Kişi</strong></span>
-            <span className="font-mono text-emerald-600 dark:text-teal-300">Stabil Kadro</span>
+            <span>{lang === 'ru' ? 'Уволено 2026:' : '2026 Çıkış:'} <strong className="text-slate-800 dark:text-slate-200">{annualExits.toLocaleString('tr-TR')} {t('unit_person')}</strong></span>
+            <span className="font-mono text-emerald-600 dark:text-teal-300">{lang === 'ru' ? 'Стабильно' : 'Stabil Kadro'}</span>
           </div>
         </div>
 
         {/* Metric 5: Kadro / Taşeron Dağılımı */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">Kadro / Taşeron</span>
+          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">{lang === 'ru' ? 'Штат / Субподряд' : 'Kadro / Taşeron'}</span>
           <div className="mt-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-700 dark:text-slate-300 font-bold">Pondera:</span>
               <span className="text-emerald-700 dark:text-teal-300 font-black">{mainFirmCount.toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between text-xs mt-0.5">
-              <span className="text-slate-600 dark:text-slate-400 font-bold">Taşeron:</span>
+              <span className="text-slate-600 dark:text-slate-400 font-bold">{lang === 'ru' ? 'Субподряд:' : 'Taşeron:'}</span>
               <span className="text-amber-600 dark:text-amber-300 font-black">{subconCount.toLocaleString()}</span>
             </div>
           </div>
@@ -224,11 +238,11 @@ export default function PowerBIHeroBar({
 
         {/* Metric 6: İşe Alım ve Çıkış Oranları Gauge Bar */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">Giriş / Çıkış Akışı</span>
+          <span className="text-[10px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider">{lang === 'ru' ? 'Динамика движения' : 'Giriş / Çıkış Akışı'}</span>
           <div className="mt-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">+{inLatest} Giriş</span>
-              <span className="text-rose-600 dark:text-rose-400 font-extrabold">-{outLatest} Çıkış</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">+{inLatest} {lang === 'ru' ? 'Прием' : 'Giriş'}</span>
+              <span className="text-rose-600 dark:text-rose-400 font-extrabold">-{outLatest} {lang === 'ru' ? 'Увольнение' : 'Çıkış'}</span>
             </div>
             {/* Dual color flow bar matching Power BI */}
             <div className="w-full h-3 rounded-full mt-1.5 overflow-hidden flex text-[9px] font-black text-slate-950">
@@ -253,7 +267,9 @@ export default function PowerBIHeroBar({
       <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-300">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-emerald-600 dark:text-teal-400 shrink-0" />
-          <span className="font-bold text-slate-900 dark:text-white">2026 Personel Trend Zaman Çizelgesi:</span>
+          <span className="font-bold text-slate-900 dark:text-white">
+            {lang === 'ru' ? 'Временная шкала тренда персонала:' : '2026 Personel Trend Zaman Çizelgesi:'}
+          </span>
           <span className="text-[11px] text-emerald-800 dark:text-teal-300 bg-emerald-50 dark:bg-teal-900/50 px-2 py-0.5 rounded border border-emerald-200 dark:border-teal-600/40 font-mono">
             {rangeText}
           </span>

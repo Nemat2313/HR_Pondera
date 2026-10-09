@@ -22,6 +22,7 @@ import {
 import { StatsData } from '@/types';
 import DrillDownModal from './DrillDownModal';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import PowerBIHeroBar from './PowerBIHeroBar';
 import PowerBIDecompositionTree from './PowerBIDecompositionTree';
 import PowerBITitlePyramid from './PowerBITitlePyramid';
@@ -76,6 +77,7 @@ export default function OverviewView({
   onResetFilters,
 }: OverviewViewProps) {
   const { user } = useAuth();
+  const { lang, t, translateVal } = useLanguage();
   const [drillModal, setDrillModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -92,8 +94,12 @@ export default function OverviewView({
     return (
       <div className="p-8 flex flex-col items-center justify-center min-h-[60vh]">
         <div className="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-sm font-semibold text-slate-700">Pondera HR Power BI Analitikleri Yükleniyor...</p>
-        <p className="text-xs text-slate-600 mt-1">32.348 personel kaydı ve kırılım ağacı hazırlanıyor</p>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {lang === 'ru' ? 'Загрузка аналитики Pondera HR Power BI...' : 'Pondera HR Power BI Analitikleri Yükleniyor...'}
+        </p>
+        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+          {lang === 'ru' ? 'Подготовка записей персонала и дерева декомпозиции' : '32.348 personel kaydı ve kırılım ağacı hazırlanıyor'}
+        </p>
       </div>
     );
   }
@@ -163,15 +169,18 @@ export default function OverviewView({
               {user.scope_type === 'region' ? <MapPin className="w-4 h-4" /> : <Briefcase className="w-4 h-4" />}
             </div>
             <div>
-              <span className="font-bold text-teal-700 dark:text-teal-300">Row-Level Security (RLS) Devrede: </span>
+              <span className="font-bold text-teal-700 dark:text-teal-300">
+                {lang === 'ru' ? 'Row-Level Security (RLS) Активна: ' : 'Row-Level Security (RLS) Devrede: '}
+              </span>
               <span className="text-slate-600 dark:text-slate-300">
-                Bu raporda yalnızca yetkili olduğunuz <strong>{user.scope_value}</strong>{' '}
-                ({user.scope_type === 'region' ? 'Bölgesi' : 'Projesi'}) verileri analiz edilmektedir.
+                {lang === 'ru'
+                  ? `В этом отчете анализируются только авторизованные данные по ${user.scope_type === 'region' ? 'региону' : 'проекту'} ${user.scope_value}.`
+                  : `Bu raporda yalnızca yetkili olduğunuz ${user.scope_value} (${user.scope_type === 'region' ? 'Bölgesi' : 'Projesi'}) verileri analiz edilmektedir.`}
               </span>
             </div>
           </div>
           <span className="hidden sm:inline-block px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-teal-500/20 text-emerald-800 dark:text-teal-300 font-bold text-[10px] border border-emerald-200 dark:border-teal-500/30">
-            Güvenli Filtre
+            {lang === 'ru' ? 'Безопасный фильтр' : 'Güvenli Filtre'}
           </span>
         </div>
       )}
@@ -182,12 +191,13 @@ export default function OverviewView({
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 font-bold text-teal-600 dark:text-teal-300">
               <Filter className="w-4 h-4 text-teal-500" />
-              <span>Aktif Filtreler:</span>
+              <span>{lang === 'ru' ? 'Активные фильтры:' : 'Aktif Filtreler:'}</span>
             </div>
 
             {selectedRegion !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-50 dark:bg-teal-950/80 text-teal-800 dark:text-teal-200 font-semibold rounded-lg border border-teal-200 dark:border-teal-500/50 text-[11px] shadow-sm">
-                Bölge: {selectedRegion}
+                {lang === 'ru' ? 'Регион: ' : 'Bölge: '}
+                {selectedRegion}
                 <button onClick={() => setSelectedRegion('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -196,7 +206,8 @@ export default function OverviewView({
 
             {selectedProject !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-cyan-50 dark:bg-cyan-950/80 text-cyan-800 dark:text-cyan-200 font-semibold rounded-lg border border-cyan-200 dark:border-cyan-500/50 text-[11px] shadow-sm">
-                Proje: {selectedProject}
+                {lang === 'ru' ? 'Проект: ' : 'Proje: '}
+                {selectedProject}
                 <button onClick={() => setSelectedProject('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -205,7 +216,8 @@ export default function OverviewView({
 
             {selectedDepartment !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 font-semibold rounded-lg border border-emerald-200 dark:border-emerald-500/50 text-[11px] shadow-sm">
-                Departman: {selectedDepartment}
+                {lang === 'ru' ? 'Отдел: ' : 'Departman: '}
+                {selectedDepartment}
                 <button onClick={() => setSelectedDepartment('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -214,7 +226,8 @@ export default function OverviewView({
 
             {selectedCategory !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-300 font-semibold rounded-lg border border-teal-200 dark:border-teal-500/40 text-[11px] shadow-sm">
-                Statü: {selectedCategory}
+                {lang === 'ru' ? 'Статус: ' : 'Statü: '}
+                {translateVal(selectedCategory)}
                 <button onClick={() => setSelectedCategory('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -223,7 +236,8 @@ export default function OverviewView({
 
             {selectedNationality !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-800 text-cyan-700 dark:text-cyan-300 font-semibold rounded-lg border border-cyan-200 dark:border-cyan-500/40 text-[11px] shadow-sm">
-                Uyruk: {selectedNationality}
+                {lang === 'ru' ? 'Гражданство: ' : 'Uyruk: '}
+                {translateVal(selectedNationality)}
                 <button onClick={() => setSelectedNationality('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -232,7 +246,8 @@ export default function OverviewView({
 
             {selectedCollar !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-amber-300 font-semibold rounded-lg border border-amber-500/40 text-[11px] shadow-sm">
-                Yaka: {selectedCollar}
+                {lang === 'ru' ? 'Категория: ' : 'Yaka: '}
+                {translateVal(selectedCollar)}
                 <button onClick={() => setSelectedCollar('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -241,7 +256,8 @@ export default function OverviewView({
 
             {selectedTitle !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-teal-300 font-semibold rounded-lg border border-teal-500/40 text-[11px] shadow-sm">
-                Ünvan: {selectedTitle}
+                {lang === 'ru' ? 'Должность: ' : 'Ünvan: '}
+                {selectedTitle}
                 <button onClick={() => setSelectedTitle('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -250,7 +266,9 @@ export default function OverviewView({
 
             {firmFilter !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 font-semibold rounded-lg border border-amber-200 dark:border-amber-500/50 text-[11px] shadow-sm">
-                Firma: {firmFilter === 'main' ? 'Pondera Ana Kadro' : 'Taşeronlar'}
+                {lang === 'ru'
+                  ? `Компания: ${firmFilter === 'main' ? 'Основной штат Pondera' : 'Субподрядчики'}`
+                  : `Firma: ${firmFilter === 'main' ? 'Pondera Ana Kadro' : 'Taşeronlar'}`}
                 <button onClick={() => setFirmFilter('all')} className="hover:text-rose-400 ml-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -263,10 +281,14 @@ export default function OverviewView({
             <button
               onClick={openActiveFiltersDetail}
               className="flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-slate-950 font-black text-xs rounded-xl shadow-lg hover:shadow-teal-500/25 transition-all cursor-pointer"
-              title="Filtrelenmiş Personel Listesini Aç"
+              title={lang === 'ru' ? 'Открыть отфильтрованный список персонала' : 'Filtrelenmiş Personel Listesini Aç'}
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Detay Personel Listesini Gör ({total.toLocaleString('tr-TR')} Kişi)</span>
+              <span>
+                {lang === 'ru'
+                  ? `Подробный список персонала (${total.toLocaleString('ru-RU')} чел.)`
+                  : `Detay Personel Listesini Gör (${total.toLocaleString('tr-TR')} Kişi)`}
+              </span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
 
@@ -275,7 +297,7 @@ export default function OverviewView({
               className="font-bold text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 transition-colors"
             >
               <X className="w-3.5 h-3.5" />
-              <span>Temizle</span>
+              <span>{lang === 'ru' ? 'Очистить' : 'Temizle'}</span>
             </button>
           </div>
         </div>
@@ -323,9 +345,15 @@ export default function OverviewView({
             isOpen: true,
             title:
               type === 'collar'
-                ? 'Yaka Dağılımı Detayı'
+                ? lang === 'ru'
+                  ? 'Детализация по категориям персонала'
+                  : 'Yaka Dağılımı Detayı'
                 : type === 'category'
-                ? 'Statü Dağılımı Detayı'
+                ? lang === 'ru'
+                  ? 'Детализация по статусам персонала'
+                  : 'Statü Dağılımı Detayı'
+                : lang === 'ru'
+                ? 'Детализация по полу персонала'
                 : 'Cinsiyet Dağılımı Detayı',
             filterType: type === 'collar' ? 'collar' : type === 'category' ? 'category' : 'region',
             filterValue: value === 'all' && selectedRegion !== 'all' ? selectedRegion : value,
@@ -349,7 +377,7 @@ export default function OverviewView({
         onOpenRegionDetail={(reg) => {
           setDrillModal({
             isOpen: true,
-            title: 'Bölge Personel Listesi',
+            title: lang === 'ru' ? 'Список персонала по региону' : 'Bölge Personel Listesi',
             filterType: 'region',
             filterValue: reg,
           });
@@ -357,7 +385,7 @@ export default function OverviewView({
         onOpenNationalityDetail={(nat) => {
           setDrillModal({
             isOpen: true,
-            title: 'Uyruk Personel Listesi',
+            title: lang === 'ru' ? 'Список персонала по гражданству' : 'Uyruk Personel Listesi',
             filterType: 'nationality',
             filterValue: nat,
           });
@@ -378,9 +406,15 @@ export default function OverviewView({
             isOpen: true,
             title:
               type === 'region'
-                ? 'Bölge Detay Listesi'
+                ? lang === 'ru'
+                  ? 'Список персонала по региону'
+                  : 'Bölge Detay Listesi'
                 : type === 'project'
-                ? 'Proje Detay Listesi'
+                ? lang === 'ru'
+                  ? 'Список персонала по проекту'
+                  : 'Proje Detay Listesi'
+                : lang === 'ru'
+                ? 'Список персонала по отделу'
                 : 'Departman Detay Listesi',
             filterType: type,
             filterValue: value,
@@ -401,7 +435,7 @@ export default function OverviewView({
           onOpenDetail={(title) => {
             setDrillModal({
               isOpen: true,
-              title: 'Ünvan Kademesi Personel Listesi',
+              title: lang === 'ru' ? 'Список персонала по уровню должности' : 'Ünvan Kademesi Personel Listesi',
               filterType: 'region',
               filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
             });
@@ -418,7 +452,7 @@ export default function OverviewView({
           onOpenDetail={() => {
             setDrillModal({
               isOpen: true,
-              title: 'Yaş Dağılımı Personel Listesi',
+              title: lang === 'ru' ? 'Список персонала по возрастным группам' : 'Yaş Dağılımı Personel Listesi',
               filterType: 'region',
               filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
             });
@@ -437,7 +471,7 @@ export default function OverviewView({
         onOpenFirmDetail={() => {
           setDrillModal({
             isOpen: true,
-            title: 'Firma / Taşeron Personeli',
+            title: lang === 'ru' ? 'Персонал компаний / подрядчиков' : 'Firma / Taşeron Personeli',
             filterType: 'region',
             filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
           });
@@ -445,7 +479,7 @@ export default function OverviewView({
         onOpenTenureDetail={() => {
           setDrillModal({
             isOpen: true,
-            title: 'Kıdem Dağılımı Personeli',
+            title: lang === 'ru' ? 'Персонал по стажу работы' : 'Kıdem Dağılımı Personeli',
             filterType: 'region',
             filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
           });

@@ -31,6 +31,7 @@ import {
 } from 'recharts';
 import { StatsData } from '@/types';
 import DrillDownModal from '../dashboard/DrillDownModal';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface SitesViewProps {
   stats: StatsData | null;
@@ -38,6 +39,7 @@ interface SitesViewProps {
 }
 
 export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewProps) {
+  const { lang, t, translateVal } = useLanguage();
   const [viewMode, setViewMode] = useState<'treemap' | 'stacked'>('treemap');
   const [activeRegionKey, setActiveRegionKey] = useState<string>('Kazan');
   const [drillModal, setDrillModal] = useState<{
@@ -70,78 +72,96 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
     }
   > = {
     Kazan: {
-      city: 'Tataristan Cumhuriyeti, Rusya',
-      desc: 'Kazan Katalizör & Nizhnekamsk Petrokimya mega inşaat ve mekanik montaj kümesi.',
+      city: lang === 'ru' ? 'Республика Татарстан, Россия' : 'Tataristan Cumhuriyeti, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Казанский катализатор и Нижнекамский нефтехимический кластер промышленного строительства.'
+          : 'Kazan Katalizör & Nizhnekamsk Petrokimya mega inşaat ve mekanik montaj kümesi.',
       collarWhitePct: 14,
       collarBluePct: 86,
       expatPct: 58,
       color: '#0d9488',
       gradient: 'from-teal-600 to-emerald-600',
       projects: [
-        { name: 'NHNK mPE-300', count: 1420, desc: '300 KTA Polietilen Tesisi Ana Ünite' },
-        { name: 'Kazan Katalizor', count: 480, desc: 'Petrokimyasal Katalizör Üretim Tesisi' },
-        { name: 'Nizhnekamsk Polisterol', count: 250, desc: 'Polistiren Genişleme Projesi' },
-        { name: 'NHNK SKLAD PROPILEN', count: 108, desc: 'Propilen Depolama ve Lojistik Sahası' },
+        { name: 'NHNK mPE-300', count: 1420, desc: lang === 'ru' ? 'Основной блок установки полиэтилена 300 KTA' : '300 KTA Polietilen Tesisi Ana Ünite' },
+        { name: 'Kazan Katalizor', count: 480, desc: lang === 'ru' ? 'Завод по производству нефтехимических катализаторов' : 'Petrokimyasal Katalizör Üretim Tesisi' },
+        { name: 'Nizhnekamsk Polisterol', count: 250, desc: lang === 'ru' ? 'Проект расширения полистирола' : 'Polistiren Genişleme Projesi' },
+        { name: 'NHNK SKLAD PROPILEN', count: 108, desc: lang === 'ru' ? 'Логистический комплекс хранения пропилена' : 'Propilen Depolama ve Lojistik Sahası' },
       ],
     },
     'Svobodny-AGHK': {
-      city: 'Amur Bölgesi, Svobodniy, Rusya',
-      desc: 'Amur Gaz Kimya Kompleksi (AGCC / AGHK) Polietilen & Polipropilen mega tesisleri.',
+      city: lang === 'ru' ? 'Амурская область, г. Свободный, Россия' : 'Amur Bölgesi, Svobodniy, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Амурский газохимический комплекс (АГХК) — мега-установки полиэтилена и полипропилена.'
+          : 'Amur Gaz Kimya Kompleksi (AGCC / AGHK) Polietilen & Polipropilen mega tesisleri.',
       collarWhitePct: 18,
       collarBluePct: 82,
       expatPct: 52,
       color: '#0284c7',
       gradient: 'from-cyan-600 to-blue-600',
       projects: [
-        { name: 'Svobodny-AGHK', count: 1215, desc: 'Amur Gaz Kimya Kompleksi Ana Üniteleri' },
+        { name: 'Svobodny-AGHK', count: 1215, desc: lang === 'ru' ? 'Основные технологические установки АГХК' : 'Amur Gaz Kimya Kompleksi Ana Üniteleri' },
       ],
     },
     Tobolsk: {
-      city: 'Tümen Bölgesi, Tobolsk, Rusya',
-      desc: 'ZapSibNeftekhim DGP-2 Polipropilen Genişleme Projesi saha ve borulama montajı.',
+      city: lang === 'ru' ? 'Тюменская область, г. Тобольск, Россия' : 'Tümen Bölgesi, Tobolsk, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'ЗапСибНефтехим ДГП-2 проект расширения производства полипропилена, монтаж трубопроводов.'
+          : 'ZapSibNeftekhim DGP-2 Polipropilen Genişleme Projesi saha ve borulama montajı.',
       collarWhitePct: 15,
       collarBluePct: 85,
       expatPct: 61,
       color: '#2563eb',
       gradient: 'from-blue-600 to-indigo-600',
       projects: [
-        { name: 'DGP-02', count: 1125, desc: 'DGP-2 Polipropilen Genişleme Fazı' },
+        { name: 'DGP-02', count: 1125, desc: lang === 'ru' ? 'ДГП-2 фаза расширения полипропилена' : 'DGP-2 Polipropilen Genişleme Fazı' },
       ],
     },
     'Ust Luga': {
-      city: 'Leningrad Bölgesi, Ust Luga, Rusya',
-      desc: 'Baltık Denizi Kıyı Gaz İşleme ve Sıvılaştırılmış Doğal Gaz (LNG) Kompleksi.',
+      city: lang === 'ru' ? 'Ленинградская область, Усть-Луга, Россия' : 'Leningrad Bölgesi, Ust Luga, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Балтийский комплекс переработки газа и СПГ на побережье Балтийского моря.'
+          : 'Baltık Denizi Kıyı Gaz İşleme ve Sıvılaştırılmış Doğal Gaz (LNG) Kompleksi.',
       collarWhitePct: 12,
       collarBluePct: 88,
       expatPct: 44,
       color: '#d97706',
       gradient: 'from-amber-600 to-orange-600',
       projects: [
-        { name: 'Ust Luga', count: 720, desc: 'Baltık LNG Gaz İşleme ve Soğutma Tesisi' },
+        { name: 'Ust Luga', count: 720, desc: lang === 'ru' ? 'Балтийский СПГ газоперерабатывающий завод' : 'Baltık LNG Gaz İşleme ve Soğutma Tesisi' },
       ],
     },
     'Merkez Ofis': {
-      city: 'Merkez Ofis, Yönetim Kampüsü',
-      desc: 'Genel İK, Finans, Satın Alma, Hukuk ve Üst Yönetim Operasyon Merkezi.',
+      city: lang === 'ru' ? 'Центральный офис, Корпоративный центр' : 'Merkez Ofis, Yönetim Kampüsü',
+      desc:
+        lang === 'ru'
+          ? 'Центр операций: Управление персоналом, Финансы, Закупки, Юриспруденция и Руководство.'
+          : 'Genel İK, Finans, Satın Alma, Hukuk ve Üst Yönetim Operasyon Merkezi.',
       collarWhitePct: 88,
       collarBluePct: 12,
       expatPct: 35,
       color: '#475569',
       gradient: 'from-slate-600 to-slate-800',
       projects: [
-        { name: 'Merkez Ofis', count: 43, desc: 'İdari & Finansal Yönetim Departmanları' },
+        { name: 'Merkez Ofis', count: 43, desc: lang === 'ru' ? 'Административные и финансовые отделы' : 'İdari & Finansal Yönetim Departmanları' },
       ],
     },
     Irkutsk: {
-      city: 'Irkutsk Bölgesi, Rusya',
-      desc: 'Irkutsk Polimer Tesisi (IZP) ön devreye alma ve mekanik mühendislik desteği.',
+      city: lang === 'ru' ? 'Иркутская область, Россия' : 'Irkutsk Bölgesi, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Иркутский завод полимеров (ИЗП) — пусконаладка и инженерно-техническая поддержка.'
+          : 'Irkutsk Polimer Tesisi (IZP) ön devreye alma ve mekanik mühendislik desteği.',
       collarWhitePct: 50,
       collarBluePct: 50,
       expatPct: 50,
       color: '#7c3aed',
       gradient: 'from-purple-600 to-violet-600',
       projects: [
-        { name: 'IZP', count: 2, desc: 'IZP Polimer Tesisi Mühendislik Desteği' },
+        { name: 'IZP', count: 2, desc: lang === 'ru' ? 'Инженерная поддержка завода полимеров ИЗП' : 'IZP Polimer Tesisi Mühendislik Desteği' },
       ],
     },
   };
@@ -175,14 +195,16 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                  Şantiye & Proje Kapasite Haritası
+                  {lang === 'ru' ? 'Карта участков и проектов' : 'Şantiye & Proje Kapasite Haritası'}
                 </h1>
                 <span className="px-3 py-0.5 rounded-full bg-emerald-50 dark:bg-teal-500/20 text-emerald-700 dark:text-teal-300 border border-emerald-200 dark:border-teal-500/40 text-xs font-bold">
-                  6 Bölge • 9 Mega Proje
+                  {lang === 'ru' ? '6 Регионов • 9 Мегапроектов' : '6 Bölge • 9 Mega Proje'}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
-                Tüm saha lokasyonları, endüstriyel tesisler ve projeler arası işgücü dağılımı tek entegre görselde
+                {lang === 'ru'
+                  ? 'Единая панорама распределения трудовых ресурсов по регионам, участкам и проектам'
+                  : 'Tüm saha lokasyonları, endüstriyel tesisler ve projeler arası işgücü dağılımı tek entegre görselde'}
               </p>
             </div>
           </div>
@@ -199,7 +221,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                 }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Kapasite Matrisi (Treemap)</span>
+                <span>{lang === 'ru' ? 'Матрица емкости (Treemap)' : 'Kapasite Matrisi (Treemap)'}</span>
               </button>
               <button
                 onClick={() => setViewMode('stacked')}
@@ -210,7 +232,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                 }`}
               >
                 <BarChart3 className="w-3.5 h-3.5" />
-                <span>Yaka Dağılım Matrisi</span>
+                <span>{lang === 'ru' ? 'Матрица воротничков' : 'Yaka Dağılım Matrisi'}</span>
               </button>
             </div>
 
@@ -219,7 +241,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 border border-emerald-200 dark:border-teal-500/40 text-emerald-700 dark:text-teal-300 text-xs font-extrabold transition-all cursor-pointer"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tüm Personel</span>
+              <span className="hidden sm:inline">{lang === 'ru' ? 'Весь персонал' : 'Tüm Personel'}</span>
             </button>
           </div>
         </div>
@@ -266,11 +288,13 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
               <div className="flex items-center gap-2">
                 <LayoutGrid className="w-4 h-4 text-emerald-600 dark:text-teal-400" />
                 <h2 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-                  Kapasite Kırılım Matrisi (Bölge ve Bağlı Projeler)
+                  {lang === 'ru'
+                    ? 'Матрица распределения мощностей (Регионы и проекты)'
+                    : 'Kapasite Kırılım Matrisi (Bölge ve Bağlı Projeler)'}
                 </h2>
               </div>
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
-                Alana Göre Büyüklük: Personel Sayısı
+                {lang === 'ru' ? 'Размер блока: Численность персонала' : 'Alana Göre Büyüklük: Personel Sayısı'}
               </span>
             </div>
 
@@ -321,7 +345,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                             {region.count.toLocaleString('tr-TR')}
                           </span>
                           <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-teal-900/60 text-emerald-800 dark:text-teal-300">
-                            %{pct} Pay
+                            %{pct} {lang === 'ru' ? 'Доля' : 'Pay'}
                           </span>
                         </div>
                       </div>
@@ -341,7 +365,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                               {proj.name}
                             </span>
                             <span className="font-mono text-xs font-black text-emerald-700 dark:text-teal-300 ml-2 shrink-0">
-                              {proj.count.toLocaleString('tr-TR')} Kişi
+                              {proj.count.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}
                             </span>
                           </div>
                         ))}
@@ -351,8 +375,8 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                     {/* Bottom Split Bar: White vs Blue Collar */}
                     <div className="mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/60">
                       <div className="flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-400 font-bold mb-1">
-                        <span>%{meta.collarBluePct} Mavi Yaka</span>
-                        <span>%{meta.collarWhitePct} Beyaz Yaka</span>
+                        <span>%{meta.collarBluePct} {lang === 'ru' ? 'Синие воротнички' : 'Mavi Yaka'}</span>
+                        <span>%{meta.collarWhitePct} {lang === 'ru' ? 'Белые воротнички' : 'Beyaz Yaka'}</span>
                       </div>
                       <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex">
                         <div
@@ -377,10 +401,10 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
             <div className="p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl transition-colors">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <span className="text-xs font-black text-emerald-700 dark:text-teal-300 uppercase tracking-wider">
-                  Seçili Şantiye Detayı
+                  {lang === 'ru' ? 'Детали выбранного участка' : 'Seçili Şantiye Detayı'}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-teal-900/60 text-emerald-800 dark:text-teal-300 font-extrabold text-[10px]">
-                  Aktif Odak
+                  {lang === 'ru' ? 'В фокусе' : 'Aktif Odak'}
                 </span>
               </div>
 
@@ -400,25 +424,25 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60">
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase block">
-                      Toplam Kadro
+                      {lang === 'ru' ? 'Штат участка' : 'Toplam Kadro'}
                     </span>
                     <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
                       {activeRegionCount.toLocaleString('tr-TR')}
                     </span>
                     <span className="text-[10px] text-emerald-600 dark:text-teal-400 font-extrabold block">
-                      %{activeRegionPct} Toplam Pay
+                      %{activeRegionPct} {lang === 'ru' ? 'от общего штата' : 'Toplam Pay'}
                     </span>
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60">
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase block">
-                      Ekspat Oranı
+                      {lang === 'ru' ? 'Доля экспатов' : 'Ekspat Oranı'}
                     </span>
                     <span className="text-lg font-black text-cyan-600 dark:text-cyan-300 font-mono">
                       %{activeSite.expatPct}
                     </span>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
-                      Uluslararası Saha
+                      {lang === 'ru' ? 'Международный персонал' : 'Uluslararası Saha'}
                     </span>
                   </div>
                 </div>
@@ -426,7 +450,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                 {/* Project List */}
                 <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-2">
-                    Bu Şantiyedeki Endüstriyel Projeler:
+                    {lang === 'ru' ? 'Проекты на данном участке:' : 'Bu Şantiyedeki Endüstriyel Projeler:'}
                   </span>
                   <div className="space-y-1.5">
                     {activeSite.projects.map((p, idx) => (
@@ -443,7 +467,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                           </span>
                         </div>
                         <span className="font-mono font-black text-emerald-700 dark:text-teal-300 shrink-0 ml-2">
-                          {p.count.toLocaleString('tr-TR')} Kişi
+                          {p.count.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}
                         </span>
                       </div>
                     ))}
@@ -456,7 +480,10 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                     onClick={() =>
                       setDrillModal({
                         isOpen: true,
-                        title: `${activeRegionKey} Şantiyesi Personel Listesi`,
+                        title:
+                          lang === 'ru'
+                            ? `Список сотрудников участка ${activeRegionKey}`
+                            : `${activeRegionKey} Şantiyesi Personel Listesi`,
                         filterType: 'region',
                         filterValue: activeRegionKey,
                       })
@@ -464,14 +491,18 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black text-xs shadow-md shadow-teal-500/25 transition-all cursor-pointer"
                   >
                     <FileSpreadsheet className="w-4 h-4" />
-                    <span>Şantiye Detay Listesini Aç ({activeRegionCount} Kişi)</span>
+                    <span>
+                      {lang === 'ru'
+                        ? `Открыть список сотрудников (${activeRegionCount} чел.)`
+                        : `Şantiye Detay Listesini Aç (${activeRegionCount} Kişi)`}
+                    </span>
                   </button>
 
                   <button
                     onClick={() => onNavigateToPersonnel('region', activeRegionKey)}
                     className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition-colors"
                   >
-                    <span>Genel Personel Tablosunda Filtrele</span>
+                    <span>{lang === 'ru' ? 'Фильтровать в общей таблице' : 'Genel Personel Tablosunda Filtrele'}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -487,10 +518,14 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
               <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-teal-400" />
               <div>
                 <h2 className="font-bold text-base text-slate-900 dark:text-white">
-                  Şantiyeler Arası Yaka & İstihdam Karşılaştırmalı Matrisi
+                  {lang === 'ru'
+                    ? 'Сравнительный анализ категорий персонала по участкам'
+                    : 'Şantiyeler Arası Yaka & İstihdam Karşılaştırmalı Matrisi'}
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Her şantiyedeki Mavi Yaka ve Beyaz Yaka istihdam hacimlerinin karşılaştırmalı görünümü
+                  {lang === 'ru'
+                    ? 'Сравнение численности рабочих и ИТР / офисных сотрудников по каждому участку'
+                    : 'Her şantiyedeki Mavi Yaka ve Beyaz Yaka istihdam hacimlerinin karşılaştırmalı görünümü'}
                 </p>
               </div>
             </div>
@@ -498,11 +533,15 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-teal-500" />
-                <span className="font-bold text-slate-700 dark:text-slate-300">Mavi Yaka (Direkt)</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {lang === 'ru' ? 'Синие воротнички (Рабочие)' : 'Mavi Yaka (Direkt)'}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-cyan-500" />
-                <span className="font-bold text-slate-700 dark:text-slate-300">Beyaz Yaka (Endirekt)</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {lang === 'ru' ? 'Белые воротнички (ИТР и офис)' : 'Beyaz Yaka (Endirekt)'}
+                </span>
               </div>
             </div>
           </div>
@@ -525,13 +564,16 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                         <div className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-teal-500/40 rounded-xl text-xs text-slate-800 dark:text-white shadow-xl">
                           <p className="font-bold text-teal-600 dark:text-teal-300 text-sm mb-1">{d.name}</p>
                           <p className="font-mono text-slate-800 dark:text-slate-200">
-                            Toplam: <strong>{d.total.toLocaleString('tr-TR')} Kişi</strong>
+                            {lang === 'ru' ? 'Всего: ' : 'Toplam: '}
+                            <strong>{d.total.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}</strong>
                           </p>
                           <p className="text-teal-600 dark:text-teal-400 font-mono mt-0.5">
-                            Mavi Yaka: {d['Mavi Yaka']?.toLocaleString('tr-TR')}
+                            {lang === 'ru' ? 'Синие воротнички: ' : 'Mavi Yaka: '}
+                            {d['Mavi Yaka']?.toLocaleString('tr-TR')}
                           </p>
                           <p className="text-cyan-600 dark:text-cyan-400 font-mono">
-                            Beyaz Yaka: {d['Beyaz Yaka']?.toLocaleString('tr-TR')}
+                            {lang === 'ru' ? 'Белые воротнички: ' : 'Beyaz Yaka: '}
+                            {d['Beyaz Yaka']?.toLocaleString('tr-TR')}
                           </p>
                         </div>
                       );

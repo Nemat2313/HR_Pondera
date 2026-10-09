@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { X, UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Calendar } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface ExcelUploadModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface ExcelUploadModalProps {
 }
 
 export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: ExcelUploadModalProps) {
+  const { lang } = useLanguage();
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [customDate, setCustomDate] = useState('03.10.2026');
@@ -121,15 +123,21 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
               <UploadCloud className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Excel Yükle & Güncelle</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Yerel 198 kolonluk SQLite veritabanını güncelleyin</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                {lang === 'ru' ? 'Загрузка и обновление Excel' : 'Excel Yükle & Güncelle'}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {lang === 'ru'
+                  ? 'Обновите локальную 198-колоночную базу данных SQLite'
+                  : 'Yerel 198 kolonluk SQLite veritabanını güncelleyin'}
+              </p>
             </div>
           </div>
 
           {!uploading && (
             <button
               onClick={onClose}
-              aria-label="Kapat"
+              aria-label={lang === 'ru' ? 'Закрыть' : 'Kapat'}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <X className="w-5 h-5" />
@@ -170,10 +178,12 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                 <div>
                   <p className="font-bold text-sm text-slate-900 dark:text-white truncate max-w-xs mx-auto">{file.name}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {(file.size / (1024 * 1024)).toFixed(2)} MB • Dosya Seçildi
+                    {(file.size / (1024 * 1024)).toFixed(2)} MB • {lang === 'ru' ? 'Файл выбран' : 'Dosya Seçildi'}
                   </p>
                 </div>
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1">Farklı dosya seçmek için tıklayın</p>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1">
+                  {lang === 'ru' ? 'Нажмите для выбора другого файла' : 'Farklı dosya seçmek için tıklayın'}
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -181,10 +191,16 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                   <UploadCloud className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-slate-900 dark:text-white">Excel Dosyasını Sürükleyip Bırakın</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">veya bilgisayarınızdan seçmek için tıklayın</p>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white">
+                    {lang === 'ru' ? 'Перетащите файл Excel сюда' : 'Excel Dosyasını Sürükleyip Bırakın'}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {lang === 'ru' ? 'или нажмите для выбора с компьютера' : 'veya bilgisayarınızdan seçmek için tıklayın'}
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">Desteklenen: .xlsx veya .xls (~31 MB)</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  {lang === 'ru' ? 'Поддерживается: .xlsx или .xls (~31 МБ)' : 'Desteklenen: .xlsx veya .xls (~31 MB)'}
+                </p>
               </div>
             )}
           </div>
@@ -194,10 +210,11 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                Veri Tazeliği Tarihi (Uygulamada Görünecek Tarih)
+                {lang === 'ru' ? 'Дата актуальности данных (в системе)' : 'Veri Tazeliği Tarihi (Uygulamada Görünecek Tarih)'}
               </label>
               <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-md">
-                Veri: {customDate || 'GG.AA.YYYY'}
+                {lang === 'ru' ? 'Данные: ' : 'Veri: '}
+                {customDate || (lang === 'ru' ? 'ДД.ММ.ГГГГ' : 'GG.AA.YYYY')}
               </span>
             </div>
 
@@ -206,7 +223,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                 type="text"
                 value={customDate}
                 onChange={(e) => setCustomDate(e.target.value)}
-                placeholder="GG.AA.YYYY (ör. 03.10.2026)"
+                placeholder={lang === 'ru' ? 'ДД.ММ.ГГГГ (напр. 03.10.2026)' : 'GG.AA.YYYY (ör. 03.10.2026)'}
                 className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <button
@@ -220,11 +237,13 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                 }}
                 className="px-2.5 py-2 text-[11px] font-semibold bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
               >
-                Bugün
+                {lang === 'ru' ? 'Сегодня' : 'Bugün'}
               </button>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
-              Dosya adı ne olursa olsun, üst barda ve tüm raporlarda bu seçtiğiniz tarih gösterilecektir.
+              {lang === 'ru'
+                ? 'Вне зависимости от имени файла, в верхней панели и отчетах будет отображаться выбранная дата.'
+                : 'Dosya adı ne olursa olsun, üst barda ve tüm raporlarda bu seçtiğiniz tarih gösterilecektir.'}
             </p>
           </div>
 
@@ -258,7 +277,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             disabled={uploading}
             className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-50"
           >
-            İptal
+            {lang === 'ru' ? 'Отмена' : 'İptal'}
           </button>
 
           <button
@@ -269,12 +288,12 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             {uploading ? (
               <>
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>İşleniyor...</span>
+                <span>{lang === 'ru' ? 'Обработка...' : 'İşleniyor...'}</span>
               </>
             ) : (
               <>
                 <UploadCloud className="w-3.5 h-3.5" />
-                <span>Veritabanına Aktar & Güncelle</span>
+                <span>{lang === 'ru' ? 'Импортировать в базу данных' : 'Veritabanına Aktar & Güncelle'}</span>
               </>
             )}
           </button>

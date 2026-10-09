@@ -27,6 +27,7 @@ import * as XLSX from 'xlsx';
 import { PersonnelRecord, FilterOptions } from '@/types';
 import PersonnelDetailDrawer from './PersonnelDetailDrawer';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface PersonnelListViewProps {
   initialFilter?: { type: string; value: string } | null;
@@ -292,6 +293,7 @@ export default function PersonnelListView({
   onClearInitialFilter,
 }: PersonnelListViewProps) {
   const { user } = useAuth();
+  const { lang, t, translateCol, translateVal, translateGroup } = useLanguage();
 
   // Column Groups state (preloaded with 16 groups, then synced with /api/columns)
   const [columnGroups, setColumnGroups] = useState<ColumnGroupDef[]>(INITIAL_COLUMN_GROUPS);
@@ -775,14 +777,14 @@ export default function PersonnelListView({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Personel Veritabanı & Liste
+              {t('table_title')}
             </h1>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold">
-              {totalRows.toLocaleString('tr-TR')} Kayıt
+              {totalRows.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {t('table_records_count')}
             </span>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            198 kolonluk tam veri yapısı, evrak bazlı grup seçimi ve dinamik arama
+            {t('table_subtitle')}
           </p>
         </div>
 
@@ -797,7 +799,7 @@ export default function PersonnelListView({
             }`}
           >
             <Layers className="w-4 h-4" />
-            <span>Kolon Seçici ({activeColumnCount}/{totalColumnCount})</span>
+            <span>{t('table_column_picker_btn')} ({activeColumnCount}/{totalColumnCount})</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showColumnPicker ? 'rotate-180' : ''}`} />
           </button>
 
@@ -810,12 +812,12 @@ export default function PersonnelListView({
             {isExporting ? (
               <>
                 <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Excel Hazırlanıyor...</span>
+                <span>{t('table_preparing_excel')}</span>
               </>
             ) : (
               <>
                 <Download className="w-4 h-4" />
-                <span>Excel İndir (.xlsx)</span>
+                <span>{t('table_download_excel')}</span>
               </>
             )}
           </button>
@@ -827,19 +829,19 @@ export default function PersonnelListView({
         <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-900 dark:text-white">
-              Evrak & Bilgi Grupları (16 Grup):
+              {t('table_groups_title')}
             </span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:inline">
-              Tabloda görmek istediğiniz evrak türlerini tek tıkla seçin
+              {t('table_groups_subtitle')}
             </span>
           </div>
 
           <button
             onClick={() => setIsGroupBarExpanded(!isGroupBarExpanded)}
             className="text-[11px] font-bold text-teal-700 dark:text-teal-300 hover:text-teal-800 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800/80 cursor-pointer transition-colors"
-            title={isGroupBarExpanded ? 'Yatay tek satıra dönüştür' : 'Tüm grupları ekrana aç'}
+            title={isGroupBarExpanded ? (lang === 'ru' ? 'Свернуть в строку' : 'Yatay tek satıra dönüştür') : (lang === 'ru' ? 'Развернуть все группы' : 'Tüm grupları ekrana aç')}
           >
-            <span>{isGroupBarExpanded ? 'Kompakt Kaydırıcı' : 'Tüm Grupları Ekrana Aç (16 Grup)'}</span>
+            <span>{isGroupBarExpanded ? t('table_compact_groups') : t('table_expand_groups')}</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isGroupBarExpanded ? 'rotate-180' : ''}`} />
           </button>
         </div>
@@ -860,7 +862,7 @@ export default function PersonnelListView({
                     ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
                     : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
-                title={`${group.name} (${group.columns.length} Kolon)`}
+                title={`${translateGroup(group.name)} (${group.columns.length} ${lang === 'ru' ? 'колонок' : 'Kolon'})`}
               >
                 {allSelected ? (
                   <CheckSquare className="w-3.5 h-3.5 text-white" />
@@ -869,7 +871,7 @@ export default function PersonnelListView({
                 ) : (
                   <Square className="w-3.5 h-3.5 text-slate-400" />
                 )}
-                <span>{group.name}</span>
+                <span>{translateGroup(group.name)}</span>
               </button>
             );
           })}
@@ -884,14 +886,14 @@ export default function PersonnelListView({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                  198 Kolonluk Evrak & Bilgi Seçici
+                  {t('table_picker_drawer_title')}
                 </h3>
                 <span className="px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 font-bold text-xs">
-                  {activeColumnCount} / {totalColumnCount} Aktif
+                  {activeColumnCount} / {totalColumnCount} {lang === 'ru' ? 'активно' : 'Aktif'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-                Grup başlığındaki kutucuğu işaretleyerek gruptaki tüm evrakları tek seferde tabloya ekleyin
+                {lang === 'ru' ? 'Отметьте группу галочкой, чтобы добавить все колонки группы в таблицу' : 'Grup başlığındaki kutucuğu işaretleyerek gruptaki tüm evrakları tek seferde tabloya ekleyin'}
               </p>
             </div>
 
@@ -900,19 +902,19 @@ export default function PersonnelListView({
                 onClick={handleSelectAllColumns}
                 className="px-2.5 py-1 text-xs font-bold text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950 rounded-lg transition-colors cursor-pointer"
               >
-                Tümünü Seç
+                {t('table_select_all')}
               </button>
               <button
                 onClick={handleResetDefaultColumns}
                 className="px-2.5 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
               >
-                Varsayılan (10)
+                {t('table_reset_default')} (10)
               </button>
               <button
                 onClick={handleClearAllColumns}
                 className="px-2.5 py-1 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-lg transition-colors cursor-pointer"
               >
-                Tümünü Kaldır
+                {t('table_clear_all')}
               </button>
               <button
                 onClick={() => setShowColumnPicker(false)}
@@ -930,7 +932,7 @@ export default function PersonnelListView({
               type="text"
               value={columnSearch}
               onChange={(e) => setColumnSearch(e.target.value)}
-              placeholder="Kolon veya grup ara... (örn: Vize, Pasaport, Tarih, Propusk, INN)"
+              placeholder={t('table_picker_search_ph')}
               className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
             />
           </div>
@@ -957,8 +959,8 @@ export default function PersonnelListView({
                         onChange={() => toggleGroup(group.id)}
                         className="rounded border-slate-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer"
                       />
-                      <span className="truncate max-w-[170px]" title={group.name}>
-                        {group.name}
+                      <span className="truncate max-w-[170px]" title={translateGroup(group.name)}>
+                        {translateGroup(group.name)}
                       </span>
                     </label>
 
@@ -1003,8 +1005,8 @@ export default function PersonnelListView({
                               onChange={() => toggleColumn(col.key, col.name)}
                               className="rounded border-slate-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500 w-3.5 h-3.5"
                             />
-                            <span className="truncate" title={col.name}>
-                              {col.name}
+                            <span className="truncate" title={translateCol(col.name)}>
+                              {translateCol(col.name)}
                             </span>
                           </label>
                         );
@@ -1031,7 +1033,7 @@ export default function PersonnelListView({
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Ad, Soyad, Sicil No..."
+              placeholder={t('search_placeholder')}
               className="w-full pl-9 pr-3 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
             />
           </div>
@@ -1047,7 +1049,7 @@ export default function PersonnelListView({
               }}
               className="w-full px-2.5 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
-              <option value="all">Tüm Bölgeler</option>
+              <option value="all">{t('filter_all_regions')}</option>
               {filterOptions.regions.map((r) => (
                 <option key={r} value={r}>
                   {r}
@@ -1067,7 +1069,7 @@ export default function PersonnelListView({
               }}
               className="w-full px-2.5 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
-              <option value="all">Tüm Projeler</option>
+              <option value="all">{t('filter_all_projects')}</option>
               {filterOptions.projects.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -1086,7 +1088,7 @@ export default function PersonnelListView({
               }}
               className="w-full px-2.5 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
-              <option value="all">Tüm Departmanlar</option>
+              <option value="all">{t('filter_all_departments')}</option>
               {filterOptions.departments.map((d) => (
                 <option key={d} value={d}>
                   {d}
@@ -1105,7 +1107,7 @@ export default function PersonnelListView({
               }}
               className="w-full px-2.5 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
-              <option value="all">Tüm Uyruklar</option>
+              <option value="all">{t('filter_all_nationalities')}</option>
               {filterOptions.nationalities.map((u) => (
                 <option key={u} value={u}>
                   {u}
@@ -1128,11 +1130,11 @@ export default function PersonnelListView({
                   : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
               }`}
             >
-              <option value="all">Tüm Durumlar</option>
-              <option value="Mevcut">Yalnızca Mevcut (Aktif)</option>
-              <option value="Cikis">Yalnızca Çıkış</option>
-              <option value="Sevki Iptal">Sevki İptal</option>
-              <option value="Sevke Hazır">Sevke Hazır</option>
+              <option value="all">{lang === 'ru' ? 'Все статусы' : 'Tüm Durumlar'}</option>
+              <option value="Mevcut">{lang === 'ru' ? 'Только в штате (Активные)' : 'Yalnızca Mevcut (Aktif)'}</option>
+              <option value="Cikis">{lang === 'ru' ? 'Только уволенные' : 'Yalnızca Çıkış'}</option>
+              <option value="Sevki Iptal">{lang === 'ru' ? 'Отмена отправки' : 'Sevki İptal'}</option>
+              <option value="Sevke Hazır">{lang === 'ru' ? 'Готов к отправке' : 'Sevke Hazır'}</option>
             </select>
           </div>
         </div>
@@ -1140,14 +1142,18 @@ export default function PersonnelListView({
         {/* Filter stats bar */}
         <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
           <span>
-            Toplam <span className="font-extrabold text-slate-900 dark:text-white">{totalRows.toLocaleString('tr-TR')}</span> personel listeleniyor
+            {t('table_total_prefix')}{' '}
+            <span className="font-extrabold text-slate-900 dark:text-white">
+              {totalRows.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
+            </span>{' '}
+            {t('table_total_listed')}
           </span>
           <button
             onClick={resetAllFilters}
-            className="text-rose-600 dark:text-rose-400 hover:underline font-semibold flex items-center gap-1"
+            className="text-rose-600 dark:text-rose-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
           >
             <X className="w-3 h-3" />
-            <span>Filtreleri Temizle</span>
+            <span>{t('filter_clear_all')}</span>
           </button>
         </div>
       </div>
@@ -1158,7 +1164,7 @@ export default function PersonnelListView({
           {loading && (
             <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xs z-20 flex flex-col items-center justify-center">
               <div className="w-9 h-9 border-3 border-teal-600 border-t-transparent rounded-full animate-spin mb-2" />
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Veriler taranıyor...</p>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{t('table_loading')}</p>
             </div>
           )}
 
@@ -1197,7 +1203,7 @@ export default function PersonnelListView({
                       className={`py-1.5 px-2.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors select-none text-slate-800 dark:text-slate-100 font-bold uppercase tracking-wider ${widthClass}`}
                     >
                       <div className="flex items-center gap-1.5">
-                        <span>{col.name}</span>
+                        <span>{translateCol(col.name)}</span>
                         <ArrowUpDown
                           className={`w-3.5 h-3.5 ${
                             isSorted ? 'text-teal-600 dark:text-teal-400 stroke-[2.5]' : 'text-slate-400 dark:text-slate-600'
@@ -1207,7 +1213,7 @@ export default function PersonnelListView({
                     </th>
                   );
                 })}
-                <th className="py-1.5 px-2.5 text-center min-w-[60px]">İşlem</th>
+                <th className="py-1.5 px-2.5 text-center min-w-[60px]">{t('table_action_col')}</th>
               </tr>
             </thead>
 
@@ -1215,7 +1221,7 @@ export default function PersonnelListView({
               {data.length === 0 && !loading ? (
                 <tr>
                   <td colSpan={visibleColumnDefs.length + 1} className="py-12 text-center text-slate-400 dark:text-slate-500">
-                    Kriterlere uygun personel bulunamadı.
+                    {t('table_no_data')}
                   </td>
                 </tr>
               ) : (
@@ -1255,7 +1261,7 @@ export default function PersonnelListView({
                                   : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
                               }`}
                             >
-                              {val || '-'}
+                              {translateVal(val) || '-'}
                             </span>
                           </td>
                         );
@@ -1316,24 +1322,24 @@ export default function PersonnelListView({
             <button
               onClick={() => scrollStep(-350)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs cursor-pointer"
-              title="Tabloyu Sola Kaydır"
+              title={lang === 'ru' ? 'Прокрутить влево' : 'Tabloyu Sola Kaydır'}
             >
               <ChevronLeft className="w-3.5 h-3.5" />
-              <span>Sola Kaydır</span>
+              <span>{lang === 'ru' ? 'Влево' : 'Sola Kaydır'}</span>
             </button>
             <button
               onClick={() => scrollStep(350)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs cursor-pointer"
-              title="Tabloyu Sağa Kaydır"
+              title={lang === 'ru' ? 'Прокрутить вправо' : 'Tabloyu Sağa Kaydır'}
             >
-              <span>Sağa Kaydır</span>
+              <span>{lang === 'ru' ? 'Вправо' : 'Sağa Kaydır'}</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           <div className="flex-1 max-w-md w-full flex items-center gap-3">
             <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 shrink-0">
-              Yatay Kaydırıcı:
+              {lang === 'ru' ? 'Прокрутка таблицы:' : 'Yatay Kaydırıcı:'}
             </span>
             <input
               type="range"
@@ -1342,7 +1348,7 @@ export default function PersonnelListView({
               value={scrollPercent}
               onChange={handleSliderChange}
               className="w-full accent-teal-600 dark:accent-teal-400 cursor-pointer h-2 bg-slate-200 dark:bg-slate-700 rounded-lg"
-              title="Tablo Sütunları Arasında Gezinin"
+              title={lang === 'ru' ? 'Навигация по колонкам' : 'Tablo Sütunları Arasında Gezinin'}
             />
             <span className="text-[11px] font-mono font-bold text-teal-600 dark:text-teal-400 w-10 text-right shrink-0">
               %{scrollPercent}
@@ -1350,14 +1356,14 @@ export default function PersonnelListView({
           </div>
 
           <div className="text-[11px] text-slate-600 dark:text-slate-400">
-            <span className="font-bold text-slate-800 dark:text-slate-200">{visibleColumnDefs.length}</span> kolon aktif
+            <span className="font-bold text-slate-800 dark:text-slate-200">{visibleColumnDefs.length}</span> {lang === 'ru' ? 'колонок активно' : 'kolon aktif'}
           </div>
         </div>
 
         {/* PAGINATION */}
         <div className="p-3.5 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
           <div className="flex items-center gap-2">
-            <span>Sayfa başı:</span>
+            <span>{lang === 'ru' ? 'На странице:' : 'Sayfa başı:'}</span>
             <select
               value={pageSize}
               onChange={(e) => {

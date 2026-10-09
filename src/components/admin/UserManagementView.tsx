@@ -17,9 +17,11 @@ import {
 } from 'lucide-react';
 import { User, FilterOptions } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function UserManagementView() {
   const { user: currentUser, switchUser } = useAuth();
+  const { lang, t, translateVal } = useLanguage();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -100,7 +102,11 @@ export default function UserManagementView() {
 
       const data = await res.json();
       if (data.success) {
-        setFormSuccess('Kullanıcı ve RLS yetkisi başarıyla tanımlandı!');
+        setFormSuccess(
+          lang === 'ru'
+            ? 'Пользователь и права RLS успешно сохранены!'
+            : 'Kullanıcı ve RLS yetkisi başarıyla tanımlandı!'
+        );
         setTimeout(() => {
           setShowAddModal(false);
           setFormData({
@@ -114,17 +120,21 @@ export default function UserManagementView() {
           fetchUsers();
         }, 1200);
       } else {
-        setFormError(data.message || 'Kullanıcı eklenemedi.');
+        setFormError(data.message || (lang === 'ru' ? 'Не удалось добавить пользователя.' : 'Kullanıcı eklenemedi.'));
       }
     } catch {
-      setFormError('İşlem sırasında bağlantı hatası oluştu.');
+      setFormError(lang === 'ru' ? 'Ошибка соединения при выполнении операции.' : 'İşlem sırasında bağlantı hatası oluştu.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteUser = async (id: number) => {
-    if (!confirm('Bu kullanıcıyı ve yetkilerini silmek istediğinize emin misiniz?')) return;
+    const confirmMsg =
+      lang === 'ru'
+        ? 'Вы уверены, что хотите удалить этого пользователя и его права доступа?'
+        : 'Bu kullanıcıyı ve yetkilerini silmek istediğinize emin misiniz?';
+    if (!confirm(confirmMsg)) return;
 
     try {
       const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
@@ -132,7 +142,7 @@ export default function UserManagementView() {
       if (data.success) {
         fetchUsers();
       } else {
-        alert(data.message || 'Kullanıcı silinemedi.');
+        alert(data.message || (lang === 'ru' ? 'Не удалось удалить пользователя.' : 'Kullanıcı silinemedi.'));
       }
     } catch {}
   };
@@ -144,14 +154,16 @@ export default function UserManagementView() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Kullanıcı & RLS (Row-Level Security) Yönetimi
+              {lang === 'ru' ? 'Управление пользователями и RLS' : 'Kullanıcı & RLS (Row-Level Security) Yönetimi'}
             </h1>
             <span className="px-2.5 py-0.5 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 rounded-full border border-indigo-100 dark:border-indigo-800">
-              Yönetici Paneli
+              {lang === 'ru' ? 'Панель администратора' : 'Yönetici Paneli'}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-0.5">
-            Kullanıcı hesapları oluşturun ve Bölge (Region) ya da Proje (Proje Adı) bazlı veri erişim yetkilerini (RLS) kural olarak bağlayın.
+            {lang === 'ru'
+              ? 'Создание учетных записей и настройка прав доступа RLS по Региону или Проекту.'
+              : 'Kullanıcı hesapları oluşturun ve Bölge (Region) ya da Proje (Proje Adı) bazlı veri erişim yetkilerini (RLS) kural olarak bağlayın.'}
           </p>
         </div>
 
@@ -164,7 +176,7 @@ export default function UserManagementView() {
           className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors shrink-0"
         >
           <UserPlus className="w-4 h-4" />
-          <span>Yeni Kullanıcı Tanımla</span>
+          <span>{lang === 'ru' ? 'Создать пользователя' : 'Yeni Kullanıcı Tanımla'}</span>
         </button>
       </div>
 
@@ -175,20 +187,38 @@ export default function UserManagementView() {
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Row-Level Security (RLS) Nasıl Çalışır?</h2>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+              {lang === 'ru' ? 'Как работает Row-Level Security (RLS)?' : 'Row-Level Security (RLS) Nasıl Çalışır?'}
+            </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-              Bir kullanıcıya <strong>Bölge (Kazan vb.)</strong> veya <strong>Proje (DGP-02 vb.)</strong> atandığında, bu kullanıcı sisteme girdiğinde Dashboard, Raporlar ve 198 Kolonluk Personel Tablosu <strong>yalnızca</strong> kendisine atanan verileri görür.
-              <strong>Admin (Tümü)</strong> ise tüm şirket verilerine eksiksiz erişir.
+              {lang === 'ru' ? (
+                <>
+                  Когда пользователю назначен <strong>Регион (Казань и др.)</strong> или <strong>Проект (DGP-02 и др.)</strong>, при входе в систему Дашборд, Отчеты и Таблица персонала из 198 колонок отображают <strong>исключительно</strong> назначенные ему данные.
+                  <strong>Администратор (Все)</strong> имеет неограниченный доступ ко всем проектам компании.
+                </>
+              ) : (
+                <>
+                  Bir kullanıcıya <strong>Bölge (Kazan vb.)</strong> veya <strong>Proje (DGP-02 vb.)</strong> atandığında, bu kullanıcı sisteme girdiğinde Dashboard, Raporlar ve 198 Kolonluk Personel Tablosu <strong>yalnızca</strong> kendisine atanan verileri görür.
+                  <strong>Admin (Tümü)</strong> ise tüm şirket verilerine eksiksiz erişir.
+                </>
+              )}
             </p>
           </div>
         </div>
 
         {currentUser && (
           <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs text-xs shrink-0">
-            <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">Aktif Oturum:</span>
+            <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">
+              {lang === 'ru' ? 'Текущая сессия:' : 'Aktif Oturum:'}
+            </span>
             <span className="font-bold text-slate-900 dark:text-white">{currentUser.name}</span>
             <span className="text-[10px] block font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5">
-              Kapsam: {currentUser.scope_type === 'all' ? 'Tümü (Sınırsız)' : `${currentUser.scope_type}: ${currentUser.scope_value}`}
+              {lang === 'ru' ? 'Область: ' : 'Kapsam: '}
+              {currentUser.scope_type === 'all'
+                ? lang === 'ru'
+                  ? 'Все (Без ограничений)'
+                  : 'Tümü (Sınırsız)'
+                : `${currentUser.scope_type === 'region' ? (lang === 'ru' ? 'Регион' : 'Bölge') : (lang === 'ru' ? 'Проект' : 'Proje')}: ${currentUser.scope_value}`}
             </span>
           </div>
         )}
@@ -199,25 +229,29 @@ export default function UserManagementView() {
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-slate-500" />
-            <h3 className="font-bold text-sm text-slate-900 dark:text-white">Tanımlı Kullanıcılar & RLS Kapsamları</h3>
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+              {lang === 'ru' ? 'Пользователи и области доступа RLS' : 'Tanımlı Kullanıcılar & RLS Kapsamları'}
+            </h3>
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
-              {users.length} Kullanıcı
+              {users.length} {lang === 'ru' ? 'пользователей' : 'Kullanıcı'}
             </span>
           </div>
-          <span className="text-[11px] text-slate-600 dark:text-slate-400">Tek tıkla kullanıcı değiştirip RLS&apos;i test edebilirsiniz</span>
+          <span className="text-[11px] text-slate-600 dark:text-slate-400">
+            {lang === 'ru' ? 'Переключайтесь в один клик для тестирования RLS' : "Tek tıkla kullanıcı değiştirip RLS'i test edebilirsiniz"}
+          </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-slate-50/90 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
               <tr>
-                <th className="py-3 px-4">Kullanıcı</th>
-                <th className="py-3 px-4">E-Posta</th>
-                <th className="py-3 px-4">Şifre</th>
-                <th className="py-3 px-4">Rol</th>
-                <th className="py-3 px-4">RLS Erişim Kapsamı</th>
-                <th className="py-3 px-4">Kayıt Tarihi</th>
-                <th className="py-3 px-4 text-right">İşlemler</th>
+                <th className="py-3 px-4">{lang === 'ru' ? 'Пользователь' : 'Kullanıcı'}</th>
+                <th className="py-3 px-4">{lang === 'ru' ? 'E-Mail' : 'E-Posta'}</th>
+                <th className="py-3 px-4">{lang === 'ru' ? 'Пароль' : 'Şifre'}</th>
+                <th className="py-3 px-4">{lang === 'ru' ? 'Роль' : 'Rol'}</th>
+                <th className="py-3 px-4">{lang === 'ru' ? 'Область доступа RLS' : 'RLS Erişim Kapsamı'}</th>
+                <th className="py-3 px-4">{lang === 'ru' ? 'Дата регистрации' : 'Kayıt Tarihi'}</th>
+                <th className="py-3 px-4 text-right">{lang === 'ru' ? 'Действия' : 'İşlemler'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -234,7 +268,8 @@ export default function UserManagementView() {
                           <span className="font-bold text-slate-900 block">{u.name}</span>
                           {isCurrent && (
                             <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Aktif Hesap
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{' '}
+                              {lang === 'ru' ? 'Активный аккаунт' : 'Aktif Hesap'}
                             </span>
                           )}
                         </div>
@@ -250,24 +285,32 @@ export default function UserManagementView() {
                             : 'bg-slate-100 text-slate-700'
                         }`}
                       >
-                        {u.role === 'admin' ? '🛡️ Admin' : '👤 Kullanıcı'}
+                        {u.role === 'admin'
+                          ? lang === 'ru'
+                            ? '🛡️ Администратор'
+                            : '🛡️ Admin'
+                          : lang === 'ru'
+                          ? '👤 Пользователь'
+                          : '👤 Kullanıcı'}
                       </span>
                     </td>
                     <td className="py-3 px-4">
                       {u.scope_type === 'all' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[11px]">
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          Tümü (Sınırsız Şantiye & Proje)
+                          {lang === 'ru' ? 'Все (Все участки и проекты)' : 'Tümü (Sınırsız Şantiye & Proje)'}
                         </span>
                       ) : u.scope_type === 'region' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 font-bold text-[11px]">
                           <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                          Bölge: {u.scope_value}
+                          {lang === 'ru' ? 'Регион: ' : 'Bölge: '}
+                          {u.scope_value}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold text-[11px]">
                           <Briefcase className="w-3.5 h-3.5 text-amber-600" />
-                          Proje: {u.scope_value}
+                          {lang === 'ru' ? 'Проект: ' : 'Proje: '}
+                          {u.scope_value}
                         </span>
                       )}
                     </td>
@@ -278,17 +321,17 @@ export default function UserManagementView() {
                           <button
                             onClick={() => switchUser(u)}
                             className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                            title="Bu kullanıcı olarak anında giriş yap ve RLS test et"
+                            title={lang === 'ru' ? 'Войти под этим пользователем для проверки RLS' : "Bu kullanıcı olarak anında giriş yap ve RLS test et"}
                           >
                             <LogIn className="w-3 h-3" />
-                            <span>Geçiş Yap</span>
+                            <span>{lang === 'ru' ? 'Войти' : 'Geçiş Yap'}</span>
                           </button>
                         )}
                         {u.id !== 1 && (
                           <button
                             onClick={() => handleDeleteUser(u.id)}
                             className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                            title="Kullanıcıyı Sil"
+                            title={lang === 'ru' ? 'Удалить пользователя' : 'Kullanıcıyı Sil'}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -313,8 +356,12 @@ export default function UserManagementView() {
                   <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Yeni Kullanıcı & RLS Tanımla</h2>
-                  <p className="text-xs text-slate-600">Bölge veya proje kısıtlaması belirleyin</p>
+                  <h2 className="text-base font-bold text-slate-900">
+                    {lang === 'ru' ? 'Новый пользователь и RLS' : 'Yeni Kullanıcı & RLS Tanımla'}
+                  </h2>
+                  <p className="text-xs text-slate-600">
+                    {lang === 'ru' ? 'Укажите ограничения по региону или проекту' : 'Bölge veya proje kısıtlaması belirleyin'}
+                  </p>
                 </div>
               </div>
               <button
@@ -327,11 +374,13 @@ export default function UserManagementView() {
 
             <form onSubmit={handleAddUser} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Ad Soyad</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {lang === 'ru' ? 'ФИО' : 'Ad Soyad'}
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="örn: Amur Şantiye Müdürü"
+                  placeholder={lang === 'ru' ? 'напр.: Начальник участка Амур' : 'örn: Amur Şantiye Müdürü'}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -339,11 +388,13 @@ export default function UserManagementView() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">E-Posta Adresi</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {lang === 'ru' ? 'E-Mail адрес' : 'E-Posta Adresi'}
+                </label>
                 <input
                   type="email"
                   required
-                  placeholder="örn: amur@pondera.com"
+                  placeholder="amur@pondera.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -351,11 +402,13 @@ export default function UserManagementView() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Giriş Şifresi</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {lang === 'ru' ? 'Пароль для входа' : 'Giriş Şifresi'}
+                </label>
                 <input
                   type="password"
                   required
-                  placeholder="örn: amur123"
+                  placeholder="••••••••"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -364,7 +417,9 @@ export default function UserManagementView() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Sistem Rolü</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {lang === 'ru' ? 'Системная роль' : 'Sistem Rolü'}
+                  </label>
                   <select
                     value={formData.role}
                     onChange={(e) => {
@@ -377,13 +432,15 @@ export default function UserManagementView() {
                     }}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
-                    <option value="user">Standart Kullanıcı</option>
-                    <option value="admin">Admin (Yönetici)</option>
+                    <option value="user">{lang === 'ru' ? 'Стандартный пользователь' : 'Standart Kullanıcı'}</option>
+                    <option value="admin">{lang === 'ru' ? 'Администратор' : 'Admin (Yönetici)'}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Erişim Kapsamı (RLS)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {lang === 'ru' ? 'Область доступа (RLS)' : 'Erişim Kapsamı (RLS)'}
+                  </label>
                   <select
                     value={formData.scope_type}
                     onChange={(e) =>
@@ -401,9 +458,9 @@ export default function UserManagementView() {
                     disabled={formData.role === 'admin'}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-50"
                   >
-                    <option value="region">Bölge / Şantiye Bazlı</option>
-                    <option value="project">Proje Bazlı</option>
-                    <option value="all">Tümü (Sınırsız)</option>
+                    <option value="region">{lang === 'ru' ? 'По региону / участку' : 'Bölge / Şantiye Bazlı'}</option>
+                    <option value="project">{lang === 'ru' ? 'По проекту' : 'Proje Bazlı'}</option>
+                    <option value="all">{lang === 'ru' ? 'Все (Без ограничений)' : 'Tümü (Sınırsız)'}</option>
                   </select>
                 </div>
               </div>
@@ -412,7 +469,13 @@ export default function UserManagementView() {
               {formData.scope_type !== 'all' && (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    {formData.scope_type === 'region' ? 'Atanacak Bölge (Region)' : 'Atanacak Proje'}
+                    {formData.scope_type === 'region'
+                      ? lang === 'ru'
+                        ? 'Назначаемый регион'
+                        : 'Atanacak Bölge (Region)'
+                      : lang === 'ru'
+                      ? 'Назначаемый проект'
+                      : 'Atanacak Proje'}
                   </label>
                   <select
                     value={formData.scope_value}
@@ -432,7 +495,9 @@ export default function UserManagementView() {
                         ))}
                   </select>
                   <p className="text-[11px] text-slate-600 mt-1">
-                    Bu kullanıcı yalnızca {formData.scope_value} verilerini görebilecektir.
+                    {lang === 'ru'
+                      ? `Этот пользователь сможет видеть данные только по: ${formData.scope_value}`
+                      : `Bu kullanıcı yalnızca ${formData.scope_value} verilerini görebilecektir.`}
                   </p>
                 </div>
               )}
@@ -457,14 +522,20 @@ export default function UserManagementView() {
                   onClick={() => setShowAddModal(false)}
                   className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
                 >
-                  İptal
+                  {lang === 'ru' ? 'Отмена' : 'İptal'}
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
                   className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs disabled:opacity-50"
                 >
-                  {submitting ? 'Kaydediliyor...' : 'Kullanıcıyı Oluştur'}
+                  {submitting
+                    ? lang === 'ru'
+                      ? 'Сохранение...'
+                      : 'Kaydediliyor...'
+                    : lang === 'ru'
+                    ? 'Создать пользователя'
+                    : 'Kullanıcıyı Oluştur'}
                 </button>
               </div>
             </form>

@@ -12,6 +12,7 @@ import {
   GitBranch,
 } from 'lucide-react';
 import { TreeRegion } from '@/types';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface PowerBIDecompositionTreeProps {
   treeData: TreeRegion[];
@@ -30,6 +31,7 @@ export default function PowerBIDecompositionTree({
   onSelectNode,
   onOpenDetail,
 }: PowerBIDecompositionTreeProps) {
+  const { lang, t } = useLanguage();
   const [selectedRegion, setSelectedRegion] = useState<string>(treeData[0]?.name || 'Kazan');
   const [selectedProject, setSelectedProject] = useState<string>(
     treeData[0]?.projects[0]?.name || 'NHNK mPE-300'
@@ -67,14 +69,16 @@ export default function PowerBIDecompositionTree({
               <GitBranch className="w-4 h-4" />
             </span>
             <h2 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-              Hiyerarşik Kırılım Ağacı (Decomposition Tree)
+              {t('decomp_title')}
             </h2>
             <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-teal-950/80 text-emerald-800 dark:text-teal-300 border border-emerald-200 dark:border-teal-600/40 text-[10px] font-bold">
-              Power BI Motoru
+              {lang === 'ru' ? 'Движок Power BI' : 'Power BI Motoru'}
             </span>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Kök: Toplam &rarr; Bölge &rarr; Şantiye / Proje &rarr; Departman dallanmasını dinamik ağaç çizgileriyle inceleyin.
+            {lang === 'ru' 
+              ? 'Корень: Всего → Регион → Проект / Объект → Отдел' 
+              : 'Kök: Toplam → Bölge → Şantiye / Proje → Departman dallanmasını dinamik ağaç çizgileriyle inceleyin.'}
           </p>
         </div>
 
@@ -83,15 +87,15 @@ export default function PowerBIDecompositionTree({
             <button
               onClick={() => onOpenDetail('region', selectedRegion)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 border border-emerald-200 dark:border-teal-500/40 text-emerald-700 dark:text-teal-300 text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="Seçili Kırılımın Detay Personel Listesini Aç"
+              title={lang === 'ru' ? 'Открыть список персонала' : 'Seçili Kırılımın Detay Personel Listesini Aç'}
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-teal-400" />
-              <span>Detay Gör ({selectedRegion})</span>
+              <span>{lang === 'ru' ? `Список (${selectedRegion})` : `Detay Gör (${selectedRegion})`}</span>
             </button>
           )}
           <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 ml-1">
             <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-teal-400 animate-pulse" />
-            Ağaç Dallanması Aktif
+            {lang === 'ru' ? 'Ветвление активно' : 'Ağaç Dallanması Aktif'}
           </span>
         </div>
       </div>
@@ -103,7 +107,7 @@ export default function PowerBIDecompositionTree({
           <div className="w-[200px] shrink-0 space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <Users className="w-3.5 h-3.5" />
-              <span>Kök: Toplam</span>
+              <span>{lang === 'ru' ? 'Корень: Всего' : 'Kök: Toplam'}</span>
             </div>
 
             <div
@@ -111,7 +115,9 @@ export default function PowerBIDecompositionTree({
               className="h-[68px] p-3 rounded-xl bg-gradient-to-br from-emerald-50 to-slate-100 dark:from-teal-900/60 dark:to-slate-800 border-2 border-emerald-500/80 dark:border-teal-400/80 shadow-xs dark:shadow-lg dark:shadow-teal-950/50 cursor-pointer hover:border-emerald-600 dark:hover:border-teal-300 transition-all flex flex-col justify-between group relative"
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-900 dark:text-teal-200">Pondera Kadrosu</span>
+                <span className="text-xs font-bold text-emerald-900 dark:text-teal-200">
+                  {lang === 'ru' ? 'Штат Pondera' : 'Pondera Kadrosu'}
+                </span>
                 <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-200/80 dark:bg-teal-500/30 text-emerald-900 dark:text-teal-200 font-black">
                   100%
                 </span>
@@ -121,7 +127,7 @@ export default function PowerBIDecompositionTree({
                   {totalCount.toLocaleString('tr-TR')}
                 </span>
                 <span className="text-[10px] text-emerald-700 dark:text-teal-300 font-semibold flex items-center gap-0.5">
-                  Tümü &rarr;
+                  {lang === 'ru' ? 'Все →' : 'Tümü →'}
                 </span>
               </div>
 
@@ -154,7 +160,7 @@ export default function PowerBIDecompositionTree({
             <div className="flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" />
-                <span>Bölgesi (Region)</span>
+                <span>{lang === 'ru' ? 'Регион / Участок' : 'Bölgesi (Region)'}</span>
               </span>
               <span className="text-[10px] text-slate-500 font-normal">({treeData.length})</span>
             </div>
@@ -194,9 +200,9 @@ export default function PowerBIDecompositionTree({
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                      <span>%{pct} pay</span>
+                      <span>%{pct} {lang === 'ru' ? 'доля' : 'pay'}</span>
                       <span className="flex items-center gap-1 font-bold text-emerald-700 dark:text-teal-300">
-                        <span>{reg.projects.length} Şantiye</span>
+                        <span>{reg.projects.length} {lang === 'ru' ? 'Объект' : 'Şantiye'}</span>
                         <span className="text-[11px] font-black">{isSelected ? '[-]' : '[+]'}</span>
                       </span>
                     </div>
@@ -242,7 +248,7 @@ export default function PowerBIDecompositionTree({
             <div className="flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <span className="flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" />
-                <span>Şantiye / Proje</span>
+                <span>{lang === 'ru' ? 'Проект / Объект' : 'Şantiye / Proje'}</span>
               </span>
               <span className="text-[10px] text-slate-500 font-normal truncate max-w-[85px]">
                 {selectedRegion}
@@ -283,9 +289,9 @@ export default function PowerBIDecompositionTree({
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                      <span>Bölge içi: %{pctOfRegion}</span>
+                      <span>{lang === 'ru' ? 'В регионе: %' : 'Bölge içi: %'}{pctOfRegion}</span>
                       <span className="flex items-center gap-1 font-bold text-cyan-600 dark:text-cyan-300">
-                        <span>{prj.departments.length} Ekip</span>
+                        <span>{prj.departments.length} {lang === 'ru' ? 'Отдел' : 'Ekip'}</span>
                         <span className="text-[11px] font-black">{isSelected ? '[-]' : '[+]'}</span>
                       </span>
                     </div>
@@ -331,7 +337,7 @@ export default function PowerBIDecompositionTree({
             <div className="flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <span className="flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5" />
-                <span>Departman / Ekip</span>
+                <span>{lang === 'ru' ? 'Отдел / Служба' : 'Departman / Ekip'}</span>
               </span>
               <span className="text-[10px] text-slate-500 font-normal truncate max-w-[95px]">
                 {selectedProject}
@@ -366,7 +372,7 @@ export default function PowerBIDecompositionTree({
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                      <span>Proje içi: %{pctOfPrj}</span>
+                      <span>{lang === 'ru' ? 'В проекте: %' : 'Proje içi: %'}{pctOfPrj}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -374,7 +380,7 @@ export default function PowerBIDecompositionTree({
                         }}
                         className="text-emerald-700 dark:text-teal-300 hover:text-emerald-900 dark:hover:text-white font-bold group-hover:underline cursor-pointer"
                       >
-                        Listede Gör &rarr;
+                        {t('btn_see_in_list')} &rarr;
                       </button>
                     </div>
                   </div>

@@ -35,6 +35,7 @@ import {
 import * as XLSX from 'xlsx';
 import { exportToExcel } from '@/lib/exportExcel';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface ComplianceItem {
   personnelId: number;
@@ -71,6 +72,7 @@ interface ComplianceAnalyticsViewProps {
 
 export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: ComplianceAnalyticsViewProps) {
   const { user } = useAuth();
+  const { lang, t, translateCol, translateVal } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{
     referenceDate: string;
@@ -172,39 +174,39 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
-            Süresi Doldu ({days} gün)
+            {lang === 'ru' ? `Просрочено (${days} дн.)` : `Süresi Doldu (${days} gün)`}
           </span>
         );
       case 'critical':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
-            Kritik: {days} Gün Kaldı
+            {lang === 'ru' ? `Срочно: ${days} дн.` : `Kritik: ${days} Gün Kaldı`}
           </span>
         );
       case 'warning':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 dark:bg-orange-950/80 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-800">
-            Yaklaşan ({days} gün)
+            {lang === 'ru' ? `Истекает (${days} дн.)` : `Yaklaşan (${days} gün)`}
           </span>
         );
       case 'normal':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
-            31-60 Gün ({days} g)
+            {lang === 'ru' ? `31-60 дн. (${days} дн.)` : `31-60 Gün (${days} g)`}
           </span>
         );
       case 'valid':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-            Geçerli ({days} gün)
+            {lang === 'ru' ? `Действительно (${days} дн.)` : `Geçerli (${days} gün)`}
           </span>
         );
       case 'missing':
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
-            Eksik / Belge Yok
+            {lang === 'ru' ? 'Отсутствует' : 'Eksik / Belge Yok'}
           </span>
         );
     }
@@ -225,18 +227,17 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                  Evrak & Süre Geçerlilik Analitiği
+                  {t('comp_title')}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/40 text-[11px] font-bold">
-                  Saha Denetim Motoru
+                  {lang === 'ru' ? 'Инспекция на объектах' : 'Saha Denetim Motoru'}
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 text-[11px] font-bold">
-                  Baz Tarih: {data?.referenceDate || '08.10.2026'}
+                  {lang === 'ru' ? 'Базовая дата:' : 'Baz Tarih:'} {data?.referenceDate || '08.10.2026'}
                 </span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-2xl">
-                Tüm personellerin Pasaport, Vize, Propusk, Patent, Registrasyon, Daktiloskopiya ve Sağlık belgelerinin
-                süre ve mevcudiyet durumunu tek ekrandan analiz edin.
+                {t('comp_sub')}
               </p>
             </div>
           </div>
@@ -247,12 +248,12 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
               className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer shrink-0"
             >
               <Download className="w-4 h-4" />
-              <span>Excel Raporu İndir</span>
+              <span>{lang === 'ru' ? 'Скачать отчет Excel' : 'Excel Raporu İndir'}</span>
             </button>
             <button
               onClick={fetchCompliance}
-              className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
-              title="Yenile"
+              className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+              title={lang === 'ru' ? 'Обновить' : 'Yenile'}
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -265,7 +266,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
         {/* KPI 1: Uyum Oranı */}
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">Genel Uyum</span>
+            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">{t('comp_compliance_rate')}</span>
             <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 flex items-center justify-center">
               <ShieldCheck className="w-4 h-4" />
             </div>
@@ -276,7 +277,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
             </span>
           </div>
           <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">
-            {data?.kpis.totalValid?.toLocaleString('tr-TR')} / {data?.kpis.totalDocsChecked?.toLocaleString('tr-TR')} evrak
+            {data?.kpis.totalValid?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} / {data?.kpis.totalDocsChecked?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'документов' : 'evrak'}
           </p>
         </div>
 
@@ -290,17 +291,17 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">Süresi Dolmuş</span>
+            <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">{t('comp_expired')}</span>
             <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-rose-600 dark:text-rose-400">
-              {data?.kpis.totalExpired?.toLocaleString('tr-TR') ?? 0}
+              {data?.kpis.totalExpired?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 0}
             </span>
           </div>
-          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">Kritik yenilenmeli</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Критично обновить' : 'Kritik yenilenmeli'}</p>
         </div>
 
         {/* KPI 3: 0-15 Gün Kaldı */}
@@ -313,17 +314,17 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">0-15 Gün (Acil)</span>
+            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">{t('comp_critical_urgent')}</span>
             <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/80 text-amber-600 flex items-center justify-center">
               <Clock className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-amber-700 dark:text-amber-400">
-              {data?.kpis.totalCritical?.toLocaleString('tr-TR') ?? 0}
+              {data?.kpis.totalCritical?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 0}
             </span>
           </div>
-          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">İşlemde olmalı</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'В обработке' : 'İşlemde olmalı'}</p>
         </div>
 
         {/* KPI 4: 16-30 Gün Kaldı */}
@@ -336,17 +337,17 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-orange-700 dark:text-orange-400">16-30 Gün</span>
+            <span className="text-[11px] font-bold text-orange-700 dark:text-orange-400">{t('comp_warning')}</span>
             <div className="w-7 h-7 rounded-lg bg-orange-50 dark:bg-orange-950/80 text-orange-600 flex items-center justify-center">
               <Clock className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-orange-700 dark:text-orange-400">
-              {data?.kpis.totalWarning?.toLocaleString('tr-TR') ?? 0}
+              {data?.kpis.totalWarning?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 0}
             </span>
           </div>
-          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">Yaklaşan belgeler</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Истекающие сроки' : 'Yaklaşan belgeler'}</p>
         </div>
 
         {/* KPI 5: Eksik Evrak */}
@@ -359,33 +360,33 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400">Eksik Evrak</span>
+            <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400">{t('comp_missing')}</span>
             <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center">
               <FileX className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-rose-700 dark:text-rose-400">
-              {data?.kpis.totalMissing?.toLocaleString('tr-TR') ?? 0}
+              {data?.kpis.totalMissing?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 0}
             </span>
           </div>
-          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">Kayıtsız / Yok</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Отсутствует' : 'Kayıtsız / Yok'}</p>
         </div>
 
         {/* KPI 6: Aktif Çalışan */}
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">Aktif Kadro</span>
+            <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">{t('comp_active_workforce')}</span>
             <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/80 text-teal-600 flex items-center justify-center">
               <FileCheck2 className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-teal-700 dark:text-teal-400">
-              {data?.totalActivePersonnel?.toLocaleString('tr-TR') ?? 5363}
+              {data?.totalActivePersonnel?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 5363}
             </span>
           </div>
-          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">Taranan personel</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Сотрудников проверено' : 'Taranan personel'}</p>
         </div>
       </div>
 
@@ -571,15 +572,15 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
               onChange={(e) => setFilterDocType(e.target.value)}
               className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
             >
-              <option value="all">Tüm Evrak Tipleri</option>
-              <option value="pasaport">Pasaport</option>
-              <option value="vize">Vize</option>
-              <option value="propusk">Propusk (Saha Kartı)</option>
-              <option value="patent">Patent & Çalışma İzni</option>
-              <option value="registrasyon">Registrasyon / Migrasyon</option>
-              <option value="daktilo">Daktiloskopiya (Parmak İzi)</option>
-              <option value="dms">Sağlık / DMS Sigorta</option>
-              <option value="dil">Dil Sertifikası</option>
+              <option value="all">{lang === 'ru' ? 'Все типы документов' : 'Tüm Evrak Tipleri'}</option>
+              <option value="pasaport">{lang === 'ru' ? 'Паспорт' : 'Pasaport'}</option>
+              <option value="vize">{lang === 'ru' ? 'Виза' : 'Vize'}</option>
+              <option value="propusk">{lang === 'ru' ? 'Пропуск на объект' : 'Propusk (Saha Kartı)'}</option>
+              <option value="patent">{lang === 'ru' ? 'Патент и разрешение на работу' : 'Patent & Çalışma İzni'}</option>
+              <option value="registrasyon">{lang === 'ru' ? 'Регистрация / Миграционная карта' : 'Registrasyon / Migrasyon'}</option>
+              <option value="daktilo">{lang === 'ru' ? 'Дактилоскопия (Отпечатки)' : 'Daktiloskopiya (Parmak İzi)'}</option>
+              <option value="dms">{lang === 'ru' ? 'Медицина / Полис ДМС' : 'Sağlık / DMS Sigorta'}</option>
+              <option value="dil">{lang === 'ru' ? 'Сертификат о знании языка' : 'Dil Sertifikası'}</option>
             </select>
 
             {/* Status Dropdown */}
@@ -588,13 +589,13 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
               onChange={(e) => setFilterStatus(e.target.value)}
               className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
             >
-              <option value="all">Tüm Süre Durumları</option>
-              <option value="expired">🚨 Süresi Dolmuş</option>
-              <option value="critical">⚠️ Kritik (0-15 Gün)</option>
-              <option value="warning">⏳ Yaklaşan (16-30 Gün)</option>
-              <option value="normal">📅 31-60 Gün</option>
-              <option value="valid">✅ Geçerli (&gt;60 Gün)</option>
-              <option value="missing">❌ Eksik / Belge Yok</option>
+              <option value="all">{lang === 'ru' ? 'Все статусы сроков' : 'Tüm Süre Durumları'}</option>
+              <option value="expired">{lang === 'ru' ? '🚨 Просрочено' : '🚨 Süresi Dolmuş'}</option>
+              <option value="critical">{lang === 'ru' ? '⚠️ Критично (0-15 дней)' : '⚠️ Kritik (0-15 Gün)'}</option>
+              <option value="warning">{lang === 'ru' ? '⏳ Истекает (16-30 дней)' : '⏳ Yaklaşan (16-30 Gün)'}</option>
+              <option value="normal">{lang === 'ru' ? '📅 31-60 дней' : '📅 31-60 Gün'}</option>
+              <option value="valid">{lang === 'ru' ? '✅ Действительно (>60 дней)' : '✅ Geçerli (>60 Gün)'}</option>
+              <option value="missing">{lang === 'ru' ? '❌ Отсутствует документ' : '❌ Eksik / Belge Yok'}</option>
             </select>
 
             {/* Region Dropdown */}
@@ -603,7 +604,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
               onChange={(e) => setFilterRegion(e.target.value)}
               className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
             >
-              <option value="all">Tüm Bölgeler</option>
+              <option value="all">{t('filter_all_regions')}</option>
               {data?.regionBreakdown.map((r) => (
                 <option key={r.region} value={r.region}>
                   {r.region} ({r.total})
@@ -619,9 +620,9 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
                   setFilterRegion('all');
                   setSearch('');
                 }}
-                className="px-2.5 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
+                className="px-2.5 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
               >
-                Filtreleri Temizle
+                {t('filter_clear_all')}
               </button>
             )}
           </div>
@@ -629,19 +630,19 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
 
         {/* Filter Quick Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-0.5">
-          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 shrink-0">Hızlı Filtre:</span>
+          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 shrink-0">{lang === 'ru' ? 'Быстрый фильтр:' : 'Hızlı Filtre:'}</span>
           {[
-            { id: 'all', label: 'Tümü' },
-            { id: 'expired', label: '🚨 Süresi Dolanlar' },
-            { id: 'critical', label: '⚠️ 0-15 Gün (Acil)' },
-            { id: 'warning', label: '⏳ 16-30 Gün' },
-            { id: 'missing', label: '❌ Eksik Evraklar' },
-            { id: 'valid', label: '✅ Geçerliler' },
+            { id: 'all', label: lang === 'ru' ? 'Все' : 'Tümü' },
+            { id: 'expired', label: lang === 'ru' ? '🚨 Просроченные' : '🚨 Süresi Dolanlar' },
+            { id: 'critical', label: lang === 'ru' ? '⚠️ 0-15 дней (Срочно)' : '⚠️ 0-15 Gün (Acil)' },
+            { id: 'warning', label: lang === 'ru' ? '⏳ 16-30 дней' : '⏳ 16-30 Gün' },
+            { id: 'missing', label: lang === 'ru' ? '❌ Без документов' : '❌ Eksik Evraklar' },
+            { id: 'valid', label: lang === 'ru' ? '✅ Действующие' : '✅ Geçerliler' },
           ].map((pill) => (
             <button
               key={pill.id}
               onClick={() => setFilterStatus(pill.id)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
                 filterStatus === pill.id
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -658,18 +659,18 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Evrak Denetim Listesi
+              {lang === 'ru' ? 'Реестр контроля документов' : 'Evrak Denetim Listesi'}
             </h3>
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
-              Kriterlere uyan toplam{' '}
+              {lang === 'ru' ? 'Найдено записей:' : 'Kriterlere uyan toplam'}{' '}
               <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
-                {data?.totalFilteredItems?.toLocaleString('tr-TR') ?? 0}
+                {data?.totalFilteredItems?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 0}
               </span>{' '}
-              evrak kaydı
+              {lang === 'ru' ? 'документов' : 'evrak kaydı'}
             </p>
           </div>
           <div className="text-xs text-slate-600 dark:text-slate-400">
-            Sayfa <span className="font-bold text-slate-900 dark:text-white">{page}</span> / {totalPages}
+            {lang === 'ru' ? 'Стр.' : 'Sayfa'} <span className="font-bold text-slate-900 dark:text-white">{page}</span> / {totalPages}
           </div>
         </div>
 
@@ -677,24 +678,24 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           {loading && (
             <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xs z-20 flex flex-col items-center justify-center">
               <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-2" />
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Evraklar inceleniyor...</p>
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{lang === 'ru' ? 'Проверка документов...' : 'Evraklar inceleniyor...'}</p>
             </div>
           )}
 
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-slate-50/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3 px-3.5">Sicil</th>
-                <th className="py-3 px-3.5">Adı Soyadı</th>
-                <th className="py-3 px-3.5">Görevi / Pozisyon</th>
-                <th className="py-3 px-3.5">Bölge & Proje</th>
-                <th className="py-3 px-3.5">Uyruk</th>
-                <th className="py-3 px-3.5">Evrak Türü</th>
-                <th className="py-3 px-3.5">Belge No</th>
-                <th className="py-3 px-3.5">Bitiş Tarihi</th>
-                <th className="py-3 px-3.5">Kalan Gün</th>
-                <th className="py-3 px-3.5 text-center">Durum Rozeti</th>
-                <th className="py-3 px-3.5 text-center">İşlem</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Табельный' : 'Sicil'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'ФИО' : 'Adı Soyadı'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Должность' : 'Görevi / Pozisyon'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Регион и проект' : 'Bölge & Proje'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Гражданство' : 'Uyruk'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Тип документа' : 'Evrak Türü'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? '№ документа' : 'Belge No'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Срок действия' : 'Bitiş Tarihi'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Осталось дней' : 'Kalan Gün'}</th>
+                <th className="py-3 px-3.5 text-center">{lang === 'ru' ? 'Статус' : 'Durum Rozeti'}</th>
+                <th className="py-3 px-3.5 text-center">{t('table_action_col')}</th>
               </tr>
             </thead>
 
@@ -702,7 +703,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
               {paginatedItems.length === 0 && !loading ? (
                 <tr>
                   <td colSpan={11} className="py-16 text-center text-slate-400">
-                    Filtre kriterlerine uygun evrak kaydı bulunamadı.
+                    {lang === 'ru' ? 'Документы по заданным критериям не найдены.' : 'Filtre kriterlerine uygun evrak kaydı bulunamadı.'}
                   </td>
                 </tr>
               ) : (
@@ -749,7 +750,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
                               : 'text-emerald-600 dark:text-emerald-400'
                           }
                         >
-                          {item.remainingDays} gün
+                          {item.remainingDays} {lang === 'ru' ? 'дн.' : 'gün'}
                         </span>
                       ) : (
                         <span className="text-slate-500 dark:text-slate-400">-</span>
@@ -763,7 +764,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
                         <button
                           onClick={() => onNavigateToPersonnel('search', item.sicilNo)}
                           className="p-1 text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                          title="Personel Kartına Git"
+                          title={lang === 'ru' ? 'Перейти к карточке сотрудника' : 'Personel Kartına Git'}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </button>
@@ -779,17 +780,18 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
         {/* PAGINATION FOOTER */}
         <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
           <span className="text-slate-600 dark:text-slate-400">
-            Toplam {items.length} kayıt arasından {(page - 1) * pageSize + 1}-
-            {Math.min(page * pageSize, items.length)} gösteriliyor
+            {lang === 'ru'
+              ? `Показано ${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, items.length)} из ${items.length}`
+              : `Toplam ${items.length} kayıt arasından ${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, items.length)} gösteriliyor`}
           </span>
 
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
+              className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
             >
-              Önceki
+              {t('table_prev')}
             </button>
             <span className="px-2 font-bold text-slate-800 dark:text-white">
               {page} / {totalPages}
@@ -797,9 +799,9 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
+              className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
             >
-              Sonraki
+              {t('table_next')}
             </button>
           </div>
         </div>

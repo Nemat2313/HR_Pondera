@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Building2, Calendar, Award, ChevronRight, FileSpreadsheet, ShieldCheck, CheckCircle2, TrendingUp } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface PowerBITenureAndFirmsProps {
   topFirms: { name: string; count: number }[];
@@ -20,6 +21,7 @@ export default function PowerBITenureAndFirms({
   onOpenFirmDetail,
   onOpenTenureDetail,
 }: PowerBITenureAndFirmsProps) {
+  const { lang, translateVal } = useLanguage();
   // Separate Main Firm (Pondera) and Subcontractors
   const mainFirm = topFirms.find((f) => f.name.toUpperCase().includes('PONDERA')) || topFirms[0];
   const subcons = topFirms.filter((f) => f !== mainFirm);
@@ -30,6 +32,17 @@ export default function PowerBITenureAndFirms({
   // For tenure vertical histogram
   const maxTenure = Math.max(...tenureBrackets.map((t) => t.count), 1);
 
+  const formatTenureLabel = (lbl: string) => {
+    if (lang !== 'ru') return lbl;
+    return lbl
+      .replace(/0-1 Yıl/i, '0-1 г.')
+      .replace(/1-2 Yıl/i, '1-2 г.')
+      .replace(/2-3 Yıl/i, '2-3 г.')
+      .replace(/3-5 Yıl/i, '3-5 лет')
+      .replace(/5\+ Yıl/i, '5+ лет')
+      .replace(/Yıl/i, 'лет');
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* 1. FIRMA & TAŞERON EKOSİSTEMİ (Partner Ecosystem Cards Grid) */}
@@ -39,7 +52,7 @@ export default function PowerBITenureAndFirms({
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4 text-emerald-600 dark:text-teal-400" />
               <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                Firma & Taşeron Ekosistemi
+                {lang === 'ru' ? 'Экосистема компаний и подрядчиков' : 'Firma & Taşeron Ekosistemi'}
               </h3>
             </div>
             <div className="flex items-center gap-2">
@@ -47,14 +60,14 @@ export default function PowerBITenureAndFirms({
                 <button
                   onClick={() => onOpenFirmDetail('all')}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-emerald-700 dark:text-teal-300 text-[11px] font-bold border border-emerald-200 dark:border-teal-500/30 transition-all cursor-pointer"
-                  title="Firma Personel Listesini Gör"
+                  title={lang === 'ru' ? 'Открыть список персонала компаний' : 'Firma Personel Listesini Gör'}
                 >
                   <FileSpreadsheet className="w-3 h-3" />
-                  <span>Detay Gör</span>
+                  <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
                 </button>
               )}
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
-                {topFirms.length} Firma
+                {topFirms.length} {lang === 'ru' ? 'Компаний' : 'Firma'}
               </span>
             </div>
           </div>
@@ -76,21 +89,21 @@ export default function PowerBITenureAndFirms({
                     </span>
                     <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] font-extrabold flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3" />
-                      Ana Kadro
+                      {lang === 'ru' ? 'Основной штат' : 'Ana Kadro'}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Proje operasyonlarının ana yürütücü kuruluşu
+                    {lang === 'ru' ? 'Генеральный исполнитель проектных операций' : 'Proje operasyonlarının ana yürütücü kuruluşu'}
                   </p>
                 </div>
               </div>
 
               <div className="text-right shrink-0">
                 <span className="font-mono text-base sm:text-lg font-black text-emerald-700 dark:text-teal-300">
-                  {mainFirm.count.toLocaleString('tr-TR')}
+                  {mainFirm.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                 </span>
                 <span className="text-[10px] text-emerald-600 dark:text-teal-400 font-bold block">
-                  %{mainFirmPct} Pay
+                  %{mainFirmPct} {lang === 'ru' ? 'Доля' : 'Pay'}
                 </span>
               </div>
             </div>
@@ -123,7 +136,7 @@ export default function PowerBITenureAndFirms({
 
                   <div className="text-right shrink-0 ml-2">
                     <span className="font-mono text-xs font-black text-slate-900 dark:text-white">
-                      {firm.count.toLocaleString('tr-TR')}
+                      {firm.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                     </span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 block">
                       %{totalPct}
@@ -136,9 +149,9 @@ export default function PowerBITenureAndFirms({
         </div>
 
         <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between mt-3">
-          <span>Pondera-Industry ana istihdam sağlayıcıdır</span>
-          <span className="text-teal-600 dark:text-teal-400 font-semibold flex items-center gap-1">
-            <span>Tüm Taşeronlar</span>
+          <span>{lang === 'ru' ? 'Pondera-Industry — основной работодатель' : 'Pondera-Industry ana istihdam sağlayıcıdır'}</span>
+          <span className="text-teal-600 dark:text-teal-400 font-semibold flex items-center gap-1 cursor-pointer" onClick={() => onOpenFirmDetail && onOpenFirmDetail('all')}>
+            <span>{lang === 'ru' ? 'Все подрядчики' : 'Tüm Taşeronlar'}</span>
             <ChevronRight className="w-3 h-3" />
           </span>
         </div>
@@ -151,7 +164,7 @@ export default function PowerBITenureAndFirms({
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
               <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                Şirket İçi Kıdem Dağılımı (Histogram)
+                {lang === 'ru' ? 'Распределение по стажу работы в компании' : 'Şirket İçi Kıdem Dağılımı (Histogram)'}
               </h3>
             </div>
             <div className="flex items-center gap-2">
@@ -159,14 +172,14 @@ export default function PowerBITenureAndFirms({
                 <button
                   onClick={() => onOpenTenureDetail('all')}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-[11px] font-bold border border-cyan-200 dark:border-cyan-500/30 transition-all cursor-pointer"
-                  title="Kıdem Dağılımı Personel Listesini Gör"
+                  title={lang === 'ru' ? 'Открыть список персонала по стажу' : 'Kıdem Dağılımı Personel Listesini Gör'}
                 >
                   <FileSpreadsheet className="w-3 h-3" />
-                  <span>Detay Gör</span>
+                  <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
                 </button>
               )}
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
-                Ort. 1.8 Yıl
+                {lang === 'ru' ? 'Ср. 1.8 г.' : 'Ort. 1.8 Yıl'}
               </span>
             </div>
           </div>
@@ -187,7 +200,7 @@ export default function PowerBITenureAndFirms({
                   {/* Value and % Pill above column */}
                   <div className="mb-1.5 flex flex-col items-center text-center transition-transform group-hover:-translate-y-1">
                     <span className="text-[10px] sm:text-xs font-black font-mono text-slate-900 dark:text-white">
-                      {tenure.count.toLocaleString('tr-TR')}
+                      {tenure.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                     </span>
                     <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-cyan-100 dark:bg-cyan-900/60 text-cyan-800 dark:text-cyan-200">
                       %{totalPct}
@@ -205,7 +218,7 @@ export default function PowerBITenureAndFirms({
                   {/* Bottom Bracket Label */}
                   <div className="mt-2 text-center">
                     <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-300 transition-colors whitespace-nowrap block">
-                      {tenure.label}
+                      {formatTenureLabel(tenure.label)}
                     </span>
                   </div>
                 </div>
@@ -215,8 +228,14 @@ export default function PowerBITenureAndFirms({
         </div>
 
         <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between mt-3">
-          <span>Şantiye fazlarına göre işe alımlar 0-1 yılda (%69) kümelenmiştir</span>
-          <span className="text-cyan-600 dark:text-cyan-400 font-semibold">Tecrübe Eğrisi &rarr;</span>
+          <span>
+            {lang === 'ru'
+              ? 'В связи с фазами стройки 69% найма приходится на 0-1 год'
+              : 'Şantiye fazlarına göre işe alımlar 0-1 yılda (%69) kümelenmiştir'}
+          </span>
+          <span className="text-cyan-600 dark:text-cyan-400 font-semibold cursor-pointer">
+            {lang === 'ru' ? 'Кривая опыта →' : 'Tecrübe Eğrisi →'}
+          </span>
         </div>
       </div>
     </div>

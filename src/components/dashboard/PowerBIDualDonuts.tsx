@@ -3,6 +3,7 @@
 import React from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { Briefcase, Globe2, FileSpreadsheet, Users2 } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface PowerBIDualDonutsProps {
   collarData: { label: string; count: number }[];
@@ -54,6 +55,7 @@ export default function PowerBIDualDonuts({
   onSelectSlice,
   onOpenDetail,
 }: PowerBIDualDonutsProps) {
+  const { lang, translateVal } = useLanguage();
   const blueCollar = collarData.find((c) => c.label.includes('Mavi'))?.count || 0;
   const bluePct = totalCount > 0 ? Math.round((blueCollar / totalCount) * 100) : 80;
 
@@ -95,7 +97,7 @@ export default function PowerBIDualDonuts({
           <div className="flex items-center gap-2">
             <Briefcase className="w-4 h-4 text-emerald-600 dark:text-teal-400" />
             <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-              Beyaz Yaka / Mavi Yaka Dağılımı
+              {lang === 'ru' ? 'Распределение: Синие / Белые воротнички' : 'Beyaz Yaka / Mavi Yaka Dağılımı'}
             </h3>
           </div>
           <div className="flex items-center gap-1.5">
@@ -103,10 +105,10 @@ export default function PowerBIDualDonuts({
               <button
                 onClick={() => onOpenDetail('collar', selectedCollar || 'all')}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-emerald-700 dark:text-teal-300 text-[11px] font-bold border border-emerald-200 dark:border-teal-500/30 transition-all cursor-pointer"
-                title="Yaka Dağılımı Detayını Aç"
+                title={lang === 'ru' ? 'Открыть детализацию по категориям' : 'Yaka Dağılımı Detayını Aç'}
               >
                 <FileSpreadsheet className="w-3 h-3 text-emerald-600 dark:text-teal-400" />
-                <span>Detay Gör</span>
+                <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
               </button>
             )}
           </div>
@@ -153,9 +155,9 @@ export default function PowerBIDualDonuts({
                     const p = totalCount > 0 ? ((d.count / totalCount) * 100).toFixed(1) : 0;
                     return (
                       <div className="p-2.5 bg-slate-900 border border-teal-500/40 rounded-xl text-xs text-white shadow-xl">
-                        <p className="font-bold text-teal-300">{d.label}</p>
+                        <p className="font-bold text-teal-300">{translateVal(d.label)}</p>
                         <p className="font-mono mt-0.5">
-                          {d.count.toLocaleString('tr-TR')} Kişi (%{p})
+                          {d.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'} (%{p})
                         </p>
                       </div>
                     );
@@ -170,7 +172,7 @@ export default function PowerBIDualDonuts({
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <span className="text-2xl font-black text-slate-900 dark:text-white">%{bluePct}</span>
             <span className="text-[10px] text-emerald-600 dark:text-teal-400 font-bold uppercase tracking-wider">
-              Mavi Yaka
+              {lang === 'ru' ? 'Синий воротничок' : 'Mavi Yaka'}
             </span>
           </div>
         </div>
@@ -192,9 +194,9 @@ export default function PowerBIDualDonuts({
                   className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: COLLAR_COLORS[idx % COLLAR_COLORS.length] }}
                 />
-                <span className="text-slate-600 dark:text-slate-300 text-[11px] font-semibold">{item.label}:</span>
+                <span className="text-slate-600 dark:text-slate-300 text-[11px] font-semibold">{translateVal(item.label)}:</span>
                 <span className="font-bold text-slate-900 dark:text-white font-mono text-[11px]">
-                  {item.count.toLocaleString('tr-TR')} (%{pct})
+                  {item.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} (%{pct})
                 </span>
               </div>
             );
@@ -208,7 +210,7 @@ export default function PowerBIDualDonuts({
           <div className="flex items-center gap-2">
             <Globe2 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-              Expat / SNG / Yerel Statüsü
+              {lang === 'ru' ? 'Статус: Экспат / СНГ / Местный' : 'Expat / SNG / Yerel Statüsü'}
             </h3>
           </div>
           <div className="flex items-center gap-1.5">
@@ -216,10 +218,10 @@ export default function PowerBIDualDonuts({
               <button
                 onClick={() => onOpenDetail('category', selectedCategory || 'all')}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-[11px] font-bold border border-cyan-200 dark:border-cyan-500/30 transition-all cursor-pointer"
-                title="Statü Dağılımı Detayını Aç"
+                title={lang === 'ru' ? 'Открыть детализацию по статусам' : 'Statü Dağılımı Detayını Aç'}
               >
                 <FileSpreadsheet className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
-                <span>Detay Gör</span>
+                <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
               </button>
             )}
           </div>
@@ -264,9 +266,9 @@ export default function PowerBIDualDonuts({
                     const p = totalCount > 0 ? ((d.count / totalCount) * 100).toFixed(1) : 0;
                     return (
                       <div className="p-2.5 bg-slate-900 border border-cyan-500/40 rounded-xl text-xs text-white shadow-xl">
-                        <p className="font-bold text-cyan-300">{d.label}</p>
+                        <p className="font-bold text-cyan-300">{translateVal(d.label)}</p>
                         <p className="font-mono mt-0.5">
-                          {d.count.toLocaleString('tr-TR')} Kişi (%{p})
+                          {d.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'} (%{p})
                         </p>
                       </div>
                     );
@@ -280,7 +282,7 @@ export default function PowerBIDualDonuts({
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <span className="text-2xl font-black text-slate-900 dark:text-white">%{expatPct}</span>
             <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-bold uppercase tracking-wider">
-              Ekspat
+              {lang === 'ru' ? 'Экспат' : 'Ekspat'}
             </span>
           </div>
         </div>
@@ -302,9 +304,9 @@ export default function PowerBIDualDonuts({
                   className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: CATEGORY_COLORS[idx % CATEGORY_COLORS.length] }}
                 />
-                <span className="text-slate-600 dark:text-slate-300 text-[11px] font-semibold">{item.label}:</span>
+                <span className="text-slate-600 dark:text-slate-300 text-[11px] font-semibold">{translateVal(item.label)}:</span>
                 <span className="font-bold text-slate-900 dark:text-white font-mono text-[11px]">
-                  {item.count.toLocaleString('tr-TR')} (%{pct})
+                  {item.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} (%{pct})
                 </span>
               </div>
             );
@@ -318,7 +320,7 @@ export default function PowerBIDualDonuts({
           <div className="flex items-center gap-2">
             <Users2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-              Cinsiyet Dağılımı (Erkek / Kadın)
+              {lang === 'ru' ? 'Распределение по полу (Мужчины / Женщины)' : 'Cinsiyet Dağılımı (Erkek / Kadın)'}
             </h3>
           </div>
           <div className="flex items-center gap-1.5">
@@ -326,10 +328,10 @@ export default function PowerBIDualDonuts({
               <button
                 onClick={() => onOpenDetail('gender', 'all')}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-700 dark:text-teal-300 text-[11px] font-bold border border-teal-200 dark:border-teal-500/30 transition-all cursor-pointer"
-                title="Cinsiyet Detayını Aç"
+                title={lang === 'ru' ? 'Открыть детализацию по полу' : 'Cinsiyet Detayını Aç'}
               >
                 <FileSpreadsheet className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                <span>Detay Gör</span>
+                <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
               </button>
             )}
           </div>
@@ -348,15 +350,17 @@ export default function PowerBIDualDonuts({
               </div>
               <div>
                 <span className="text-[11px] font-bold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
-                  Erkek Kadro
+                  {lang === 'ru' ? 'Мужской штат' : 'Erkek Kadro'}
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-200/70 dark:bg-teal-800/80 text-teal-950 dark:text-teal-100 font-black">
                     %{malePct}
                   </span>
                 </span>
                 <p className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
-                  {maleCount.toLocaleString('tr-TR')}
+                  {maleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Aktif Kadro</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                  {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
+                </p>
               </div>
             </div>
 
@@ -370,15 +374,17 @@ export default function PowerBIDualDonuts({
               </div>
               <div>
                 <span className="text-[11px] font-bold text-violet-800 dark:text-violet-300 flex items-center gap-1.5">
-                  Kadın Kadro
+                  {lang === 'ru' ? 'Женский штат' : 'Kadın Kadro'}
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-200/70 dark:bg-violet-800/80 text-violet-950 dark:text-violet-100 font-black">
                     %{femalePct}
                   </span>
                 </span>
                 <p className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
-                  {femaleCount.toLocaleString('tr-TR')}
+                  {femaleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Aktif Kadro</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                  {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
+                </p>
               </div>
             </div>
           </div>
@@ -386,19 +392,23 @@ export default function PowerBIDualDonuts({
           {/* Proportional dual progress bar */}
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[11px] font-bold">
-              <span className="text-teal-700 dark:text-teal-300">%{malePct} Erkek</span>
-              <span className="text-violet-700 dark:text-violet-300">%{femalePct} Kadın</span>
+              <span className="text-teal-700 dark:text-teal-300">
+                %{malePct} {lang === 'ru' ? 'Мужчины' : 'Erkek'}
+              </span>
+              <span className="text-violet-700 dark:text-violet-300">
+                %{femalePct} {lang === 'ru' ? 'Женщины' : 'Kadın'}
+              </span>
             </div>
             <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner">
               <div
                 className="bg-gradient-to-r from-teal-500 to-emerald-400 h-full transition-all duration-500"
                 style={{ width: `${malePct}%` }}
-                title={`Erkek: %${malePct}`}
+                title={`${lang === 'ru' ? 'Мужчины' : 'Erkek'}: %${malePct}`}
               />
               <div
                 className="bg-gradient-to-r from-violet-500 to-indigo-500 h-full transition-all duration-500"
                 style={{ width: `${femalePct}%` }}
-                title={`Kadın: %${femalePct}`}
+                title={`${lang === 'ru' ? 'Женщины' : 'Kadın'}: %${femalePct}`}
               />
             </div>
           </div>
@@ -407,10 +417,10 @@ export default function PowerBIDualDonuts({
         {/* Bottom summary info */}
         <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200 dark:border-slate-800">
           <span className="text-[11px] text-slate-600 dark:text-slate-400">
-            Saha / Şantiye yoğunluklu kadro
+            {lang === 'ru' ? 'Преимущественно полевой / строительный штат' : 'Saha / Şantiye yoğunluklu kadro'}
           </span>
           <span className="text-[11px] font-bold text-teal-700 dark:text-teal-300 font-mono">
-            {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 Oran
+            {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотношение' : 'Oran'}
           </span>
         </div>
       </div>

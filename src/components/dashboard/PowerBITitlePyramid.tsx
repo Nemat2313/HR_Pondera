@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Award, Briefcase, ChevronRight, TrendingUp, FileSpreadsheet, Crown, ChevronDown } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface PowerBITitlePyramidProps {
   pyramidData: { title: string; count: number }[];
@@ -39,6 +40,20 @@ export default function PowerBITitlePyramid({
     { badge: 'L7', bg: 'from-emerald-500/20 to-teal-600/20', border: 'border-emerald-500/50 dark:border-emerald-500/30', text: 'text-emerald-700 dark:text-emerald-300' },
   ];
 
+  const { lang, t } = useLanguage();
+
+  const translateTitle = (title: string) => {
+    if (lang === 'tr') return title;
+    const lower = title.toLowerCase();
+    if (lower.includes('mühendis') || lower.includes('teknik ofis')) return 'Инженер / Тех. офис';
+    if (lower.includes('uzman') || lower.includes('müfettiş')) return 'Специалист / Инспектор';
+    if (lower.includes('formen') || lower.includes('ekipbaşı')) return 'Бригадир / Мастер';
+    if (lower.includes('usta') || lower.includes('montajcı')) return 'Квал. монтажник / Рабочий';
+    if (lower.includes('saha') || lower.includes('düz işçi')) return 'Полевой персонал / Рабочий';
+    if (lower.includes('şef') || lower.includes('müdür') || lower.includes('yönetim')) return 'Руководство / Менеджер';
+    return title;
+  };
+
   return (
     <div className="p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden flex flex-col justify-between transition-colors">
       {/* Glow background (dark mode only) */}
@@ -52,11 +67,11 @@ export default function PowerBITitlePyramid({
               <Award className="w-4 h-4" />
             </span>
             <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
-              Hiyerarşik Teşkilat Piramidi (Organization Funnel)
+              {t('funnel_title')}
             </h2>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Yönetim zirvesinden saha icrasına doğru 7 kademeli piramidal dağılım
+            {t('funnel_sub')}
           </p>
         </div>
 
@@ -65,10 +80,10 @@ export default function PowerBITitlePyramid({
             <button
               onClick={() => onOpenDetail(selectedTitle || 'all')}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-emerald-700 dark:text-teal-300 text-[11px] font-bold border border-emerald-200 dark:border-teal-500/30 transition-all cursor-pointer"
-              title="Ünvan Kademesi Personel Listesini Gör"
+              title={lang === 'ru' ? 'Смотреть список должностей' : 'Ünvan Kademesi Personel Listesini Gör'}
             >
               <FileSpreadsheet className="w-3 h-3 text-emerald-600 dark:text-teal-400" />
-              <span>Detay Gör</span>
+              <span>{t('btn_see_detail')}</span>
             </button>
           )}
         </div>
@@ -77,7 +92,7 @@ export default function PowerBITitlePyramid({
       {/* Apex Indicator Tag */}
       <div className="flex items-center justify-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-400 font-extrabold uppercase tracking-wider mb-2">
         <Crown className="w-3.5 h-3.5" />
-        <span>Yönetim Kademesi (Zirve)</span>
+        <span>{t('funnel_peak')}</span>
         <ChevronDown className="w-3.5 h-3.5" />
       </div>
 
@@ -114,7 +129,7 @@ export default function PowerBITitlePyramid({
                     {tierStyle.badge}
                   </span>
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
-                    {cleanTitle}
+                    {translateTitle(cleanTitle)}
                   </span>
                 </div>
 
@@ -137,9 +152,9 @@ export default function PowerBITitlePyramid({
 
       {/* Footer */}
       <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between relative z-10 mt-2">
-        <span>Saha personeli ve usta kadrosu piramidin ana tabanını (%89.1) oluşturur</span>
+        <span>{t('funnel_note')}</span>
         <span className="text-emerald-600 dark:text-teal-400 font-semibold flex items-center gap-1">
-          <span>7 Kademeli Teşkilat</span>
+          <span>{t('funnel_tag')}</span>
           <ChevronRight className="w-3 h-3" />
         </span>
       </div>

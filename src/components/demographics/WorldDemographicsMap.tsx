@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Globe, MapPin, ArrowRight, Sparkles, Navigation, Layers } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface CountryStat {
   label: string;
@@ -166,10 +167,25 @@ export default function WorldDemographicsMap({
   totalEmployees,
   onNavigateToPersonnel,
 }: WorldDemographicsMapProps) {
+  const { lang, translateVal } = useLanguage();
   const [hoveredCountryKey, setHoveredCountryKey] = useState<string | null>(null);
   const [selectedCorridor, setSelectedCorridor] = useState<string>('all');
 
   const total = totalEmployees || 1;
+
+  const getCorridorName = (corr: string) => {
+    if (lang !== 'ru') return corr;
+    if (corr.includes('Güney Asya')) return 'Южная Азия';
+    if (corr.includes('Orta Asya')) return 'Центральная Азия (СНГ)';
+    if (corr.includes('Kafkasya')) return 'Кавказ и Каспий';
+    if (corr.includes('Avrasya')) return 'Евразия / Строительство';
+    if (corr.includes('Anadolu')) return 'Штат из Турции';
+    if (corr.includes('Doğu Avrupa')) return 'Восточная Европа';
+    if (corr.includes('Güneydoğu Asya')) return 'Юго-Восточная Азия';
+    if (corr.includes('Kuzey Afrika')) return 'Северная Африка';
+    if (corr.includes('Balkanlar')) return 'Балканы и ЕС';
+    return corr;
+  };
 
   // Enhance nationalities with coordinates, leader lines and SVG flags
   const mappedCountries = nationalities
@@ -189,6 +205,8 @@ export default function WorldDemographicsMap({
       return {
         ...item,
         ...meta,
+        displayName: lang === 'ru' ? translateVal(meta.displayName) : meta.displayName,
+        displayCorridor: getCorridorName(meta.corridor),
         pct,
       };
     })
@@ -203,30 +221,34 @@ export default function WorldDemographicsMap({
 
   // Top Corridors Aggregation
   const corridors = [
-    { id: 'all', label: 'Tüm Uyruklar', count: mappedCountries.reduce((s, c) => s + c.count, 0) },
+    {
+      id: 'all',
+      label: lang === 'ru' ? 'Все национальности' : 'Tüm Uyruklar',
+      count: mappedCountries.reduce((s, c) => s + c.count, 0),
+    },
     {
       id: 'Güney Asya',
-      label: 'Güney Asya (Hindistan / Bangladeş)',
+      label: lang === 'ru' ? 'Южная Азия (Индия / Бангладеш)' : 'Güney Asya (Hindistan / Bangladeş)',
       count: mappedCountries.filter((c) => c.corridor.includes('Güney Asya')).reduce((s, c) => s + c.count, 0),
     },
     {
       id: 'Orta Asya',
-      label: 'Orta Asya (Özbekistan / SNG)',
+      label: lang === 'ru' ? 'Центральная Азия (Узбекистан / СНГ)' : 'Orta Asya (Özbekistan / SNG)',
       count: mappedCountries.filter((c) => c.corridor.includes('Orta Asya')).reduce((s, c) => s + c.count, 0),
     },
     {
       id: 'Kafkasya',
-      label: 'Kafkasya & Hazar (Azerbaycan)',
+      label: lang === 'ru' ? 'Кавказ и Каспий (Азербайджан)' : 'Kafkasya & Hazar (Azerbaycan)',
       count: mappedCountries.filter((c) => c.corridor.includes('Kafkasya')).reduce((s, c) => s + c.count, 0),
     },
     {
       id: 'Anadolu',
-      label: 'Türkiye Kadrosu',
+      label: lang === 'ru' ? 'Штат из Турции' : 'Türkiye Kadrosu',
       count: mappedCountries.filter((c) => c.corridor.includes('Anadolu')).reduce((s, c) => s + c.count, 0),
     },
     {
       id: 'Avrasya',
-      label: 'Rusya Saha Kadrosu',
+      label: lang === 'ru' ? 'Россия (Строительный штат)' : 'Rusya Saha Kadrosu',
       count: mappedCountries.filter((c) => c.corridor.includes('Avrasya')).reduce((s, c) => s + c.count, 0),
     },
   ];
@@ -243,14 +265,20 @@ export default function WorldDemographicsMap({
                 <Globe className="w-4 h-4" />
               </div>
               <h2 className="font-bold text-base text-slate-900 dark:text-white tracking-tight">
-                Avrasya & Küresel İşgücü Dağılım Haritası
+                {lang === 'ru'
+                  ? 'Интерактивная карта распределения персонала по Евразии'
+                  : 'Avrasya & Küresel İşgücü Dağılım Haritası'}
               </h2>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
-                12 Kaynak Ülke • {mappedCountries.reduce((s, c) => s + c.count, 0).toLocaleString('tr-TR')} Kişi
+                {lang === 'ru'
+                  ? `12 стран • ${mappedCountries.reduce((s, c) => s + c.count, 0).toLocaleString('ru-RU')} чел.`
+                  : `12 Kaynak Ülke • ${mappedCountries.reduce((s, c) => s + c.count, 0).toLocaleString('tr-TR')} Kişi`}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Gerçek vektör bayraklar, merkezlenmiş ülke koordinatları ve bağlantı çizgileriyle ayrıştırılmış ferah harita.
+              {lang === 'ru'
+                ? 'Реальные векторные флаги, точные географические координаты и соединительные линии.'
+                : 'Gerçek vektör bayraklar, merkezlenmiş ülke koordinatları ve bağlantı çizgileriyle ayrıştırılmış ferah harita.'}
             </p>
           </div>
 
@@ -266,7 +294,7 @@ export default function WorldDemographicsMap({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                {c.label} ({c.count.toLocaleString('tr-TR')})
+                {c.label} ({c.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')})
               </button>
             ))}
           </div>
@@ -405,7 +433,7 @@ export default function WorldDemographicsMap({
                     className="text-[11px] font-extrabold whitespace-nowrap"
                     style={{ color: isHovered ? '#0f766e' : country.color }}
                   >
-                    {country.count.toLocaleString('tr-TR')}
+                    {country.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                   </span>
                 </div>
               </div>
@@ -433,20 +461,24 @@ export default function WorldDemographicsMap({
                     {hoveredCountry.displayName}
                   </h4>
                   <p className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold">
-                    {hoveredCountry.corridor}
+                    {hoveredCountry.displayCorridor}
                   </p>
                 </div>
               </div>
 
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Aktif Kadro:</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {lang === 'ru' ? 'Активный штат:' : 'Aktif Kadro:'}
+                  </span>
                   <span className="font-extrabold text-slate-900 dark:text-white text-sm">
-                    {hoveredCountry.count.toLocaleString('tr-TR')} Kişi
+                    {hoveredCountry.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Toplam Payı:</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {lang === 'ru' ? 'Доля в штате:' : 'Toplam Payı:'}
+                  </span>
                   <span className="font-bold text-teal-600 dark:text-teal-400">
                     %{hoveredCountry.pct}
                   </span>
@@ -454,7 +486,7 @@ export default function WorldDemographicsMap({
               </div>
 
               <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/80 px-2 py-1 rounded-lg text-center flex items-center justify-center gap-1">
-                <span>Personel Listesinde Filtrele</span>
+                <span>{lang === 'ru' ? 'Фильтровать в списке персонала' : 'Personel Listesinde Filtrele'}</span>
                 <ArrowRight className="w-3 h-3" />
               </div>
             </div>
@@ -464,22 +496,24 @@ export default function WorldDemographicsMap({
           <div className="absolute bottom-3 left-4 flex flex-wrap items-center gap-3 text-[11px] text-slate-800 dark:text-slate-200 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-sm select-none">
             <span className="flex items-center gap-1.5 font-semibold">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-              Lider Kadro (&gt;2.000)
+              {lang === 'ru' ? 'Лидирующий персонал (>2.000)' : 'Lider Kadro (>2.000)'}
             </span>
             <span className="flex items-center gap-1.5 font-semibold">
               <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
-              Bölgesel Kadro (500 - 2.000)
+              {lang === 'ru' ? 'Региональный персонал (500 - 2.000)' : 'Bölgesel Kadro (500 - 2.000)'}
             </span>
             <span className="flex items-center gap-1.5 font-semibold">
               <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-              Uzman Kadro (&lt;500)
+              {lang === 'ru' ? 'Специалисты (<500)' : 'Uzman Kadro (<500)'}
             </span>
           </div>
 
           {/* Top Right Zoom / Focus Tag */}
           <div className="absolute top-3 right-4 flex items-center gap-2 text-[11px] text-slate-800 dark:text-slate-200 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-sm">
             <Navigation className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span className="font-semibold">Avrasya & İpek Yolu Koridoru</span>
+            <span className="font-semibold">
+              {lang === 'ru' ? 'Евразийский и Шелковый коридор' : 'Avrasya & İpek Yolu Koridoru'}
+            </span>
           </div>
         </div>
       </div>
@@ -489,19 +523,23 @@ export default function WorldDemographicsMap({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
           <div>
             <h3 className="font-bold text-base text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-              <span>Ülkelere Göre Çalışan Dağılımı ve Bayraklar</span>
+              <span>{lang === 'ru' ? 'Распределение сотрудников по странам и флаги' : 'Ülkelere Göre Çalışan Dağılımı ve Bayraklar'}</span>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                {filteredCountries.length} Ülke
+                {filteredCountries.length} {lang === 'ru' ? 'стран' : 'Ülke'}
               </span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Her kart üzerine tıklayarak ilgili uyruktaki personelin tam listesini görüntüleyebilirsiniz.
+              {lang === 'ru'
+                ? 'Нажмите на любую карточку, чтобы открыть полный список сотрудников соответствующего гражданства.'
+                : 'Her kart üzerine tıklayarak ilgili uyruktaki personelin tam listesini görüntüleyebilirsiniz.'}
             </p>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>Kartlar mevcuttaki personel sayısına göre sıralanmıştır</span>
+            <span>
+              {lang === 'ru' ? 'Карточки отсортированы по численности персонала' : 'Kartlar mevcuttaki personel sayısına göre sıralanmıştır'}
+            </span>
           </div>
         </div>
 
@@ -534,7 +572,7 @@ export default function WorldDemographicsMap({
                           {item.displayName}
                         </h4>
                         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                          {item.corridor}
+                          {item.displayCorridor}
                         </p>
                       </div>
                     </div>
@@ -553,10 +591,10 @@ export default function WorldDemographicsMap({
                   {/* Big Number Headcount */}
                   <div className="mt-3 flex items-baseline justify-between">
                     <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                      {item.count.toLocaleString('tr-TR')}
+                      {item.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                     </span>
                     <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      Aktif Çalışan
+                      {lang === 'ru' ? 'Активный штат' : 'Aktif Çalışan'}
                     </span>
                   </div>
 
@@ -574,7 +612,7 @@ export default function WorldDemographicsMap({
 
                 {/* Footer Action */}
                 <div className="mt-3.5 pt-2.5 border-t border-slate-200/50 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-teal-600 dark:text-teal-400 font-semibold group">
-                  <span>Personel Listesinde Aç</span>
+                  <span>{lang === 'ru' ? 'Открыть в списке персонала' : 'Personel Listesinde Aç'}</span>
                   <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                 </div>
               </div>

@@ -19,6 +19,7 @@ import {
   FileCheck2,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface SidebarProps {
   activeTab: string;
@@ -40,51 +41,52 @@ export default function Sidebar({
   totalActive,
 }: SidebarProps) {
   const { user } = useAuth();
+  const { lang, t } = useLanguage();
 
   const menuItems = [
     {
       id: 'overview',
-      label: 'Genel Dashboard',
+      label: t('nav_overview'),
       icon: LayoutDashboard,
       badge: 'KPI',
       badgeColor: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
     },
     {
       id: 'compliance',
-      label: 'Evrak & Süre Analitiği',
+      label: t('nav_compliance'),
       icon: FileCheck2,
-      badge: 'Yeni',
+      badge: t('badge_new'),
       badgeColor: 'bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-700/50',
     },
     {
       id: 'personnel',
-      label: 'Personel Listesi',
+      label: t('nav_personnel'),
       icon: Users,
       badge: totalActive ? `${totalActive.toLocaleString('tr-TR')}` : undefined,
       badgeColor: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
     },
     {
       id: 'sites',
-      label: 'Şantiye & Projeler',
+      label: t('nav_sites'),
       icon: Building2,
-      badge: user?.scope_type === 'region' ? '1 Bölge' : '6 Bölge',
+      badge: user?.scope_type === 'region' ? (lang === 'ru' ? '1 Регион' : '1 Bölge') : (lang === 'ru' ? '6 Регионов' : '6 Bölge'),
       badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60',
     },
     {
       id: 'demographics',
-      label: 'Demografi & İstatistik',
+      label: t('nav_demographics'),
       icon: PieChart,
     },
     {
       id: 'turnover',
-      label: 'Yönetim & Turnover',
+      label: t('nav_turnover'),
       icon: TrendingUp,
-      badge: 'Rapor',
+      badge: t('badge_report'),
       badgeColor: 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-800/50',
     },
     {
       id: 'database',
-      label: 'Excel & Veritabanı',
+      label: t('nav_database'),
       icon: Database,
     },
   ];
@@ -93,7 +95,7 @@ export default function Sidebar({
   if (user?.role === 'admin') {
     menuItems.push({
       id: 'admin',
-      label: 'Kullanıcı & RLS',
+      label: t('nav_admin'),
       icon: UserCog,
       badge: 'Admin',
       badgeColor: 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50',
@@ -162,24 +164,24 @@ export default function Sidebar({
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-900 dark:text-white text-[11px] truncate">{user.name}</span>
                 <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50">
-                  {user.role === 'admin' ? 'Admin' : 'Kullanıcı'}
+                  {user.role === 'admin' ? (lang === 'ru' ? 'Админ' : 'Admin') : (lang === 'ru' ? 'Пользователь' : 'Kullanıcı')}
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-normal truncate">
                 {user.scope_type === 'region' ? (
                   <>
                     <MapPin className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                    <span>Bölge: {user.scope_value}</span>
+                    <span>{lang === 'ru' ? 'Регион: ' : 'Bölge: '}{user.scope_value}</span>
                   </>
                 ) : user.scope_type === 'project' ? (
                   <>
                     <Briefcase className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span>Proje: {user.scope_value}</span>
+                    <span>{lang === 'ru' ? 'Проект: ' : 'Proje: '}{user.scope_value}</span>
                   </>
                 ) : (
                   <>
                     <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>Tüm Şantiyeler (Sınırsız)</span>
+                    <span>{t('rls_unlimited')}</span>
                   </>
                 )}
               </div>
@@ -193,7 +195,7 @@ export default function Sidebar({
                 collapsed && !mobileOpen ? 'text-center' : ''
               }`}
             >
-              {collapsed && !mobileOpen ? '•••' : 'Ana Menü'}
+              {collapsed && !mobileOpen ? '•••' : t('nav_main_menu')}
             </div>
 
             {menuItems.map((item) => {
@@ -203,7 +205,7 @@ export default function Sidebar({
                 <button
                   key={item.id}
                   onClick={() => handleSelectTab(item.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[12px] transition-all duration-150 ${
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[12px] transition-all duration-150 cursor-pointer ${
                     isActive
                       ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 shadow-2xs font-medium'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/60 font-normal'
@@ -239,8 +241,8 @@ export default function Sidebar({
                 <ShieldCheck className="w-3.5 h-3.5" />
               </div>
               <div className="overflow-hidden">
-                <p className="text-[11px] font-medium text-slate-800 dark:text-slate-200 truncate leading-tight">Pondera Güvenli DB</p>
-                <p className="text-[9.5px] text-slate-400 dark:text-slate-400 truncate leading-tight font-normal">SQLite In-Memory Hızında</p>
+                <p className="text-[11px] font-medium text-slate-800 dark:text-slate-200 truncate leading-tight">{t('nav_db_secure')}</p>
+                <p className="text-[9.5px] text-slate-400 dark:text-slate-400 truncate leading-tight font-normal">{t('nav_db_sub')}</p>
               </div>
             </div>
           ) : (

@@ -20,6 +20,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { PersonnelRecord } from '@/types';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface PersonnelDetailDrawerProps {
   personnel: PersonnelRecord | null;
@@ -27,6 +28,7 @@ interface PersonnelDetailDrawerProps {
 }
 
 export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelDetailDrawerProps) {
+  const { lang, translateCol, translateVal } = useLanguage();
   const [activeTab, setActiveTab] = useState<'core' | 'location' | 'identity' | 'contract' | 'visa' | 'hse' | 'all'>('core');
   const [searchField, setSearchField] = useState('');
 
@@ -35,13 +37,13 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
   const raw = personnel.raw || {};
 
   const tabs = [
-    { id: 'core', label: 'Temel & Görev', icon: User },
-    { id: 'location', label: 'Lokasyon & Kamp', icon: MapPin },
-    { id: 'identity', label: 'Özlük & Pasaport', icon: CreditCard },
-    { id: 'contract', label: 'Sözleşme & Maaş', icon: FileText },
-    { id: 'visa', label: 'Vize & İkamet', icon: Shield },
-    { id: 'hse', label: 'İSG & Sağlık', icon: Activity },
-    { id: 'all', label: 'Tüm 198 Kolon', icon: Layers },
+    { id: 'core', label: lang === 'ru' ? 'Основное и должность' : 'Temel & Görev', icon: User },
+    { id: 'location', label: lang === 'ru' ? 'Локация и городок' : 'Lokasyon & Kamp', icon: MapPin },
+    { id: 'identity', label: lang === 'ru' ? 'Паспорт и данные' : 'Özlük & Pasaport', icon: CreditCard },
+    { id: 'contract', label: lang === 'ru' ? 'Договор и оклад' : 'Sözleşme & Maaş', icon: FileText },
+    { id: 'visa', label: lang === 'ru' ? 'Виза и ВНЖ' : 'Vize & İkamet', icon: Shield },
+    { id: 'hse', label: lang === 'ru' ? 'ОТ и здоровье' : 'İSG & Sağlık', icon: Activity },
+    { id: 'all', label: lang === 'ru' ? 'Все 198 колонок' : 'Tüm 198 Kolon', icon: Layers },
   ];
 
   // Helper to format date and values
@@ -66,11 +68,12 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
   // Helper to render field value
   const renderField = (label: string, value: any, highlight: boolean = false) => {
     const displayVal = formatDrawerValue(label, value);
+    const translatedVal = translateVal(displayVal);
     return (
       <div className={`p-3 rounded-xl border transition-colors ${highlight ? 'bg-emerald-50/50 dark:bg-emerald-950/50 border-emerald-100 dark:border-emerald-800' : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700/60'}`}>
-        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">{label}</span>
+        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">{translateCol(label)}</span>
         <span className={`text-sm font-bold mt-0.5 block truncate ${highlight ? 'text-emerald-900 dark:text-emerald-300' : 'text-slate-800 dark:text-slate-200'}`}>
-          {displayVal}
+          {translatedVal}
         </span>
       </div>
     );
@@ -293,21 +296,21 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
                   type="text"
                   value={searchField}
                   onChange={(e) => setSearchField(e.target.value)}
-                  placeholder="198 kolon içinde alan ara... (örn: Propusk, Vize, Tarih, Not)"
+                  placeholder={lang === 'ru' ? 'Поиск среди 198 колонок... (напр. Паспорт, Виза, Оклад)' : '198 kolon içinde alan ara... (örn: Propusk, Vize, Tarih, Not)'}
                   className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
 
               <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                {rawEntries.length} alan listeleniyor:
+                {rawEntries.length} {lang === 'ru' ? 'полей отображается:' : 'alan listeleniyor:'}
               </div>
 
               <div className="space-y-2">
                 {rawEntries.map(([k, v], idx) => (
                   <div key={idx} className="p-2.5 bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 rounded-xl flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-600 dark:text-slate-400 max-w-[50%] truncate">{k}</span>
+                    <span className="font-semibold text-slate-600 dark:text-slate-400 max-w-[50%] truncate">{translateCol(k)}</span>
                     <span className="font-bold text-slate-900 dark:text-white max-w-[48%] truncate text-right">
-                      {v !== null && v !== undefined && String(v).trim() !== '' ? String(v) : '-'}
+                      {v !== null && v !== undefined && String(v).trim() !== '' ? translateVal(String(v)) : '-'}
                     </span>
                   </div>
                 ))}
@@ -321,9 +324,9 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
           <span className="text-xs text-slate-500 dark:text-slate-400">Pondera HR ID: #{personnel.id}</span>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition-colors shadow-2xs"
+            className="px-4 py-2 text-xs font-semibold bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition-colors shadow-2xs cursor-pointer"
           >
-            Kapat
+            {lang === 'ru' ? 'Закрыть' : 'Kapat'}
           </button>
         </div>
       </div>
