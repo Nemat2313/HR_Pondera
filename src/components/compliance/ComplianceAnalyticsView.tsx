@@ -273,7 +273,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           </div>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-              %{data?.kpis.complianceRate ?? 88}
+              %{data?.kpis.complianceRate ?? 0}
             </span>
           </div>
           <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">
@@ -383,7 +383,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           </div>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-teal-700 dark:text-teal-400">
-              {data?.totalActivePersonnel?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 5363}
+              {data?.totalActivePersonnel?.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR') ?? 0}
             </span>
           </div>
           <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Сотрудников проверено' : 'Taranan personel'}</p>

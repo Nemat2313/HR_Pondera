@@ -22,7 +22,7 @@ const TEAL_GRADIENT = ['#0d9488', '#0e7490', '#0284c7', '#0369a1', '#1d4ed8', '#
 export default function PowerBIRankedRegionBars({
   regionData,
   nationalityData,
-  totalCount = 5363,
+  totalCount = 0,
   selectedRegion,
   selectedNationality,
   onSelectRegion,

@@ -199,19 +199,128 @@ export async function GET(request: Request) {
       }
       uyrukBreakdown[u].total++;
 
-      for (const d of docDefinitions) {
-        // Document date & number resolution
-        let dateVal = d.dateKey ? r[d.dateKey] : rawJson[d.jsonDateKey || ''];
-        let docNo = d.noKey ? r[d.noKey] : rawJson[d.jsonNoKey || ''];
+      const uyrukUpper = (r.uyruk || '').trim().toUpperCase();
+      const regionTrim = (r.region || '').trim();
+      const kartTuru = (rawJson['Çalışma Kart Türü'] || '').toUpperCase();
 
-        // Certain nationalities don't need visa or patent (e.g. Russia, Belarus, EAEU)
-        const isRussianCitizen = (r.uyruk || '').toUpperCase() === 'RUSYA' || (r.uyruk || '').toUpperCase() === 'BEYAZ RUSYA';
-        if (isRussianCitizen && (d.id === 'vize' || d.id === 'patent' || d.id === 'registrasyon' || d.id === 'dil')) {
-          continue; // Muaf
+      const isRf = uyrukUpper === 'RUSYA' || uyrukUpper === 'BEYAZ RUSYA' || kartTuru === 'MUAF' || kartTuru === 'РФ' || uyrukUpper.includes('RUS');
+      const isEaes = ['KIRGIZISTAN', 'KAZAKISTAN', 'ERMENISTAN'].includes(uyrukUpper) || kartTuru.includes('ЕАЭС') || kartTuru.includes('EAES');
+      const isVks = kartTuru.includes('ВКС') || kartTuru.includes('VKS');
+      const isPatent = kartTuru.includes('ПАТЕНТ') || kartTuru.includes('PATENT') || (['OZBEKISTAN', 'TACIKISTAN', 'AZERBAYCAN'].includes(uyrukUpper) && !isVks && !isRf);
+      const isVnjRvp = ['ВНЖ', 'РВП', 'VNJ', 'RVP'].some((x: string) => kartTuru.includes(x));
+      const isQuotaRnr = ['КВОТА', 'KOTA', 'РНР', 'RNR'].some((x: string) => kartTuru.includes(x));
+
+      for (const d of docDefinitions) {
+        // Determine whether this document type is legally required for this individual
+        let isApplicable = false;
+
+        if (d.id === 'pasaport') {
+          isApplicable = true;
+        } else if (d.id === 'propusk') {
+          // Required on physical construction sites (excluding Moscow / Central Office and Ust Luga where propusk isn't tracked in this system)
+          if (regionTrim !== 'Merkez Ofis' && regionTrim !== 'Moskova' && regionTrim !== 'Ust Luga') {
+            isApplicable = true;
+          }
+        } else if (!isRf) {
+          if (d.id === 'registrasyon' || d.id === 'dms' || d.id === 'daktilo') {
+            isApplicable = true;
+          } else if (d.id === 'patent') {
+            // Patent or Work Permit Card (VKS / Quota / Patent)
+            if (!isVnjRvp && !isEaes) {
+              isApplicable = true;
+            }
+          } else if (d.id === 'vize') {
+            // Visas are required for visa countries (Turkey, India, Bangladesh, China, Turkmenistan, etc. or VKS / Quota)
+            if (!isVnjRvp && !isEaes && !isPatent) {
+              if (isVks || isQuotaRnr || ['HINDISTAN', 'TURKIYE', 'BANGLADES', 'CIN', 'TURKMENISTAN', 'PAKISTAN'].includes(uyrukUpper)) {
+                isApplicable = true;
+              }
+            }
+          } else if (d.id === 'dil') {
+            // Dil sertifikası: Only applicable for Patent or Quota workers who have a certificate record
+            if ((isPatent || isQuotaRnr) && rawJson['Dil Sertifikası Bitiş Tarihi']) {
+              isApplicable = true;
+            }
+          }
         }
 
-        const days = getDaysDiff(dateVal);
-        const status = categorizeDays(days);
+        if (!isApplicable) {
+          continue; // Muaf / Kanunen zorunlu değil
+        }
+
+        // Document date, number and status resolution
+        let dateVal: any = null;
+        let docNo: any = null;
+        let days: number | null = null;
+        let status: 'missing' | 'expired' | 'critical' | 'warning' | 'normal' | 'valid' = 'missing';
+        let expiryDateDisplay: string = '-';
+
+        if (d.id === 'pasaport') {
+          docNo = r.pasaport_no || '-';
+          if (isRf) {
+            // Russian internal passport is lifelong in the system
+            status = 'valid';
+            days = null;
+            expiryDateDisplay = 'Süresiz (Бессрочно)';
+          } else {
+            dateVal = r.pasaport_gecerlilik;
+            days = getDaysDiff(dateVal);
+            status = categorizeDays(days);
+            expiryDateDisplay = formatDateDisplay(dateVal);
+          }
+        } else if (d.id === 'vize') {
+          docNo = r.vize_no || '-';
+          dateVal = r.vize_bitis_tarihi;
+          days = getDaysDiff(dateVal);
+          status = categorizeDays(days);
+          expiryDateDisplay = formatDateDisplay(dateVal);
+        } else if (d.id === 'propusk') {
+          docNo = r.propusk_no || '-';
+          dateVal = r.propusk_bitis_tarihi;
+          days = getDaysDiff(dateVal);
+          status = categorizeDays(days);
+          expiryDateDisplay = formatDateDisplay(dateVal);
+        } else if (d.id === 'patent') {
+          docNo = r.patent_alis_tarihi || rawJson['Çalışma Kart No'] || rawJson['Patent No'] || '-';
+          dateVal = r.patent_bitis_tarihi || rawJson['Çalışma Kartı Bitiş Tarihi'];
+          days = getDaysDiff(dateVal);
+          status = categorizeDays(days);
+          expiryDateDisplay = formatDateDisplay(dateVal);
+        } else if (d.id === 'registrasyon') {
+          docNo = r.migrasyon_no || rawJson['Registrasyon No'] || '-';
+          dateVal = rawJson['Registrasyon Bitiş Tarihi'];
+          days = getDaysDiff(dateVal);
+          status = categorizeDays(days);
+          expiryDateDisplay = formatDateDisplay(dateVal);
+        } else if (d.id === 'dms') {
+          docNo = rawJson['DMS Poliçe No'] || rawJson['DMS Başvuru Tarihi'] || '-';
+          dateVal = rawJson['DMS Bitiş Tarihi'];
+          days = getDaysDiff(dateVal);
+          status = categorizeDays(days);
+          expiryDateDisplay = formatDateDisplay(dateVal);
+        } else if (d.id === 'daktilo') {
+          docNo = rawJson['Daktiloskopiya Seri No'] || rawJson['Daktiloskopiya Form Seri No'] || rawJson['Daktiloskopiya Alış Tarihi'] || '-';
+          dateVal = rawJson['Daktiloskopiya Bitis Tarihi'];
+          const hasRecord = Boolean(rawJson['Daktiloskopiya Seri No'] || rawJson['Daktiloskopiya Alış Tarihi'] || rawJson['Daktiloskopiya Başlangıç Tarihi']);
+          if (dateVal) {
+            days = getDaysDiff(dateVal);
+            status = categorizeDays(days);
+            expiryDateDisplay = formatDateDisplay(dateVal);
+          } else if (hasRecord) {
+            status = 'valid';
+            days = null;
+            expiryDateDisplay = 'Süresiz (Бессрочно)';
+          } else {
+            status = 'missing';
+            expiryDateDisplay = '-';
+          }
+        } else if (d.id === 'dil') {
+          docNo = rawJson['Dil Sertifikası Referans No'] || rawJson['Dil Sertifikası Barkod No'] || '-';
+          dateVal = rawJson['Dil Sertifikası Bitiş Tarihi'];
+          days = getDaysDiff(dateVal);
+          status = categorizeDays(days);
+          expiryDateDisplay = formatDateDisplay(dateVal);
+        }
 
         docStats[d.id].totalChecked++;
         totalDocsCount++;
@@ -257,7 +366,7 @@ export async function GET(request: Request) {
           docType: d.id,
           docLabel: d.label,
           docNo: docNo || '-',
-          expiryDate: formatDateDisplay(dateVal),
+          expiryDate: expiryDateDisplay,
           remainingDays: days,
           status, // 'expired' | 'critical' | 'warning' | 'normal' | 'valid' | 'missing'
         });

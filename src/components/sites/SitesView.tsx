@@ -55,7 +55,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
   });
 
   const regions = stats?.regionDistribution || [];
-  const total = stats?.totalCount || 5363;
+  const total = stats?.totalCount || 0;
 
   // Rich metadata for all regions and connected industrial projects
   const siteCatalog: Record<

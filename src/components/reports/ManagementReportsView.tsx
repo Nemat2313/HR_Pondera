@@ -108,7 +108,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
             {lang === 'ru' ? 'Активный штат (В штате)' : 'Aktif Kadro (Mevcut)'}
           </span>
           <div className="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">
-            {(stats?.totalCount || 5363).toLocaleString('tr-TR')}
+            {(stats?.totalCount || 0).toLocaleString('tr-TR')}
           </div>
           <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1">
             {lang === 'ru' ? 'Полевой и офисный персонал' : 'Saha ve ofis personeli'}
