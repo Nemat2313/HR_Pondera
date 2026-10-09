@@ -104,6 +104,8 @@ export default function Home() {
   const handleNavigateToPersonnel = (filterType?: string, filterValue?: string) => {
     if (filterType && filterValue) {
       setInitialFilterForPersonnel({ type: filterType, value: filterValue });
+    } else {
+      setInitialFilterForPersonnel(null);
     }
     setActiveTab('personnel');
   };
@@ -155,12 +157,17 @@ export default function Home() {
       {/* Sidebar with Mobile Support */}
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={(tab) => {
+          if (tab === 'personnel') {
+            setInitialFilterForPersonnel(null);
+          }
+          setActiveTab(tab);
+        }}
         collapsed={collapsed}
         setCollapsed={setCollapsed}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
-        totalActive={stats?.totalCount || 5363}
+        totalActive={stats?.totalCount || 5364}
       />
 
       {/* Topbar with Mobile Hamburger & RLS info */}

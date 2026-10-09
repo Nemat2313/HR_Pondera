@@ -447,7 +447,12 @@ export default function OverviewView({
           avgAge={pbi?.avgAge || 34.9}
           totalCount={total}
           onSelectAgeBracket={(label) => {
-            onNavigateToPersonnel('search', label);
+            setDrillModal({
+              isOpen: true,
+              title: `${lang === 'ru' ? 'Возрастная группа' : 'Yaş Dağılımı'}: ${label}`,
+              filterType: 'region',
+              filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
+            });
           }}
           onOpenDetail={() => {
             setDrillModal({
@@ -466,7 +471,12 @@ export default function OverviewView({
         tenureBrackets={pbi?.tenureBrackets || []}
         totalCount={total}
         onSelectFirm={(firm) => {
-          onNavigateToPersonnel('search', firm);
+          setDrillModal({
+            isOpen: true,
+            title: `${lang === 'ru' ? 'Персонал компании' : 'Firma Personeli'}: ${firm}`,
+            filterType: 'region',
+            filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
+          });
         }}
         onOpenFirmDetail={() => {
           setDrillModal({

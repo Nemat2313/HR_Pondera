@@ -452,18 +452,41 @@ export default function PersonnelListView({
         setFilterRegion(initialFilter.value);
       } else if (initialFilter.type === 'project' && user?.scope_type !== 'project') {
         setFilterProject(initialFilter.value);
-      } else if (initialFilter.type === 'department') setFilterDepartment(initialFilter.value);
-      else if (initialFilter.type === 'category') setFilterCategory(initialFilter.value);
-      else if (initialFilter.type === 'nationality') setFilterNationality(initialFilter.value);
-      else if (initialFilter.type === 'collar') {
+      } else if (initialFilter.type === 'department') {
+        setFilterDepartment(initialFilter.value);
+      } else if (initialFilter.type === 'category') {
+        setFilterCategory(initialFilter.value);
+      } else if (initialFilter.type === 'nationality') {
+        const natMap: Record<string, string> = {
+          OZBEKISTAN: 'Özbekistan',
+          HINDISTAN: 'Hindistan',
+          AZERBAYCAN: 'Azerbaycan',
+          RUSYA: 'Rusya',
+          TURKMENISTAN: 'Türkmenistan',
+          TURKIYE: 'Türkiye',
+          TACIKISTAN: 'Tacikistan',
+          BANGLADES: 'Bangladeş',
+          KIRGIZISTAN: 'Kırgızistan',
+          KAZAKISTAN: 'Kazakistan',
+          MOLDOVA: 'Moldova',
+          BELARUS: 'Belarus',
+        };
+        const val = natMap[initialFilter.value.toUpperCase()] || initialFilter.value;
+        setFilterNationality(val);
+      } else if (initialFilter.type === 'status') {
+        setFilterStatus(initialFilter.value);
+      } else if (initialFilter.type === 'collar') {
         const val = initialFilter.value.includes('Endirekt') ? 'Endirekt' : 'Direkt';
         setFilterCollar(val);
       } else if (initialFilter.type === 'search') {
         setSearch(initialFilter.value);
       }
       setPage(1);
+      if (onClearInitialFilter) {
+        onClearInitialFilter();
+      }
     }
-  }, [initialFilter, user]);
+  }, [initialFilter, user, onClearInitialFilter]);
 
   // Fetch filter dropdown options once
   useEffect(() => {

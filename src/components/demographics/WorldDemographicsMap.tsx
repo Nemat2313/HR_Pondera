@@ -408,7 +408,7 @@ export default function WorldDemographicsMap({
                 className={`absolute z-20 transition-all duration-200 cursor-pointer select-none ${
                   isHovered ? 'z-30 scale-108' : ''
                 }`}
-                onClick={() => onNavigateToPersonnel('nationality', country.label)}
+                onClick={() => onNavigateToPersonnel('nationality', country.displayName || country.label)}
                 onMouseEnter={() => setHoveredCountryKey(country.key)}
                 onMouseLeave={() => setHoveredCountryKey(null)}
               >
@@ -549,7 +549,7 @@ export default function WorldDemographicsMap({
             return (
               <div
                 key={idx}
-                onClick={() => onNavigateToPersonnel('nationality', item.label)}
+                onClick={() => onNavigateToPersonnel('nationality', item.displayName || item.label)}
                 onMouseEnter={() => setHoveredCountryKey(item.key)}
                 onMouseLeave={() => setHoveredCountryKey(null)}
                 className={`p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between ${

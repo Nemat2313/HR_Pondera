@@ -41,16 +41,104 @@ export async function GET(request: Request) {
     const conditions: string[] = [];
     const params: any[] = [];
 
+    // Safe nationality mapping to exact SQLite database values (stored as uppercase ASCII)
+    const nationalityMap: Record<string, string> = {
+      // Turkish names -> DB value
+      ÖZBEKİSTAN: 'OZBEKISTAN',
+      ÖZBEKISTAN: 'OZBEKISTAN',
+      OZBEKİSTAN: 'OZBEKISTAN',
+      OZBEKISTAN: 'OZBEKISTAN',
+      HİNDİSTAN: 'HINDISTAN',
+      HINDISTAN: 'HINDISTAN',
+      AZERBAYCAN: 'AZERBAYCAN',
+      RUSYA: 'RUSYA',
+      TÜRKMENİSTAN: 'TURKMENISTAN',
+      TURKMENISTAN: 'TURKMENISTAN',
+      TÜRKİYE: 'TURKIYE',
+      TURKIYE: 'TURKIYE',
+      TACİKİSTAN: 'TACIKISTAN',
+      TACIKISTAN: 'TACIKISTAN',
+      BANGLADEŞ: 'BANGLADES',
+      BANGLADES: 'BANGLADES',
+      KIRGIZİSTAN: 'KIRGIZISTAN',
+      KIRGIZISTAN: 'KIRGIZISTAN',
+      KAZAKİSTAN: 'KAZAKISTAN',
+      KAZAKISTAN: 'KAZAKISTAN',
+      MOLDOVA: 'MOLDOVA',
+      BELARUS: 'BELARUS',
+      FİLİPİNLER: 'FILIPINLER',
+      FILIPINLER: 'FILIPINLER',
+      ÇİN: 'CIN',
+      CIN: 'CIN',
+      PAKİSTAN: 'PAKISTAN',
+      PAKISTAN: 'PAKISTAN',
+      UKRAYNA: 'UKRAYNA',
+      // Russian names -> DB value
+      УЗБЕКИСТАН: 'OZBEKISTAN',
+      ИНДИЯ: 'HINDISTAN',
+      АЗЕРБАЙДЖАН: 'AZERBAYCAN',
+      РОССИЯ: 'RUSYA',
+      ТУРКМЕНИСТАН: 'TURKMENISTAN',
+      ТУРЦИЯ: 'TURKIYE',
+      ТАДЖИКИСТАН: 'TACIKISTAN',
+      БАНГЛАДЕШ: 'BANGLADES',
+      КЫРГЫЗСТАН: 'KIRGIZISTAN',
+      КАЗАХСТАН: 'KAZAKISTAN',
+      МОЛДОВА: 'MOLDOVA',
+      БЕЛАРУСЬ: 'BELARUS',
+      ФИЛИППИНЫ: 'FILIPINLER',
+      КИТАЙ: 'CIN',
+      ПАКИСТАН: 'PAKISTAN',
+      УКРАИНА: 'UKRAYNA',
+    };
+
+    const regionMap: Record<string, string> = {
+      МОСКВА: 'Merkez Ofis',
+      MOSKOVA: 'Merkez Ofis',
+      'MERKEZ OFİS': 'Merkez Ofis',
+      'MERKEZ OFIS': 'Merkez Ofis',
+      'ГЛАВНЫЙ ОФИС': 'Merkez Ofis',
+      АМУР: 'Amur',
+      AMUR: 'Amur',
+      'АМУР АГХК': 'Amur-AGHK',
+      'AMUR AGHK': 'Amur-AGHK',
+      ТОБОЛЬСК: 'Tobolsk',
+      TOBOLSK: 'Tobolsk',
+      НОРИЛЬСК: 'Murmansk',
+      МУРМАНСК: 'Murmansk',
+      MURMANSK: 'Murmansk',
+      'УСТЬ-ЛУГА': 'Ust Luga',
+      'УСТЬ ЛУГА': 'Ust Luga',
+      'UST-LUGA': 'Ust Luga',
+      'UST LUGA': 'Ust Luga',
+      КАЗАНЬ: 'Kazan',
+      KAZAN: 'Kazan',
+      СВОБОДНЫЙ: 'Svobodny-AGHK',
+      'СВОБОДНЫЙ АГХК': 'Svobodny-AGHK',
+      'SVOBODNY-AGHK': 'Svobodny-AGHK',
+      ИРКУТСК: 'Irkutsk',
+      IRKUTSK: 'Irkutsk',
+      УДОКАН: 'Udokan',
+      UDOKAN: 'Udokan',
+    };
+
     // Status filter
     if (status !== 'all') {
-      conditions.push('genel_durum = ?');
-      params.push(status);
+      if (status === 'Sevke Hazır' || status === 'Sevke Hazir') {
+        conditions.push('(genel_durum = ? OR genel_durum LIKE ?)');
+        params.push('Sevke Hazır', 'Sevke Haz%');
+      } else {
+        conditions.push('genel_durum = ?');
+        params.push(status);
+      }
     }
 
     // Dropdown filters
     if (region !== 'all') {
-      conditions.push('region = ?');
-      params.push(region);
+      const cleanReg = region.trim();
+      const resolvedReg = regionMap[cleanReg.toUpperCase()] || cleanReg;
+      conditions.push('(region = ? OR region = ? OR region LIKE ?)');
+      params.push(resolvedReg, cleanReg, `%${resolvedReg}%`);
     }
     if (project !== 'all') {
       conditions.push('proje_adi = ?');
@@ -65,8 +153,10 @@ export async function GET(request: Request) {
       params.push(category);
     }
     if (nationality !== 'all') {
-      conditions.push('uyruk = ?');
-      params.push(nationality);
+      const cleanNat = nationality.trim();
+      const resolvedNat = nationalityMap[cleanNat.toUpperCase()] || cleanNat;
+      conditions.push('(uyruk = ? OR uyruk = ? OR uyruk LIKE ?)');
+      params.push(resolvedNat, cleanNat, `%${resolvedNat}%`);
     }
     if (collar !== 'all') {
       conditions.push('endirekt_direkt = ?');

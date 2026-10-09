@@ -33,7 +33,7 @@ def build_database():
     
     ws_data = wb["Personel Listesi"]
     
-    # Remove existing DB
+    # Remove existing DB if possible
     if os.path.exists(DB_PATH):
         try:
             os.remove(DB_PATH)
@@ -42,6 +42,11 @@ def build_database():
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # Always drop existing tables to prevent duplicate records if file was locked
+    cursor.execute("DROP TABLE IF EXISTS personnel")
+    cursor.execute("DROP TABLE IF EXISTS columns_meta")
+    cursor.execute("DROP TABLE IF EXISTS system_info")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS system_info (
