@@ -78,6 +78,16 @@ export interface PowerBIMetrics {
   decompositionTree: TreeRegion[];
   turnoverRate?: number;
   annualExits?: number;
+  workPermits?: WorkPermitStat[];
+}
+
+export interface WorkPermitStat {
+  key: string;
+  name: string;
+  nameRu: string;
+  count: number;
+  percentage: number;
+  color: string;
 }
 
 export interface StatsData {
@@ -92,6 +102,7 @@ export interface StatsData {
   monthlyEntries: { month: string; in_count: number }[];
   monthlyExits: { month: string; out_count: number }[];
   systemInfo: Record<string, string>;
+  workPermits?: WorkPermitStat[];
   powerbi?: PowerBIMetrics;
 }
 

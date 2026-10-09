@@ -25,6 +25,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PowerBIHeroBar from './PowerBIHeroBar';
 import PowerBIDecompositionTree from './PowerBIDecompositionTree';
+import PowerBIWorkPermits from './PowerBIWorkPermits';
 import PowerBITitlePyramid from './PowerBITitlePyramid';
 import PowerBIAgeDemographics from './PowerBIAgeDemographics';
 import PowerBIDualDonuts from './PowerBIDualDonuts';
@@ -81,7 +82,7 @@ export default function OverviewView({
   const [drillModal, setDrillModal] = useState<{
     isOpen: boolean;
     title: string;
-    filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar';
+    filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit';
     filterValue: string;
   }>({
     isOpen: false,
@@ -392,35 +393,65 @@ export default function OverviewView({
         }}
       />
 
-      {/* 4. POWER BI HIERARCHICAL DECOMPOSITION TREE (WITH CONNECTING BRANCH LINES) */}
-      <PowerBIDecompositionTree
-        treeData={pbi?.decompositionTree || []}
-        totalCount={total}
-        onSelectNode={(type, value) => {
-          if (type === 'region') setSelectedRegion(selectedRegion === value ? 'all' : value);
-          else if (type === 'project') setSelectedProject(selectedProject === value ? 'all' : value);
-          else if (type === 'department') setSelectedDepartment(selectedDepartment === value ? 'all' : value);
-        }}
-        onOpenDetail={(type, value) => {
-          setDrillModal({
-            isOpen: true,
-            title:
-              type === 'region'
-                ? lang === 'ru'
-                  ? 'Список персонала по региону'
-                  : 'Bölge Detay Listesi'
-                : type === 'project'
-                ? lang === 'ru'
-                  ? 'Список персонала по проекту'
-                  : 'Proje Detay Listesi'
-                : lang === 'ru'
-                ? 'Список персонала по отделу'
-                : 'Departman Detay Listesi',
-            filterType: type,
-            filterValue: value,
-          });
-        }}
-      />
+      {/* 4. DECOMPOSITION TREE (2/3) & RUSSIAN WORK PERMITS DONUT (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        <div className="lg:col-span-2 flex flex-col">
+          <PowerBIDecompositionTree
+            treeData={pbi?.decompositionTree || []}
+            totalCount={total}
+            onSelectNode={(type, value) => {
+              if (type === 'region') setSelectedRegion(selectedRegion === value ? 'all' : value);
+              else if (type === 'project') setSelectedProject(selectedProject === value ? 'all' : value);
+              else if (type === 'department') setSelectedDepartment(selectedDepartment === value ? 'all' : value);
+            }}
+            onOpenDetail={(type, value) => {
+              setDrillModal({
+                isOpen: true,
+                title:
+                  type === 'region'
+                    ? lang === 'ru'
+                      ? 'Список персонала по региону'
+                      : 'Bölge Detay Listesi'
+                    : type === 'project'
+                    ? lang === 'ru'
+                      ? 'Список персонала по проекту'
+                      : 'Proje Detay Listesi'
+                    : lang === 'ru'
+                    ? 'Список персонала по отделу'
+                    : 'Departman Detay Listesi',
+                filterType: type,
+                filterValue: value,
+              });
+            }}
+          />
+        </div>
+        <div className="lg:col-span-1 flex flex-col">
+          <PowerBIWorkPermits
+            permits={stats?.workPermits || pbi?.workPermits || []}
+            totalCount={total}
+            onSelectPermit={(permitKey) => {
+              const permitObj = (stats?.workPermits || pbi?.workPermits || []).find((p) => p.key === permitKey);
+              const label = permitObj ? (lang === 'ru' ? permitObj.nameRu : permitObj.name) : permitKey;
+              setDrillModal({
+                isOpen: true,
+                title: `${lang === 'ru' ? 'Персонал со статусом' : 'Çalışma İzni Personeli'}: ${label}`,
+                filterType: 'permit',
+                filterValue: permitKey,
+              });
+            }}
+            onOpenDetail={(permitKey) => {
+              const permitObj = permitKey ? (stats?.workPermits || pbi?.workPermits || []).find((p) => p.key === permitKey) : null;
+              const label = permitObj ? (lang === 'ru' ? permitObj.nameRu : permitObj.name) : (lang === 'ru' ? 'Все статусы' : 'Tüm Statüler');
+              setDrillModal({
+                isOpen: true,
+                title: `${lang === 'ru' ? 'Список персонала по статусу' : 'Çalışma İzni Listesi'}: ${label}`,
+                filterType: 'permit',
+                filterValue: permitKey || 'all',
+              });
+            }}
+          />
+        </div>
+      </div>
 
       {/* 5. TITLE PYRAMID & DEMOGRAPHIC AGE PYRAMID (SIDE-BY-SIDE) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">

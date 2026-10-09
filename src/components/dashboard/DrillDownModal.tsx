@@ -9,7 +9,7 @@ interface DrillDownModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar';
+  filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit';
   filterValue: string;
   onNavigateToPersonnel: (filterType: string, filterValue: string) => void;
 }
@@ -40,6 +40,7 @@ export default function DrillDownModal({
     else if (filterType === 'department') params.set('department', filterValue);
     else if (filterType === 'category') params.set('category', filterValue);
     else if (filterType === 'nationality') params.set('nationality', filterValue);
+    else if (filterType === 'permit') params.set('permit', filterValue);
     else if (filterType === 'collar') {
       const collarVal = filterValue.includes('Endirekt') ? 'Endirekt' : filterValue.includes('Direkt') ? 'Direkt' : '';
       if (collarVal) params.set('collar', collarVal);

@@ -131,6 +131,24 @@ const translations: Record<string, { tr: string; ru: string }> = {
   tenure_curve: { tr: 'Tecrübe Eğrisi', ru: 'Кривая опыта' },
   regions_ranking_title: { tr: 'Bölge & Şantiye İş Gücü Yoğunluğu', ru: 'Численность персонала по регионам и объектам' },
 
+  // Work Permits (Çalışma İzinleri & Statü Dağılımı)
+  permits_title: { tr: 'Yasal Çalışma İzinleri & Statü Dağılımı', ru: 'Разрешительные документы и правовой статус' },
+  permits_sub: { tr: 'Rusya çalışma kartı türleri: ВКС, Patent, Kota, RF ve Avrasya Birliği', ru: 'Статус в РФ: ВКС, Патент, Квота/РНР, Граждане РФ, ЕАЭС, ВНЖ' },
+  permits_badge: { tr: 'RF Göç Mevzuatı', ru: 'Миграционный учет РФ' },
+  permits_registered_total: { tr: 'Kayıtlı İzinli / Muaf', ru: 'Всего на учете' },
+  permits_vks_label: { tr: 'ВКС (Yüksek Nitelikli Uzman)', ru: 'ВКС (Высококвалифицированный спец.)' },
+  permits_patent_label: { tr: 'Патент (Çalışma Patenti)', ru: 'Патент (Трудовой патент)' },
+  permits_quota_label: { tr: 'Квота / РНР (Standart İzin)', ru: 'Квота / РНР (Разрешение на работу)' },
+  permits_rf_label: { tr: 'Граждане РФ (İzin Gerekmez)', ru: 'Граждане РФ (Без разрешения)' },
+  permits_eaes_label: { tr: 'Граждане ЕАЭС (Serbest Dolaşım)', ru: 'Граждане ЕАЭС (Без разрешения)' },
+  permits_vnj_label: { tr: 'ВНЖ / РВП (Oturma İzni)', ru: 'ВНЖ / РВП (Вид на жительство)' },
+  permits_other_label: { tr: 'İşlemde / Diğer', ru: 'В оформлении / Прочее' },
+  permits_legal_note: {
+    tr: '💡 Rusya Federasyonu kanunlarına göre Rus ve Avrasya Birliği (ЕАЭС) vatandaşları çalışma izninden muaftır. Diğer yabancı personeller ВКС, Patent veya Kota/РНР statüsünde istihdam edilir.',
+    ru: '💡 Согласно законодательству РФ, граждане России и стран ЕАЭС освобождены от разрешений на работу. Остальные иностранные специалисты оформляются по ВКС, Патенту или Квоте (РНР).',
+  },
+  permits_drill_title: { tr: 'Çalışma İzni Personel Listesi', ru: 'Список персонала по статусу разрешения' },
+
   // Personnel Table Headers & Labels
   table_title: { tr: 'Personel Veritabanı & Liste', ru: 'База данных и список персонала' },
   table_subtitle: { tr: '198 kolonluk tam veri yapısı, evrak bazlı grup seçimi ve dinamik arama', ru: 'Полная структура из 198 колонок, выбор групп документов и динамический поиск' },

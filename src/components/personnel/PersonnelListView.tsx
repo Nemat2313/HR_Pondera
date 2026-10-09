@@ -319,6 +319,7 @@ export default function PersonnelListView({
   const [filterNationality, setFilterNationality] = useState('all');
   const [filterStatus, setFilterStatus] = useState('Mevcut');
   const [filterCollar, setFilterCollar] = useState('all');
+  const [filterPermit, setFilterPermit] = useState('all');
 
   // Sorting - default to Sicil No
   const [sortBy, setSortBy] = useState('sicil_no');
@@ -478,6 +479,8 @@ export default function PersonnelListView({
       } else if (initialFilter.type === 'collar') {
         const val = initialFilter.value.includes('Endirekt') ? 'Endirekt' : 'Direkt';
         setFilterCollar(val);
+      } else if (initialFilter.type === 'permit') {
+        setFilterPermit(initialFilter.value);
       } else if (initialFilter.type === 'search') {
         setSearch(initialFilter.value);
       }
@@ -531,6 +534,7 @@ export default function PersonnelListView({
     if (filterCategory !== 'all') params.set('category', filterCategory);
     if (filterNationality !== 'all') params.set('nationality', filterNationality);
     if (filterCollar !== 'all') params.set('collar', filterCollar);
+    if (filterPermit !== 'all') params.set('permit', filterPermit);
 
     fetch(`/api/personnel?${params.toString()}`)
       .then((res) => res.json())
@@ -554,6 +558,7 @@ export default function PersonnelListView({
     filterNationality,
     filterStatus,
     filterCollar,
+    filterPermit,
     sortBy,
     sortOrder,
     user,
@@ -789,6 +794,7 @@ export default function PersonnelListView({
     setFilterNationality('all');
     setFilterStatus('Mevcut');
     setFilterCollar('all');
+    setFilterPermit('all');
     setPage(1);
     if (onClearInitialFilter) onClearInitialFilter();
   };
@@ -1166,14 +1172,29 @@ export default function PersonnelListView({
         </div>
 
         {/* Filter stats bar */}
-        <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <span>
-            {t('table_total_prefix')}{' '}
-            <span className="font-extrabold text-slate-900 dark:text-white">
-              {totalRows.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
-            </span>{' '}
-            {t('table_total_listed')}
-          </span>
+        <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>
+              {t('table_total_prefix')}{' '}
+              <span className="font-extrabold text-slate-900 dark:text-white">
+                {totalRows.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
+              </span>{' '}
+              {t('table_total_listed')}
+            </span>
+
+            {filterPermit !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-950/80 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 text-[11px] font-semibold">
+                <span>{lang === 'ru' ? 'Статус разрешения' : 'Çalışma İzni'}: {filterPermit}</span>
+                <button
+                  onClick={() => setFilterPermit('all')}
+                  className="hover:text-cyan-950 dark:hover:text-cyan-100 cursor-pointer ml-0.5"
+                  title={lang === 'ru' ? 'Сбросить фильтр разрешения' : 'İzin filtresini kaldır'}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
           <button
             onClick={resetAllFilters}
             className="text-rose-600 dark:text-rose-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"

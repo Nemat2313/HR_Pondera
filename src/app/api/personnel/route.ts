@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     const nationality = searchParams.get('nationality') || 'all';
     const collar = searchParams.get('collar') || 'all';
     const gender = searchParams.get('gender') || 'all';
+    const permit = searchParams.get('permit') || 'all';
     const sortBy = searchParams.get('sortBy') || 'sira_no';
     const sortOrder = searchParams.get('sortOrder')?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
     const includeDetails = searchParams.get('includeDetails') === 'true';
@@ -165,6 +166,41 @@ export async function GET(request: Request) {
     if (gender !== 'all') {
       conditions.push('cinsiyet = ?');
       params.push(gender);
+    }
+    if (permit !== 'all') {
+      const pUpper = permit.toUpperCase();
+      if (pUpper === 'VKS') {
+        conditions.push(`(UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ВКС%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%VKS%')`);
+      } else if (pUpper === 'PATENT') {
+        conditions.push(`(UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ПАТЕНТ%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%PATENT%')`);
+      } else if (pUpper === 'VNJ_RVP' || pUpper === 'VNJ' || pUpper === 'RVP') {
+        conditions.push(`(UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ВНЖ%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%РВП%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%VNJ%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%RVP%')`);
+      } else if (pUpper === 'RF_CITIZEN' || pUpper === 'RF') {
+        conditions.push(`(uyruk = 'RUSYA' OR (UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) IN ('MUAF', 'РФ') AND uyruk NOT IN ('KIRGIZISTAN', 'BELARUS', 'KAZAKISTAN', 'ERMENISTAN')))`);
+      } else if (pUpper === 'EAES' || pUpper === 'EAEU') {
+        conditions.push(`(uyruk IN ('KIRGIZISTAN', 'BELARUS', 'KAZAKISTAN', 'ERMENISTAN') OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ЕАЭС%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%EAES%')`);
+      } else if (pUpper === 'QUOTA_RNR' || pUpper === 'QUOTA' || pUpper === 'RNR') {
+        conditions.push(`(UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%КВОТА%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%KOTA%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%РНР%' OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%RNR%')`);
+      } else if (pUpper === 'OTHER_PENDING' || pUpper === 'OTHER') {
+        conditions.push(`(
+          UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%ВКС%' 
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%VKS%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%ПАТЕНТ%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%PATENT%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%ВНЖ%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%РВП%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%VNJ%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%RVP%'
+          AND uyruk != 'RUSYA'
+          AND uyruk NOT IN ('KIRGIZISTAN', 'BELARUS', 'KAZAKISTAN', 'ERMENISTAN')
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%ЕАЭС%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT IN ('MUAF', 'РФ')
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%КВОТА%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%KOTA%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%РНР%'
+          AND UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) NOT LIKE '%RNR%'
+        )`);
+      }
     }
 
     // Global Search

@@ -403,7 +403,66 @@ export async function GET(request: Request) {
       })).sort((a, b) => b.count - a.count),
     })).sort((a, b) => b.count - a.count);
 
-    // 11. System info
+    // 11. Work Permits Distribution (RF Mevzuatı Çalışma Kartı, Patent ve Oturum Dağılımı)
+    let workPermits: { key: string; name: string; nameRu: string; count: number; percentage: number; color: string }[] = [];
+    try {
+      const permitQuery = db.prepare(`
+        SELECT 
+          CASE 
+            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ВКС%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%VKS%' THEN 'VKS'
+            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ПАТЕНТ%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%PATENT%' THEN 'PATENT'
+            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ВНЖ%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%РВП%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%VNJ%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%RVP%' THEN 'VNJ_RVP'
+            WHEN uyruk = 'RUSYA' THEN 'RF_CITIZEN'
+            WHEN uyruk IN ('KIRGIZISTAN', 'BELARUS', 'KAZAKISTAN', 'ERMENISTAN') 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ЕАЭС%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%EAES%' THEN 'EAES'
+            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) IN ('MUAF', 'РФ') THEN 'RF_CITIZEN'
+            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%КВОТА%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%KOTA%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%РНР%' 
+              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%RNR%' THEN 'QUOTA_RNR'
+            ELSE 'OTHER_PENDING'
+          END as permit_type,
+          COUNT(*) as count
+        FROM personnel
+        ${overallWhere.clause}
+        GROUP BY permit_type
+        ORDER BY count DESC
+      `);
+      const permitRows = permitQuery.all(...overallWhere.params) as { permit_type: string; count: number }[];
+      
+      const permitMeta: Record<string, { name: string; nameRu: string; color: string }> = {
+        VKS: { name: 'ВКС (Yüksek Nitelikli Uzman)', nameRu: 'ВКС (Высококвалифицированный специалист)', color: '#06B6D4' },
+        PATENT: { name: 'Патент (Çalışma Patenti)', nameRu: 'Патент (Трудовой патент)', color: '#3B82F6' },
+        QUOTA_RNR: { name: 'Квота / РНР (Standart İzin)', nameRu: 'Квота / РНР (Разрешение на работу)', color: '#10B981' },
+        RF_CITIZEN: { name: 'Граждане РФ (İzin Gerekmez)', nameRu: 'Граждане РФ (Без разрешения)', color: '#8B5CF6' },
+        EAES: { name: 'ЕАЭС (Serbest Dolaşım)', nameRu: 'Граждане ЕАЭС (Без разрешения)', color: '#F59E0B' },
+        VNJ_RVP: { name: 'ВНЖ / РВП (Oturma İzni)', nameRu: 'ВНЖ / РВП (Вид на жительство)', color: '#EC4899' },
+        OTHER_PENDING: { name: 'İşlemde / Diğer', nameRu: 'В оформлении / Прочее', color: '#64748B' },
+      };
+
+      const permitTotal = permitRows.reduce((acc, r) => acc + r.count, 0) || totalCount || 1;
+      workPermits = permitRows.map((r) => {
+        const meta = permitMeta[r.permit_type] || { name: r.permit_type, nameRu: r.permit_type, color: '#94A3B8' };
+        return {
+          key: r.permit_type,
+          name: meta.name,
+          nameRu: meta.nameRu,
+          count: r.count,
+          percentage: Number(((r.count / permitTotal) * 100).toFixed(1)),
+          color: meta.color,
+        };
+      });
+    } catch {
+      workPermits = [];
+    }
+
+    // 12. System info
     const sysQuery = db.prepare(`SELECT key, value FROM system_info`);
     const sysRows = sysQuery.all() as { key: string; value: string }[];
     const systemInfo: Record<string, string> = {};
@@ -424,6 +483,7 @@ export async function GET(request: Request) {
       monthlyEntries,
       monthlyExits,
       systemInfo,
+      workPermits,
       powerbi: {
         avgAge,
         avgTenure,
@@ -436,6 +496,7 @@ export async function GET(request: Request) {
         decompositionTree,
         turnoverRate,
         annualExits,
+        workPermits,
       },
       rls: {
         active: scopeType !== 'all',
