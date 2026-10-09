@@ -234,16 +234,59 @@ export async function GET(request: Request) {
     `).all(...nonStatusWhere.params);
 
     // 10. POWER BI ADVANCED METRICS:
-    // A. Average Age & Tenure
-    const avgStatsQuery = db.prepare(`
+    // A. Average Age, Tenure & Age Brackets
+    const ageWhereClause = overallWhere.clause
+      ? `${overallWhere.clause} AND length(dogum_tarihi) >= 4`
+      : 'WHERE length(dogum_tarihi) >= 4';
+
+    let avgAge = 34.9;
+    let ageBrackets = [
+      { label: '< 25 Yaş', group: 'Gen Z / Genç Yetenek', count: 922, color: '#8B5CF6' },
+      { label: '25 - 34 Yaş', group: 'Y Kuşağı / Dinamik Kadro', count: 2970, color: '#3B82F6' },
+      { label: '35 - 44 Yaş', group: 'Deneyimli Saha Gücü', count: 2479, color: '#06B6D4' },
+      { label: '45 - 54 Yaş', group: 'Uzman & Usta Kademesi', count: 896, color: '#10B981' },
+      { label: '55+ Yaş', group: 'Kıdemli Danışman & Mentor', count: 188, color: '#F59E0B' },
+    ];
+
+    try {
+      const ageQuery = db.prepare(`
+        SELECT
+          ROUND(AVG(age), 1) as avg_age,
+          SUM(CASE WHEN age < 25 THEN 1 ELSE 0 END) as under_25,
+          SUM(CASE WHEN age BETWEEN 25 AND 34 THEN 1 ELSE 0 END) as age_25_34,
+          SUM(CASE WHEN age BETWEEN 35 AND 44 THEN 1 ELSE 0 END) as age_35_44,
+          SUM(CASE WHEN age BETWEEN 45 AND 54 THEN 1 ELSE 0 END) as age_45_54,
+          SUM(CASE WHEN age >= 55 THEN 1 ELSE 0 END) as age_55_plus
+        FROM (
+          SELECT
+            CASE
+              WHEN dogum_tarihi LIKE '____-__-__%' THEN 2026 - CAST(substr(dogum_tarihi, 1, 4) AS INTEGER)
+              WHEN dogum_tarihi LIKE '__.__.____%' THEN 2026 - CAST(substr(dogum_tarihi, 7, 4) AS INTEGER)
+              ELSE NULL
+            END as age
+          FROM personnel
+          ${ageWhereClause}
+        )
+        WHERE age IS NOT NULL AND age BETWEEN 18 AND 85
+      `);
+      const ageRow = (ageQuery.get(...overallWhere.params) as any) || {};
+      if (ageRow.avg_age) avgAge = ageRow.avg_age;
+      ageBrackets = [
+        { label: '< 25 Yaş', group: 'Gen Z / Genç Yetenek', count: ageRow.under_25 || 0, color: '#8B5CF6' },
+        { label: '25 - 34 Yaş', group: 'Y Kuşağı / Dinamik Kadro', count: ageRow.age_25_34 || 0, color: '#3B82F6' },
+        { label: '35 - 44 Yaş', group: 'Deneyimli Saha Gücü', count: ageRow.age_35_44 || 0, color: '#06B6D4' },
+        { label: '45 - 54 Yaş', group: 'Uzman & Usta Kademesi', count: ageRow.age_45_54 || 0, color: '#10B981' },
+        { label: '55+ Yaş', group: 'Kıdemli Danışman & Mentor', count: ageRow.age_55_plus || 0, color: '#F59E0B' },
+      ];
+    } catch {}
+
+    const tenureQuery = db.prepare(`
       SELECT 
-        ROUND(AVG(2026 - CAST(substr(dogum_tarihi, 1, 4) AS INTEGER)), 1) as avg_age,
         ROUND(AVG(2026.75 - (CAST(substr(ise_giris_tarihi, 1, 4) AS REAL) + CAST(substr(ise_giris_tarihi, 6, 2) AS REAL)/12.0)), 1) as avg_tenure
       FROM personnel
-      ${overallWhere.clause ? overallWhere.clause + " AND length(dogum_tarihi) >= 4 AND length(ise_giris_tarihi) >= 7" : "WHERE length(dogum_tarihi) >= 4 AND length(ise_giris_tarihi) >= 7"}
+      ${overallWhere.clause ? overallWhere.clause + " AND length(ise_giris_tarihi) >= 7" : "WHERE length(ise_giris_tarihi) >= 7"}
     `);
-    const avgStatsRow = avgStatsQuery.get(...overallWhere.params) as any;
-    const avgAge = avgStatsRow?.avg_age || 34.9;
+    const avgStatsRow = tenureQuery.get(...overallWhere.params) as any;
     const avgTenure = avgStatsRow?.avg_tenure || 1.8;
 
     // B. Firm / Subcontractor Breakdown
@@ -388,6 +431,7 @@ export async function GET(request: Request) {
         subconCount,
         topFirms,
         tenureBrackets,
+        ageBrackets,
         titlePyramid,
         decompositionTree,
         turnoverRate,

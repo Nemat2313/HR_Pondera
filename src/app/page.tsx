@@ -17,7 +17,7 @@ import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -130,6 +130,25 @@ export default function Home() {
     (selectedCollar !== 'all' ? 1 : 0) +
     (selectedTitle !== 'all' ? 1 : 0) +
     (firmFilter !== 'all' ? 1 : 0);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Pondera HR Yükleniyor...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] flex items-center justify-center p-4">
+        <LoginModal isOpen={true} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 transition-colors duration-200">

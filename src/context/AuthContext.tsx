@@ -35,12 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (stored) {
         setUser(JSON.parse(stored));
       } else {
-        // Default to Admin user so initial load works out of the box
-        setUser(DEFAULT_ADMIN);
-        localStorage.setItem('pondera_hr_user', JSON.stringify(DEFAULT_ADMIN));
+        setUser(null);
       }
     } catch {
-      setUser(DEFAULT_ADMIN);
+      setUser(null);
     } finally {
       setLoading(false);
     }

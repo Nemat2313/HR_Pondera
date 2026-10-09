@@ -25,6 +25,7 @@ import { useAuth } from '@/context/AuthContext';
 import PowerBIHeroBar from './PowerBIHeroBar';
 import PowerBIDecompositionTree from './PowerBIDecompositionTree';
 import PowerBITitlePyramid from './PowerBITitlePyramid';
+import PowerBIAgeDemographics from './PowerBIAgeDemographics';
 import PowerBIDualDonuts from './PowerBIDualDonuts';
 import PowerBIRankedRegionBars from './PowerBIRankedRegionBars';
 import PowerBITenureAndFirms from './PowerBITenureAndFirms';
@@ -387,24 +388,43 @@ export default function OverviewView({
         }}
       />
 
-      {/* 5. TITLE PYRAMID */}
-      <PowerBITitlePyramid
-        pyramidData={pbi?.titlePyramid || []}
-        totalCount={total}
-        selectedTitle={selectedTitle}
-        onSelectTitle={(title) => {
-          const cleanTitle = title.replace(/^\d+\.\s*/, '');
-          setSelectedTitle(selectedTitle === cleanTitle ? 'all' : cleanTitle);
-        }}
-        onOpenDetail={(title) => {
-          setDrillModal({
-            isOpen: true,
-            title: 'Ünvan Kademesi Personel Listesi',
-            filterType: 'region',
-            filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
-          });
-        }}
-      />
+      {/* 5. TITLE PYRAMID & DEMOGRAPHIC AGE PYRAMID (SIDE-BY-SIDE) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <PowerBITitlePyramid
+          pyramidData={pbi?.titlePyramid || []}
+          totalCount={total}
+          selectedTitle={selectedTitle}
+          onSelectTitle={(title) => {
+            const cleanTitle = title.replace(/^\d+\.\s*/, '');
+            setSelectedTitle(selectedTitle === cleanTitle ? 'all' : cleanTitle);
+          }}
+          onOpenDetail={(title) => {
+            setDrillModal({
+              isOpen: true,
+              title: 'Ünvan Kademesi Personel Listesi',
+              filterType: 'region',
+              filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
+            });
+          }}
+        />
+
+        <PowerBIAgeDemographics
+          ageBrackets={pbi?.ageBrackets || []}
+          avgAge={pbi?.avgAge || 34.9}
+          totalCount={total}
+          onSelectAgeBracket={(label) => {
+            onNavigateToPersonnel('search', label);
+          }}
+          onOpenDetail={() => {
+            setDrillModal({
+              isOpen: true,
+              title: 'Yaş Dağılımı Personel Listesi',
+              filterType: 'region',
+              filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
+            });
+          }}
+        />
+      </div>
 
       {/* 6. FIRMA / TAŞERON RANKINGS & TENURE BRACKETS */}
       <PowerBITenureAndFirms

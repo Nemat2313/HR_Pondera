@@ -73,6 +73,7 @@ export interface PowerBIMetrics {
   subconCount: number;
   topFirms: { name: string; count: number }[];
   tenureBrackets: { label: string; count: number }[];
+  ageBrackets?: { label: string; group?: string; count: number; color?: string }[];
   titlePyramid: { title: string; count: number }[];
   decompositionTree: TreeRegion[];
   turnoverRate?: number;
