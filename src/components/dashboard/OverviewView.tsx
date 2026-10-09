@@ -289,7 +289,7 @@ export default function OverviewView({
         femaleCount={femaleCount}
         mainFirmCount={pbi?.mainFirmCount || 4888}
         subconCount={pbi?.subconCount || 475}
-        dataFreshness={stats?.systemInfo?.data_freshness || '02.10.2026'}
+        dataFreshness={stats?.systemInfo?.data_freshness || '03.10.2026'}
         monthlyEntries={stats?.monthlyEntries || []}
         monthlyExits={stats?.monthlyExits || []}
         turnoverRate={pbi?.turnoverRate || 3.8}

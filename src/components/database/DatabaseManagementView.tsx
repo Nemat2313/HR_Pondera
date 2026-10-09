@@ -50,7 +50,7 @@ export default function DatabaseManagementView({ stats, onOpenUpload, onRefreshD
           </div>
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Veri Tazeliği (Freshness)</span>
-            <h3 className="text-lg font-bold text-emerald-700 mt-1">{sys.data_freshness || '02.10.2026'}</h3>
+            <h3 className="text-lg font-bold text-emerald-700 mt-1">{sys.data_freshness || '03.10.2026'}</h3>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
               Son kaynak dosya: <span className="font-semibold text-slate-700">{sys.source_file || 'tum liste 02 10 26.xlsx'}</span>
             </p>

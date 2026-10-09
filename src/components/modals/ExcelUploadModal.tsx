@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { X, UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Calendar } from 'lucide-react';
 
 interface ExcelUploadModalProps {
   isOpen: boolean;
@@ -12,13 +12,41 @@ interface ExcelUploadModalProps {
 export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: ExcelUploadModalProps) {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [customDate, setCustomDate] = useState('03.10.2026');
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
+
+  // Auto-detect date from file name if possible (e.g. "tum liste 03 10 26.xlsx" -> "03.10.2026")
+  const extractDateFromFileName = (name: string) => {
+    const match = name.match(/(\d{1,2})[._\s-](\d{1,2})[._\s-](\d{2,4})/);
+    if (match) {
+      const day = match[1].padStart(2, '0');
+      const month = match[2].padStart(2, '0');
+      let year = match[3];
+      if (year.length === 2) year = '20' + year;
+      return `${day}.${month}.${year}`;
+    }
+    return null;
+  };
+
+  const handleSelectedFile = (selectedFile: File) => {
+    if (selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls')) {
+      setFile(selectedFile);
+      setIsError(false);
+      setStatusMessage(null);
+      const detected = extractDateFromFileName(selectedFile.name);
+      if (detected) {
+        setCustomDate(detected);
+      }
+    } else {
+      setIsError(true);
+      setStatusMessage('Lütfen geçerli bir Excel (.xlsx veya .xls) dosyası seçin.');
+    }
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -35,29 +63,13 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.name.endsWith('.xlsx') || droppedFile.name.endsWith('.xls')) {
-        setFile(droppedFile);
-        setIsError(false);
-        setStatusMessage(null);
-      } else {
-        setIsError(true);
-        setStatusMessage('Lütfen geçerli bir Excel (.xlsx veya .xls) dosyası seçin.');
-      }
+      handleSelectedFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const selected = e.target.files[0];
-      if (selected.name.endsWith('.xlsx') || selected.name.endsWith('.xls')) {
-        setFile(selected);
-        setIsError(false);
-        setStatusMessage(null);
-      } else {
-        setIsError(true);
-        setStatusMessage('Lütfen geçerli bir Excel (.xlsx veya .xls) dosyası seçin.');
-      }
+      handleSelectedFile(e.target.files[0]);
     }
   };
 
@@ -65,12 +77,14 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
     if (!file) return;
 
     setUploading(true);
-    setStatusMessage('Excel dosyası sunucuya aktarılıyor ve yerel SQLite veritabanı güncelleniyor (32.000+ kayıt)...');
+    const targetDate = customDate.trim() || '03.10.2026';
+    setStatusMessage(`Excel dosyası sunucuya aktarılıyor ve veritabanı "${targetDate}" tarihiyle güncelleniyor...`);
     setIsError(false);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('dataFreshness', targetDate);
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -80,7 +94,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
       const resData = await res.json();
 
       if (resData.success) {
-        setStatusMessage('Veritabanı başarıyla güncellendi! Veriler yenileniyor...');
+        setStatusMessage(`Veritabanı başarıyla güncellendi! Veri tarihi: ${targetDate}`);
         setTimeout(() => {
           onUploadSuccess();
           onClose();
@@ -98,17 +112,17 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-[#131C31] rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200 text-slate-900 dark:text-slate-100">
         {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/40">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <UploadCloud className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Excel Yükle & Güncelle</h2>
-              <p className="text-xs text-slate-600">Yerel 198 kolonluk SQLite veritabanını güncelleyin</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Excel Yükle & Güncelle</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Yerel 198 kolonluk SQLite veritabanını güncelleyin</p>
             </div>
           </div>
 
@@ -116,7 +130,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             <button
               onClick={onClose}
               aria-label="Kapat"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <X className="w-5 h-5" />
             </button>
@@ -140,39 +154,78 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             onDragOver={handleDrag}
             onDrop={handleDrop}
             onClick={() => !uploading && inputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+            className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
               dragActive
-                ? 'border-indigo-600 bg-indigo-50/50'
+                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30'
                 : file
-                ? 'border-emerald-300 bg-emerald-50/30'
-                : 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50'
+                ? 'border-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/20'
+                : 'border-slate-200 dark:border-slate-700 hover:border-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
             }`}
           >
             {file ? (
               <div className="space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
                   <FileSpreadsheet className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-slate-900 truncate max-w-xs mx-auto">{file.name}</p>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    {(file.size / (1024 * 1024)).toFixed(2)} MB • Hazır
+                  <p className="font-bold text-sm text-slate-900 dark:text-white truncate max-w-xs mx-auto">{file.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {(file.size / (1024 * 1024)).toFixed(2)} MB • Dosya Seçildi
                   </p>
                 </div>
-                <p className="text-[11px] text-indigo-600 font-semibold pt-1">Farklı dosya seçmek için tıklayın</p>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1">Farklı dosya seçmek için tıklayın</p>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
                   <UploadCloud className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-slate-900">Excel Dosyasını Sürükleyip Bırakın</p>
-                  <p className="text-xs text-slate-600 mt-0.5">veya bilgisayarınızdan seçmek için tıklayın</p>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white">Excel Dosyasını Sürükleyip Bırakın</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">veya bilgisayarınızdan seçmek için tıklayın</p>
                 </div>
-                <p className="text-[11px] text-slate-600">Desteklenen: .xlsx (turn_liste_02_10_26 vb., ~31 MB)</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">Desteklenen: .xlsx veya .xls (~31 MB)</p>
               </div>
             )}
+          </div>
+
+          {/* Date Picker Input for Data Freshness */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                Veri Tazeliği Tarihi (Uygulamada Görünecek Tarih)
+              </label>
+              <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-md">
+                Veri: {customDate || 'GG.AA.YYYY'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                placeholder="GG.AA.YYYY (ör. 03.10.2026)"
+                className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const now = new Date();
+                  const d = String(now.getDate()).padStart(2, '0');
+                  const m = String(now.getMonth() + 1).padStart(2, '0');
+                  const y = now.getFullYear();
+                  setCustomDate(`${d}.${m}.${y}`);
+                }}
+                className="px-2.5 py-2 text-[11px] font-semibold bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
+              >
+                Bugün
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+              Dosya adı ne olursa olsun, üst barda ve tüm raporlarda bu seçtiğiniz tarih gösterilecektir.
+            </p>
           </div>
 
           {/* Status Alert */}
@@ -180,18 +233,18 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             <div
               className={`p-3.5 rounded-xl border text-xs flex items-center gap-2.5 ${
                 isError
-                  ? 'bg-rose-50 border-rose-200 text-rose-800'
+                  ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
                   : uploading
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
               }`}
             >
               {uploading ? (
-                <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-indigo-600" />
+                <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-600 dark:text-emerald-400" />
               ) : isError ? (
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
               ) : (
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               )}
               <span className="font-medium">{statusMessage}</span>
             </div>
@@ -199,11 +252,11 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between">
           <button
             onClick={onClose}
             disabled={uploading}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50"
+            className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-50"
           >
             İptal
           </button>
@@ -211,7 +264,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
           <button
             onClick={handleUpload}
             disabled={!file || uploading}
-            className="flex items-center gap-2 px-5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="flex items-center gap-2 px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {uploading ? (
               <>

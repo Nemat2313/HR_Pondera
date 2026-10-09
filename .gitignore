@@ -9,6 +9,10 @@ out/
 build/
 dist/
 
+# Python cache
+__pycache__/
+*.pyc
+
 # Raw large database (>100MB violates GitHub file limits)
 pondera_hr.db
 hr_pondera.db

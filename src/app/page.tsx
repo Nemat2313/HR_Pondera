@@ -153,7 +153,7 @@ export default function Home() {
         onSearchSubmit={handleSearchSubmit}
         includeExits={includeExits}
         setIncludeExits={setIncludeExits}
-        dataFreshness={stats?.systemInfo?.data_freshness || '02.10.2026'}
+        dataFreshness={stats?.systemInfo?.data_freshness || '03.10.2026'}
         onOpenUpload={() => setIsUploadModalOpen(true)}
         onOpenLogin={() => setIsLoginModalOpen(true)}
         activeFilterCount={activeFilterCount}

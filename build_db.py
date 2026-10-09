@@ -7,6 +7,8 @@ from datetime import datetime, date
 
 EXCEL_PATH = r"C:\Users\nemat\Downloads\tum liste 02 10 26.xlsx"
 DB_PATH = r"pondera_hr.db"
+DATA_FRESHNESS = "03.10.2026"
+SOURCE_FILE = "tum liste 03 10 26.xlsx"
 
 def clean_val(val):
     if val is None:
@@ -266,10 +268,10 @@ def build_database():
                        (idx, cname, group))
 
     # Save system info
-    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', '02.10.2026')")
-    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', 'tum liste 02 10 26.xlsx')")
-    cursor.execute(f"INSERT OR REPLACE INTO system_info (key, value) VALUES ('total_records', '{total_count}')")
-    cursor.execute(f"INSERT OR REPLACE INTO system_info (key, value) VALUES ('active_records', '{active_count}')")
+    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)", (DATA_FRESHNESS,))
+    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', ?)", (SOURCE_FILE,))
+    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('total_records', ?)", (str(total_count),))
+    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('active_records', ?)", (str(active_count),))
     cursor.execute(f"INSERT OR REPLACE INTO system_info (key, value) VALUES ('last_updated', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}')")
     conn.commit()
     conn.close()
