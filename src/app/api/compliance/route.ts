@@ -428,7 +428,7 @@ export async function GET(request: Request) {
       docStats: Object.values(docStats),
       regionBreakdown: Object.values(regionBreakdown).sort((a, b) => b.expired + b.critical - (a.expired + a.critical)),
       uyrukBreakdown: Object.values(uyrukBreakdown).sort((a, b) => b.total - a.total).slice(0, 8),
-      items: filteredItems.slice(0, 1000), // First 1000 for fast UI display
+      items: filteredItems, // Unlimited - full list for export and client pagination
       totalFilteredItems: filteredItems.length,
     });
   } catch {
