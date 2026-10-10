@@ -255,7 +255,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
               323
             </span>
             <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
-              {lang === 'ru' ? '41 Критично (>3 нед)' : '41 Kritik (>3 Hf)'}
+              {lang === 'ru' ? 'Критично (>3 нед)' : 'Kritik (>3 Hf)'}
             </span>
           </button>
         </div>
