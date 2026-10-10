@@ -36,7 +36,9 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
   };
 
   const handleSelectedFile = (selectedFile: File) => {
-    if (selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls')) {
+    const lowerName = selectedFile.name.toLowerCase();
+    const validExts = ['.xlsx', '.xls', '.csv', '.txt', '.tsv', '.zip'];
+    if (validExts.some((ext) => lowerName.endsWith(ext))) {
       setFile(selectedFile);
       setIsError(false);
       setStatusMessage(null);
@@ -46,7 +48,11 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
       }
     } else {
       setIsError(true);
-      setStatusMessage('Lütfen geçerli bir Excel (.xlsx veya .xls) dosyası seçin.');
+      setStatusMessage(
+        lang === 'ru'
+          ? 'Пожалуйста, выберите файл .xlsx, .txt, .csv или .zip.'
+          : 'Lütfen geçerli bir dosya (.xlsx, .txt, .csv veya .zip) seçin.'
+      );
     }
   };
 
@@ -153,12 +159,12 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                {lang === 'ru' ? 'Загрузка и обновление Excel' : 'Excel Yükle & Güncelle'}
+                {lang === 'ru' ? 'Загрузка данных (Excel / TXT / CSV)' : 'Veri Yükleme (Excel / TXT / CSV)'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {lang === 'ru'
-                  ? 'Обновите локальную 198-колоночную базу данных SQLite'
-                  : 'Yerel 198 kolonluk SQLite veritabanını güncelleyin'}
+                  ? 'Поддерживаются файлы Excel, Текст из eBA (.txt), CSV и ZIP'
+                  : 'Excel, eBA Metin dökümü (.txt), CSV ve ZIP dosyaları desteklenir'}
               </p>
             </div>
           </div>
@@ -179,7 +185,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
           <input
             ref={inputRef}
             type="file"
-            accept=".xlsx, .xls"
+            accept=".xlsx, .xls, .csv, .txt, .tsv, .zip"
             onChange={handleFileChange}
             className="hidden"
           />
@@ -221,14 +227,14 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                 </div>
                 <div>
                   <p className="font-bold text-sm text-slate-900 dark:text-white">
-                    {lang === 'ru' ? 'Перетащите файл Excel сюда' : 'Excel Dosyasını Sürükleyip Bırakın'}
+                    {lang === 'ru' ? 'Перетащите файл Excel, TXT или CSV сюда' : 'Excel, TXT veya CSV Dosyasını Sürükleyip Bırakın'}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     {lang === 'ru' ? 'или нажмите для выбора с компьютера' : 'veya bilgisayarınızdan seçmek için tıklayın'}
                   </p>
                 </div>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                  {lang === 'ru' ? 'Поддерживается: .xlsx или .xls (~31 МБ)' : 'Desteklenen: .xlsx veya .xls (~31 MB)'}
+                  {lang === 'ru' ? 'Поддерживается: .xlsx, .txt (eBA), .csv, .zip' : 'Desteklenen: .xlsx, .txt (eBA dökümü), .csv, .zip'}
                 </p>
               </div>
             )}
@@ -274,6 +280,16 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                 ? 'Вне зависимости от имени файла, в верхней панели и отчетах будет отображаться выбранная дата.'
                 : 'Dosya adı ne olursa olsun, üst barda ve tüm raporlarda bu seçtiğiniz tarih gösterilecektir.'}
             </p>
+          </div>
+
+          {/* Informational tip for eBA TXT / CSV recommendations */}
+          <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-[11px] text-emerald-900 dark:text-emerald-200 flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <span>
+              {lang === 'ru'
+                ? '⚡ Рекомендация для eBA: При ежедневной выгрузке из eBA выбирайте формат "Текст (.txt / Tab-delimited)" или CSV (или архивируйте в ZIP). Файл весит ~12 МБ вместо 32 МБ и загружается мгновенно!'
+                : '⚡ eBA Rapor İpucu: Günlük raporları eBA üzerinden alırken "Metin Belgesi (.txt / Sekme ile ayrılmış)" veya "CSV" olarak indirmeniz (veya ZIP ile sıkıştırmanız) önerilir. Dosya 32 MB yerine ~12 MB olur ve saniyeler içinde yüklenir!'}
+            </span>
           </div>
 
           {/* Informational tip if a small single-project file is selected */}

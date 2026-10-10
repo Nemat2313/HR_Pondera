@@ -19,14 +19,16 @@ export async function POST(request: Request) {
 
     if (!file) {
       return NextResponse.json(
-        { success: false, message: 'Lütfen geçerli bir Excel dosyası (.xlsx) seçin.' },
+        { success: false, message: 'Lütfen geçerli bir dosya (.xlsx, .txt, .csv, .zip) seçin.' },
         { status: 400 }
       );
     }
 
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+    const lowerName = file.name.toLowerCase();
+    const validExts = ['.xlsx', '.xls', '.csv', '.txt', '.tsv', '.zip'];
+    if (!validExts.some(ext => lowerName.endsWith(ext))) {
       return NextResponse.json(
-        { success: false, message: 'Yalnızca .xlsx veya .xls uzantılı dosyalar desteklenir.' },
+        { success: false, message: 'Yalnızca .xlsx, .xls, .csv, .txt veya .zip uzantılı dosyalar desteklenir.' },
         { status: 400 }
       );
     }
@@ -36,7 +38,8 @@ export async function POST(request: Request) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    const tempFilePath = path.join(uploadDir, `uploaded_${Date.now()}.xlsx`);
+    const ext = path.extname(file.name).toLowerCase() || '.xlsx';
+    const tempFilePath = path.join(uploadDir, `uploaded_${Date.now()}${ext}`);
     const buffer = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(tempFilePath, buffer);
 

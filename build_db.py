@@ -135,10 +135,77 @@ def find_personnel_sheet(wb):
 
     return wb[wb.sheetnames[0]]
 
+def get_row_iterator(file_path):
+    lower_path = file_path.lower()
+
+    # 1. Handle .zip archive containing xlsx, csv or txt
+    if lower_path.endswith('.zip'):
+        import zipfile
+        temp_dir = file_path + "_unzipped"
+        with zipfile.ZipFile(file_path, 'r') as z:
+            z.extractall(temp_dir)
+        candidate = None
+        for root, _, files in os.walk(temp_dir):
+            for f in files:
+                f_low = f.lower()
+                if f_low.endswith(('.xlsx', '.xls', '.csv', '.txt', '.tsv')) and not f.startswith('~'):
+                    candidate = os.path.join(root, f)
+                    break
+            if candidate:
+                break
+        if not candidate:
+            raise ValueError("ZIP arşivi içinde geçerli bir Excel (.xlsx) veya Metin (.txt / .csv) dosyası bulunamadı.")
+        for row in get_row_iterator(candidate):
+            yield row
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+        return
+
+    # 2. Handle plain text files: .txt, .csv, .tsv (e.g. eBA exports)
+    if lower_path.endswith(('.txt', '.csv', '.tsv')):
+        encodings = ['utf-8-sig', 'utf-8', 'cp1254', 'windows-1251', 'latin1']
+        chosen_encoding = 'utf-8'
+        sample_bytes = b''
+        with open(file_path, 'rb') as f:
+            sample_bytes = f.read(65536)
+
+        for enc in encodings:
+            try:
+                sample_bytes.decode(enc)
+                chosen_encoding = enc
+                break
+            except Exception:
+                continue
+
+        sample_text = sample_bytes.decode(chosen_encoding, errors='replace')
+        first_line = sample_text.splitlines()[0] if sample_text.splitlines() else ''
+        tab_count = first_line.count('\t')
+        semi_count = first_line.count(';')
+        comma_count = first_line.count(',')
+
+        delim = '\t'
+        if semi_count > tab_count and semi_count > comma_count:
+            delim = ';'
+        elif comma_count > tab_count and comma_count > semi_count:
+            delim = ','
+
+        import csv
+        with open(file_path, 'r', encoding=chosen_encoding, errors='replace', newline='') as f:
+            reader = csv.reader(f, delimiter=delim)
+            for row in reader:
+                yield row
+        return
+
+    # 3. Handle Excel: .xlsx, .xls
+    wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+    ws_data = find_personnel_sheet(wb)
+    for row in ws_data.iter_rows(values_only=True):
+        yield row
+
 def build_database():
     start_time = time.time()
-    wb = openpyxl.load_workbook(EXCEL_PATH, read_only=True, data_only=True)
-    ws_data = find_personnel_sheet(wb)
 
     temp_db_path = DB_PATH + ".tmp"
     if os.path.exists(temp_db_path):
@@ -236,46 +303,149 @@ def build_database():
     total_count = 0
     active_count = 0
 
-    for i, row in enumerate(ws_data.iter_rows(values_only=True)):
+    # Pre-compiled index map slots
+    idx_sira = None
+    idx_sicil = None
+    idx_rhi = None
+    idx_saren = None
+    idx_genel = None
+    idx_guncel = None
+    idx_region = None
+    idx_proje = None
+    idx_lokasyon = None
+    idx_kategori = None
+    idx_firma = None
+    idx_departman = None
+    idx_uyruk = None
+    idx_adi = None
+    idx_soyadi = None
+    idx_baba_adi = None
+    idx_ad_soyad = None
+    idx_tam_kiril = None
+    idx_gorevi = None
+    idx_rhi_gorevi = None
+    idx_sorumlu = None
+    idx_grup_sefi = None
+    idx_endirekt = None
+    idx_ise_giris = None
+    idx_santiye_giris = None
+    idx_cikis_tarihi = None
+    idx_cikis_sebebi = None
+    idx_gunduz_gece = None
+    idx_propusk_no = None
+    idx_propusk_bitis = None
+    idx_cinsiyet = None
+    idx_dogum_tarihi = None
+    idx_pasaport_no = None
+    idx_pasaport_gecerlilik = None
+    idx_tc_kimlik = None
+    idx_dogum_yeri = None
+    idx_migrasyon = None
+    idx_inn = None
+    idx_vize_no = None
+    idx_vize_bitis = None
+    idx_patent_alis = None
+    idx_patent_bitis = None
+    idx_telefon = None
+    idx_email = None
+    idx_kamp = None
+    idx_oda = None
+
+    def get_val(row, idx):
+        if idx is not None and idx < len(row):
+            return clean_val(row[idx])
+        return ""
+
+    for i, row in enumerate(get_row_iterator(EXCEL_PATH)):
         if i == 0:
             headers = [clean_val(c) or f"Col_{idx+1}" for idx, c in enumerate(row)]
             col_map = map_headers(headers)
+
+            # Populate columns_meta
+            cols_meta = [(idx + 1, h, "Genel") for idx, h in enumerate(headers)]
+            cursor.executemany("INSERT OR REPLACE INTO columns_meta (col_index, col_name, col_group) VALUES (?, ?, ?)", cols_meta)
+
+            # Pre-extract indices
+            idx_sira = col_map.get('sira_no')
+            idx_sicil = col_map.get('sicil_no')
+            idx_rhi = col_map.get('rhi_id')
+            idx_saren = col_map.get('saren_no')
+            idx_genel = col_map.get('genel_durum')
+            idx_guncel = col_map.get('guncel_durum')
+            idx_region = col_map.get('region')
+            idx_proje = col_map.get('proje_adi')
+            idx_lokasyon = col_map.get('calisma_lokasyon')
+            idx_kategori = col_map.get('kategori')
+            idx_firma = col_map.get('firma')
+            idx_departman = col_map.get('departman')
+            idx_uyruk = col_map.get('uyruk')
+            idx_adi = col_map.get('adi')
+            idx_soyadi = col_map.get('soyadi')
+            idx_baba_adi = col_map.get('baba_adi')
+            idx_ad_soyad = col_map.get('ad_soyad')
+            idx_tam_kiril = col_map.get('tam_adi_kiril')
+            idx_gorevi = col_map.get('gorevi')
+            idx_rhi_gorevi = col_map.get('rhi_gorevi')
+            idx_sorumlu = col_map.get('sorumlu_kisi')
+            idx_grup_sefi = col_map.get('grup_sefi')
+            idx_endirekt = col_map.get('endirekt_direkt')
+            idx_ise_giris = col_map.get('ise_giris_tarihi')
+            idx_santiye_giris = col_map.get('santiye_giris_tarihi')
+            idx_cikis_tarihi = col_map.get('cikis_tarihi')
+            idx_cikis_sebebi = col_map.get('cikis_sebebi')
+            idx_gunduz_gece = col_map.get('gunduz_gece')
+            idx_propusk_no = col_map.get('propusk_no')
+            idx_propusk_bitis = col_map.get('propusk_bitis_tarihi')
+            idx_cinsiyet = col_map.get('cinsiyet')
+            idx_dogum_tarihi = col_map.get('dogum_tarihi')
+            idx_pasaport_no = col_map.get('pasaport_no')
+            idx_pasaport_gecerlilik = col_map.get('pasaport_gecerlilik')
+            idx_tc_kimlik = col_map.get('tc_kimlik_no')
+            idx_dogum_yeri = col_map.get('dogum_yeri')
+            idx_migrasyon = col_map.get('migrasyon_no')
+            idx_inn = col_map.get('inn_no')
+            idx_vize_no = col_map.get('vize_no')
+            idx_vize_bitis = col_map.get('vize_bitis_tarihi')
+            idx_patent_alis = col_map.get('patent_alis_tarihi')
+            idx_patent_bitis = col_map.get('patent_bitis_tarihi')
+            idx_telefon = col_map.get('telefon_no')
+            idx_email = col_map.get('email')
+            idx_kamp = col_map.get('kamp_no')
+            idx_oda = col_map.get('oda_no')
             continue
 
         if not any(row):
             continue
 
         total_count += 1
+
+        # Build lean JSON dictionary (non-empty only)
         row_dict = {}
         for idx, val in enumerate(row):
-            h_name = headers[idx] if idx < len(headers) else f"Col_{idx+1}"
-            row_dict[h_name] = clean_val(val)
+            cleaned_v = clean_val(val)
+            if cleaned_v:
+                h_name = headers[idx] if idx < len(headers) else f"Col_{idx+1}"
+                row_dict[h_name] = cleaned_v
 
-        def get_f(f_name):
-            idx = col_map.get(f_name)
-            if idx is not None and idx < len(row):
-                return clean_val(row[idx])
-            return ""
-
-        sira_no_raw = get_f('sira_no')
+        sira_no_raw = get_val(row, idx_sira)
         try:
             sira_no = int(sira_no_raw)
         except ValueError:
             sira_no = total_count
 
-        genel_durum = get_f('genel_durum') or 'Mevcut'
-        guncel_durum = get_f('guncel_durum') or genel_durum
+        genel_durum = get_val(row, idx_genel) or 'Mevcut'
+        guncel_durum = get_val(row, idx_guncel) or genel_durum
         if genel_durum == 'Mevcut':
             active_count += 1
 
-        proje_adi = get_f('proje_adi')
-        region = get_f('region')
+        proje_adi = get_val(row, idx_proje)
+        region = get_val(row, idx_region)
         if not region:
             region = infer_region_from_project(proje_adi)
 
-        ad_soyad = get_f('ad_soyad')
-        adi = get_f('adi')
-        soyadi = get_f('soyadi')
+        ad_soyad = get_val(row, idx_ad_soyad)
+        adi = get_val(row, idx_adi)
+        soyadi = get_val(row, idx_soyadi)
         if not ad_soyad and (adi or soyadi):
             ad_soyad = f"{adi} {soyadi}".strip()
         elif ad_soyad and not adi:
@@ -285,51 +455,51 @@ def build_database():
 
         record = (
             sira_no,
-            get_f('sicil_no'),
-            get_f('rhi_id'),
-            get_f('saren_no'),
+            get_val(row, idx_sicil),
+            get_val(row, idx_rhi),
+            get_val(row, idx_saren),
             genel_durum,
             guncel_durum,
             region,
             proje_adi,
-            get_f('calisma_lokasyon'),
-            get_f('kategori'),
-            get_f('firma'),
-            get_f('departman'),
-            get_f('uyruk'),
+            get_val(row, idx_lokasyon),
+            get_val(row, idx_kategori),
+            get_val(row, idx_firma),
+            get_val(row, idx_departman),
+            get_val(row, idx_uyruk),
             adi,
             soyadi,
-            get_f('baba_adi'),
+            get_val(row, idx_baba_adi),
             ad_soyad,
-            get_f('tam_adi_kiril'),
-            get_f('gorevi'),
-            get_f('rhi_gorevi'),
-            get_f('sorumlu_kisi'),
-            get_f('grup_sefi'),
-            get_f('endirekt_direkt'),
-            get_f('ise_giris_tarihi'),
-            get_f('santiye_giris_tarihi'),
-            get_f('cikis_tarihi'),
-            get_f('cikis_sebebi'),
-            get_f('gunduz_gece'),
-            get_f('propusk_no'),
-            get_f('propusk_bitis_tarihi'),
-            get_f('cinsiyet'),
-            get_f('dogum_tarihi'),
-            get_f('pasaport_no'),
-            get_f('pasaport_gecerlilik'),
-            get_f('tc_kimlik_no'),
-            get_f('dogum_yeri'),
-            get_f('migrasyon_no'),
-            get_f('inn_no'),
-            get_f('vize_no'),
-            get_f('vize_bitis_tarihi'),
-            get_f('patent_alis_tarihi'),
-            get_f('patent_bitis_tarihi'),
-            get_f('telefon_no'),
-            get_f('email'),
-            get_f('kamp_no'),
-            get_f('oda_no'),
+            get_val(row, idx_tam_kiril),
+            get_val(row, idx_gorevi),
+            get_val(row, idx_rhi_gorevi),
+            get_val(row, idx_sorumlu),
+            get_val(row, idx_grup_sefi),
+            get_val(row, idx_endirekt),
+            get_val(row, idx_ise_giris),
+            get_val(row, idx_santiye_giris),
+            get_val(row, idx_cikis_tarihi),
+            get_val(row, idx_cikis_sebebi),
+            get_val(row, idx_gunduz_gece),
+            get_val(row, idx_propusk_no),
+            get_val(row, idx_propusk_bitis),
+            get_val(row, idx_cinsiyet),
+            get_val(row, idx_dogum_tarihi),
+            get_val(row, idx_pasaport_no),
+            get_val(row, idx_pasaport_gecerlilik),
+            get_val(row, idx_tc_kimlik),
+            get_val(row, idx_dogum_yeri),
+            get_val(row, idx_migrasyon),
+            get_val(row, idx_inn),
+            get_val(row, idx_vize_no),
+            get_val(row, idx_vize_bitis),
+            get_val(row, idx_patent_alis),
+            get_val(row, idx_patent_bitis),
+            get_val(row, idx_telefon),
+            get_val(row, idx_email),
+            get_val(row, idx_kamp),
+            get_val(row, idx_oda),
             json.dumps(row_dict, ensure_ascii=False)
         )
         rows_to_insert.append(record)
