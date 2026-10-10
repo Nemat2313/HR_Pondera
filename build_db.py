@@ -201,6 +201,7 @@ def get_row_iterator(file_path):
     # 3. Handle Excel: .xlsx, .xls
     wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
     ws_data = find_personnel_sheet(wb)
+    ws_data._max_row = None  # Force reading all rows even if metadata dimension was truncated by eBA!
     for row in ws_data.iter_rows(values_only=True):
         yield row
 
