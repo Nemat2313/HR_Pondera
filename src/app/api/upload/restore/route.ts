@@ -27,7 +27,7 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: '3.616 personellik ana şirket veritabanı başarıyla geri yüklendi.',
+      message: '5.313 personellik ana şirket veritabanı başarıyla geri yüklendi.',
     });
   } catch (err: any) {
     return NextResponse.json(

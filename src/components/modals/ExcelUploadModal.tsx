@@ -16,6 +16,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
   const [file, setFile] = useState<File | null>(null);
   const [customDate, setCustomDate] = useState('03.10.2026');
   const [uploading, setUploading] = useState(false);
+  const [progressPercent, setProgressPercent] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -85,63 +86,117 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
     if (!file) return;
 
     setUploading(true);
-    const targetDate = customDate.trim() || '03.10.2026';
-    setStatusMessage(`Excel dosyası sunucuya aktarılıyor ve veritabanı "${targetDate}" tarihiyle güncelleniyor...`);
+    setProgressPercent(0);
+    const targetDate = customDate.trim() || '08.10.2026';
     setIsError(false);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('dataFreshness', targetDate);
+      // Chunk size: 10 MB (well below Cloud Run 32 MB request body limit)
+      const CHUNK_SIZE = 10 * 1024 * 1024;
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const uploadId = `up_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunkBlob = file.slice(start, end);
 
-      if (!res.ok) {
-        setIsError(true);
-        if (res.status === 413) {
-          setStatusMessage(
-            lang === 'ru'
-              ? 'Файл слишком большой (>30 МБ). Облачный сервер (Cloud Run) отклонил запрос по лимиту 32 МБ. Используйте кнопку "Восстановить мастер-базу" внизу.'
-              : 'Dosya boyutu çok büyük (>30 MB). Bulut sunucusu (Cloud Run) 32 MB sınırını aştığı için yüklemeyi reddetti. Lütfen alttaki "Ana Listeyi Geri Yükle" butonunu kullanın.'
-          );
-        } else if (res.status === 504 || res.status === 502) {
-          setStatusMessage(
-            lang === 'ru'
-              ? 'Превышено время ожидания сервера (таймаут). Файл содержит более 28.000 строк. Рекомендуется использовать встроенную мастер-базу.'
-              : 'Sunucu zaman aşımına uğradı (dosya 28.000 satırdan fazla veri içeriyor). Dahili ana listeyi kullanmanız önerilir.'
-          );
+        const currentPercent = Math.round((chunkIndex / totalChunks) * 100);
+        setProgressPercent(currentPercent);
+
+        if (totalChunks > 1) {
+          if (chunkIndex === totalChunks - 1) {
+            setStatusMessage(
+              lang === 'ru'
+                ? `Передача последней части (${chunkIndex + 1}/${totalChunks})... Обработка базы данных может занять 1-2 мин.`
+                : `Son parça aktarılıyor (${chunkIndex + 1}/${totalChunks})... Veritabanı işleniyor (1-2 dk. sürebilir)`
+            );
+            setProgressPercent(92);
+          } else {
+            setStatusMessage(
+              lang === 'ru'
+                ? `Загрузка части ${chunkIndex + 1} из ${totalChunks} (${currentPercent}%)...`
+                : `Parça ${chunkIndex + 1} / ${totalChunks} aktarılıyor (%${currentPercent})...`
+            );
+          }
         } else {
+          setStatusMessage(
+            lang === 'ru'
+              ? 'Загрузка файла и обновление базы данных...'
+              : 'Dosya aktarılıyor ve veritabanı güncelleniyor...'
+          );
+        }
+
+        // Retry logic: up to 3 attempts per chunk
+        let chunkSuccess = false;
+        let lastErrorMsg = '';
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            const errData = await res.json();
-            setStatusMessage(errData.message || (lang === 'ru' ? 'Ошибка сервера при обработке файла.' : 'Dosya işlenirken sunucu hatası oluştu.'));
-          } catch {
-            setStatusMessage(lang === 'ru' ? 'Ошибка сервера при обработке файла.' : 'Dosya işlenirken sunucu hatası oluştu.');
+            const formData = new FormData();
+            formData.append('chunk', chunkBlob, file.name);
+            formData.append('uploadId', uploadId);
+            formData.append('chunkIndex', String(chunkIndex));
+            formData.append('totalChunks', String(totalChunks));
+            formData.append('fileName', file.name);
+            formData.append('dataFreshness', targetDate);
+
+            const res = await fetch('/api/upload/chunk', {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (!res.ok) {
+              let errText = '';
+              try {
+                const errJson = await res.json();
+                errText = errJson.message || '';
+              } catch {
+                errText = await res.text();
+              }
+              throw new Error(errText || `Sunucu hatası (HTTP ${res.status})`);
+            }
+
+            const resData = await res.json();
+            if (!resData.success) {
+              throw new Error(resData.message || 'Parça işlenirken hata oluştu');
+            }
+
+            if (resData.completed) {
+              setProgressPercent(100);
+              setStatusMessage(
+                lang === 'ru'
+                  ? `База данных успешно обновлена! Дата данных: ${targetDate}`
+                  : `Veritabanı başarıyla güncellendi! Veri tarihi: ${targetDate}`
+              );
+              setTimeout(() => {
+                onUploadSuccess();
+                onClose();
+              }, 1500);
+              return;
+            }
+
+            chunkSuccess = true;
+            break;
+          } catch (err: any) {
+            lastErrorMsg = err?.message || String(err);
+            if (attempt < 3) {
+              await new Promise((r) => setTimeout(r, 1200));
+            }
           }
         }
-        return;
-      }
 
-      const resData = await res.json();
-
-      if (resData.success) {
-        setStatusMessage(`Veritabanı başarıyla güncellendi! Veri tarihi: ${targetDate}`);
-        setTimeout(() => {
-          onUploadSuccess();
-          onClose();
-        }, 1500);
-      } else {
-        setIsError(true);
-        setStatusMessage(resData.message || 'Yükleme sırasında hata oluştu.');
+        if (!chunkSuccess) {
+          throw new Error(lastErrorMsg || 'Parça aktarımı başarısız oldu.');
+        }
       }
-    } catch {
+    } catch (err: any) {
       setIsError(true);
       setStatusMessage(
-        lang === 'ru'
-          ? 'Сбой сетевого подключения или размер файла превышает лимит сервера (32 МБ).'
-          : 'Bağlantı hatası veya dosya boyutu bulut sunucu limitini (32 MB) aşıyor.'
+        err?.message ||
+          (lang === 'ru'
+            ? 'Сбой при загрузке данных.'
+            : 'Yükleme sırasında hata oluştu.')
       );
     } finally {
       setUploading(false);
@@ -298,43 +353,59 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>
                 {lang === 'ru'
-                  ? '💡 Примечание: Выбранный файл является выгрузкой одного участка (например, Polisterol). База обновится только по этому файлу. Для загрузки полного штата всей компании (3.616 сотрудников) выберите файл "tum liste...".'
-                  : '💡 Bilgi: Seçilen dosya tek bir şantiyeye (örn. Polisterol) ait görünüyor. Sistemde sadece o projenin personeli görünecektir. Tüm şirketin ana listesi (3.616 aktif personel) için "tum liste..." genel dosyasını seçmelisiniz.'}
+                  ? '💡 Примечание: Выбранный файл является выгрузкой одного участка (например, Polisterol). База обновится только по этому файлу. Для загрузки полного штата всей компании (5.313 сотрудников) выберите файл "tum liste...".'
+                  : '💡 Bilgi: Seçilen dosya tek bir şantiyeye (örn. Polisterol) ait görünüyor. Sistemde sadece o projenin personeli görünecektir. Tüm şirketin ana listesi (5.313 aktif personel) için "tum liste..." genel dosyasını seçmelisiniz.'}
               </span>
             </div>
           )}
 
-          {/* Informational tip if master full list file (> 25MB) is selected */}
+          {/* Informational tip if master full list file (> 25MB) is selected: highlights chunked upload support */}
           {file && file.size > 25 * 1024 * 1024 && (
             <div className="p-3 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60 rounded-xl text-[11px] text-sky-900 dark:text-sky-200 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+              <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
               <span>
                 {lang === 'ru'
-                  ? '💡 Эта полная мастер-база (30+ МБ, 3.616 сотрудников) уже встроена в систему! Из-за лимита Cloud Run (32 МБ) загрузка через браузер может превысить лимит. Вы можете нажать "Восстановить мастер-базу (3.616)" внизу для мгновенного сброса.'
-                  : '💡 Bu ana liste (30+ MB, 3.616 personel) zaten sisteme tam olarak entegre edilmiştir! Bulut sunucusu (Cloud Run) 32 MB sınırına sahip olduğu için tarayıcıdan yükleme limit aşımına uğrayabilir. Aşağıdaki "Ana Listeyi Geri Yükle (3.616)" butonunu kullanarak anında geri yükleyebilirsiniz.'}
+                  ? `⚡ Автоматическая пошаговая загрузка (10 МБ/часть): Файл ${(file.size / (1024 * 1024)).toFixed(1)} МБ автоматически разбит на части и будет загружен без ограничения лимита Cloud Run!`
+                  : `⚡ Otomatik Parçalı Yükleme (10 MB / parça) devrede: ${(file.size / (1024 * 1024)).toFixed(1)} MB boyutundaki dosyanız otomatik olarak parçalara bölünerek Cloud Run 32 MB sınırına takılmadan güvenle yüklenecektir.`}
               </span>
             </div>
           )}
 
-          {/* Status Alert */}
+          {/* Status Alert and Progress Bar */}
           {statusMessage && (
-            <div
-              className={`p-3.5 rounded-xl border text-xs flex items-center gap-2.5 ${
-                isError
-                  ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
-                  : uploading
-                  ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
-                  : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
-              }`}
-            >
-              {uploading ? (
-                <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-600 dark:text-emerald-400" />
-              ) : isError ? (
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div className="space-y-2">
+              <div
+                className={`p-3.5 rounded-xl border text-xs flex items-center gap-2.5 ${
+                  isError
+                    ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                    : uploading
+                    ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                }`}
+              >
+                {uploading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-emerald-600 dark:text-emerald-400" />
+                ) : isError ? (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                )}
+                <span className="font-medium flex-1">{statusMessage}</span>
+                {uploading && (
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                    %{progressPercent}
+                  </span>
+                )}
+              </div>
+
+              {uploading && (
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 dark:bg-emerald-400 h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
               )}
-              <span className="font-medium">{statusMessage}</span>
             </div>
           )}
         </div>
@@ -353,7 +424,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             <button
               type="button"
               onClick={async () => {
-                if (!confirm(lang === 'ru' ? 'Восстановить полную базу данных компании (3.616 активных сотрудников)?' : '3.616 aktif personellik ana şirket veritabanı geri yüklensin mi?')) return;
+                if (!confirm(lang === 'ru' ? 'Восстановить полную базу данных компании (5.313 активных сотрудников)?' : '5.313 aktif personellik ana şirket veritabanı geri yüklensin mi?')) return;
                 setUploading(true);
                 setStatusMessage(lang === 'ru' ? 'Восстановление полной базы...' : 'Ana şirket listesi geri yükleniyor...');
                 setIsError(false);
@@ -361,7 +432,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                   const res = await fetch('/api/upload/restore', { method: 'POST' });
                   const resData = await res.json();
                   if (resData.success) {
-                    setStatusMessage(lang === 'ru' ? 'Мастер-база (3.616 чел.) успешно восстановлена!' : '3.616 personellik ana şirket listesi başarıyla geri yüklendi!');
+                    setStatusMessage(lang === 'ru' ? 'Мастер-база (5.313 чел.) успешно восстановлена!' : '5.313 personellik ana şirket listesi başarıyla geri yüklendi!');
                     setTimeout(() => {
                       onUploadSuccess();
                       onClose();
@@ -380,10 +451,10 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
               }}
               disabled={uploading}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 rounded-xl border border-teal-200 dark:border-teal-800 transition-colors cursor-pointer"
-              title={lang === 'ru' ? 'Восстановить мастер-базу компании (3.616 чел.)' : 'Ana Şirket Listesini Geri Yükle (3.616 Kişi)'}
+              title={lang === 'ru' ? 'Восстановить мастер-базу компании (5.313 чел.)' : 'Ana Şirket Listesini Geri Yükle (5.313 Kişi)'}
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Восстановить мастер-базу (3.616)' : 'Ana Listeyi Geri Yükle (3.616)'}</span>
+              <span>{lang === 'ru' ? 'Восстановить мастер-базу (5.313)' : 'Ana Listeyi Geri Yükle (5.313)'}</span>
             </button>
           </div>
 

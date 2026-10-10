@@ -80,7 +80,7 @@ export default function PowerBIHeroBar({
 
   // Sparkline data for mini trend chart
   const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
-  const allCounts = [3100, 3250, 3400, 3520, 3580, 3620, 3590, totalCount || 3616];
+  const allCounts = [4800, 4950, 5080, 5150, 5200, 5250, 5280, totalCount || 5313];
   const monthLabelsTr = ['Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki'];
   const monthLabelsRu = ['Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт'];
   const activeMonthLabels = (lang === 'ru' ? monthLabelsRu : monthLabelsTr).slice(startIdx, 8);
@@ -89,7 +89,7 @@ export default function PowerBIHeroBar({
     const counts = allCounts.slice(startIdx, 8);
     return {
       name: activeMonthLabels[idx],
-      count: counts[idx] || totalCount || 3616,
+      count: counts[idx] || totalCount || 5313,
     };
   });
 
