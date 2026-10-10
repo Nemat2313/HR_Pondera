@@ -240,7 +240,15 @@ export default function PowerBIWorkPermits({
             title={lang === 'ru' ? 'Открыть список персонала' : 'Çalışma İzni Detay Listesi'}
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-            <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
+            <span>
+              {selectedKey
+                ? lang === 'ru'
+                  ? `Детали (${getShortCode(selectedKey, lang)})`
+                  : `Detay Gör (${getShortCode(selectedKey, lang)})`
+                : lang === 'ru'
+                ? 'Детали'
+                : 'Detay Gör'}
+            </span>
           </button>
         )}
       </div>

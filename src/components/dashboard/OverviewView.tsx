@@ -429,16 +429,6 @@ export default function OverviewView({
           <PowerBIWorkPermits
             permits={stats?.workPermits || pbi?.workPermits || []}
             totalCount={total}
-            onSelectPermit={(permitKey) => {
-              const permitObj = (stats?.workPermits || pbi?.workPermits || []).find((p) => p.key === permitKey);
-              const label = permitObj ? (lang === 'ru' ? permitObj.nameRu : permitObj.name) : permitKey;
-              setDrillModal({
-                isOpen: true,
-                title: `${lang === 'ru' ? 'Персонал со статусом' : 'Çalışma İzni Personeli'}: ${label}`,
-                filterType: 'permit',
-                filterValue: permitKey,
-              });
-            }}
             onOpenDetail={(permitKey) => {
               const permitObj = permitKey ? (stats?.workPermits || pbi?.workPermits || []).find((p) => p.key === permitKey) : null;
               const label = permitObj ? (lang === 'ru' ? permitObj.nameRu : permitObj.name) : (lang === 'ru' ? 'Все статусы' : 'Tüm Statüler');
