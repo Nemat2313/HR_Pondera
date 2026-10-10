@@ -109,8 +109,8 @@ export default function OverviewView({
   const pbi = stats?.powerbi;
 
   // Gender counts
-  const maleCount = stats?.genderDistribution.find((g) => g.label === 'Erkek')?.count || 5201;
-  const femaleCount = stats?.genderDistribution.find((g) => g.label === 'Kadin')?.count || 162;
+  const maleCount = stats?.genderDistribution.find((g) => g.label === 'Erkek')?.count ?? 0;
+  const femaleCount = stats?.genderDistribution.find((g) => g.label === 'Kadin')?.count ?? 0;
 
   const hasActiveFilters =
     selectedRegion !== 'all' ||

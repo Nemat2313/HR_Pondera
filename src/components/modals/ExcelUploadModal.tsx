@@ -247,6 +247,18 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             </p>
           </div>
 
+          {/* Informational tip if a small single-project file is selected */}
+          {file && (file.size < 2 * 1024 * 1024 || !file.name.toLowerCase().includes('tum')) && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                {lang === 'ru'
+                  ? '💡 Примечание: Выбранный файл является выгрузкой одного участка (например, Polisterol). База обновится только по этому файлу. Для загрузки полного штата всей компании (3.616 сотрудников) выберите файл "tum liste...".'
+                  : '💡 Bilgi: Seçilen dosya tek bir şantiyeye (örn. Polisterol) ait görünüyor. Sistemde sadece o projenin personeli görünecektir. Tüm şirketin ana listesi (3.616 aktif personel) için "tum liste..." genel dosyasını seçmelisiniz.'}
+              </span>
+            </div>
+          )}
+
           {/* Status Alert */}
           {statusMessage && (
             <div
@@ -271,19 +283,57 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between">
-          <button
-            onClick={onClose}
-            disabled={uploading}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-50"
-          >
-            {lang === 'ru' ? 'Отмена' : 'İptal'}
-          </button>
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              disabled={uploading}
+              className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-50"
+            >
+              {lang === 'ru' ? 'Отмена' : 'İptal'}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (!confirm(lang === 'ru' ? 'Восстановить полную базу данных компании (3.616 активных сотрудников)?' : '3.616 aktif personellik ana şirket veritabanı geri yüklensin mi?')) return;
+                setUploading(true);
+                setStatusMessage(lang === 'ru' ? 'Восстановление полной базы...' : 'Ana şirket listesi geri yükleniyor...');
+                setIsError(false);
+                try {
+                  const res = await fetch('/api/upload/restore', { method: 'POST' });
+                  const resData = await res.json();
+                  if (resData.success) {
+                    setStatusMessage(lang === 'ru' ? 'Мастер-база (3.616 чел.) успешно восстановлена!' : '3.616 personellik ana şirket listesi başarıyla geri yüklendi!');
+                    setTimeout(() => {
+                      onUploadSuccess();
+                      onClose();
+                      window.location.reload();
+                    }, 1200);
+                  } else {
+                    setIsError(true);
+                    setStatusMessage(resData.message || 'Geri yükleme başarısız oldu.');
+                  }
+                } catch {
+                  setIsError(true);
+                  setStatusMessage('Geri yükleme işlemi sırasında bir hata oluştu.');
+                } finally {
+                  setUploading(false);
+                }
+              }}
+              disabled={uploading}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 rounded-xl border border-teal-200 dark:border-teal-800 transition-colors cursor-pointer"
+              title={lang === 'ru' ? 'Восстановить мастер-базу компании (3.616 чел.)' : 'Ana Şirket Listesini Geri Yükle (3.616 Kişi)'}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>{lang === 'ru' ? 'Восстановить мастер-базу (3.616)' : 'Ana Listeyi Geri Yükle (3.616)'}</span>
+            </button>
+          </div>
 
           <button
             onClick={handleUpload}
             disabled={!file || uploading}
-            className="flex items-center gap-2 px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="flex items-center gap-2 px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
           >
             {uploading ? (
               <>
