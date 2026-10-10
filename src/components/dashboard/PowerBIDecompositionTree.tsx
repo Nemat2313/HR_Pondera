@@ -51,12 +51,30 @@ export default function PowerBIDecompositionTree({
   const activeProjectObj = activeProjects[activeProjectIndex] || activeProjects[0];
   const activeDepartments = activeProjectObj?.departments || [];
 
-  // Y center calculation for SVG tree branch lines
-  const regionParentY = activeRegionIndex * CARD_TOTAL + CARD_HEIGHT / 2;
-  const projectParentY = activeProjectIndex * CARD_TOTAL + CARD_HEIGHT / 2;
+  // Geometry calculations for horizontal tree alignment (yana yatmış ağaç)
+  const TREE_STAGE_HEIGHT = 380; // px (height of 5 cards with gap)
+  const rootOffset = (TREE_STAGE_HEIGHT - CARD_HEIGHT) / 2; // (380 - 68) / 2 = 156px
+  const rootCenterY = rootOffset + CARD_HEIGHT / 2; // 190px
+
+  const regionsCount = Math.max(1, treeData.length);
+  const regionsHeight = regionsCount * CARD_HEIGHT + Math.max(0, regionsCount - 1) * CARD_GAP;
+  const regionsOffset = Math.max(0, (TREE_STAGE_HEIGHT - regionsHeight) / 2);
+  const getRegionY = (rIdx: number) => regionsOffset + rIdx * CARD_TOTAL + CARD_HEIGHT / 2;
+  const activeRegionY = getRegionY(activeRegionIndex);
+
+  const projectsCount = Math.max(1, activeProjects.length);
+  const projectsHeight = projectsCount * CARD_HEIGHT + Math.max(0, projectsCount - 1) * CARD_GAP;
+  const projectsOffset = Math.max(0, (TREE_STAGE_HEIGHT - projectsHeight) / 2);
+  const getProjectY = (pIdx: number) => projectsOffset + pIdx * CARD_TOTAL + CARD_HEIGHT / 2;
+  const activeProjectY = getProjectY(activeProjectIndex);
+
+  const deptsCount = Math.max(1, activeDepartments.length);
+  const deptsHeight = deptsCount * CARD_HEIGHT + Math.max(0, deptsCount - 1) * CARD_GAP;
+  const deptsOffset = Math.max(0, (TREE_STAGE_HEIGHT - deptsHeight) / 2);
+  const getDeptY = (dIdx: number) => deptsOffset + dIdx * CARD_TOTAL + CARD_HEIGHT / 2;
 
   return (
-    <div className="p-4 sm:p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden transition-colors">
+    <div className="p-4 sm:p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden transition-colors h-full flex flex-col justify-between">
       {/* Background glow effects (dark mode only) */}
       <div className="hidden dark:block absolute top-0 right-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="hidden dark:block absolute bottom-0 left-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -100,64 +118,85 @@ export default function PowerBIDecompositionTree({
         </div>
       </div>
 
-      {/* HORIZONTAL DECOMPOSITION TREE CONTAINER */}
-      <div className="overflow-x-auto pb-2 relative z-10">
-        <div className="min-w-[900px] flex items-start gap-0">
-          {/* LEVEL 0: ROOT (TOPLAM ÇALIŞAN) */}
-          <div className="w-[200px] shrink-0 space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
+      {/* HORIZONTAL DECOMPOSITION TREE CONTAINER (CENTER-ALIGNED) */}
+      <div className="overflow-x-auto pb-2 relative z-10 flex-1 flex flex-col justify-center">
+        <div className="min-w-[900px] flex items-center gap-0">
+          {/* LEVEL 0: ROOT (TOPLAM ÇALIŞAN - VERTICALLY CENTERED) */}
+          <div className="w-[195px] shrink-0 flex flex-col">
+            <div className="h-7 flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <Users className="w-3.5 h-3.5" />
               <span>{lang === 'ru' ? 'Корень: Всего' : 'Kök: Toplam'}</span>
             </div>
 
-            <div
-              onClick={() => onSelectNode('region', 'all')}
-              className="h-[68px] p-3 rounded-xl bg-gradient-to-br from-emerald-50 to-slate-100 dark:from-teal-900/60 dark:to-slate-800 border-2 border-emerald-500/80 dark:border-teal-400/80 shadow-xs dark:shadow-lg dark:shadow-teal-950/50 cursor-pointer hover:border-emerald-600 dark:hover:border-teal-300 transition-all flex flex-col justify-between group relative"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-900 dark:text-teal-200">
-                  {lang === 'ru' ? 'Штат Pondera' : 'Pondera Kadrosu'}
-                </span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-200/80 dark:bg-teal-500/30 text-emerald-900 dark:text-teal-200 font-black">
-                  100%
-                </span>
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
-                  {totalCount.toLocaleString('tr-TR')}
-                </span>
-                <span className="text-[10px] text-emerald-700 dark:text-teal-300 font-semibold flex items-center gap-0.5">
-                  {lang === 'ru' ? 'Все →' : 'Tümü →'}
-                </span>
-              </div>
+            <div className="h-[380px] flex flex-col justify-center">
+              <div
+                onClick={() => onSelectNode('region', 'all')}
+                className="h-[68px] p-3 rounded-xl bg-gradient-to-br from-emerald-50 to-slate-100 dark:from-teal-900/60 dark:to-slate-800 border-2 border-emerald-500/80 dark:border-teal-400/80 shadow-xs dark:shadow-lg dark:shadow-teal-950/50 cursor-pointer hover:border-emerald-600 dark:hover:border-teal-300 transition-all flex flex-col justify-between group relative"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-900 dark:text-teal-200">
+                    {lang === 'ru' ? 'Штат Pondera' : 'Pondera Kadrosu'}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-200/80 dark:bg-teal-500/30 text-emerald-900 dark:text-teal-200 font-black">
+                    100%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
+                    {totalCount.toLocaleString('tr-TR')}
+                  </span>
+                  <span className="text-[10px] text-emerald-700 dark:text-teal-300 font-semibold flex items-center gap-0.5">
+                    {lang === 'ru' ? 'Все →' : 'Tümü →'}
+                  </span>
+                </div>
 
-              {/* Branch Output Port */}
-              <div className="hidden md:block absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald-500 dark:bg-teal-400 border-2 border-white dark:border-slate-900 z-10 shadow-xs" />
+                {/* Branch Output Port */}
+                <div className="hidden md:block absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald-500 dark:bg-teal-400 border-2 border-white dark:border-slate-900 z-10 shadow-xs" />
+              </div>
             </div>
           </div>
 
-          {/* CONNECTOR 0 -> 1 (ROOT TO SELECTED REGION) */}
-          <div className="hidden md:block w-8 shrink-0 relative self-stretch">
-            <svg className="w-full h-full overflow-visible pointer-events-none">
-              <path
-                d={`M 0,34 C 16,34 16,${regionParentY} 32,${regionParentY}`}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="text-emerald-500 dark:text-teal-400 opacity-80"
-              />
-              <circle
-                cx={32}
-                cy={regionParentY}
-                r={3}
-                className="fill-emerald-600 dark:fill-teal-300"
-              />
-            </svg>
+          {/* CONNECTOR 0 -> 1 (ROOT TO REGIONS) */}
+          <div className="hidden md:block w-8 shrink-0 flex flex-col">
+            <div className="h-7 mb-2" />
+            <div className="h-[380px] w-full relative">
+              <svg className="w-full h-full overflow-visible pointer-events-none">
+                {treeData.map((_, rIdx) => {
+                  const isSel = rIdx === activeRegionIndex;
+                  const rY = getRegionY(rIdx);
+                  return (
+                    <g key={`root-branch-${rIdx}`}>
+                      <path
+                        d={`M 0,${rootCenterY} C 16,${rootCenterY} 16,${rY} 32,${rY}`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={isSel ? 2.5 : 1.2}
+                        className={
+                          isSel
+                            ? 'text-emerald-500 dark:text-teal-400 opacity-90'
+                            : 'text-slate-300 dark:text-slate-700 opacity-40'
+                        }
+                      />
+                      <circle
+                        cx={32}
+                        cy={rY}
+                        r={isSel ? 3.5 : 2}
+                        className={
+                          isSel
+                            ? 'fill-emerald-600 dark:fill-teal-300'
+                            : 'fill-slate-300 dark:fill-slate-700'
+                        }
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
           </div>
 
-          {/* LEVEL 1: BÖLGESİ (REGIONS) */}
-          <div className="w-[220px] shrink-0 space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
+          {/* LEVEL 1: BÖLGESİ (REGIONS - VERTICALLY CENTERED) */}
+          <div className="w-[220px] shrink-0 flex flex-col">
+            <div className="h-7 flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" />
                 <span>{lang === 'ru' ? 'Регион / Участок' : 'Bölgesi (Region)'}</span>
@@ -165,7 +204,7 @@ export default function PowerBIDecompositionTree({
               <span className="text-[10px] text-slate-500 font-normal">({treeData.length})</span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="h-[380px] flex flex-col justify-center space-y-2.5">
               {treeData.map((reg) => {
                 const isSelected = selectedRegion === reg.name;
                 const pct = totalCount > 0 ? Math.round((reg.count / totalCount) * 100) : 0;
@@ -218,34 +257,46 @@ export default function PowerBIDecompositionTree({
           </div>
 
           {/* CONNECTOR 1 -> 2 (SELECTED REGION TO CHILD PROJECTS) */}
-          <div className="hidden md:block w-8 shrink-0 relative self-stretch">
-            <svg className="w-full h-full overflow-visible pointer-events-none">
-              {activeProjects.map((_, pIdx) => {
-                const childY = pIdx * CARD_TOTAL + CARD_HEIGHT / 2;
-                return (
-                  <g key={`branch-p-${pIdx}`}>
-                    <path
-                      d={`M 0,${regionParentY} C 16,${regionParentY} 16,${childY} 32,${childY}`}
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-emerald-500 dark:text-teal-400 opacity-75"
-                    />
-                    <circle
-                      cx={32}
-                      cy={childY}
-                      r={2.5}
-                      className="fill-emerald-600 dark:fill-teal-300"
-                    />
-                  </g>
-                );
-              })}
-            </svg>
+          <div className="hidden md:block w-8 shrink-0 flex flex-col">
+            <div className="h-7 mb-2" />
+            <div className="h-[380px] w-full relative">
+              <svg className="w-full h-full overflow-visible pointer-events-none">
+                {activeProjects.map((_, pIdx) => {
+                  const isSel = pIdx === activeProjectIndex;
+                  const pY = getProjectY(pIdx);
+                  return (
+                    <g key={`branch-p-${pIdx}`}>
+                      <path
+                        d={`M 0,${activeRegionY} C 16,${activeRegionY} 16,${pY} 32,${pY}`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={isSel ? 2.5 : 1.2}
+                        className={
+                          isSel
+                            ? 'text-cyan-500 dark:text-cyan-400 opacity-90'
+                            : 'text-slate-300 dark:text-slate-700 opacity-40'
+                        }
+                      />
+                      <circle
+                        cx={32}
+                        cy={pY}
+                        r={isSel ? 3.5 : 2}
+                        className={
+                          isSel
+                            ? 'fill-cyan-500 dark:fill-cyan-300'
+                            : 'fill-slate-300 dark:fill-slate-700'
+                        }
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
           </div>
 
-          {/* LEVEL 2: ŞANTİYE / PROJE ADI */}
-          <div className="w-[230px] shrink-0 space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
+          {/* LEVEL 2: ŞANTİYE / PROJE ADI (VERTICALLY CENTERED) */}
+          <div className="w-[230px] shrink-0 flex flex-col">
+            <div className="h-7 flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <span className="flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" />
                 <span>{lang === 'ru' ? 'Проект / Объект' : 'Şantiye / Proje'}</span>
@@ -255,7 +306,7 @@ export default function PowerBIDecompositionTree({
               </span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="h-[380px] flex flex-col justify-center space-y-2.5">
               {activeProjects.map((prj) => {
                 const isSelected = selectedProject === prj.name;
                 const regTotal = activeRegionObj?.count || 1;
@@ -307,34 +358,37 @@ export default function PowerBIDecompositionTree({
           </div>
 
           {/* CONNECTOR 2 -> 3 (SELECTED PROJECT TO CHILD DEPARTMENTS) */}
-          <div className="hidden md:block w-8 shrink-0 relative self-stretch">
-            <svg className="w-full h-full overflow-visible pointer-events-none">
-              {activeDepartments.map((_, dIdx) => {
-                const childY = dIdx * CARD_TOTAL + CARD_HEIGHT / 2;
-                return (
-                  <g key={`branch-d-${dIdx}`}>
-                    <path
-                      d={`M 0,${projectParentY} C 16,${projectParentY} 16,${childY} 32,${childY}`}
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-cyan-500 dark:text-cyan-400 opacity-75"
-                    />
-                    <circle
-                      cx={32}
-                      cy={childY}
-                      r={2.5}
-                      className="fill-cyan-600 dark:fill-cyan-300"
-                    />
-                  </g>
-                );
-              })}
-            </svg>
+          <div className="hidden md:block w-8 shrink-0 flex flex-col">
+            <div className="h-7 mb-2" />
+            <div className="h-[380px] w-full relative">
+              <svg className="w-full h-full overflow-visible pointer-events-none">
+                {activeDepartments.map((_, dIdx) => {
+                  const dY = getDeptY(dIdx);
+                  return (
+                    <g key={`branch-d-${dIdx}`}>
+                      <path
+                        d={`M 0,${activeProjectY} C 16,${activeProjectY} 16,${dY} 32,${dY}`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className="text-cyan-500/80 dark:text-cyan-400/80 opacity-75"
+                      />
+                      <circle
+                        cx={32}
+                        cy={dY}
+                        r={2.5}
+                        className="fill-cyan-600 dark:fill-cyan-300"
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
           </div>
 
-          {/* LEVEL 3: DEPARTMAN / EKİP */}
-          <div className="w-[250px] shrink-0 space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
+          {/* LEVEL 3: DEPARTMAN / EKİP (VERTICALLY CENTERED) */}
+          <div className="w-[250px] shrink-0 flex flex-col">
+            <div className="h-7 flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
               <span className="flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5" />
                 <span>{lang === 'ru' ? 'Отдел / Служба' : 'Departman / Ekip'}</span>
@@ -344,7 +398,7 @@ export default function PowerBIDecompositionTree({
               </span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="h-[380px] flex flex-col justify-center space-y-2.5">
               {activeDepartments.map((dpt, idx) => {
                 const prjTotal = activeProjectObj?.count || 1;
                 const pctOfPrj = Math.round((dpt.count / prjTotal) * 100);

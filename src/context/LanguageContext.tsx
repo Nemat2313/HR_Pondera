@@ -132,7 +132,9 @@ const translations: Record<string, { tr: string; ru: string }> = {
   regions_ranking_title: { tr: 'Bölge & Şantiye İş Gücü Yoğunluğu', ru: 'Численность персонала по регионам и объектам' },
 
   // Work Permits (Çalışma İzinleri & Statü Dağılımı)
-  permits_title: { tr: 'Yasal Çalışma İzinleri & Statü Dağılımı', ru: 'Разрешительные документы и правовой статус' },
+  permits_title: { tr: 'Yasal Çalışma İzinleri', ru: 'Правовой статус работников' },
+  permits_view_bars: { tr: 'Çubuk', ru: 'Полосы' },
+  permits_view_donut: { tr: 'Halka', ru: 'Круг' },
   permits_sub: { tr: 'Rusya çalışma kartı türleri: ВКС, Patent, Kota, RF ve Avrasya Birliği', ru: 'Статус в РФ: ВКС, Патент, Квота/РНР, Граждане РФ, ЕАЭС, ВНЖ' },
   permits_badge: { tr: 'RF Göç Mevzuatı', ru: 'Миграционный учет РФ' },
   permits_registered_total: { tr: 'Kayıtlı İzinli / Muaf', ru: 'Всего на учете' },
