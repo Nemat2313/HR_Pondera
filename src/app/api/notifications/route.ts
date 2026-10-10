@@ -14,7 +14,7 @@ export async function GET() {
       .prepare(`
         SELECT sira_no, sicil_no, ad_soyad, region, proje_adi, vize_no, vize_bitis_tarihi
         FROM personnel 
-        WHERE genel_durum = 'Mevcut' 
+        WHERE guncel_durum IN ('Mevcut', 'Is Gezisi', 'Mazeret Izni', 'Suresiz izin', 'Suresiz Izin', 'Ucretsiz Izin', 'Yillik Izin') 
           AND vize_bitis_tarihi != '' 
           AND vize_bitis_tarihi >= ? 
           AND vize_bitis_tarihi <= '2026-11-30'
@@ -28,7 +28,7 @@ export async function GET() {
       .prepare(`
         SELECT sira_no, sicil_no, ad_soyad, region, proje_adi, propusk_no, propusk_bitis_tarihi
         FROM personnel 
-        WHERE genel_durum = 'Mevcut' 
+        WHERE guncel_durum IN ('Mevcut', 'Is Gezisi', 'Mazeret Izni', 'Suresiz izin', 'Suresiz Izin', 'Ucretsiz Izin', 'Yillik Izin') 
           AND propusk_bitis_tarihi != '' 
           AND propusk_bitis_tarihi >= ? 
           AND propusk_bitis_tarihi <= '2026-11-30'
@@ -42,7 +42,7 @@ export async function GET() {
       .prepare(`
         SELECT sira_no, sicil_no, ad_soyad, region, proje_adi, pasaport_no, pasaport_gecerlilik
         FROM personnel 
-        WHERE genel_durum = 'Mevcut' 
+        WHERE guncel_durum IN ('Mevcut', 'Is Gezisi', 'Mazeret Izni', 'Suresiz izin', 'Suresiz Izin', 'Ucretsiz Izin', 'Yillik Izin') 
           AND pasaport_gecerlilik != '' 
           AND pasaport_gecerlilik >= ? 
           AND pasaport_gecerlilik <= '2027-04-01'

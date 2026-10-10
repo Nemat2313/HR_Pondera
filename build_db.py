@@ -297,6 +297,7 @@ def build_database():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_rhi ON personnel(rhi_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_saren ON personnel(saren_no);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_ad_soyad ON personnel(ad_soyad);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_guncel_durum ON personnel(guncel_durum);")
 
     headers = []
     col_map = {}

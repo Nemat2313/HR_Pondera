@@ -46,6 +46,7 @@ interface ComplianceItem {
   region: string;
   projeAdi: string;
   uyruk: string;
+  guncelDurum: string;
   docType: string;
   docLabel: string;
   docNo: string;
@@ -97,6 +98,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
   const [filterDocType, setFilterDocType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRegion, setFilterRegion] = useState('all');
+  const [filterGuncelDurum, setFilterGuncelDurum] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -107,6 +109,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
     if (filterDocType !== 'all') params.set('docType', filterDocType);
     if (filterStatus !== 'all') params.set('status', filterStatus);
     if (filterRegion !== 'all') params.set('region', filterRegion);
+    if (filterGuncelDurum !== 'all') params.set('guncelDurum', filterGuncelDurum);
     if (search.trim()) params.set('search', search.trim());
 
     if (user) {
@@ -127,7 +130,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
 
   useEffect(() => {
     fetchCompliance();
-  }, [filterDocType, filterStatus, filterRegion, search]);
+  }, [filterDocType, filterStatus, filterRegion, filterGuncelDurum, search]);
 
   // Export to Excel
   const handleExportExcel = () => {
@@ -137,6 +140,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
       'Sicil No': i.sicilNo,
       'Adı Soyadı': i.adSoyad,
       'Görevi': i.gorevi,
+      'Güncel Durumu': i.guncelDurum || 'Mevcut',
       'Departman': i.departman,
       'Bölge': i.region,
       'Proje Adı': i.projeAdi,
@@ -230,7 +234,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
                   {t('comp_title')}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/40 text-[11px] font-bold">
-                  {lang === 'ru' ? 'Инспекция на объектах' : 'Saha Denetim Motoru'}
+                  {lang === 'ru' ? 'Контроль: Действующие + В отпуске' : 'Kapsam: Sahadaki & İzinli Personel'}
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 text-[11px] font-bold">
                   {lang === 'ru' ? 'Базовая дата:' : 'Baz Tarih:'} {data?.referenceDate || '08.10.2026'}
@@ -601,7 +605,10 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
             {/* Region Dropdown */}
             <select
               value={filterRegion}
-              onChange={(e) => setFilterRegion(e.target.value)}
+              onChange={(e) => {
+                setFilterRegion(e.target.value);
+                setPage(1);
+              }}
               className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
             >
               <option value="all">{t('filter_all_regions')}</option>
@@ -612,13 +619,33 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
               ))}
             </select>
 
-            {(filterDocType !== 'all' || filterStatus !== 'all' || filterRegion !== 'all' || search) && (
+            {/* Güncel Durumu Dropdown */}
+            <select
+              value={filterGuncelDurum}
+              onChange={(e) => {
+                setFilterGuncelDurum(e.target.value);
+                setPage(1);
+              }}
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
+            >
+              <option value="all">{lang === 'ru' ? 'Все статусы (Действ. + Отпуск)' : 'Tüm Kapsam (Mevcut + İzinli + İş Gezisi)'}</option>
+              <option value="Mevcut">{lang === 'ru' ? 'Mevcut (На объекте)' : 'Mevcut'}</option>
+              <option value="Yillik Izin">{lang === 'ru' ? 'Ежегодный отпуск (Yıllık İzin)' : 'Yıllık İzin'}</option>
+              <option value="Is Gezisi">{lang === 'ru' ? 'Командировка (İş Gezisi)' : 'İş Gezisi'}</option>
+              <option value="Mazeret Izni">{lang === 'ru' ? 'Отпуск по сем. обст. (Mazeret)' : 'Mazeret İzni'}</option>
+              <option value="Ucretsiz Izin">{lang === 'ru' ? 'Без сохранения з/п (Ücretsiz)' : 'Ücretsiz İzin'}</option>
+              <option value="Suresiz izin">{lang === 'ru' ? 'Бессрочный отпуск (Süresiz)' : 'Süresiz İzin'}</option>
+            </select>
+
+            {(filterDocType !== 'all' || filterStatus !== 'all' || filterRegion !== 'all' || filterGuncelDurum !== 'all' || search) && (
               <button
                 onClick={() => {
                   setFilterDocType('all');
                   setFilterStatus('all');
                   setFilterRegion('all');
+                  setFilterGuncelDurum('all');
                   setSearch('');
+                  setPage(1);
                 }}
                 className="px-2.5 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
               >
@@ -688,6 +715,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
                 <th className="py-3 px-3.5">{lang === 'ru' ? 'Табельный' : 'Sicil'}</th>
                 <th className="py-3 px-3.5">{lang === 'ru' ? 'ФИО' : 'Adı Soyadı'}</th>
                 <th className="py-3 px-3.5">{lang === 'ru' ? 'Должность' : 'Görevi / Pozisyon'}</th>
+                <th className="py-3 px-3.5">{lang === 'ru' ? 'Текущий статус' : 'Güncel Durumu'}</th>
                 <th className="py-3 px-3.5">{lang === 'ru' ? 'Регион и проект' : 'Bölge & Proje'}</th>
                 <th className="py-3 px-3.5">{lang === 'ru' ? 'Гражданство' : 'Uyruk'}</th>
                 <th className="py-3 px-3.5">{lang === 'ru' ? 'Тип документа' : 'Evrak Türü'}</th>
@@ -702,7 +730,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
               {paginatedItems.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-slate-400">
+                  <td colSpan={12} className="py-16 text-center text-slate-400">
                     {lang === 'ru' ? 'Документы по заданным критериям не найдены.' : 'Filtre kriterlerine uygun evrak kaydı bulunamadı.'}
                   </td>
                 </tr>
@@ -722,6 +750,19 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
                     </td>
                     <td className="py-2.5 px-3.5 text-slate-700 dark:text-slate-300">
                       {item.gorevi}
+                    </td>
+                    <td className="py-2.5 px-3.5">
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                          item.guncelDurum === 'Mevcut'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                            : item.guncelDurum?.toLowerCase().includes('izin')
+                            ? 'bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                            : 'bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                        }`}
+                      >
+                        {item.guncelDurum}
+                      </span>
                     </td>
                     <td className="py-2.5 px-3.5">
                       <span className="text-slate-900 dark:text-white font-medium">{item.region}</span>

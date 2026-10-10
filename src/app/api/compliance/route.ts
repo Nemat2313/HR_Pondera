@@ -77,6 +77,7 @@ export async function GET(request: Request) {
     const filterProject = searchParams.get('project') || 'all';
     const filterDocType = searchParams.get('docType') || 'all';
     const filterStatus = searchParams.get('status') || 'all';
+    const filterGuncelDurum = searchParams.get('guncelDurum') || 'all';
     const filterSearch = searchParams.get('search')?.trim().toLowerCase() || '';
 
     // RLS Scope
@@ -87,9 +88,35 @@ export async function GET(request: Request) {
 
     const db = getDb();
 
-    // Query active personnel
-    const conditions: string[] = ["genel_durum = 'Mevcut'"];
+    // Query personnel according to HR Director's specification:
+    // Evrak süre kontrolü ekli resimdeki güncel durumlulara göre (Mevcut, İş Gezisi, Mazeret İzni, Süresiz İzin, Ücretsiz İzin, Yıllık İzin)
+    const COMPLIANCE_GUNCEL_DURUMLAR = [
+      'Mevcut',
+      'Is Gezisi',
+      'İş Gezisi',
+      'Mazeret Izni',
+      'Mazeret İzni',
+      'Suresiz izin',
+      'Suresiz Izin',
+      'Süresiz İzin',
+      'Süresiz izin',
+      'Ucretsiz Izin',
+      'Ücretsiz İzin',
+      'Yillik Izin',
+      'Yıllık İzin',
+    ];
+
+    const conditions: string[] = [];
     const params: any[] = [];
+
+    if (filterGuncelDurum !== 'all') {
+      conditions.push('guncel_durum = ?');
+      params.push(filterGuncelDurum);
+    } else {
+      const placeholders = COMPLIANCE_GUNCEL_DURUMLAR.map(() => '?').join(', ');
+      conditions.push(`guncel_durum IN (${placeholders})`);
+      params.push(...COMPLIANCE_GUNCEL_DURUMLAR);
+    }
 
     if (scopeType === 'region' && scopeVal !== 'all') {
       conditions.push('region = ?');
@@ -111,7 +138,7 @@ export async function GET(request: Request) {
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
     const query = db.prepare(`
       SELECT 
-        id, sira_no, sicil_no, rhi_id, ad_soyad, gorevi, departman, region, proje_adi, uyruk,
+        id, sira_no, sicil_no, rhi_id, ad_soyad, gorevi, departman, region, proje_adi, uyruk, genel_durum, guncel_durum,
         pasaport_no, pasaport_gecerlilik,
         vize_no, vize_bitis_tarihi,
         propusk_no, propusk_bitis_tarihi,
@@ -363,6 +390,7 @@ export async function GET(request: Request) {
           region: r.region || '-',
           projeAdi: r.proje_adi || '-',
           uyruk: r.uyruk || '-',
+          guncelDurum: r.guncel_durum || 'Mevcut',
           docType: d.id,
           docLabel: d.label,
           docNo: docNo || '-',
