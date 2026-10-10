@@ -93,6 +93,31 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
         body: formData,
       });
 
+      if (!res.ok) {
+        setIsError(true);
+        if (res.status === 413) {
+          setStatusMessage(
+            lang === 'ru'
+              ? 'Файл слишком большой (>30 МБ). Облачный сервер (Cloud Run) отклонил запрос по лимиту 32 МБ. Используйте кнопку "Восстановить мастер-базу" внизу.'
+              : 'Dosya boyutu çok büyük (>30 MB). Bulut sunucusu (Cloud Run) 32 MB sınırını aştığı için yüklemeyi reddetti. Lütfen alttaki "Ana Listeyi Geri Yükle" butonunu kullanın.'
+          );
+        } else if (res.status === 504 || res.status === 502) {
+          setStatusMessage(
+            lang === 'ru'
+              ? 'Превышено время ожидания сервера (таймаут). Файл содержит более 28.000 строк. Рекомендуется использовать встроенную мастер-базу.'
+              : 'Sunucu zaman aşımına uğradı (dosya 28.000 satırdan fazla veri içeriyor). Dahili ana listeyi kullanmanız önerilir.'
+          );
+        } else {
+          try {
+            const errData = await res.json();
+            setStatusMessage(errData.message || (lang === 'ru' ? 'Ошибка сервера при обработке файла.' : 'Dosya işlenirken sunucu hatası oluştu.'));
+          } catch {
+            setStatusMessage(lang === 'ru' ? 'Ошибка сервера при обработке файла.' : 'Dosya işlenirken sunucu hatası oluştu.');
+          }
+        }
+        return;
+      }
+
       const resData = await res.json();
 
       if (resData.success) {
@@ -107,7 +132,11 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
       }
     } catch {
       setIsError(true);
-      setStatusMessage('Dosya işlenirken sunucu hatası oluştu.');
+      setStatusMessage(
+        lang === 'ru'
+          ? 'Сбой сетевого подключения или размер файла превышает лимит сервера (32 МБ).'
+          : 'Bağlantı hatası veya dosya boyutu bulut sunucu limitini (32 MB) aşıyor.'
+      );
     } finally {
       setUploading(false);
     }
@@ -255,6 +284,18 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
                 {lang === 'ru'
                   ? '💡 Примечание: Выбранный файл является выгрузкой одного участка (например, Polisterol). База обновится только по этому файлу. Для загрузки полного штата всей компании (3.616 сотрудников) выберите файл "tum liste...".'
                   : '💡 Bilgi: Seçilen dosya tek bir şantiyeye (örn. Polisterol) ait görünüyor. Sistemde sadece o projenin personeli görünecektir. Tüm şirketin ana listesi (3.616 aktif personel) için "tum liste..." genel dosyasını seçmelisiniz.'}
+              </span>
+            </div>
+          )}
+
+          {/* Informational tip if master full list file (> 25MB) is selected */}
+          {file && file.size > 25 * 1024 * 1024 && (
+            <div className="p-3 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60 rounded-xl text-[11px] text-sky-900 dark:text-sky-200 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+              <span>
+                {lang === 'ru'
+                  ? '💡 Эта полная мастер-база (30+ МБ, 3.616 сотрудников) уже встроена в систему! Из-за лимита Cloud Run (32 МБ) загрузка через браузер может превысить лимит. Вы можете нажать "Восстановить мастер-базу (3.616)" внизу для мгновенного сброса.'
+                  : '💡 Bu ana liste (30+ MB, 3.616 personel) zaten sisteme tam olarak entegre edilmiştir! Bulut sunucusu (Cloud Run) 32 MB sınırına sahip olduğu için tarayıcıdan yükleme limit aşımına uğrayabilir. Aşağıdaki "Ana Listeyi Geri Yükle (3.616)" butonunu kullanarak anında geri yükleyebilirsiniz.'}
               </span>
             </div>
           )}
