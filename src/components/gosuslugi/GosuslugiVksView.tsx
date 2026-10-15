@@ -1302,8 +1302,33 @@ export default function GosuslugiVksView() {
           </button>
         </div>
 
-        {/* Shared RPA Agent Status Indicator in Tab Bar */}
-        <div className="flex items-center gap-2 px-2">
+        {/* Shared RPA Agent Status Indicator + Gosuslugi Blue/Green Logo & Animated Robot in Top Right Corner */}
+        <div className="flex items-center gap-2.5 px-2">
+          <style>{`
+            @keyframes rpaRobotFloat {
+              0%, 100% { transform: translateY(0px); }
+              50% { transform: translateY(-2.5px); }
+            }
+            @keyframes rpaLaserScan {
+              0%, 100% { transform: translateX(-5px); opacity: 0.75; }
+              50% { transform: translateX(5px); opacity: 1; }
+            }
+            @keyframes rpaAntennaPulse {
+              0%, 100% { transform: scale(1); opacity: 0.9; }
+              50% { transform: scale(1.35); opacity: 0.35; }
+            }
+            .rpa-robot-float {
+              animation: rpaRobotFloat 2.4s ease-in-out infinite;
+            }
+            .rpa-laser-scan {
+              animation: rpaLaserScan 1.6s ease-in-out infinite;
+            }
+            .rpa-antenna-pulse {
+              transform-origin: 18px 4px;
+              animation: rpaAntennaPulse 1.4s ease-in-out infinite;
+            }
+          `}</style>
+
           {isOnline ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1319,6 +1344,69 @@ export default function GosuslugiVksView() {
               <HelpCircle className="w-3 h-3 opacity-75" />
             </button>
           )}
+
+          {/* GOSUSLUGI BLUE & GREEN BRAND BADGE + COMPACT ANIMATED RPA ROBOT */}
+          <div
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-gradient-to-r from-sky-50/90 via-white to-emerald-50/90 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/60 border border-sky-200/80 dark:border-teal-500/30 shadow-2xs select-none"
+            title="Госуслуги (ЕПГУ 600585/1) — Pondera RPA Автоматизация"
+          >
+            {/* Zero-Extra-Space Animated Cyber-Robot Mascot */}
+            <svg
+              viewBox="0 0 36 36"
+              fill="none"
+              className="w-7 h-7 shrink-0 rpa-robot-float"
+              aria-label="Animated Gosuslugi RPA Robot"
+            >
+              <defs>
+                <linearGradient id="rpaBotHeadGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#0284c7" />
+                  <stop offset="100%" stopColor="#10b981" />
+                </linearGradient>
+              </defs>
+              {/* Radar Pulse Ring */}
+              <circle cx="18" cy="4" r="3" fill="#10b981" className="rpa-antenna-pulse" />
+              {/* Antenna Stem & Tip */}
+              <line x1="18" y1="5" x2="18" y2="10" stroke="#0284c7" strokeWidth="2.2" strokeLinecap="round" />
+              <circle cx="18" cy="4" r="2" fill="#06b6d4" />
+              {/* Side Ears */}
+              <rect x="3" y="15" width="3" height="7" rx="1.5" fill="#0284c7" />
+              <rect x="30" y="15" width="3" height="7" rx="1.5" fill="#10b981" />
+              {/* Robot Head */}
+              <rect
+                x="6"
+                y="10"
+                width="24"
+                height="18"
+                rx="6"
+                fill="url(#rpaBotHeadGrad)"
+                stroke="#ffffff"
+                strokeWidth="1"
+              />
+              {/* Dark Cyber Visor */}
+              <rect x="9" y="13.5" width="18" height="8" rx="3.5" fill="#0f172a" />
+              {/* Blinking Cyber Eyes */}
+              <circle cx="14" cy="17.5" r="2" fill="#38bdf8" />
+              <circle cx="22" cy="17.5" r="2" fill="#34d399" />
+              {/* Scanning Laser Beam */}
+              <rect
+                x="15.5"
+                y="16.5"
+                width="5"
+                height="2"
+                rx="1"
+                fill="#a7f3d0"
+                className="rpa-laser-scan"
+              />
+              {/* Smile / Audio Wave Bar */}
+              <rect x="13" y="24" width="10" height="1.8" rx="0.9" fill="#ffffff" fillOpacity="0.85" />
+            </svg>
+
+            {/* Official Gosuslugi Geometric Wordmark in Blue ("гос") + Emerald Green ("услуги") */}
+            <div className="flex items-baseline leading-none tracking-tight font-black text-[17px] sm:text-[18px]" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif" }}>
+              <span className="text-[#0066B3] dark:text-[#38bdf8] font-extrabold">гос</span>
+              <span className="text-[#059669] dark:text-[#10b981] font-extrabold">услуги</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1403,7 +1491,7 @@ export default function GosuslugiVksView() {
           {/* Left: Icon + Title + Hover Tooltip + Status Badges */}
           <div className="flex flex-wrap items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-xs shrink-0">
-              <Bot className="w-5 h-5" />
+              <Bot className="w-5 h-5 rpa-robot-float" />
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">

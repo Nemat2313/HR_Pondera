@@ -53,11 +53,11 @@ export default function Sidebar({
       badgeColor: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
     },
     {
-      id: 'gosuslugi',
-      label: t('nav_gosuslugi'),
-      icon: Bot,
-      badge: t('badge_rpa'),
-      badgeColor: 'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
+      id: 'turnover',
+      label: t('nav_turnover'),
+      icon: TrendingUp,
+      badge: t('badge_report'),
+      badgeColor: 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-800/50',
     },
     {
       id: 'compliance',
@@ -74,6 +74,13 @@ export default function Sidebar({
       badgeColor: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
     },
     {
+      id: 'gosuslugi',
+      label: t('nav_gosuslugi'),
+      icon: Bot,
+      badge: t('badge_rpa'),
+      badgeColor: 'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
+    },
+    {
       id: 'sites',
       label: t('nav_sites'),
       icon: Building2,
@@ -84,13 +91,6 @@ export default function Sidebar({
       id: 'demographics',
       label: t('nav_demographics'),
       icon: PieChart,
-    },
-    {
-      id: 'turnover',
-      label: t('nav_turnover'),
-      icon: TrendingUp,
-      badge: t('badge_report'),
-      badgeColor: 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-800/50',
     },
     {
       id: 'database',

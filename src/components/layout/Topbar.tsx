@@ -129,16 +129,18 @@ export default function Topbar({
                 setSearchQuery('');
                 onSearchSubmit('');
               }}
-              className="absolute right-12 sm:right-14 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+              className="absolute right-9 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
           <button
             onClick={() => onSearchSubmit(searchQuery)}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-2xs cursor-pointer"
+            title={t('btn_find')}
+            aria-label={t('btn_find')}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
           >
-            {t('btn_find')}
+            <Search className="w-3.5 h-3.5" />
           </button>
         </div>
 
