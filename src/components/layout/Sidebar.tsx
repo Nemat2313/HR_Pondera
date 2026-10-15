@@ -127,7 +127,7 @@ export default function Sidebar({
 
       <aside
         style={{ fontFamily: "'Tahoma', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif" }}
-        className={`fixed top-0 left-0 z-50 h-screen transition-all duration-300 ease-in-out bg-gradient-to-b from-white via-slate-50/95 to-slate-200/90 dark:from-[#0F172A] dark:via-[#0B1222] dark:to-[#050912] border-r border-slate-200/90 dark:border-slate-800 flex flex-col justify-between ${
+        className={`fixed top-0 left-0 z-50 h-screen transition-all duration-300 ease-in-out bg-gradient-to-b from-white via-emerald-50/70 to-emerald-200/90 dark:from-[#0F172A] dark:via-[#0B1F24] dark:to-[#052e2b] border-r border-emerald-200/70 dark:border-teal-900/60 flex flex-col justify-between ${
           // Mobile state
           mobileOpen ? 'translate-x-0 w-56 shadow-2xl' : '-translate-x-full lg:translate-x-0'
         } ${collapsed ? 'lg:w-20' : 'lg:w-56'}`}
@@ -242,9 +242,9 @@ export default function Sidebar({
         </div>
 
         {/* Bottom Footer Info */}
-        <div className="p-2 border-t border-slate-300/60 dark:border-slate-800/80">
+        <div className="p-2 border-t border-emerald-300/60 dark:border-teal-800/60">
           {!collapsed || mobileOpen ? (
-            <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs border border-slate-200/80 dark:border-slate-700/80 flex items-center gap-2 shadow-2xs">
+            <div className="p-2 rounded-lg bg-white/85 dark:bg-slate-900/80 backdrop-blur-xs border border-emerald-200/80 dark:border-teal-800/70 flex items-center gap-2 shadow-2xs">
               <div className="w-6 h-6 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-3.5 h-3.5" />
               </div>

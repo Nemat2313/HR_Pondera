@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
+import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Briefcase, Globe2, FileSpreadsheet, Users2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -20,50 +20,67 @@ interface PowerBIDualDonutsProps {
 const COLLAR_COLORS = ['#0d9488', '#0284c7', '#64748b']; // Teal, Sky-Blue, Slate
 const CATEGORY_COLORS = ['#06b6d4', '#10b981', '#3b82f6', '#f59e0b']; // Cyan, Emerald, Blue, Amber
 
-// Distinct, Larger Professional Male Human Icon (Broad shoulders, collar & tie silhouette)
-export function WcMaleIcon({ className = 'w-14 h-14 text-teal-600 dark:text-teal-300' }: { className?: string }) {
+// Tall, Full-Stature Modern Male Silhouette matching Pondera HR Emerald/Teal Design (1:7.5 tall proportion)
+export function WcMaleIcon({ className = 'w-11 h-28' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 64 64" fill="none" className={className} aria-label="Erkek Personel İkonu">
-      {/* Subtle Halo Circle */}
-      <circle cx="32" cy="14" r="9.5" fill="currentColor" />
-      {/* Male Hair / Crown Accent */}
+    <svg viewBox="0 0 48 128" fill="none" className={className} aria-label="Erkek Personel İkonu">
+      <defs>
+        <linearGradient id="ponderaMaleGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#10b981" />
+          <stop offset="50%" stopColor="#0d9488" />
+          <stop offset="100%" stopColor="#0f766e" />
+        </linearGradient>
+      </defs>
+      {/* Subtle Ground Shadow Oval */}
+      <ellipse cx="24" cy="123" rx="13" ry="3" fill="#0d9488" fillOpacity="0.2" />
+      {/* Head */}
+      <circle cx="24" cy="12" r="8" fill="url(#ponderaMaleGrad)" />
+      {/* Neck */}
+      <rect x="21" y="20.5" width="6" height="4.5" rx="2" fill="url(#ponderaMaleGrad)" />
+      {/* Tall Athletic Torso, Broad Shoulders, Arms & Long Standing Legs */}
       <path
-        d="M23 11.5C23 6.8 27 3.5 32 3.5C37 3.5 41 6.8 41 11.5C39.2 9.2 35.8 8 32 8C28.2 8 24.8 9.2 23 11.5Z"
-        fill="currentColor"
-        fillOpacity="0.85"
+        d="M12.5 25C8.9 25 6 27.9 6 31.5V62C6 64.2 7.8 66 10 66C12.2 66 14 64.2 14 62V35.5H15.5V117C15.5 119.8 17.7 122 20.5 122C23.3 122 25.5 119.8 25.5 117V72H22.5V117C22.5 119.8 24.7 122 27.5 122C30.3 122 32.5 119.8 32.5 117V35.5H34V62C34 64.2 35.8 66 38 66C40.2 66 42 64.2 42 62V31.5C42 27.9 39.1 25 35.5 25H12.5Z"
+        fill="url(#ponderaMaleGrad)"
       />
-      {/* Broad Shoulders & Suit Torso with Tie Cutout */}
-      <path
-        d="M19 26C15.1 26 12 29.1 12 33V45C12 46.9 13.5 48.5 15.5 48.5C17.2 48.5 18.5 47.2 18.5 45.5V35H20.5V58.5C20.5 60.4 22.1 62 24 62H28C29.9 62 31.5 60.4 31.5 58.5V46.5H32.5V58.5C32.5 60.4 34.1 62 36 62H40C41.9 62 43.5 60.4 43.5 58.5V35H45.5V45.5C45.5 47.2 46.8 48.5 48.5 48.5C50.5 48.5 52 46.9 52 45V33C52 29.1 48.9 26 45 26H37.5L34.2 33.5L35.5 39.5L32 43L28.5 39.5L29.8 33.5L26.5 26H19Z"
-        fill="currentColor"
-      />
-      {/* Executive Tie Detail */}
-      <path
-        d="M30.2 26H33.8L32.8 31.5L34.3 38.8L32 41.2L29.7 38.8L31.2 31.5L30.2 26Z"
-        fill="currentColor"
-        fillOpacity="0.45"
-      />
+      {/* Leg Separation Gap */}
+      <rect x="23" y="68" width="2" height="54" rx="1" fill="#f0fdfa" className="dark:fill-slate-900" />
+      {/* Executive Collar & Tie Accent */}
+      <path d="M19.5 25L24 33L28.5 25H19.5Z" fill="#ffffff" fillOpacity="0.85" />
+      <path d="M23 30L25 30L25.8 44L24 47L22.2 44L23 30Z" fill="#042f2e" fillOpacity="0.35" />
     </svg>
   );
 }
 
-// Distinct, Larger Professional Female Human Icon (Styled hair silhouette, tailored dress & waist)
-export function WcFemaleIcon({ className = 'w-14 h-14 text-violet-600 dark:text-violet-300' }: { className?: string }) {
+// Tall, Full-Stature Modern Female Silhouette matching Pondera HR Violet/Indigo Design (1:7.5 tall proportion)
+export function WcFemaleIcon({ className = 'w-11 h-28' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 64 64" fill="none" className={className} aria-label="Kadın Personel İkonu">
-      {/* Feminine Hair Silhouette (Flowing shoulder-length contour) */}
+    <svg viewBox="0 0 48 128" fill="none" className={className} aria-label="Kadın Personel İkonu">
+      <defs>
+        <linearGradient id="ponderaFemaleGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="50%" stopColor="#8b5cf6" />
+          <stop offset="100%" stopColor="#6d28d9" />
+        </linearGradient>
+      </defs>
+      {/* Subtle Ground Shadow Oval */}
+      <ellipse cx="24" cy="123" rx="12" ry="3" fill="#8b5cf6" fillOpacity="0.2" />
+      {/* Graceful Hair Contour */}
       <path
-        d="M21 15.5C21 8.6 25.8 4 32 4C38.2 4 43 8.6 43 15.5C43 19.2 44.2 22.4 45.5 24.2C42.2 24.8 39.5 23.6 38.2 21.5C36.5 22.8 34.4 23.5 32 23.5C29.6 23.5 27.5 22.8 25.8 21.5C24.5 23.6 21.8 24.8 18.5 24.2C19.8 22.4 21 19.2 21 15.5Z"
-        fill="currentColor"
-        fillOpacity="0.4"
+        d="M15.5 13C15.5 7.5 19.3 3.5 24 3.5C28.7 3.5 32.5 7.5 32.5 13C32.5 17.5 34 21 35.5 23C32.5 23.5 30 22 28.8 19.8C27.3 20.8 25.7 21.2 24 21.2C22.3 21.2 20.7 20.8 19.2 19.8C18 22 15.5 23.5 12.5 23C14 21 15.5 17.5 15.5 13Z"
+        fill="url(#ponderaFemaleGrad)"
+        fillOpacity="0.45"
       />
       {/* Head */}
-      <circle cx="32" cy="14" r="8.8" fill="currentColor" />
-      {/* Tailored Shoulders, V-Neckline & Flared Dress Silhouette */}
+      <circle cx="24" cy="12" r="7.6" fill="url(#ponderaFemaleGrad)" />
+      {/* Neck */}
+      <rect x="21.5" y="20" width="5" height="4.5" rx="2" fill="url(#ponderaFemaleGrad)" />
+      {/* Tall Slender Frame, Tapered Waist, A-Line Dress & Long Slender Legs */}
       <path
-        d="M23.5 26C19.8 26 16.6 28.5 15.4 32L11.8 42.8C11.2 44.5 12.1 46.3 13.8 46.8C15.4 47.3 17.1 46.4 17.7 44.8L20.6 35.8H22.4L17.2 50.5C16.8 51.6 17.6 52.8 18.8 52.8H23.5V58.8C23.5 60.6 24.9 62 26.7 62H28.8C30.5 62 31.5 60.6 31.5 58.8V52.8H32.5V58.8C32.5 60.6 33.5 62 35.2 62H37.3C39.1 62 40.5 60.6 40.5 58.8V52.8H45.2C46.4 52.8 47.2 51.6 46.8 50.5L41.6 35.8H43.4L46.3 44.8C46.9 46.4 48.6 47.3 50.2 46.8C51.9 46.3 52.8 44.5 52.2 42.8L48.6 32C47.4 28.5 44.2 26 40.5 26H35.5L32 31.8L28.5 26H23.5Z"
-        fill="currentColor"
+        d="M15.5 25C12.4 25 9.8 27.1 9 30.1L5.2 56.5C4.8 58.5 6.1 60.4 8.1 60.8C10.1 61.1 11.9 59.8 12.3 57.8L15.8 34.5H17.2L15.8 46L10.5 82.5C10.2 84.3 11.6 86 13.5 86H17.2V117.5C17.2 120 19.1 122 21.4 122C23.5 122 23.5 120 23.5 117.5V86H24.5V117.5C24.5 120 24.5 122 26.6 122C28.9 122 30.8 120 30.8 117.5V86H34.5C36.4 86 37.8 84.3 37.5 82.5L32.2 46L30.8 34.5H32.2L35.7 57.8C36.1 59.8 37.9 61.1 39.9 60.8C41.9 60.4 43.2 58.5 42.8 56.5L39 30.1C38.2 27.1 35.6 25 32.5 25H15.5Z"
+        fill="url(#ponderaFemaleGrad)"
       />
+      {/* V-Neck Collar Detail */}
+      <path d="M20 25L24 31.5L28 25H20Z" fill="#ffffff" fillOpacity="0.85" />
     </svg>
   );
 }
@@ -80,16 +97,6 @@ export default function PowerBIDualDonuts({
   onOpenDetail,
 }: PowerBIDualDonutsProps) {
   const { lang, translateVal } = useLanguage();
-
-  const formatLabel = (rawLabel: string) => {
-    if (lang === 'ru') {
-      if (rawLabel.includes('Diğer') || rawLabel.includes('Pasif')) return 'Другие / Пассив';
-      if (rawLabel === 'Yerel') return 'Местный';
-      if (rawLabel.includes('Mavi Yaka')) return 'Синий воротничок (Рабочие)';
-      if (rawLabel.includes('Beyaz Yaka')) return 'Белый воротничок (ИТР)';
-    }
-    return translateVal(rawLabel);
-  };
 
   const formatShortLabel = (rawLabel: string) => {
     if (lang === 'ru') {
@@ -116,44 +123,95 @@ export default function PowerBIDualDonuts({
   const malePct = totalCount > 0 ? Math.round((maleCount / totalCount) * 100) : 97;
   const femalePct = totalCount > 0 ? Math.max(1, Math.round((femaleCount / totalCount) * 100)) : 3;
 
-  // Custom Slice Label: Crisp percentage badge right inside the wider 40px donut ring
-  const renderSectorLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
-    const RADIAN = Math.PI / 180;
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.52;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  // Custom External Callout Line & Label Renderer (replaces both Tooltip and bottom legend)
+  const createExternalCalloutRenderer = (colors: string[]) => {
+    const CalloutLabel = (props: any) => {
+      const { cx, cy, midAngle, innerRadius, outerRadius, percent, index, payload } = props;
+      const RADIAN = Math.PI / 180;
+      const sin = Math.sin(-RADIAN * midAngle);
+      const cos = Math.cos(-RADIAN * midAngle);
 
-    if (percent < 0.04) return null;
+      const sliceColor = colors[index % colors.length];
+      const pctText = `%${(percent * 100).toFixed(0)}`;
+      const countText = `${(payload.count || 0).toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} ${
+        lang === 'ru' ? 'чел.' : 'kişi'
+      }`;
+      const titleText = formatShortLabel(payload.label || '');
 
-    return (
-      <g className="pointer-events-none select-none">
-        <rect
-          x={x - 18}
-          y={y - 10}
-          width={36}
-          height={20}
-          rx={6}
-          fill="rgba(15, 23, 42, 0.55)"
-          stroke="rgba(255,255,255,0.28)"
-          strokeWidth={1}
-        />
-        <text
-          x={x}
-          y={y}
-          fill="#ffffff"
-          textAnchor="middle"
-          dominantBaseline="central"
-          className="font-extrabold text-[11px] tracking-tight"
-        >
-          {`%${(percent * 100).toFixed(0)}`}
-        </text>
-      </g>
-    );
+      // 1. Inner badge inside the slice (if slice is large enough)
+      const midR = innerRadius + (outerRadius - innerRadius) * 0.5;
+      const inX = cx + midR * cos;
+      const inY = cy + midR * sin;
+
+      // 2. External callout line coordinates
+      const sx = cx + (outerRadius + 2) * cos;
+      const sy = cy + (outerRadius + 2) * sin;
+      const mx = cx + (outerRadius + 16) * cos;
+      const my = cy + (outerRadius + 16) * sin;
+      const ex = mx + (cos >= 0 ? 12 : -12);
+      const ey = my;
+      const textAnchor = cos >= 0 ? 'start' : 'end';
+      const textX = ex + (cos >= 0 ? 5 : -5);
+
+      return (
+        <g className="pointer-events-none select-none">
+          {/* Percentage inside sector */}
+          {percent >= 0.06 && (
+            <text
+              x={inX}
+              y={inY}
+              fill="#ffffff"
+              textAnchor="middle"
+              dominantBaseline="central"
+              className="font-black text-[10.5px] drop-shadow-sm"
+            >
+              {pctText}
+            </text>
+          )}
+
+          {/* Callout Leader Line */}
+          <polyline
+            points={`${sx},${sy} ${mx},${my} ${ex},${ey}`}
+            stroke={sliceColor}
+            strokeWidth={1.75}
+            fill="none"
+          />
+          {/* Anchor dot on slice edge */}
+          <circle cx={sx} cy={sy} r={2.5} fill={sliceColor} />
+          {/* End dot at label */}
+          <circle cx={ex} cy={ey} r={2} fill={sliceColor} />
+
+          {/* External Label Line 1: Category Name */}
+          <text
+            x={textX}
+            y={ey - 6}
+            textAnchor={textAnchor}
+            dominantBaseline="central"
+            className="fill-slate-800 dark:fill-slate-100 font-extrabold text-[11px]"
+          >
+            {titleText}
+          </text>
+
+          {/* External Label Line 2: Count & Percentage */}
+          <text
+            x={textX}
+            y={ey + 8}
+            textAnchor={textAnchor}
+            dominantBaseline="central"
+            fill={sliceColor}
+            className="font-mono font-black text-[11px]"
+          >
+            {`${countText} (${pctText})`}
+          </text>
+        </g>
+      );
+    };
+    return CalloutLabel;
   };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-      {/* 1. BEYAZ YAKA / MAVİ YAKA (Enlarged Professional Donut Chart) */}
+      {/* 1. BEYAZ YAKA / MAVİ YAKA (Donut with External Callout Lines, No Tooltip, No Bottom Legend) */}
       <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -176,10 +234,10 @@ export default function PowerBIDualDonuts({
           )}
         </div>
 
-        {/* Enlarged Professional Donut Container */}
-        <div className="h-64 relative flex items-center justify-center my-1">
+        {/* Full-Height Donut Container with External Callouts */}
+        <div className="h-72 relative flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+            <PieChart margin={{ top: 18, right: 28, bottom: 18, left: 28 }}>
               <defs>
                 <linearGradient id="collarGrad0" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#14b8a6" />
@@ -194,21 +252,22 @@ export default function PowerBIDualDonuts({
                   <stop offset="100%" stopColor="#475569" />
                 </linearGradient>
                 <filter id="donutShadowCollar" x="-15%" y="-15%" width="130%" height="130%">
-                  <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#0f172a" floodOpacity="0.16" />
+                  <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#0f172a" floodOpacity="0.14" />
                 </filter>
               </defs>
               <Pie
                 data={collarData}
                 cx="50%"
                 cy="50%"
-                innerRadius={64}
-                outerRadius={105}
-                cornerRadius={6}
+                innerRadius={48}
+                outerRadius={76}
+                cornerRadius={5}
                 paddingAngle={3}
                 dataKey="count"
                 nameKey="label"
-                label={renderSectorLabel}
+                label={createExternalCalloutRenderer(COLLAR_COLORS)}
                 labelLine={false}
+                isAnimationActive={false}
                 onClick={(entry) => onSelectSlice && onSelectSlice('collar', entry.label)}
                 className="cursor-pointer focus:outline-none"
                 style={{ filter: 'url(#donutShadowCollar)' }}
@@ -231,85 +290,24 @@ export default function PowerBIDualDonuts({
                   );
                 })}
               </Pie>
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const d = payload[0].payload;
-                    const p = totalCount > 0 ? ((d.count / totalCount) * 100).toFixed(1) : 0;
-                    return (
-                      <div className="p-3 bg-slate-900/95 backdrop-blur-md border border-teal-500/40 rounded-xl text-xs text-white shadow-2xl">
-                        <p className="font-bold text-teal-300">{formatLabel(d.label)}</p>
-                        <p className="font-mono mt-1 text-sm font-extrabold">
-                          {d.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}{' '}
-                          <span className="text-teal-400">(%{p})</span>
-                        </p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
             </PieChart>
           </ResponsiveContainer>
 
-          {/* Clean Circular Center KPI Badge (Fits inside innerRadius=64 without overlapping ring) */}
+          {/* Clean Center KPI Badge inside innerRadius=48 */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-28 h-28 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-2 text-center">
-              <span className="text-2xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
+            <div className="w-20 h-20 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
+              <span className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
                 %{bluePct}
               </span>
-              <span className="text-[9.5px] text-emerald-600 dark:text-teal-400 font-extrabold uppercase tracking-wider mt-1 leading-tight">
-                {lang === 'ru' ? 'Синий воротничок' : 'Mavi Yaka'}
-              </span>
-              <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 mt-0.5">
-                {blueCollar.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'чел.' : 'kişi'}
+              <span className="text-[8px] text-emerald-600 dark:text-teal-400 font-extrabold uppercase tracking-wider mt-1 leading-tight">
+                {lang === 'ru' ? 'Синий вор.' : 'Mavi Yaka'}
               </span>
             </div>
           </div>
         </div>
-
-        {/* Structured Bottom Legend Cards */}
-        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-          {collarData.map((item, idx) => {
-            const pct = totalCount > 0 ? Math.round((item.count / totalCount) * 100) : 0;
-            const isSelected =
-              selectedCollar &&
-              selectedCollar !== 'all' &&
-              item.label.toLowerCase().includes(selectedCollar.toLowerCase().replace(' yaka', ''));
-            return (
-              <div
-                key={idx}
-                onClick={() => onSelectSlice && onSelectSlice('collar', item.label)}
-                className={`p-2 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-teal-50/80 dark:bg-teal-950/50 border-teal-400 dark:border-teal-500'
-                    : 'bg-slate-50/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                } ${selectedCollar && selectedCollar !== 'all' && !isSelected ? 'opacity-45' : 'opacity-100'}`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs"
-                    style={{ backgroundColor: COLLAR_COLORS[idx % COLLAR_COLORS.length] }}
-                  />
-                  <span className="text-slate-600 dark:text-slate-300 text-[10.5px] font-bold truncate">
-                    {formatShortLabel(item.label)}
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="font-black text-slate-900 dark:text-white font-mono text-xs">
-                    {item.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
-                  </span>
-                  <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 font-mono">
-                    %{pct}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
-      {/* 2. EXPAT / SNG / YEREL STATÜSÜ (Enlarged Professional Donut Chart) */}
+      {/* 2. EXPAT / SNG / YEREL STATÜSÜ (Donut with External Callout Lines, No Tooltip, No Bottom Legend) */}
       <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -332,10 +330,10 @@ export default function PowerBIDualDonuts({
           )}
         </div>
 
-        {/* Enlarged Professional Donut Container */}
-        <div className="h-64 relative flex items-center justify-center my-1">
+        {/* Full-Height Donut Container with External Callouts */}
+        <div className="h-72 relative flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+            <PieChart margin={{ top: 18, right: 28, bottom: 18, left: 28 }}>
               <defs>
                 <linearGradient id="catGrad0" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#22d3ee" />
@@ -354,21 +352,22 @@ export default function PowerBIDualDonuts({
                   <stop offset="100%" stopColor="#d97706" />
                 </linearGradient>
                 <filter id="donutShadowCat" x="-15%" y="-15%" width="130%" height="130%">
-                  <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#0f172a" floodOpacity="0.16" />
+                  <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#0f172a" floodOpacity="0.14" />
                 </filter>
               </defs>
               <Pie
                 data={categoryData}
                 cx="50%"
                 cy="50%"
-                innerRadius={64}
-                outerRadius={105}
-                cornerRadius={6}
+                innerRadius={48}
+                outerRadius={76}
+                cornerRadius={5}
                 paddingAngle={3}
                 dataKey="count"
                 nameKey="label"
-                label={renderSectorLabel}
+                label={createExternalCalloutRenderer(CATEGORY_COLORS)}
                 labelLine={false}
+                isAnimationActive={false}
                 onClick={(entry) => onSelectSlice && onSelectSlice('category', entry.label)}
                 className="cursor-pointer focus:outline-none"
                 style={{ filter: 'url(#donutShadowCat)' }}
@@ -391,85 +390,24 @@ export default function PowerBIDualDonuts({
                   );
                 })}
               </Pie>
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const d = payload[0].payload;
-                    const p = totalCount > 0 ? ((d.count / totalCount) * 100).toFixed(1) : 0;
-                    return (
-                      <div className="p-3 bg-slate-900/95 backdrop-blur-md border border-cyan-500/40 rounded-xl text-xs text-white shadow-2xl">
-                        <p className="font-bold text-cyan-300">{formatLabel(d.label)}</p>
-                        <p className="font-mono mt-1 text-sm font-extrabold">
-                          {d.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}{' '}
-                          <span className="text-cyan-400">(%{p})</span>
-                        </p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
             </PieChart>
           </ResponsiveContainer>
 
-          {/* Clean Circular Center KPI Badge */}
+          {/* Clean Center KPI Badge inside innerRadius=48 */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-28 h-28 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-2 text-center">
-              <span className="text-2xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
+            <div className="w-20 h-20 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
+              <span className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
                 %{expatPct}
               </span>
-              <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-extrabold uppercase tracking-wider mt-1 leading-tight">
+              <span className="text-[8.5px] text-cyan-600 dark:text-cyan-400 font-extrabold uppercase tracking-wider mt-1 leading-tight">
                 {lang === 'ru' ? 'Экспат' : 'Ekspat'}
-              </span>
-              <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 mt-0.5">
-                {expat.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} {lang === 'ru' ? 'чел.' : 'kişi'}
               </span>
             </div>
           </div>
         </div>
-
-        {/* Structured Bottom Legend Cards */}
-        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-          {categoryData.map((item, idx) => {
-            const pct = totalCount > 0 ? Math.round((item.count / totalCount) * 100) : 0;
-            const isSelected =
-              selectedCategory &&
-              selectedCategory !== 'all' &&
-              item.label.toLowerCase() === selectedCategory.toLowerCase();
-            return (
-              <div
-                key={idx}
-                onClick={() => onSelectSlice && onSelectSlice('category', item.label)}
-                className={`p-2 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-cyan-50/80 dark:bg-cyan-950/50 border-cyan-400 dark:border-cyan-500'
-                    : 'bg-slate-50/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                } ${selectedCategory && selectedCategory !== 'all' && !isSelected ? 'opacity-45' : 'opacity-100'}`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs"
-                    style={{ backgroundColor: CATEGORY_COLORS[idx % CATEGORY_COLORS.length] }}
-                  />
-                  <span className="text-slate-600 dark:text-slate-300 text-[10.5px] font-bold truncate">
-                    {formatShortLabel(item.label)}
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="font-black text-slate-900 dark:text-white font-mono text-xs">
-                    {item.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
-                  </span>
-                  <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 font-mono">
-                    %{pct}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
-      {/* 3. CİNSİYET DAĞILIMI (ENLARGED DISTINCT MALE & FEMALE AVATAR SILHOUETTES) */}
+      {/* 3. CİNSİYET DAĞILIMI (TALL STANDING HUMAN FIGURES MATCHING APP DESIGN) */}
       <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -492,95 +430,92 @@ export default function PowerBIDualDonuts({
           )}
         </div>
 
-        {/* Center: Side-by-side Enlarged Male & Female Cards */}
-        <div className="h-64 flex flex-col justify-center gap-4 my-1">
-          <div className="grid grid-cols-2 gap-3.5">
-            {/* ERKEK (Male Card with large 56px Male silhouette) */}
+        {/* Center: Side-by-side Tall Human Silhouettes & KPI counts */}
+        <div className="h-72 flex flex-col justify-between py-2">
+          <div className="grid grid-cols-2 gap-3.5 flex-1 items-stretch">
+            {/* ERKEK (Tall Full-Body Male Figure Card) */}
             <div
               onClick={() => onSelectSlice && onSelectSlice('gender', 'Erkek')}
-              className="p-4 rounded-2xl bg-gradient-to-br from-teal-50/90 via-emerald-50/50 to-white dark:from-teal-950/50 dark:via-slate-900/70 dark:to-slate-900 border border-teal-200/90 dark:border-teal-500/30 hover:border-teal-400 transition-all cursor-pointer flex items-center gap-3.5 group shadow-xs"
+              className="p-3.5 rounded-2xl bg-gradient-to-b from-teal-50/80 via-emerald-50/40 to-teal-100/50 dark:from-teal-950/50 dark:via-slate-900/70 dark:to-teal-950/40 border border-teal-200/90 dark:border-teal-500/30 hover:border-teal-400 transition-all cursor-pointer flex items-center gap-3 group shadow-xs"
             >
-              <div className="p-2.5 rounded-2xl bg-teal-100/90 dark:bg-teal-900/70 border border-teal-200/70 dark:border-teal-700/50 shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
-                <WcMaleIcon className="w-14 h-14 text-teal-600 dark:text-teal-300" />
+              <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-teal-200/70 dark:border-teal-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
+                <WcMaleIcon className="w-11 h-28" />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-extrabold text-teal-900 dark:text-teal-300 leading-tight">
-                    {lang === 'ru' ? 'Мужской штат' : 'Erkek Kadro'}
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-200/80 dark:bg-teal-800/90 text-teal-950 dark:text-teal-100 font-black">
-                    %{malePct}
-                  </span>
-                </div>
-                <p className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-1.5 tracking-tight">
+              <div className="min-w-0 flex flex-col justify-center">
+                <span className="text-[11px] font-extrabold text-teal-900 dark:text-teal-300 leading-tight">
+                  {lang === 'ru' ? 'Мужской штат' : 'Erkek Kadro'}
+                </span>
+                <span className="inline-flex w-fit mt-1 text-[10px] px-2 py-0.5 rounded-full bg-teal-500/15 dark:bg-teal-800/90 text-teal-800 dark:text-teal-100 border border-teal-300/60 dark:border-teal-600/50 font-black">
+                  %{malePct}
+                </span>
+                <p className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-2 tracking-tight leading-none">
                   {maleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                 </p>
-                <p className="text-[10.5px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
                   {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
                 </p>
               </div>
             </div>
 
-            {/* KADIN (Female Card with large 56px Female silhouette) */}
+            {/* KADIN (Tall Full-Body Female Figure Card) */}
             <div
               onClick={() => onSelectSlice && onSelectSlice('gender', 'Kadin')}
-              className="p-4 rounded-2xl bg-gradient-to-br from-violet-50/90 via-purple-50/50 to-white dark:from-violet-950/45 dark:via-slate-900/70 dark:to-slate-900 border border-violet-200/90 dark:border-violet-500/30 hover:border-violet-400 transition-all cursor-pointer flex items-center gap-3.5 group shadow-xs"
+              className="p-3.5 rounded-2xl bg-gradient-to-b from-violet-50/80 via-purple-50/40 to-violet-100/50 dark:from-violet-950/45 dark:via-slate-900/70 dark:to-violet-950/40 border border-violet-200/90 dark:border-violet-500/30 hover:border-violet-400 transition-all cursor-pointer flex items-center gap-3 group shadow-xs"
             >
-              <div className="p-2.5 rounded-2xl bg-violet-100/90 dark:bg-violet-900/60 border border-violet-200/70 dark:border-violet-700/50 shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
-                <WcFemaleIcon className="w-14 h-14 text-violet-600 dark:text-violet-300" />
+              <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-violet-200/70 dark:border-violet-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
+                <WcFemaleIcon className="w-11 h-28" />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-extrabold text-violet-900 dark:text-violet-300 leading-tight">
-                    {lang === 'ru' ? 'Женский штат' : 'Kadın Kadro'}
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-200/80 dark:bg-violet-800/90 text-violet-950 dark:text-violet-100 font-black">
-                    %{femalePct}
-                  </span>
-                </div>
-                <p className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-1.5 tracking-tight">
+              <div className="min-w-0 flex flex-col justify-center">
+                <span className="text-[11px] font-extrabold text-violet-900 dark:text-violet-300 leading-tight">
+                  {lang === 'ru' ? 'Женский штат' : 'Kadın Kadro'}
+                </span>
+                <span className="inline-flex w-fit mt-1 text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 dark:bg-violet-800/90 text-violet-800 dark:text-violet-100 border border-violet-300/60 dark:border-violet-600/50 font-black">
+                  %{femalePct}
+                </span>
+                <p className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-2 tracking-tight leading-none">
                   {femaleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                 </p>
-                <p className="text-[10.5px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
                   {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Proportional dual progress bar */}
-          <div className="space-y-1.5 px-0.5">
-            <div className="flex items-center justify-between text-xs font-extrabold">
-              <span className="text-teal-700 dark:text-teal-300">
-                %{malePct} {lang === 'ru' ? 'Мужчины' : 'Erkek'}
-              </span>
-              <span className="text-violet-700 dark:text-violet-300">
-                %{femalePct} {lang === 'ru' ? 'Женщины' : 'Kadın'}
-              </span>
+          {/* Proportional dual progress bar & ratio footer */}
+          <div className="space-y-2 pt-3">
+            <div className="space-y-1 px-0.5">
+              <div className="flex items-center justify-between text-xs font-extrabold">
+                <span className="text-teal-700 dark:text-teal-300">
+                  %{malePct} {lang === 'ru' ? 'Мужчины' : 'Erkek'}
+                </span>
+                <span className="text-violet-700 dark:text-violet-300">
+                  %{femalePct} {lang === 'ru' ? 'Женщины' : 'Kadın'}
+                </span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner p-0.5 gap-0.5">
+                <div
+                  className="bg-gradient-to-r from-teal-500 to-emerald-400 h-full rounded-l-full transition-all duration-500"
+                  style={{ width: `${malePct}%` }}
+                  title={`${lang === 'ru' ? 'Мужчины' : 'Erkek'}: %${malePct}`}
+                />
+                <div
+                  className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full rounded-r-full transition-all duration-500"
+                  style={{ width: `${femalePct}%` }}
+                  title={`${lang === 'ru' ? 'Женщины' : 'Kadın'}: %${femalePct}`}
+                />
+              </div>
             </div>
-            <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner p-0.5 gap-0.5">
-              <div
-                className="bg-gradient-to-r from-teal-500 to-emerald-400 h-full rounded-l-full transition-all duration-500"
-                style={{ width: `${malePct}%` }}
-                title={`${lang === 'ru' ? 'Мужчины' : 'Erkek'}: %${malePct}`}
-              />
-              <div
-                className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full rounded-r-full transition-all duration-500"
-                style={{ width: `${femalePct}%` }}
-                title={`${lang === 'ru' ? 'Женщины' : 'Kadın'}: %${femalePct}`}
-              />
+
+            <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                {lang === 'ru' ? 'Преимущественно полевой / строительный штат' : 'Saha / Şantiye yoğunluklu kadro'}
+              </span>
+              <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
+                {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотношение' : 'Oran'}
+              </span>
             </div>
           </div>
-        </div>
-
-        {/* Bottom summary info */}
-        <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-100 dark:border-slate-800">
-          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-            {lang === 'ru' ? 'Преимущественно полевой / строительный штат' : 'Saha / Şantiye yoğunluklu kadro'}
-          </span>
-          <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
-            {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотношение' : 'Oran'}
-          </span>
         </div>
       </div>
     </div>
