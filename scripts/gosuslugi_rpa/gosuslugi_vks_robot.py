@@ -185,8 +185,7 @@ class GosuslugiVksBot:
             logger.info(f"[{step_name}] 'Продолжить' button is active (blue). Clicking...")
             btn_locator.focus()
             btn_locator.click()
-            self.page.wait_for_timeout(wait_ms)
-            self.check_and_handle_error_modal()
+            self.wait_for_screen_transition(initial_heading, wait_ms)
             return
 
         # If not ready -> Enter Human-in-the-Loop Manual Intervention Mode!
@@ -231,12 +230,23 @@ class GosuslugiVksBot:
                     logger.info(f"USER_RESOLVED: [{step_name}] Validation passed! Clicking 'Продолжить'...")
                     btn_now.focus()
                     btn_now.click()
-                    self.page.wait_for_timeout(wait_ms)
+                    self.wait_for_screen_transition(initial_heading, wait_ms)
                     return
 
             self.page.wait_for_timeout(1000)
 
         raise RuntimeError(f"Timeout waiting for manual correction on step: {step_name}")
+
+    def wait_for_screen_transition(self, previous_heading: str, min_wait_ms: int = 1500):
+        """Waits until Gosuslugi finishes loading the next screen (h1 changes and is non-empty)."""
+        self.page.wait_for_timeout(min_wait_ms)
+        for _ in range(20):
+            self.check_and_handle_error_modal()
+            cur = self.get_current_heading()
+            if cur and cur != previous_heading:
+                self.page.wait_for_timeout(400)
+                return
+            self.page.wait_for_timeout(500)
 
     def fill_vks_notification(self, row: Dict[str, Any]) -> bool:
         """
@@ -444,24 +454,31 @@ class GosuslugiVksBot:
         self.page.wait_for_timeout(600)
         self.click_continue_strict("Шаг 9: Разрешение на работу ВКС", 2000)
 
-        # Step 10: Employment Contract Details & Work Address ('Укажите сведения о заключении договора')
-        logger.info("Step 10: Filling Contract Details & Work Address...")
+        # Step 10: Employment Contract Details & Work Address ('Укажите информацию о договоре')
+        logger.info("Step 10: Waiting for Contract & Work Address screen ('Укажите информацию о договоре')...")
         self.check_and_handle_error_modal()
 
-        # Intermediate screen check (Line 94 in PAD)
+        # Wait explicitly until Step 10 date input (di16_1) or radio (app-radio-3) is visible!
         try:
-            if self.page.locator("input[name='c_startDate']:visible, #app-radio-3:visible, label:has-text('Трудовой'):visible").count() == 0:
-                inter_btn = self.page.locator("button:has-text('Продолжить'):visible").first
-                if inter_btn.count() > 0 and inter_btn.is_enabled():
-                    inter_btn.click()
-                    self.page.wait_for_timeout(1500)
+            self.page.locator("input[name='di16_1'], input[name='di16_2'], label[for='app-radio-3']").first.wait_for(
+                state="visible", timeout=25000
+            )
         except Exception:
-            pass
+            # Handle intermediate screen if present
+            inter_btn = self.page.locator("button:has-text('Продолжить'):visible").first
+            if inter_btn.count() > 0 and inter_btn.is_enabled():
+                inter_btn.click()
+                self.page.wait_for_timeout(2000)
+            self.page.locator("input[name='di16_1'], input[name='di16_2'], label[for='app-radio-3']").first.wait_for(
+                state="visible", timeout=20000
+            )
 
-        # 10a. Select 'Трудовой' radio button
+        logger.info("Step 10: Filling Contract Details & Work Address...")
+
+        # 10a. Select 'Трудовой' radio button (label[for='app-radio-3'])
         try:
-            trudovoy_lbl = self.page.locator("label[for='app-radio-3'], label:has-text('Трудовой'), #app-radio-3").first
-            if trudovoy_lbl.count() > 0:
+            trudovoy_lbl = self.page.locator("label[for='app-radio-3'], label.radio:has-text('Трудовой')").first
+            if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
                 trudovoy_lbl.click()
                 self.page.wait_for_timeout(300)
         except Exception:
@@ -470,7 +487,7 @@ class GosuslugiVksBot:
         # 10b. Contract Dates (Дата заключения, Дата начала действия, Дата окончания действия)
         contract_date = str(row.get("ДатаЗаключения", row.get("ДатаПриема", ""))).strip()
         if contract_date:
-            self.type_masked_input("input[name='di16_2'], input[name='di16_1']", contract_date, delay=35)
+            self.type_masked_input("input[name='di16_1'], input[name='di16_2']", contract_date, delay=35)
 
         start_date = str(row.get("ДатаНачалаДействия", contract_date)).strip()
         if start_date:
@@ -480,48 +497,58 @@ class GosuslugiVksBot:
         if end_date:
             self.type_masked_input("input[name='c_endDate']", end_date, delay=35)
 
-        # 10c. Work Address & FIAS Dropdown + 'Уточнить адрес' + Postal Code (#index) + 'Нет дома' + 'Нет квартиры'
+        # 10c. Work Address (Gosuslugi DaData <textarea class="search-input">)
         work_addr = str(row.get("АдресРаботы", "")).strip() or self.cfg["WORK_ADDRESS"]
         postal_code = str(row.get("Индекс", "")).strip() or str(self.cfg["WORK_POSTAL_CODE"])
 
-        # Find the address input directly or via Tab from end_date
-        addr_input = self.page.locator(
-            "lib-address input:visible, "
-            "epgu-cf-ui-address input:visible, "
-            "input[placeholder*='адрес']:visible"
+        # Ensure closed-mode checkboxes (#app-checkbox-1, #app-checkbox-2) are unchecked before typing into textarea
+        for closed_cb in ("app-checkbox-1", "app-checkbox-2"):
+            try:
+                cb_el = self.page.locator(f"#{closed_cb}")
+                if cb_el.count() > 0 and cb_el.is_checked():
+                    self.page.locator(f"label[for='{closed_cb}']").click()
+                    self.page.wait_for_timeout(200)
+            except Exception:
+                pass
+
+        # Normalize query for DaData if it contains 'Восточный промышленный район' and '5-й'
+        dadata_query = work_addr
+        if "Восточный промышленный район" in work_addr and "5-й" in work_addr:
+            dadata_query = "Тюменская Тобольск Восточный промышленный район 5-й"
+
+        addr_textarea = self.page.locator(
+            "epgu-constructor-address-input textarea, "
+            "lib-dadata-widget textarea, "
+            "textarea.search-input"
         ).first
 
-        if addr_input.count() > 0 and addr_input.is_visible():
-            addr_input.click()
+        if addr_textarea.count() > 0 and addr_textarea.is_visible():
+            addr_textarea.click()
             self.page.wait_for_timeout(150)
             self.page.keyboard.press("Control+A")
             self.page.keyboard.press("Backspace")
             self.page.wait_for_timeout(150)
-            self.page.keyboard.type(work_addr, delay=25)
+            self.page.keyboard.type(dadata_query, delay=30)
         else:
             self.page.keyboard.press("Tab")
             self.page.wait_for_timeout(200)
-            self.page.keyboard.type(work_addr, delay=25)
+            self.page.keyboard.type(dadata_query, delay=30)
 
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(2000)
 
-        # Select FIAS dropdown suggestion so region/city/street/index populate cleanly
+        # If a FIAS/DaData suggestion item is visible, click it
         try:
-            fias_item = self.page.locator(".lookup-item:visible, .search-input-drop-down-item:visible, [role='option']:visible").first
+            fias_item = self.page.locator(".lookup-item:not(.nothing-found):visible, [role='option']:visible").first
             if fias_item.count() > 0 and fias_item.is_visible():
                 fias_item.click()
-            else:
-                self.page.keyboard.press("ArrowDown")
-                self.page.wait_for_timeout(150)
-                self.page.keyboard.press("Enter")
+                self.page.wait_for_timeout(600)
         except Exception:
             pass
-        self.page.wait_for_timeout(800)
 
-        # Expand 'Уточнить адрес' if detailed fields (#index / Нет дома / Нет квартиры) are not yet visible
+        # Expand 'Уточнить адрес' (button.clarify-address) if detailed fields (input#index) are not yet visible
         try:
-            if self.page.locator("input#index:visible, lib-checkbox:has-text('Нет квартиры'):visible").count() == 0:
-                clarify_btn = self.page.locator("text='Уточнить адрес'").first
+            if self.page.locator("input#index:visible").count() == 0:
+                clarify_btn = self.page.locator("button.clarify-address, text='Уточнить адрес'").first
                 if clarify_btn.count() > 0 and clarify_btn.is_visible():
                     logger.info("Clicking 'Уточнить адрес' to open detailed address fields...")
                     clarify_btn.click()
@@ -529,65 +556,50 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Fill Postal Index (input#index) if not already populated by FIAS
+        # Fill Postal Index (input#index)
         logger.info(f"Checking/Filling Postal Code (Индекс): {postal_code}...")
-        try:
-            idx_loc = self.page.locator("input#index:visible, lib-base-masked-input#index input:visible").first
-            current_idx = idx_loc.input_value().strip() if idx_loc.count() > 0 else ""
-            if current_idx != postal_code:
-                self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=45)
-                self.page.wait_for_timeout(500)
-        except Exception:
-            self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=45)
-            self.page.wait_for_timeout(500)
+        self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=40)
+        self.page.wait_for_timeout(400)
 
-        # Check 'Нет дома' checkbox if house number is not in address (as in HR Manager's screenshot for кв-л. 5-й)
+        # Check 'Нет дома' (#app-checkbox-3 inside .extended-fields) if 'Дом' (input#house) is empty
         logger.info("Checking 'Нет дома' if applicable...")
         try:
-            no_house_loc = self.page.locator(
-                "lib-checkbox:has-text('Нет дома') label.check, "
-                "lib-checkbox:has-text('Нет дома') span.checkbox, "
-                "label:has-text('Нет дома')"
-            ).first
-            if no_house_loc.count() > 0 and no_house_loc.is_visible():
-                # Check if 'Дом' input is empty
-                house_inp = self.page.locator("input#house:visible, lib-base-input#house input:visible").first
-                house_val = house_inp.input_value().strip() if house_inp.count() > 0 else ""
-                if not house_val:
-                    no_house_loc.scroll_into_view_if_needed(timeout=3000)
-                    no_house_loc.click(force=True)
-                    self.page.wait_for_timeout(400)
+            house_inp = self.page.locator("input#house:visible").first
+            house_val = house_inp.input_value().strip() if house_inp.count() > 0 else ""
+            if not house_val:
+                if self.page.locator("#app-checkbox-3").count() > 0:
+                    if not self.page.locator("#app-checkbox-3").is_checked():
+                        self.page.locator("label[for='app-checkbox-3']").click()
+                        self.page.wait_for_timeout(300)
+                else:
+                    no_house_lbl = self.page.locator("lib-checkbox[formcontrolname='houseCheckbox'] label.check, label:has-text('Нет дома')").last
+                    if no_house_lbl.count() > 0:
+                        no_house_lbl.click()
+                        self.page.wait_for_timeout(300)
         except Exception as e:
             logger.debug(f"'Нет дома' check note: {e}")
 
-        # Check 'Нет квартиры' checkbox (label[for='app-checkbox-4'] / lib-checkbox:has-text('Нет квартиры'))
+        # Check 'Нет квартиры' (#app-checkbox-4 inside .extended-fields)
         logger.info("Checking 'Нет квартиры'...")
         try:
-            no_apt_loc = self.page.locator(
-                "lib-checkbox:has-text('Нет квартиры') label.check, "
-                "lib-checkbox:has-text('Нет квартиры') span.checkbox, "
-                "label:has-text('Нет квартиры'), "
-                "div.address-checkbox:has-text('Нет квартиры') label"
-            ).first
-            if no_apt_loc.count() > 0:
-                no_apt_loc.scroll_into_view_if_needed(timeout=3000)
-                no_apt_loc.click(force=True)
-                self.page.wait_for_timeout(500)
+            if self.page.locator("#app-checkbox-4").count() > 0:
+                if not self.page.locator("#app-checkbox-4").is_checked():
+                    self.page.locator("label[for='app-checkbox-4']").click()
+                    self.page.wait_for_timeout(300)
+            else:
+                no_apt_lbl = self.page.locator("lib-checkbox[formcontrolname='apartmentCheckbox'] label.check, label:has-text('Нет квартиры')").last
+                if no_apt_lbl.count() > 0:
+                    no_apt_lbl.click()
+                    self.page.wait_for_timeout(300)
         except Exception as e:
             logger.warning(f"Could not click 'Нет квартиры': {e}")
 
-        # Verify if 'Необходимо указать квартиру' is still visible; if so, click the checkbox span directly
-        if self.page.locator("text='Необходимо указать квартиру'").count() > 0:
-            try:
-                self.page.locator("lib-checkbox:has-text('Нет квартиры') span.checkbox").first.click(force=True)
-                self.page.wait_for_timeout(500)
-            except Exception:
-                pass
+        self.page.wait_for_timeout(500)
 
         # Strictly verify 'Продолжить' is enabled (blue) and no red errors exist before advancing!
         self.click_continue_strict("Шаг 10: Договор и Адрес работы", 2000)
 
-        # Step 11: VKS Salary Payment Details ('Укажите сведения о выплате зарплаты иностранцу')
+        # Step 11: VKS Salary Payment Details ('Укажите информацию о выплате зарплаты иностранцу')
         logger.info(
             f"Step 11: Filling Salary Payment Period ({row.get('НачалоПериода')} - {row.get('КонецПериода')}) "
             f"& Amount: {row.get('РазмерВыплаты')}..."
@@ -598,28 +610,32 @@ class GosuslugiVksBot:
         period_end = str(row.get("КонецПериода", "")).strip() or self.cfg["PERIOD_END"]
         paid_amount = str(row.get("РазмерВыплаты", "")).strip()
 
-        p_start_input = self.page.locator("input[name='di17_start'], input[placeholder*='__.__.____']").first
-        p_start_input.wait_for(state="visible", timeout=15000)
+        p_start_input = self.page.locator("input[name='di17_start']").first
+        p_start_input.wait_for(state="visible", timeout=20000)
         self.type_masked_input("input[name='di17_start']", period_start, delay=35)
         self.type_masked_input("input[name='di17_end']", period_end, delay=35)
 
-        # Select Radio 'Да' ('Зарплата выплачена полностью? -> Да')
-        yes_radio = self.page.locator("lib-radio:has-text('Да') label, label:has-text('Да'), div:has-text('Да')").first
+        # Select Radio 'Да' (label[for='app-radio-5'])
+        yes_radio = self.page.locator("label[for='app-radio-5'], lib-radio:has-text('Да') label, label.radio:has-text('Да')").first
         if yes_radio.count() > 0 and yes_radio.is_visible():
             yes_radio.click()
             self.page.wait_for_timeout(400)
 
         # Populate Salary Amount (#si17_paid)
-        self.type_masked_input("#si17_paid, input[name*='si17_paid'], input[id*='paid']", paid_amount, delay=35)
+        self.type_masked_input("#si17_paid, input[name='si17_paid']", paid_amount, delay=35)
         self.page.wait_for_timeout(600)
 
-        self.click_continue_strict("Шаг 11: Выплата зарплаты ВКС", 2000)
+        self.click_continue_strict("Шаг 11: Выплата зарплаты ВКС", 2500)
 
         # Step 12: MVD Destination Division ('Подразделение МВД, куда отправится уведомление')
-        logger.info("Step 12: Confirming MVD Destination Division...")
+        logger.info("Step 12: Waiting for MVD Destination Division screen...")
         self.check_and_handle_error_modal()
+        try:
+            self.page.locator("h1:has-text('Подразделение МВД')").first.wait_for(state="visible", timeout=20000)
+        except Exception:
+            pass
         self.page.wait_for_timeout(1000)
-        self.click_continue_strict("Шаг 12: Подразделение МВД", 1500)
+        self.click_continue_strict("Шаг 12: Подразделение МВД", 2000)
 
         # Step 13: Employee Consent Modal ('Подтвердите, что получили согласие работника' -> 'Подтвердить')
         logger.info("Step 13: Confirming Employee Consent ('Подтвердить')...")
