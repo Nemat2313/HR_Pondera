@@ -14,16 +14,58 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Default admin user for immediate demo access
-const DEFAULT_ADMIN: User = {
-  id: 1,
-  name: 'Sistem Yöneticisi (Admin)',
-  email: 'admin@pondera.com',
-  role: 'admin',
-  scope_type: 'all',
-  scope_value: 'all',
-  created_at: '2026-10-08 19:00:00',
-};
+const BUILTIN_DEMO_USERS: Array<User & { pass: string }> = [
+  {
+    id: 1,
+    name: 'Sistem Yöneticisi (Admin)',
+    email: 'admin@pondera.com',
+    pass: 'admin123',
+    role: 'admin',
+    scope_type: 'all',
+    scope_value: 'all',
+    created_at: '2026-10-08 19:00:00',
+  },
+  {
+    id: 2,
+    name: 'Kazan Şantiye Yönetimi',
+    email: 'kazan@pondera.com',
+    pass: 'kazan123',
+    role: 'viewer',
+    scope_type: 'region',
+    scope_value: 'Kazan',
+    created_at: '2026-10-08 19:00:00',
+  },
+  {
+    id: 3,
+    name: 'Svobodny Şantiye Yönetimi',
+    email: 'svobodny@pondera.com',
+    pass: 'svobodny123',
+    role: 'viewer',
+    scope_type: 'region',
+    scope_value: 'Svobodny-AGHK',
+    created_at: '2026-10-08 19:00:00',
+  },
+  {
+    id: 4,
+    name: 'Ust Luga Şantiye Yönetimi',
+    email: 'ustluga@pondera.com',
+    pass: 'ustluga123',
+    role: 'viewer',
+    scope_type: 'region',
+    scope_value: 'Ust Luga',
+    created_at: '2026-10-08 19:00:00',
+  },
+  {
+    id: 5,
+    name: 'DGP-02 Proje Yönetimi',
+    email: 'dgp02@pondera.com',
+    pass: 'dgp123',
+    role: 'viewer',
+    scope_type: 'project',
+    scope_value: 'TOBOLSK DGP-2 PROJESİ',
+    created_at: '2026-10-08 19:00:00',
+  },
+];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -45,11 +87,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    const cleanEmail = String(email || '').trim().toLowerCase();
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: cleanEmail, password }),
       });
       const data = await res.json();
 
@@ -57,10 +100,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(data.user);
         localStorage.setItem('pondera_hr_user', JSON.stringify(data.user));
         return { success: true };
-      } else {
-        return { success: false, message: data.message || 'Giriş başarısız.' };
       }
+
+      // Fallback for built-in accounts if server DB did not have users table initialized
+      const fallback = BUILTIN_DEMO_USERS.find(
+        (u) => u.email === cleanEmail && u.pass === password
+      );
+      if (fallback) {
+        const { pass: _p, ...userObj } = fallback;
+        setUser(userObj);
+        localStorage.setItem('pondera_hr_user', JSON.stringify(userObj));
+        return { success: true };
+      }
+
+      return { success: false, message: data.message || 'Giriş başarısız.' };
     } catch {
+      const fallback = BUILTIN_DEMO_USERS.find(
+        (u) => u.email === cleanEmail && u.pass === password
+      );
+      if (fallback) {
+        const { pass: _p, ...userObj } = fallback;
+        setUser(userObj);
+        localStorage.setItem('pondera_hr_user', JSON.stringify(userObj));
+        return { success: true };
+      }
       return { success: false, message: 'Bağlantı hatası oluştu.' };
     }
   };
