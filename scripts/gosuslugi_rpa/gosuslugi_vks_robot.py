@@ -52,11 +52,11 @@ DEFAULT_CONFIG = {
     "TYPE_COMPANY": "Российская коммерческая организация",
     "OKVED_TEXT": "Деятельность в области инженерных",
     "WORK_REGION": "Тюменская",
-    "WORK_ADDRESS": "Тюменская область, г. Тобольск, территория «Восточный промышленный район», квартал 9, дом 1/1",
+    "WORK_ADDRESS": "626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й",
     "WORK_POSTAL_CODE": "626150",
-    "UFMS_DEPARTMENT": "ОПВМ ОМВД России по Кингисеппскому району Ленинградской области",
-    "PERIOD_START": "01.03.2023",
-    "PERIOD_END": "30.03.2023",
+    "UFMS_DEPARTMENT": "ОВТМ УВМ УМВД РОССИИ ПО ТЮМЕНСКОЙ ОБЛАСТИ",
+    "PERIOD_START": "01.07.2026",
+    "PERIOD_END": "19.08.2026",
     "DEFAULT_EXCEL_PATH": r"C:\Users\nemat\Downloads\GosUsluga_ ЗП.xlsx",
     "CDP_PORT": 9222,
 }
@@ -399,9 +399,11 @@ class GosuslugiVksBot:
         logger.info(f"Step 7: Filling Passport {row.get('СерияПаспорта')} {row.get('НомерПаспорта')}...")
         self.check_and_handle_error_modal()
 
-        pass_series = self.page.locator("#series, input[name*='series']").first
-        pass_series.wait_for(state="visible", timeout=15000)
-        self.type_masked_input("#series, input[name*='series']", str(row.get("СерияПаспорта", "")).strip(), delay=30)
+        pass_num_loc = self.page.locator("#number, input[name*='number']").first
+        pass_num_loc.wait_for(state="visible", timeout=15000)
+        p_series_val = str(row.get("СерияПаспорта", "")).strip()
+        if p_series_val.lower() not in ("", "не заполнено", "нет", "-"):
+            self.type_masked_input("#series, input[name*='series']", p_series_val, delay=30)
         self.type_masked_input("#number, input[name*='number']", str(row.get("НомерПаспорта", "")).strip(), delay=30)
         self.type_masked_input("input[name='di14_issue'], input[placeholder*='__.__.____']", str(row.get("ДатаВыдачи", "")).strip(), delay=35)
         self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", str(row.get("ПаспортКемВыдан", "")).strip(), delay=25)
@@ -417,7 +419,7 @@ class GosuslugiVksBot:
         try:
             inn_input.wait_for(state="visible", timeout=12000)
             inn_val = str(row.get("ИНН", "")).strip()
-            if inn_val:
+            if inn_val and inn_val.lower() not in ("нет", "не заполнено", "-", "нет инн"):
                 self.type_masked_input("#c_foreignerINN, input[name*='foreignerINN'], input[id*='INN']", inn_val, delay=30)
             self.page.wait_for_timeout(500)
             self.click_continue_strict("Шаг 8: ИНН иностранца", 2000)
@@ -478,17 +480,32 @@ class GosuslugiVksBot:
         if end_date:
             self.type_masked_input("input[name='c_endDate']", end_date, delay=35)
 
-        # 10c. Work Address & Fias Dropdown + Postal Code (#index) + 'Нет квартиры'
+        # 10c. Work Address & FIAS Dropdown + 'Уточнить адрес' + Postal Code (#index) + 'Нет дома' + 'Нет квартиры'
         work_addr = str(row.get("АдресРаботы", "")).strip() or self.cfg["WORK_ADDRESS"]
         postal_code = str(row.get("Индекс", "")).strip() or str(self.cfg["WORK_POSTAL_CODE"])
 
-        # Focus end_date and Tab twice into the address input (as in PAD lines 101-104)
-        self.page.keyboard.press("Tab")
-        self.page.wait_for_timeout(200)
-        self.page.keyboard.type(work_addr, delay=25)
+        # Find the address input directly or via Tab from end_date
+        addr_input = self.page.locator(
+            "lib-address input:visible, "
+            "epgu-cf-ui-address input:visible, "
+            "input[placeholder*='адрес']:visible"
+        ).first
+
+        if addr_input.count() > 0 and addr_input.is_visible():
+            addr_input.click()
+            self.page.wait_for_timeout(150)
+            self.page.keyboard.press("Control+A")
+            self.page.keyboard.press("Backspace")
+            self.page.wait_for_timeout(150)
+            self.page.keyboard.type(work_addr, delay=25)
+        else:
+            self.page.keyboard.press("Tab")
+            self.page.wait_for_timeout(200)
+            self.page.keyboard.type(work_addr, delay=25)
+
         self.page.wait_for_timeout(1500)
 
-        # Select FIAS dropdown suggestion if visible so 'Проверьте адрес' clears
+        # Select FIAS dropdown suggestion so region/city/street/index populate cleanly
         try:
             fias_item = self.page.locator(".lookup-item:visible, .search-input-drop-down-item:visible, [role='option']:visible").first
             if fias_item.count() > 0 and fias_item.is_visible():
@@ -501,19 +518,56 @@ class GosuslugiVksBot:
             pass
         self.page.wait_for_timeout(800)
 
-        # Fill Postal Index (input#index inside lib-base-masked-input) using physical keyboard
-        logger.info(f"Filling Postal Code (Индекс): {postal_code}...")
-        self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=45)
-        self.page.wait_for_timeout(600)
+        # Expand 'Уточнить адрес' if detailed fields (#index / Нет дома / Нет квартиры) are not yet visible
+        try:
+            if self.page.locator("input#index:visible, lib-checkbox:has-text('Нет квартиры'):visible").count() == 0:
+                clarify_btn = self.page.locator("text='Уточнить адрес'").first
+                if clarify_btn.count() > 0 and clarify_btn.is_visible():
+                    logger.info("Clicking 'Уточнить адрес' to open detailed address fields...")
+                    clarify_btn.click()
+                    self.page.wait_for_timeout(600)
+        except Exception:
+            pass
+
+        # Fill Postal Index (input#index) if not already populated by FIAS
+        logger.info(f"Checking/Filling Postal Code (Индекс): {postal_code}...")
+        try:
+            idx_loc = self.page.locator("input#index:visible, lib-base-masked-input#index input:visible").first
+            current_idx = idx_loc.input_value().strip() if idx_loc.count() > 0 else ""
+            if current_idx != postal_code:
+                self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=45)
+                self.page.wait_for_timeout(500)
+        except Exception:
+            self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=45)
+            self.page.wait_for_timeout(500)
+
+        # Check 'Нет дома' checkbox if house number is not in address (as in HR Manager's screenshot for кв-л. 5-й)
+        logger.info("Checking 'Нет дома' if applicable...")
+        try:
+            no_house_loc = self.page.locator(
+                "lib-checkbox:has-text('Нет дома') label.check, "
+                "lib-checkbox:has-text('Нет дома') span.checkbox, "
+                "label:has-text('Нет дома')"
+            ).first
+            if no_house_loc.count() > 0 and no_house_loc.is_visible():
+                # Check if 'Дом' input is empty
+                house_inp = self.page.locator("input#house:visible, lib-base-input#house input:visible").first
+                house_val = house_inp.input_value().strip() if house_inp.count() > 0 else ""
+                if not house_val:
+                    no_house_loc.scroll_into_view_if_needed(timeout=3000)
+                    no_house_loc.click(force=True)
+                    self.page.wait_for_timeout(400)
+        except Exception as e:
+            logger.debug(f"'Нет дома' check note: {e}")
 
         # Check 'Нет квартиры' checkbox (label[for='app-checkbox-4'] / lib-checkbox:has-text('Нет квартиры'))
         logger.info("Checking 'Нет квартиры'...")
         try:
             no_apt_loc = self.page.locator(
                 "lib-checkbox:has-text('Нет квартиры') label.check, "
+                "lib-checkbox:has-text('Нет квартиры') span.checkbox, "
                 "label:has-text('Нет квартиры'), "
-                "div.address-checkbox:has-text('Нет квартиры') label, "
-                "div.text-plain:has-text('Нет квартиры')"
+                "div.address-checkbox:has-text('Нет квартиры') label"
             ).first
             if no_apt_loc.count() > 0:
                 no_apt_loc.scroll_into_view_if_needed(timeout=3000)

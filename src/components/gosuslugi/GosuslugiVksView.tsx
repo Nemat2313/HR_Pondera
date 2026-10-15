@@ -101,15 +101,15 @@ export default function GosuslugiVksView() {
     logs: [],
   });
 
-  // Global PAD Form Configuration (matching 11.docx variables)
+  // Global PAD Form Configuration (matching 933532 PDF & HR Manager's Tobolsk form)
   const [periodStart, setPeriodStart] = useState('01.07.2026');
-  const [periodEnd, setPeriodEnd] = useState('30.09.2026');
+  const [periodEnd, setPeriodEnd] = useState('19.08.2026');
   const [workAddress, setWorkAddress] = useState(
-    'Тюменская область, г. Тобольск, территория «Восточный промышленный район», квартал 9, дом 1/1'
+    '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й'
   );
   const [postalCode, setPostalCode] = useState('626150');
   const [ufmsDept] = useState(
-    'ОПВМ ОМВД России по Кингисеппскому району Ленинградской области'
+    'ОВТМ УВМ УМВД РОССИИ ПО ТЮМЕНСКОЙ ОБЛАСТИ'
   );
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [showAgentGuide, setShowAgentGuide] = useState(false);
@@ -475,48 +475,58 @@ export default function GosuslugiVksView() {
     setWorkers((prev) => prev.map((w) => (w.id === id ? { ...w, [field]: val } : w)));
   };
 
+  const getSample933532Record = (): GosuslugiVksWorkerRecord => ({
+    id: 'sample-933532',
+    selected: true,
+    status: 'pending',
+    sicil: '933532',
+    code: '933532',
+    lastName: 'Нет',
+    firstName: 'АБДУЛ РАШИД',
+    middleName: 'НЕТ',
+    birthDate: '12.02.1982',
+    gender: 'Мужской',
+    citizenship: 'Индия',
+    placeOfBirth: 'Лаксмипур, Бихар',
+    passportSeries: '',
+    passportNumber: 'S2074432',
+    passportIssueDate: '27.07.2018',
+    passportIssuedBy: 'ПАТНА',
+    inn: '',
+    rnrSeries: '77',
+    rnrNumber: '2500379969',
+    rnrIssueDate: '',
+    blankSeries: 'ВВ',
+    blankNumber: '0924102',
+    contractDate: '16.06.2025',
+    contractStartDate: '28.07.2025',
+    contractEndDate: '19.08.2026',
+    periodStart: '01.07.2026',
+    periodEnd: '19.08.2026',
+    salaryAmount: '664655.12',
+    position: 'СПЕЦИАЛИСТ',
+    workAddress: '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й',
+    postalCode: '626150',
+  });
+
+  const handleLoadSample933532 = () => {
+    setWorkers([getSample933532Record()]);
+    showNotice(
+      'success',
+      lang === 'ru'
+        ? 'Тестовая запись 933532 (АБДУЛ РАШИД — Индия) загружена в список!'
+        : '933532 (АБДУЛ РАШИД — Hindistan) test verisi listeye yüklendi!'
+    );
+  };
+
   const handleExportExcel = () => {
     if (workers.length === 0) {
-      exportGosuslugiVksExcel([
-        {
-          id: 'sample-1',
-          selected: true,
-          status: 'pending',
-          sicil: '903397',
-          code: '903397',
-          lastName: 'ГУНГОР',
-          firstName: 'ЖАНЕР',
-          middleName: 'НЕТ',
-          birthDate: '04.09.1977',
-          gender: 'Мужской',
-          citizenship: 'Турция',
-          placeOfBirth: 'Турция',
-          passportSeries: 'U',
-          passportNumber: '20487306',
-          passportIssueDate: '24.07.2018',
-          passportIssuedBy: 'ЕНИМАХАЛЛЕ',
-          inn: '280707318838',
-          rnrSeries: '77',
-          rnrNumber: '2400258429',
-          rnrIssueDate: '30.05.2024',
-          blankSeries: 'ВВ',
-          blankNumber: '0739288',
-          contractDate: '08.05.2024',
-          contractStartDate: '17.06.2024',
-          contractEndDate: '02.06.2027',
-          periodStart,
-          periodEnd,
-          salaryAmount: '250000',
-          position: 'СПЕЦИАЛИСТ',
-          workAddress,
-          postalCode,
-        },
-      ]);
+      exportGosuslugiVksExcel([getSample933532Record()]);
       showNotice(
         'info',
         lang === 'ru'
-          ? 'Скачан шаблон Excel для уведомлений ВКС (GosUsluga_VKS_ZP.xlsx).'
-          : 'Örnek VKS Excel şablonu (GosUsluga_VKS_ZP.xlsx) indirildi.'
+          ? 'Скачан шаблон Excel с тестовой записью 933532 (АБДУЛ РАШИД).'
+          : '933532 (АБДУЛ РАШИД) verilerini içeren örnek VKS Excel şablonu indirildi.'
       );
       return;
     }
@@ -1276,6 +1286,17 @@ export default function GosuslugiVksView() {
               >
                 <Upload className="w-4 h-4" />
                 <span>{lang === 'ru' ? 'Загрузить Excel (GosUsluga_ ЗП.xlsx)' : 'Excel Yükle (GosUsluga_ ЗП.xlsx)'}</span>
+              </button>
+              <button
+                onClick={handleLoadSample933532}
+                className="h-9 px-4 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-bold text-xs inline-flex items-center gap-2 cursor-pointer transition"
+              >
+                <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>
+                  {lang === 'ru'
+                    ? 'Загрузить тест: 933532 Абдул Рашид (PDF)'
+                    : 'Örnek Test Yükle: 933532 Абдул Рашид (PDF)'}
+                </span>
               </button>
               <button
                 onClick={handleLoadFromDatabase}
