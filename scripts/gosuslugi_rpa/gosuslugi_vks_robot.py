@@ -319,26 +319,67 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Step 2: Check for 'Создать новое заявление' modal & 'Начать'
-        try:
-            new_order_btn = self.page.locator(
-                "button:has-text('Создать новое заявление'), span:has-text('Создать новое заявление'), button:has-text('Создать заявление')"
-            ).first
-            if new_order_btn.count() > 0 and new_order_btn.is_visible():
-                logger.info("Step 2: Clicking 'Создать новое заявление'...")
-                new_order_btn.click()
-                self.page.wait_for_timeout(2000)
-        except Exception:
-            pass
+        # Step 2: Check for 'Создать новое заявление' / 'Новое заявление' modal & 'Начать' (auto-scroll to bottom so user never needs to scroll)
+        for _ in range(3):
+            try:
+                self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            except Exception:
+                pass
+            self.page.wait_for_timeout(700)
 
-        try:
-            start_btn = self.page.locator("button:has-text('Начать'), span:has-text('Начать')").first
-            if start_btn.count() > 0 and start_btn.is_visible():
-                logger.info("Step 2b: Clicking 'Начать'...")
-                start_btn.click()
-                self.page.wait_for_timeout(2000)
-        except Exception:
-            pass
+            clicked_step2 = False
+            try:
+                new_order_btn = self.page.locator(
+                    "button:has-text('Создать новое заявление'), "
+                    "span:has-text('Создать новое заявление'), "
+                    "button:has-text('Создать заявление'), "
+                    "button:has-text('Новое заявление'), "
+                    "span:has-text('Новое заявление'), "
+                    "a:has-text('Создать новое заявление')"
+                ).first
+                if new_order_btn.count() > 0:
+                    try:
+                        new_order_btn.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
+                    if new_order_btn.is_visible():
+                        logger.info("Step 2: Auto-scrolling & clicking 'Создать новое заявление'...")
+                        try:
+                            new_order_btn.click(timeout=3000)
+                        except Exception:
+                            new_order_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                        clicked_step2 = True
+                        self.page.wait_for_timeout(2000)
+            except Exception:
+                pass
+
+            try:
+                start_btn = self.page.locator(
+                    "button:has-text('Начать'), "
+                    "span:has-text('Начать'), "
+                    "a:has-text('Начать')"
+                ).first
+                if start_btn.count() > 0:
+                    try:
+                        start_btn.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
+                    if start_btn.is_visible():
+                        logger.info("Step 2b: Auto-scrolling & clicking 'Начать'...")
+                        try:
+                            start_btn.click(timeout=3000)
+                        except Exception:
+                            start_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                        clicked_step2 = True
+                        self.page.wait_for_timeout(2000)
+            except Exception:
+                pass
+
+            # Break early once Step 3 ('О выплате зарплаты...') is visible on screen
+            if self.page.locator("text=/О выплате зарплаты/i").count() > 0:
+                break
+            if not clicked_step2:
+                break
 
         # Step 3: Select 'О выплате зарплаты высококвалифицированному специалисту'
         logger.info("Step 3: Selecting 'О выплате зарплаты высококвалифицированному специалисту'...")
