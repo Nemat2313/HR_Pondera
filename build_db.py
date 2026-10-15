@@ -8,10 +8,10 @@ import shutil
 import gzip
 from datetime import datetime, date
 
-EXCEL_PATH = r"C:\Users\nemat\Downloads\Telegram Desktop\tum liste 08 10 2026.xlsx"
+EXCEL_PATH = r"C:\Users\nemat\Downloads\tum liste 15 10 2026.xlsx"
 DB_PATH = r"pondera_hr.db"
-DATA_FRESHNESS = "08.10.2026"
-SOURCE_FILE = "tum liste 08 10 2026.xlsx"
+DATA_FRESHNESS = "15.10.2026"
+SOURCE_FILE = "tum liste 15 10 2026.xlsx"
 
 def clean_val(val):
     if val is None:

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { X, UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Calendar } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -14,7 +15,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
   const { lang } = useLanguage();
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [customDate, setCustomDate] = useState('03.10.2026');
+  const [customDate, setCustomDate] = useState('15.10.2026');
   const [uploading, setUploading] = useState(false);
   const [progressPercent, setProgressPercent] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -82,34 +83,79 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
     }
   };
 
+  // Convert heavy .xlsx/.xls in browser to lightweight tab-delimited .txt so Cloud Run (512MB RAM) processes in 2s without HTTP 503 OOM
+  const prepareUploadFile = async (rawFile: File): Promise<File> => {
+    const lower = rawFile.name.toLowerCase();
+    if (!lower.endsWith('.xlsx') && !lower.endsWith('.xls')) {
+      return rawFile;
+    }
+
+    setStatusMessage(
+      lang === 'ru'
+        ? 'Оптимизация Excel-файла в браузере перед отправкой...'
+        : 'Excel dosyası hızlı aktarım için tarayıcıda optimize ediliyor...'
+    );
+    setProgressPercent(10);
+
+    await new Promise((r) => setTimeout(r, 50));
+    const buf = await rawFile.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+
+    let chosenSheetName = wb.SheetNames[0];
+    const targetNames = ['personel listesi', 'personel', 'employees', 'сотрудники', 'список сотрудников'];
+    for (const sName of wb.SheetNames) {
+      const low = sName.trim().toLowerCase();
+      if (targetNames.includes(low) || low.includes('personel') || low.includes('список')) {
+        chosenSheetName = sName;
+        break;
+      }
+    }
+
+    const ws = wb.Sheets[chosenSheetName];
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd', defval: '' });
+    const tsvLines = rows.map((row) =>
+      row
+        .map((cell) =>
+          String(cell ?? '')
+            .replace(/[\t\r\n]+/g, ' ')
+            .trim()
+        )
+        .join('\t')
+    );
+    const tsvBlob = new Blob([tsvLines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const baseName = rawFile.name.replace(/\.(xlsx|xls)$/i, '');
+    return new File([tsvBlob], `${baseName}.txt`, { type: 'text/plain;charset=utf-8' });
+  };
+
   const handleUpload = async () => {
     if (!file) return;
 
     setUploading(true);
     setProgressPercent(0);
-    const targetDate = customDate.trim() || '08.10.2026';
+    const targetDate = customDate.trim() || '15.10.2026';
     setIsError(false);
 
     try {
+      const uploadFile = await prepareUploadFile(file);
       // Chunk size: 10 MB (well below Cloud Run 32 MB request body limit)
       const CHUNK_SIZE = 10 * 1024 * 1024;
-      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const totalChunks = Math.max(1, Math.ceil(uploadFile.size / CHUNK_SIZE));
       const uploadId = `up_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
         const start = chunkIndex * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, file.size);
-        const chunkBlob = file.slice(start, end);
+        const end = Math.min(start + CHUNK_SIZE, uploadFile.size);
+        const chunkBlob = uploadFile.slice(start, end);
 
-        const currentPercent = Math.round((chunkIndex / totalChunks) * 100);
+        const currentPercent = Math.round(((chunkIndex + 0.5) / totalChunks) * 100);
         setProgressPercent(currentPercent);
 
         if (totalChunks > 1) {
           if (chunkIndex === totalChunks - 1) {
             setStatusMessage(
               lang === 'ru'
-                ? `Передача последней части (${chunkIndex + 1}/${totalChunks})... Обработка базы данных может занять 1-2 мин.`
-                : `Son parça aktarılıyor (${chunkIndex + 1}/${totalChunks})... Veritabanı işleniyor (1-2 dk. sürebilir)`
+                ? `Передача последней части (${chunkIndex + 1}/${totalChunks})... Обработка базы данных...`
+                : `Son parça aktarılıyor (${chunkIndex + 1}/${totalChunks})... Veritabanı işleniyor...`
             );
             setProgressPercent(92);
           } else {
@@ -122,9 +168,10 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
         } else {
           setStatusMessage(
             lang === 'ru'
-              ? 'Загрузка файла и обновление базы данных...'
-              : 'Dosya aktarılıyor ve veritabanı güncelleniyor...'
+              ? 'Загрузка файла и обновление базы данных (5-10 сек.)...'
+              : 'Dosya aktarılıyor ve veritabanı güncelleniyor (5-10 sn.)...'
           );
+          setProgressPercent(85);
         }
 
         // Retry logic: up to 3 attempts per chunk
@@ -134,11 +181,11 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             const formData = new FormData();
-            formData.append('chunk', chunkBlob, file.name);
+            formData.append('chunk', chunkBlob, uploadFile.name);
             formData.append('uploadId', uploadId);
             formData.append('chunkIndex', String(chunkIndex));
             formData.append('totalChunks', String(totalChunks));
-            formData.append('fileName', file.name);
+            formData.append('fileName', uploadFile.name);
             formData.append('dataFreshness', targetDate);
 
             const res = await fetch('/api/upload/chunk', {
