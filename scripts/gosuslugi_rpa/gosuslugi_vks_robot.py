@@ -238,10 +238,28 @@ class GosuslugiVksBot:
         raise RuntimeError(f"Timeout waiting for manual correction on step: {step_name}")
 
     def wait_for_screen_transition(self, previous_heading: str, min_wait_ms: int = 1500):
-        """Waits until Gosuslugi finishes loading the next screen (h1 changes and is non-empty)."""
+        """Waits until Gosuslugi finishes loading the next screen (h1 changes or modal/final button appears)."""
         self.page.wait_for_timeout(min_wait_ms)
-        for _ in range(20):
-            self.check_and_handle_error_modal()
+        for _ in range(30):
+            if self.check_and_handle_error_modal():
+                self.page.wait_for_timeout(1200)
+                cur_after_modal = self.get_current_heading()
+                if previous_heading and cur_after_modal == previous_heading:
+                    btn = self.page.locator("button:has-text('Продолжить'):visible").last
+                    if btn.count() > 0 and btn.is_enabled():
+                        logger.info(f"Re-clicking 'Продолжить' after retry modal on '{previous_heading}'...")
+                        btn.click()
+                        self.page.wait_for_timeout(1500)
+                        continue
+            # Also break immediately if a consent modal ('Подтвердить'), submit ('Отправить уведомление'), or final ('В личный кабинет') button appeared
+            special_btn = self.page.locator(
+                "button:has-text('Подтвердить'):visible, "
+                "button:has-text('Отправить уведомление'):visible, "
+                "button:has-text('В личный кабинет'):visible"
+            ).first
+            if special_btn.count() > 0 and special_btn.is_visible():
+                self.page.wait_for_timeout(300)
+                return
             cur = self.get_current_heading()
             if cur and cur != previous_heading:
                 self.page.wait_for_timeout(400)
@@ -458,9 +476,9 @@ class GosuslugiVksBot:
         logger.info("Step 10: Waiting for Contract & Work Address screen ('Укажите информацию о договоре')...")
         self.check_and_handle_error_modal()
 
-        # Wait explicitly until Step 10 date input (di16_1) or radio (app-radio-3) is visible!
+        # Wait explicitly until Step 10 date input (di16_1) or radio ('Трудовой') is visible!
         try:
-            self.page.locator("input[name='di16_1'], input[name='di16_2'], label[for='app-radio-3']").first.wait_for(
+            self.page.locator("input[name='di16_1'], input[name='di16_2'], label.radio:has-text('Трудовой')").first.wait_for(
                 state="visible", timeout=25000
             )
         except Exception:
@@ -469,15 +487,15 @@ class GosuslugiVksBot:
             if inter_btn.count() > 0 and inter_btn.is_enabled():
                 inter_btn.click()
                 self.page.wait_for_timeout(2000)
-            self.page.locator("input[name='di16_1'], input[name='di16_2'], label[for='app-radio-3']").first.wait_for(
+            self.page.locator("input[name='di16_1'], input[name='di16_2'], label.radio:has-text('Трудовой')").first.wait_for(
                 state="visible", timeout=20000
             )
 
         logger.info("Step 10: Filling Contract Details & Work Address...")
 
-        # 10a. Select 'Трудовой' radio button (label[for='app-radio-3'])
+        # 10a. Select 'Трудовой' radio button
         try:
-            trudovoy_lbl = self.page.locator("label[for='app-radio-3'], label.radio:has-text('Трудовой')").first
+            trudovoy_lbl = self.page.locator("label.radio:has-text('Трудовой'), lib-radio:has-text('Трудовой') label").first
             if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
                 trudovoy_lbl.click()
                 self.page.wait_for_timeout(300)
@@ -501,20 +519,23 @@ class GosuslugiVksBot:
         work_addr = str(row.get("АдресРаботы", "")).strip() or self.cfg["WORK_ADDRESS"]
         postal_code = str(row.get("Индекс", "")).strip() or str(self.cfg["WORK_POSTAL_CODE"])
 
-        # Ensure closed-mode checkboxes (#app-checkbox-1, #app-checkbox-2) are unchecked before typing into textarea
-        for closed_cb in ("app-checkbox-1", "app-checkbox-2"):
+        # Ensure closed-mode checkboxes (houseCheckboxClosed, apartmentCheckboxClosed) are unchecked before typing into textarea
+        for closed_fcn in ("houseCheckboxClosed", "apartmentCheckboxClosed"):
             try:
-                cb_el = self.page.locator(f"#{closed_cb}")
-                if cb_el.count() > 0 and cb_el.is_checked():
-                    self.page.locator(f"label[for='{closed_cb}']").click()
+                cb_inp = self.page.locator(f"lib-checkbox[formcontrolname='{closed_fcn}'] input[type='checkbox']").first
+                if cb_inp.count() > 0 and cb_inp.is_checked():
+                    self.page.locator(f"lib-checkbox[formcontrolname='{closed_fcn}'] label.check").first.click()
                     self.page.wait_for_timeout(200)
             except Exception:
                 pass
 
-        # Normalize query for DaData if it contains 'Восточный промышленный район' and '5-й'
-        dadata_query = work_addr
-        if "Восточный промышленный район" in work_addr and "5-й" in work_addr:
-            dadata_query = "626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й"
+        # Normalize query for DaData if it contains 'Восточный промышленный район' and ('5-й' or 'квартал 5')
+        is_tobolsk_kv5 = "Восточный промышленный район" in work_addr and ("5-й" in work_addr or "квартал 5" in work_addr or "кв-л 5" in work_addr)
+        dadata_query = (
+            "Тюменская обл, г Тобольск, тер Восточный промышленный район-квартал 5"
+            if is_tobolsk_kv5
+            else work_addr
+        )
 
         addr_textarea = self.page.locator(
             "epgu-constructor-address-input textarea, "
@@ -525,10 +546,9 @@ class GosuslugiVksBot:
         if addr_textarea.count() > 0 and addr_textarea.is_visible():
             addr_textarea.click()
             self.page.wait_for_timeout(150)
-            self.page.keyboard.press("Control+A")
-            self.page.keyboard.press("Backspace")
-            self.page.wait_for_timeout(150)
-            self.page.keyboard.type(dadata_query, delay=30)
+            addr_textarea.fill("")
+            self.page.wait_for_timeout(200)
+            addr_textarea.fill(dadata_query)
         else:
             self.page.keyboard.press("Tab")
             self.page.wait_for_timeout(200)
@@ -536,19 +556,25 @@ class GosuslugiVksBot:
 
         self.page.wait_for_timeout(2000)
 
-        # If a specific matching FIAS/DaData suggestion item is visible (e.g. matching '5-й'), click it;
-        # otherwise do NOT click a wrong street/house suggestion (like '1-й, д. 5')!
+        # Select matching FIAS/DaData suggestion item from dropdown
         try:
-            if "5-й" in dadata_query:
-                exact_item = self.page.locator(".lookup-item:not(.nothing-found):has-text('5-й'):visible").first
-                if exact_item.count() > 0 and exact_item.is_visible():
-                    exact_item.click()
-                    self.page.wait_for_timeout(600)
-            else:
-                fias_item = self.page.locator(".lookup-item:not(.nothing-found):visible, [role='option']:visible").first
-                if fias_item.count() > 0 and fias_item.is_visible():
-                    fias_item.click()
-                    self.page.wait_for_timeout(600)
+            lookup_items = self.page.locator("epgu-constructor-address-input .lookup-item:not(.nothing-found):visible")
+            item_count = lookup_items.count()
+            if is_tobolsk_kv5 and item_count > 0:
+                clicked_kv5 = False
+                for idx_i in range(item_count):
+                    txt_i = lookup_items.nth(idx_i).inner_text().strip()
+                    if txt_i.endswith("квартал 5") or txt_i.endswith("кв-л 5") or txt_i.endswith("5-й"):
+                        lookup_items.nth(idx_i).click()
+                        clicked_kv5 = True
+                        self.page.wait_for_timeout(1000)
+                        break
+                if not clicked_kv5:
+                    lookup_items.first.click()
+                    self.page.wait_for_timeout(1000)
+            elif item_count > 0:
+                lookup_items.first.click()
+                self.page.wait_for_timeout(1000)
         except Exception:
             pass
 
@@ -590,7 +616,7 @@ class GosuslugiVksBot:
         logger.info("Checking 'Нет дома' if applicable...")
         try:
             house_inp = self.page.locator("input#house:visible").first
-            if "5-й" in dadata_query and house_inp.count() > 0 and house_inp.input_value().strip():
+            if is_tobolsk_kv5 and house_inp.count() > 0 and house_inp.input_value().strip():
                 house_inp.click()
                 self.page.keyboard.press("Control+A")
                 self.page.keyboard.press("Backspace")
@@ -598,27 +624,29 @@ class GosuslugiVksBot:
 
             house_val = house_inp.input_value().strip() if house_inp.count() > 0 else ""
             if not house_val:
-                if self.page.locator("#app-checkbox-3").count() > 0:
-                    if not self.page.locator("#app-checkbox-3").is_checked():
-                        self.page.locator("label[for='app-checkbox-3']").click()
+                house_cb_inp = self.page.locator("lib-checkbox[formcontrolname='houseCheckbox'] input[type='checkbox']").first
+                if house_cb_inp.count() > 0:
+                    if not house_cb_inp.is_checked():
+                        self.page.locator("lib-checkbox[formcontrolname='houseCheckbox'] label.check").first.click()
                         self.page.wait_for_timeout(300)
                 else:
-                    no_house_lbl = self.page.locator("lib-checkbox[formcontrolname='houseCheckbox'] label.check, label:has-text('Нет дома')").last
+                    no_house_lbl = self.page.locator("label:has-text('Нет дома'):visible").last
                     if no_house_lbl.count() > 0:
                         no_house_lbl.click()
                         self.page.wait_for_timeout(300)
         except Exception as e:
             logger.debug(f"'Нет дома' check note: {e}")
 
-        # Check 'Нет квартиры' (#app-checkbox-4 inside .extended-fields)
+        # Check 'Нет квартиры' (lib-checkbox[formcontrolname='apartmentCheckbox'] inside .extended-fields)
         logger.info("Checking 'Нет квартиры'...")
         try:
-            if self.page.locator("#app-checkbox-4").count() > 0:
-                if not self.page.locator("#app-checkbox-4").is_checked():
-                    self.page.locator("label[for='app-checkbox-4']").click()
+            apt_cb_inp = self.page.locator("lib-checkbox[formcontrolname='apartmentCheckbox'] input[type='checkbox']").first
+            if apt_cb_inp.count() > 0:
+                if not apt_cb_inp.is_checked():
+                    self.page.locator("lib-checkbox[formcontrolname='apartmentCheckbox'] label.check").first.click()
                     self.page.wait_for_timeout(300)
             else:
-                no_apt_lbl = self.page.locator("lib-checkbox[formcontrolname='apartmentCheckbox'] label.check, label:has-text('Нет квартиры')").last
+                no_apt_lbl = self.page.locator("label:has-text('Нет квартиры'):visible").last
                 if no_apt_lbl.count() > 0:
                     no_apt_lbl.click()
                     self.page.wait_for_timeout(300)
@@ -646,8 +674,8 @@ class GosuslugiVksBot:
         self.type_masked_input("input[name='di17_start']", period_start, delay=35)
         self.type_masked_input("input[name='di17_end']", period_end, delay=35)
 
-        # Select Radio 'Да' (label[for='app-radio-5'])
-        yes_radio = self.page.locator("label[for='app-radio-5'], lib-radio:has-text('Да') label, label.radio:has-text('Да')").first
+        # Select Radio 'Да'
+        yes_radio = self.page.locator("label.radio:has-text('Да'), lib-radio:has-text('Да') label").first
         if yes_radio.count() > 0 and yes_radio.is_visible():
             yes_radio.click()
             self.page.wait_for_timeout(400)
@@ -683,25 +711,38 @@ class GosuslugiVksBot:
         logger.info("Step 14: Confirming Personal Data Processing Consent ('Продолжить')...")
         self.check_and_handle_error_modal()
         try:
-            self.click_continue_strict("Шаг 14: Согласие на обработку ПДн", 1500)
+            if self.page.locator("button:has-text('Продолжить'):visible").count() > 0:
+                self.click_continue_strict("Шаг 14: Согласие на обработку ПДн", 1500)
         except Exception:
             pass
 
-        # Step 15: Submit Notification ('Отправить уведомление')
-        logger.info("Step 15: Clicking 'Отправить уведомление'...")
+        # Step 15: Submit Notification ('Отправить уведомление') or verify final screen ('В личный кабинет')
+        logger.info("Step 15: Checking for 'Отправить уведомление' or final confirmation screen...")
         self.check_and_handle_error_modal()
-        submit_btn = self.page.locator("button:has-text('Отправить уведомление'), span:has-text('Отправить уведомление')").first
-        submit_btn.wait_for(state="visible", timeout=15000)
-        submit_btn.focus()
-        submit_btn.click()
-        logger.info(">>> 'Отправить уведомление' CLICKED! <<<")
-        self.page.wait_for_timeout(3500)
+        try:
+            final_or_submit = self.page.locator(
+                "button:has-text('Отправить уведомление'):visible, "
+                "span:has-text('Отправить уведомление'):visible, "
+                "button:has-text('В личный кабинет'):visible"
+            ).first
+            final_or_submit.wait_for(state="visible", timeout=15000)
+
+            submit_btn = self.page.locator("button:has-text('Отправить уведомление'):visible, span:has-text('Отправить уведомление'):visible").first
+            if submit_btn.count() > 0 and submit_btn.is_visible():
+                submit_btn.focus()
+                submit_btn.click()
+                logger.info(">>> 'Отправить уведомление' CLICKED! <<<")
+                self.page.wait_for_timeout(3500)
+            else:
+                logger.info(">>> Final notification screen ('В личный кабинет') reached! <<<")
+        except Exception as e:
+            logger.warning(f"Step 15 submission check note: {e}")
 
         # Step 16: Personal Cabinet & Receipt Download
         logger.info("Step 16: Navigating to Personal Cabinet to download submission receipt...")
         try:
             cabinet_btn = self.page.locator("button:has-text('В личный кабинет'), span:has-text('В личный кабинет')").first
-            cabinet_btn.wait_for(state="visible", timeout=20000)
+            cabinet_btn.wait_for(state="visible", timeout=15000)
             cabinet_btn.click()
             self.page.wait_for_timeout(3000)
 
