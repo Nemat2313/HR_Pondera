@@ -713,16 +713,19 @@ class GosuslugiVksBot:
         try:
             final_or_submit = self.page.locator(
                 "button:has-text('Отправить'):visible, "
-                "button:has-text('Отправить уведомление'):visible, "
+                "a:has-text('Отправить'):visible, "
+                "lib-button:has-text('Отправить'):visible, "
                 "span:has-text('Отправить'):visible, "
-                "button:has-text('В личный кабинет'):visible"
+                "button:has-text('В личный кабинет'):visible, "
+                "a:has-text('В личный кабинет'):visible"
             ).first
             final_or_submit.wait_for(state="visible", timeout=15000)
 
             submit_btn = self.page.locator(
                 "button:has-text('Отправить уведомление'):visible, "
                 "button:has-text('Отправить'):visible, "
-                "span:has-text('Отправить уведомление'):visible, "
+                "lib-button:has-text('Отправить'):visible, "
+                "a:has-text('Отправить'):visible, "
                 "span:has-text('Отправить'):visible"
             ).first
             if submit_btn.count() > 0 and submit_btn.is_visible():
@@ -730,10 +733,20 @@ class GosuslugiVksBot:
                     submit_btn.scroll_into_view_if_needed(timeout=3000)
                 except Exception:
                     pass
-                submit_btn.focus()
-                submit_btn.click()
+                try:
+                    submit_btn.focus()
+                    submit_btn.click(timeout=5000)
+                except Exception:
+                    submit_btn.evaluate("el => el.click()")
                 logger.info(">>> 'Отправить' CLICKED! Waiting for Gosuslugi confirmation screen... <<<")
-                self.page.wait_for_timeout(4000)
+                self.page.wait_for_timeout(2000)
+                # If button is still visible on 'Уведомление готово к отправке', trigger native JS click on button
+                if self.page.locator("text='Уведомление готово к отправке'").count() > 0 and submit_btn.is_visible():
+                    try:
+                        submit_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                    except Exception:
+                        pass
+                self.page.wait_for_timeout(3500)
                 self.check_and_handle_error_modal()
             else:
                 logger.info(">>> Final notification screen ('В личный кабинет') reached! <<<")
