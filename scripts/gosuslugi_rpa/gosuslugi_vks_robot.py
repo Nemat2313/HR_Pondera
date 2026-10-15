@@ -379,20 +379,6 @@ class GosuslugiVksBot:
 
         citizenship = str(row.get("ТекущееГражданство", "Турция")).strip()
 
-        # Line 33-38 in PAD: Focus si13_lastNameRu -> Shift+Tab -> Citizenship dropdown -> Down -> Enter
-        try:
-            last_name_input.focus()
-            self.page.keyboard.press("Shift+Tab")
-            self.page.wait_for_timeout(300)
-            self.page.keyboard.type(citizenship, delay=25)
-            self.page.wait_for_timeout(1000)
-            self.page.keyboard.press("ArrowDown")
-            self.page.wait_for_timeout(100)
-            self.page.keyboard.press("Enter")
-            self.page.wait_for_timeout(500)
-        except Exception as e:
-            logger.debug(f"Pre-surname citizenship field skipped: {e}")
-
         # First Name & Middle Name
         self.type_masked_input("#si13_firstNameRu, input[name*='firstNameRu']", first_name, delay=25)
         self.type_masked_input("#si13_secondNameRu, input[name*='secondNameRu']", middle_name if middle_name else "НЕТ", delay=25)
@@ -401,7 +387,7 @@ class GosuslugiVksBot:
         bdate_str = str(row.get("ДатаРождения", "")).strip()
         self.type_masked_input("input[name='di13_birth'], input[placeholder*='__.__.____']", bdate_str, delay=35)
 
-        # Line 43-47 in PAD: Citizenship selection
+        # Citizenship selection (Гражданство)
         self.page.keyboard.type(citizenship, delay=25)
         self.page.wait_for_timeout(1500)
         self.page.keyboard.press("ArrowDown")
@@ -416,7 +402,7 @@ class GosuslugiVksBot:
         # Gender ('Мужской' / 'Женский')
         gender = str(row.get("Пол", "Мужской")).strip()
         gender_label = "Женский" if gender.lower().startswith("ж") or gender.lower().startswith("k") else "Мужской"
-        gender_span = self.page.locator(f"span:has-text('{gender_label}'), label:has-text('{gender_label}')").first
+        gender_span = self.page.locator(f"label.radio:has-text('{gender_label}'), span:has-text('{gender_label}'), label:has-text('{gender_label}')").first
         if gender_span.count() > 0 and gender_span.is_visible():
             gender_span.click()
         self.page.wait_for_timeout(600)
