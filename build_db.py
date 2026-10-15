@@ -558,13 +558,14 @@ def build_database():
             pass
     shutil.move(temp_db_path, DB_PATH)
 
-    # Automatically compress to .gz as well
-    try:
-        with open(DB_PATH, 'rb') as f_in:
-            with gzip.open(DB_PATH + '.gz', 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
-    except Exception:
-        pass
+    # Automatically compress to .gz when running locally (skip in Cloud Run production tmpfs to save RAM)
+    if os.environ.get("NODE_ENV") != "production":
+        try:
+            with open(DB_PATH, 'rb') as f_in:
+                with gzip.open(DB_PATH + '.gz', 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+        except Exception:
+            pass
 
     elapsed = time.time() - start_time
     print(f"SUCCESS! Database created in {elapsed:.2f}s. Total: {total_count}, Active: {active_count}")

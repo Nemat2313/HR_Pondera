@@ -111,6 +111,15 @@ export async function POST(request: Request) {
       fs.rmSync(sessionDir, { recursive: true, force: true });
     } catch {}
 
+    // Close existing DB connection and remove old DB file before rebuild to save 95MB of tmpfs RAM on Cloud Run
+    resetDb();
+    const dbPath = path.join(process.cwd(), 'pondera_hr.db');
+    if (fs.existsSync(dbPath)) {
+      try {
+        fs.unlinkSync(dbPath);
+      } catch {}
+    }
+
     // Process assembled file using python build_db
     const escapedTempPath = assembledFilePath.replace(/\\/g, '\\\\');
     const safeFreshness = dataFreshness.replace(/['"\\]/g, '');
@@ -149,22 +158,12 @@ export async function POST(request: Request) {
     resetDb();
 
     // Ensure system_info is updated directly in SQLite
-    const dbPath = path.join(process.cwd(), 'pondera_hr.db');
     try {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(dbPath);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)").run(safeFreshness);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', ?)").run(safeFileName);
       try { db.close(); } catch {}
-    } catch {}
-
-    // Auto-update compressed archive pondera_hr.db.gz for Cloud deployments & backups
-    try {
-      if (fs.existsSync(dbPath)) {
-        const rawDb = fs.readFileSync(dbPath);
-        const gzipped = zlib.gzipSync(rawDb);
-        fs.writeFileSync(path.join(process.cwd(), 'pondera_hr.db.gz'), gzipped);
-      }
     } catch {}
 
     return NextResponse.json({

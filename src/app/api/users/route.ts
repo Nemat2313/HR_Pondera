@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_USERS_LIST = [
   { id: 1, name: 'Sistem Yöneticisi (Admin)', email: 'admin@pondera.com', role: 'admin', scope_type: 'all', scope_value: 'all', created_at: '2026-10-08 19:00:00' },
-  { id: 2, name: 'Kazan Şantiye Yönetimi', email: 'kazan@pondera.com', role: 'viewer', scope_type: 'region', scope_value: 'Kazan', created_at: '2026-10-08 19:00:00' },
-  { id: 3, name: 'Svobodny Şantiye Yönetimi', email: 'svobodny@pondera.com', role: 'viewer', scope_type: 'region', scope_value: 'Svobodny-AGHK', created_at: '2026-10-08 19:00:00' },
-  { id: 4, name: 'Ust Luga Şantiye Yönetimi', email: 'ustluga@pondera.com', role: 'viewer', scope_type: 'region', scope_value: 'Ust Luga', created_at: '2026-10-08 19:00:00' },
-  { id: 5, name: 'DGP-02 Proje Yönetimi', email: 'dgp02@pondera.com', role: 'viewer', scope_type: 'project', scope_value: 'TOBOLSK DGP-2 PROJESİ', created_at: '2026-10-08 19:00:00' },
+  { id: 2, name: 'Kazan Şantiye Yönetimi', email: 'kazan@pondera.com', role: 'user', scope_type: 'region', scope_value: 'Kazan', created_at: '2026-10-08 19:00:00' },
+  { id: 3, name: 'Svobodny Şantiye Yönetimi', email: 'svobodny@pondera.com', role: 'user', scope_type: 'region', scope_value: 'Svobodny-AGHK', created_at: '2026-10-08 19:00:00' },
+  { id: 4, name: 'Ust Luga Şantiye Yönetimi', email: 'ustluga@pondera.com', role: 'user', scope_type: 'region', scope_value: 'Ust Luga', created_at: '2026-10-08 19:00:00' },
+  { id: 5, name: 'DGP-02 Proje Yönetimi', email: 'dgp02@pondera.com', role: 'user', scope_type: 'project', scope_value: 'TOBOLSK DGP-2 PROJESİ', created_at: '2026-10-08 19:00:00' },
 ];
 
 export async function GET() {
