@@ -514,7 +514,7 @@ class GosuslugiVksBot:
         # Normalize query for DaData if it contains 'Восточный промышленный район' and '5-й'
         dadata_query = work_addr
         if "Восточный промышленный район" in work_addr and "5-й" in work_addr:
-            dadata_query = "Тюменская Тобольск Восточный промышленный район 5-й"
+            dadata_query = "626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й"
 
         addr_textarea = self.page.locator(
             "epgu-constructor-address-input textarea, "
@@ -536,12 +536,19 @@ class GosuslugiVksBot:
 
         self.page.wait_for_timeout(2000)
 
-        # If a FIAS/DaData suggestion item is visible, click it
+        # If a specific matching FIAS/DaData suggestion item is visible (e.g. matching '5-й'), click it;
+        # otherwise do NOT click a wrong street/house suggestion (like '1-й, д. 5')!
         try:
-            fias_item = self.page.locator(".lookup-item:not(.nothing-found):visible, [role='option']:visible").first
-            if fias_item.count() > 0 and fias_item.is_visible():
-                fias_item.click()
-                self.page.wait_for_timeout(600)
+            if "5-й" in dadata_query:
+                exact_item = self.page.locator(".lookup-item:not(.nothing-found):has-text('5-й'):visible").first
+                if exact_item.count() > 0 and exact_item.is_visible():
+                    exact_item.click()
+                    self.page.wait_for_timeout(600)
+            else:
+                fias_item = self.page.locator(".lookup-item:not(.nothing-found):visible, [role='option']:visible").first
+                if fias_item.count() > 0 and fias_item.is_visible():
+                    fias_item.click()
+                    self.page.wait_for_timeout(600)
         except Exception:
             pass
 
@@ -552,19 +559,43 @@ class GosuslugiVksBot:
                 if clarify_btn.count() > 0 and clarify_btn.is_visible():
                     logger.info("Clicking 'Уточнить адрес' to open detailed address fields...")
                     clarify_btn.click()
-                    self.page.wait_for_timeout(600)
+                    self.page.wait_for_timeout(800)
         except Exception:
             pass
 
-        # Fill Postal Index (input#index)
+        # Fill Postal Index (input#index) and ensure all 6 digits are entered
         logger.info(f"Checking/Filling Postal Code (Индекс): {postal_code}...")
-        self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=40)
-        self.page.wait_for_timeout(400)
+        try:
+            idx_input = self.page.locator("input#index:visible").first
+            idx_input.wait_for(state="visible", timeout=5000)
+            for attempt in range(3):
+                cur_val = idx_input.input_value().strip()
+                if cur_val == postal_code:
+                    break
+                idx_input.click()
+                self.page.wait_for_timeout(150)
+                self.page.keyboard.press("Control+A")
+                for _ in range(8):
+                    self.page.keyboard.press("Backspace")
+                    self.page.keyboard.press("Delete")
+                self.page.wait_for_timeout(150)
+                idx_input.press_sequentially(postal_code, delay=75)
+                self.page.wait_for_timeout(250)
+                self.page.keyboard.press("Tab")
+                self.page.wait_for_timeout(300)
+        except Exception as e:
+            logger.warning(f"Postal code input warning: {e}")
 
-        # Check 'Нет дома' (#app-checkbox-3 inside .extended-fields) if 'Дом' (input#house) is empty
+        # If address is '5-й' (industrial zone without house number), ensure 'input#house' is empty and 'Нет дома' is checked
         logger.info("Checking 'Нет дома' if applicable...")
         try:
             house_inp = self.page.locator("input#house:visible").first
+            if "5-й" in dadata_query and house_inp.count() > 0 and house_inp.input_value().strip():
+                house_inp.click()
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(200)
+
             house_val = house_inp.input_value().strip() if house_inp.count() > 0 else ""
             if not house_val:
                 if self.page.locator("#app-checkbox-3").count() > 0:
