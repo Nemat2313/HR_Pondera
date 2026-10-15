@@ -400,6 +400,7 @@ export default function GosuslugiVksView() {
   // Global PAD Form Configuration (matching 933532 PDF & HR Manager's Tobolsk form)
   const [periodStart, setPeriodStart] = useState('01.07.2026');
   const [periodEnd, setPeriodEnd] = useState('19.08.2026');
+  const [periodCode, setPeriodCode] = useState('2026-3');
   const [workAddress, setWorkAddress] = useState(
     '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й'
   );
@@ -1004,6 +1005,7 @@ export default function GosuslugiVksView() {
       ДатаОканчанияДействия: w.contractEndDate,
       НачалоПериода: w.periodStart || periodStart,
       КонецПериода: w.periodEnd || periodEnd,
+      ПериодКод: periodCode,
       РазмерВыплаты: w.salaryAmount,
       Должность: w.position,
       АдресРаботы: w.workAddress || workAddress,
@@ -1100,6 +1102,7 @@ export default function GosuslugiVksView() {
           UFMS_DEPARTMENT: ufmsDept,
           PERIOD_START: periodStart,
           PERIOD_END: periodEnd,
+          PERIOD_CODE: periodCode,
         },
       };
 
@@ -1364,9 +1367,9 @@ export default function GosuslugiVksView() {
           </div>
         </div>
 
-        {/* Collapsible PAD Form Parameters (Period, Address, Postal Code) */}
+        {/* Collapsible PAD Form Parameters (Period, Address, Postal Code, PDF Period Code) */}
         {showConfigPanel && (
-          <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50/90 dark:bg-slate-900/70 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+          <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-50/90 dark:bg-slate-900/70 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
             <div>
               <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1375,7 +1378,18 @@ export default function GosuslugiVksView() {
               <input
                 type="text"
                 value={periodStart}
-                onChange={(e) => setPeriodStart(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPeriodStart(val);
+                  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(val.trim());
+                  if (m) {
+                    const mm = Number(m[2]);
+                    const yyyy = Number(m[3]);
+                    if (mm >= 1 && mm <= 12) {
+                      setPeriodCode(`${yyyy}-${Math.floor((mm - 1) / 3) + 1}`);
+                    }
+                  }
+                }}
                 placeholder="01.07.2026"
                 className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
               />
@@ -1392,6 +1406,21 @@ export default function GosuslugiVksView() {
                 onChange={(e) => setPeriodEnd(e.target.value)}
                 placeholder="30.09.2026"
                 className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                {lang === 'ru' ? 'Период для имени PDF' : 'PDF Dosya Adı Dönemi'}
+              </label>
+              <input
+                type="text"
+                value={periodCode}
+                onChange={(e) => setPeriodCode(e.target.value)}
+                placeholder="2026-3"
+                title="<GosuslugiNo>_<ФИО>_<Период>.pdf"
+                className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono font-bold"
               />
             </div>
 
@@ -1418,18 +1447,28 @@ export default function GosuslugiVksView() {
               </button>
             </div>
 
-            <div className="md:col-span-4">
-              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                {lang === 'ru'
-                  ? 'Адрес места работы (Month1End в PAD)'
-                  : 'Çalışma Yeri Adresi (PAD Month1End değişkeni)'}
-              </label>
-              <input
-                type="text"
-                value={workAddress}
-                onChange={(e) => setWorkAddress(e.target.value)}
-                className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-              />
+            <div className="md:col-span-5 flex flex-col md:flex-row md:items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  {lang === 'ru'
+                    ? 'Адрес места работы (Month1End в PAD)'
+                    : 'Çalışma Yeri Adresi (PAD Month1End değişkeni)'}
+                </label>
+                <input
+                  type="text"
+                  value={workAddress}
+                  onChange={(e) => setWorkAddress(e.target.value)}
+                  className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                />
+              </div>
+              <div className="md:w-80 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-800 dark:text-emerald-300">
+                <div className="font-bold">
+                  {lang === 'ru' ? 'Формат скачиваемого PDF:' : 'İndirilen PDF Dosya Adı Formatı:'}
+                </div>
+                <div className="font-mono font-bold truncate">
+                  {`<GosuslugiNo>_<Ad Soyad>_${periodCode || '2026-3'}.pdf`}
+                </div>
+              </div>
             </div>
           </div>
         )}

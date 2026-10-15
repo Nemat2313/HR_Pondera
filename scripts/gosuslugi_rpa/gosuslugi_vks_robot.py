@@ -12,12 +12,14 @@ Features:
 
 import sys
 import os
+import re
 import time
 import json
 import argparse
 import logging
+from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import openpyxl
 from openpyxl.styles import PatternFill
 
@@ -57,6 +59,7 @@ DEFAULT_CONFIG = {
     "UFMS_DEPARTMENT": "ОВТМ УВМ УМВД РОССИИ ПО ТЮМЕНСКОЙ ОБЛАСТИ",
     "PERIOD_START": "01.07.2026",
     "PERIOD_END": "19.08.2026",
+    "PERIOD_CODE": "2026-3",
     "DEFAULT_EXCEL_PATH": r"C:\Users\nemat\Downloads\GosUsluga_ ЗП.xlsx",
     "CDP_PORT": 9222,
 }
@@ -705,6 +708,7 @@ class GosuslugiVksBot:
         # Step 15: Submit Notification ('Отправить уведомление') or verify final screen ('В личный кабинет')
         logger.info("Step 15: Checking for 'Отправить уведомление' or final confirmation screen...")
         self.check_and_handle_error_modal()
+        gosuslugi_order_no = ""
         try:
             final_or_submit = self.page.locator(
                 "button:has-text('Отправить уведомление'):visible, "
@@ -721,37 +725,233 @@ class GosuslugiVksBot:
                 self.page.wait_for_timeout(3500)
             else:
                 logger.info(">>> Final notification screen ('В личный кабинет') reached! <<<")
+
+            gosuslugi_order_no = self.extract_gosuslugi_order_number()
+            if gosuslugi_order_no:
+                logger.info(f"Step 15: Captured Gosuslugi Application No: {gosuslugi_order_no}")
         except Exception as e:
             logger.warning(f"Step 15 submission check note: {e}")
 
-        # Step 16: Personal Cabinet & Receipt Download
-        logger.info("Step 16: Navigating to Personal Cabinet to download submission receipt...")
+        # Step 16: Personal Cabinet & Receipt PDF Download + Rename (<GosuslugiNo>_<Ad Soyad>_<Donem>.pdf)
+        logger.info("Step 16: Navigating to Personal Cabinet to download and rename submission receipt PDF...")
         try:
             cabinet_btn = self.page.locator("button:has-text('В личный кабинет'), span:has-text('В личный кабинет')").first
             cabinet_btn.wait_for(state="visible", timeout=15000)
             cabinet_btn.click()
-            self.page.wait_for_timeout(3000)
+            self.page.wait_for_timeout(3500)
 
             zayavlenie = self.page.locator("h5:has-text('Заявление'), a:has-text('Заявление')").first
+            try:
+                zayavlenie.wait_for(state="visible", timeout=12000)
+            except Exception:
+                pass
             if zayavlenie.count() > 0 and zayavlenie.is_visible():
                 zayavlenie.click()
-                self.page.wait_for_timeout(2500)
+                self.page.wait_for_timeout(3000)
+
+            if not gosuslugi_order_no:
+                gosuslugi_order_no = self.extract_gosuslugi_order_number()
+                if gosuslugi_order_no:
+                    logger.info(f"Step 16: Captured Gosuslugi Application No from order details: {gosuslugi_order_no}")
 
             show_history = self.page.locator("a:has-text('Показать историю'), button:has-text('Показать историю')").first
+            try:
+                show_history.wait_for(state="visible", timeout=10000)
+            except Exception:
+                pass
             if show_history.count() > 0 and show_history.is_visible():
                 show_history.click()
-                self.page.wait_for_timeout(1500)
+                self.page.wait_for_timeout(2000)
 
-            download_link = self.page.locator("a:has-text('Скачать'), a[title*='req_preview']").first
-            if download_link.count() > 0 and download_link.is_visible():
-                download_link.click()
-                self.page.wait_for_timeout(1500)
+            saved_pdf_path = self.download_and_rename_receipt_pdf(row, gosuslugi_order_no)
+            if saved_pdf_path:
+                logger.info(f"Step 16: Official Gosuslugi PDF saved as: {saved_pdf_path}")
         except Exception as e:
-            logger.debug(f"Cabinet receipt download optional step note: {e}")
+            logger.warning(f"Step 16 receipt download/rename note: {e}")
 
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to count success
         logger.info(f"SUCCESS: Notification submitted for {full_name}!")
         return True
+
+    def extract_gosuslugi_order_number(self) -> str:
+        """Extracts the Gosuslugi application/order number (e.g. '8255536023') from current URL or page text."""
+        try:
+            url_match = re.search(r"/order/(\d{6,15})", self.page.url or "")
+            if url_match:
+                return url_match.group(1)
+        except Exception:
+            pass
+        try:
+            body_text = self.page.locator("body").inner_text(timeout=3000)
+            m = re.search(r"(?:Заявление|Уведомлени\w+)[^\n\r№]*№\s*(\d{6,15})", body_text, re.IGNORECASE)
+            if m:
+                return m.group(1)
+            m2 = re.search(r"№\s*(\d{7,15})", body_text)
+            if m2:
+                return m2.group(1)
+        except Exception:
+            pass
+        return ""
+
+    def build_clean_worker_name(self, row: Dict[str, Any]) -> str:
+        """
+        Builds clean employee full name for PDF filename, stripping placeholder values like 'Нет'.
+        Example: Фамилия='Нет', Имя='АБДУЛ РАШИД', Отчество='НЕТ' -> 'АБДУЛ РАШИД'
+        """
+        skip_tokens = {"нет", "не заполнено", "-", "none", "null", ""}
+        parts = []
+        for key in ("Фамилия", "Имя", "Отчество"):
+            val = str(row.get(key, "")).strip()
+            if val and val.lower() not in skip_tokens:
+                parts.append(val)
+        clean_name = " ".join(parts).strip()
+        if not clean_name:
+            clean_name = str(row.get("Имя", row.get("Фамилия", "Сотрудник"))).strip()
+        # Remove characters illegal in Windows filenames
+        clean_name = re.sub(r'[<>:"/\\|?*]+', " ", clean_name)
+        clean_name = re.sub(r"\s+", " ", clean_name).strip()
+        return clean_name
+
+    def compute_vks_period_code(self, row: Dict[str, Any]) -> str:
+        """
+        Computes VKS reporting period code in 'YYYY-Q' format (e.g. '2026-3' for Q3 2026).
+        Checks row['ПериодКод'], then parses НачалоПериода / КонецПериода (DD.MM.YYYY),
+        and falls back to cfg['PERIOD_CODE'] ('2026-3').
+        """
+        explicit_code = str(row.get("ПериодКод", "")).strip()
+        if explicit_code:
+            return re.sub(r'[<>:"/\\|?*]+', "-", explicit_code)
+
+        for date_str in (
+            str(row.get("НачалоПериода", "")).strip(),
+            str(row.get("КонецПериода", "")).strip(),
+            str(self.cfg.get("PERIOD_START", "")).strip(),
+            str(self.cfg.get("PERIOD_END", "")).strip(),
+        ):
+            m = re.match(r"^(\d{2})\.(\d{2})\.(\d{4})$", date_str)
+            if m:
+                month = int(m.group(2))
+                year = int(m.group(3))
+                if 1 <= month <= 12:
+                    quarter = (month - 1) // 3 + 1
+                    return f"{year}-{quarter}"
+
+        return str(self.cfg.get("PERIOD_CODE", "2026-3")).strip() or "2026-3"
+
+    def download_and_rename_receipt_pdf(self, row: Dict[str, Any], gosuslugi_order_no: str = "") -> Optional[str]:
+        """
+        Clicks the PDF download link inside 'Показать историю' -> 'lk-files' on Gosuslugi,
+        waits for the PDF to land in ~/Downloads, and renames it to:
+            <GosuslugiNo>_<Ad Soyad>_<Donem>.pdf
+        Example:
+            8255536023_АБДУЛ РАШИД_2026-3.pdf
+        """
+        downloads_dir = Path.home() / "Downloads"
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+
+        # Snapshot existing PDFs in ~/Downloads before clicking download
+        existing_pdfs = {}
+        try:
+            for p in downloads_dir.glob("*.pdf"):
+                try:
+                    existing_pdfs[p.resolve()] = p.stat().st_mtime
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Locate the specific PDF download button inside lk-files / lib-file (matching 11.docx PAD selector)
+        download_selectors = [
+            "div.history-status.open lk-files lib-file a",
+            "lk-files lib-file:has-text('PDF') a",
+            "lib-file:has-text('req_preview') a",
+            "a[aria-label*='req_preview']",
+            "a[title*='req_preview']",
+            "lk-files a:has-text('Скачать'):not(:has-text('всё'))",
+            "a:has-text('Скачать'):not(:has-text('всё'))",
+        ]
+        download_link = None
+        for sel in download_selectors:
+            loc = self.page.locator(sel).first
+            if loc.count() > 0 and loc.is_visible():
+                download_link = loc
+                break
+
+        if not download_link:
+            logger.warning("Step 16: Could not find visible 'Скачать' PDF link in order history.")
+            return None
+
+        downloaded_path: Optional[Path] = None
+        click_time = time.time()
+
+        # Attempt Playwright download capture + native Chrome ~/Downloads fallback
+        try:
+            with self.page.expect_download(timeout=6000) as download_info:
+                download_link.click()
+            dl = download_info.value
+            suggested_name = dl.suggested_filename or f"{gosuslugi_order_no or 'gosuslugi'}.pdf"
+            temp_target = downloads_dir / suggested_name
+            dl.save_as(str(temp_target))
+            downloaded_path = temp_target
+        except Exception:
+            # In CDP mode Chrome often handles the download directly in ~/Downloads without triggering expect_download
+            pass
+
+        # If Chrome handled the download natively, poll ~/Downloads for the newly created/updated .pdf file
+        if not downloaded_path or not downloaded_path.exists():
+            for _ in range(30):
+                self.page.wait_for_timeout(500)
+                # Wait if Chrome is still writing a .crdownload partial file
+                active_crdownloads = [
+                    p for p in downloads_dir.glob("*.crdownload")
+                    if (time.time() - p.stat().st_mtime) < 30
+                ]
+                if active_crdownloads:
+                    continue
+
+                candidates = []
+                for p in downloads_dir.glob("*.pdf"):
+                    try:
+                        resolved = p.resolve()
+                        mtime = p.stat().st_mtime
+                        if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 2.0):
+                            candidates.append((mtime, p))
+                    except Exception:
+                        pass
+                if candidates:
+                    candidates.sort(key=lambda item: item[0], reverse=True)
+                    downloaded_path = candidates[0][1]
+                    break
+
+        if not downloaded_path or not downloaded_path.exists():
+            logger.warning("Step 16: PDF download was triggered, but the new file was not detected in ~/Downloads.")
+            return None
+
+        # Determine Gosuslugi Number prefix:
+        # 1) If downloaded file is already named with Gosuslugi number (e.g. '8255536023.pdf' or '8255536023 (1).pdf'), keep that number
+        # 2) Otherwise use gosuslugi_order_no extracted from the page
+        stem = downloaded_path.stem
+        stem_digits_match = re.match(r"^(\d{5,15})", stem)
+        final_gosuslugi_no = (
+            stem_digits_match.group(1)
+            if stem_digits_match
+            else (gosuslugi_order_no or self.extract_gosuslugi_order_number() or stem)
+        )
+
+        worker_name = self.build_clean_worker_name(row)
+        period_code = self.compute_vks_period_code(row)
+
+        new_filename = f"{final_gosuslugi_no}_{worker_name}_{period_code}.pdf"
+        new_filepath = downloads_dir / new_filename
+
+        try:
+            if downloaded_path.resolve() != new_filepath.resolve():
+                os.replace(str(downloaded_path), str(new_filepath))
+            logger.info(f"Step 16: Renamed Gosuslugi PDF '{downloaded_path.name}' -> '{new_filename}'")
+            return str(new_filepath)
+        except Exception as e:
+            logger.warning(f"Step 16: Could not rename '{downloaded_path}' to '{new_filepath}': {e}")
+            return str(downloaded_path)
 
 
 def load_excel_records(file_path: str, sheet_name: str = "Sheet1") -> List[Dict[str, Any]]:
