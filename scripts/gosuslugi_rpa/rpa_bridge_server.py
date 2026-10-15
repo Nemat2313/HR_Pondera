@@ -2,7 +2,7 @@
 Pondera HR & Powerise Local RPA Bridge Server
 Listens on http://127.0.0.1:8088 and http://localhost:8088 to bridge web UI commands
 directly to local Playwright automation (VKS Salary Notification, Hiring, Dismissal) and Chrome instances.
-Includes full Chrome Private Network Access (PNA) and CORS support.
+Includes full Chrome Private Network Access (PNA), CORS support, and Human-in-the-Loop manual intervention.
 """
 
 import sys
@@ -21,10 +21,13 @@ if sys.platform == "win32":
 PORT = 8088
 CHROME_CDP_PORT = 9222
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 
 
 class RPAState:
     is_running = False
+    waiting_for_manual = False
+    manual_message = None
     mode = "vks"
     process = None
     thread = None
@@ -48,6 +51,8 @@ class RPAState:
     @classmethod
     def reset_stats(cls):
         cls.logs = []
+        cls.waiting_for_manual = False
+        cls.manual_message = None
         cls.total = 0
         cls.processed = 0
         cls.success = 0
@@ -128,7 +133,7 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
             if clean_line:
                 RPAState.add_log(clean_line)
 
-                # Detect active worker (supports both VKS and Dismissal log lines)
+                # Detect active worker
                 for marker in ["Starting Gosuslugi VKS for: ", "Starting Gosuslugi Dismissal for: "]:
                     if marker in clean_line:
                         try:
@@ -137,15 +142,30 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                             code = after.split("(Код: ")[1].split(")")[0].strip() if "(Код: " in after else ""
                             RPAState.active_worker_name = name
                             RPAState.active_worker_code = code
+                            RPAState.waiting_for_manual = False
+                            RPAState.manual_message = None
                         except Exception:
                             pass
 
+                # Detect Human-in-the-Loop Manual Intervention Pause
+                if "WAITING_FOR_USER:" in clean_line:
+                    RPAState.waiting_for_manual = True
+                    RPAState.manual_message = clean_line.split("WAITING_FOR_USER:")[1].strip()
+                elif "USER_RESOLVED:" in clean_line or "Step " in clean_line:
+                    if "WAITING_FOR_USER:" not in clean_line:
+                        RPAState.waiting_for_manual = False
+                        RPAState.manual_message = None
+
                 if "SUCCESS: Notification submitted" in clean_line:
+                    RPAState.waiting_for_manual = False
+                    RPAState.manual_message = None
                     RPAState.success += 1
                     RPAState.processed += 1
                     if RPAState.active_worker_code and RPAState.active_worker_code not in RPAState.completed_codes:
                         RPAState.completed_codes.append(RPAState.active_worker_code)
-                elif "Error processing" in clean_line or "ERROR" in clean_line:
+                elif "Error processing" in clean_line or "[ERROR]" in clean_line:
+                    RPAState.waiting_for_manual = False
+                    RPAState.manual_message = None
                     RPAState.errors += 1
                     RPAState.processed += 1
                     if RPAState.active_worker_code and RPAState.active_worker_code not in RPAState.error_codes:
@@ -164,6 +184,8 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
         RPAState.add_log(f"Критическая ошибка робота: {e}")
     finally:
         RPAState.is_running = False
+        RPAState.waiting_for_manual = False
+        RPAState.manual_message = None
         RPAState.process = None
         RPAState.active_worker_code = None
         RPAState.active_worker_name = None
@@ -188,6 +210,8 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             data = {
                 "status": "online",
                 "running": RPAState.is_running,
+                "waiting_for_manual": RPAState.waiting_for_manual,
+                "manual_message": RPAState.manual_message,
                 "mode": RPAState.mode,
                 "chrome_ready": chrome_ready,
                 "total": RPAState.total,
@@ -226,6 +250,22 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"success": ok}).encode("utf-8"))
+
+        elif parsed.path == "/manual-continue":
+            try:
+                with open(MANUAL_CONTINUE_SIGNAL, "w", encoding="utf-8") as sf:
+                    sf.write("continue")
+                RPAState.waiting_for_manual = False
+                RPAState.manual_message = None
+                RPAState.add_log("Пользователь подтвердил ручное исправление — продолжаем выполнение...")
+            except Exception as e:
+                RPAState.add_log(f"Ошибка сигнала продолжения: {e}")
+
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
 
         elif parsed.path == "/start":
             if RPAState.is_running:
@@ -279,6 +319,8 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             RPAState.is_running = False
+            RPAState.waiting_for_manual = False
+            RPAState.manual_message = None
             self.send_response(200)
             self._send_cors_headers()
             self.send_header("Content-Type", "application/json; charset=utf-8")

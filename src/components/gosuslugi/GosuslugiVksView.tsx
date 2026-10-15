@@ -49,6 +49,8 @@ interface BridgeStatus {
   errors: number;
   active_worker_code?: string | null;
   active_worker_name?: string | null;
+  waiting_for_manual?: boolean;
+  manual_message?: string | null;
   completed_codes?: string[];
   error_codes?: string[];
   logs: Array<{ time: string; text: string }>;
@@ -92,6 +94,8 @@ export default function GosuslugiVksView() {
     errors: 0,
     active_worker_code: null,
     active_worker_name: null,
+    waiting_for_manual: false,
+    manual_message: null,
     completed_codes: [],
     error_codes: [],
     logs: [],
@@ -687,8 +691,25 @@ export default function GosuslugiVksView() {
     }
   };
 
+  const handleManualContinue = async () => {
+    try {
+      const res = await fetch(`${activeBridgeUrl}/manual-continue`, { method: 'POST' });
+      if (res.ok) {
+        showNotice(
+          'success',
+          lang === 'ru'
+            ? 'Сигнал продолжения отправлен роботу!'
+            : 'Devam et sinyali robota gönderildi!'
+        );
+      }
+    } catch {
+      showNotice('error', 'Сигнал продолжения не отправлен.');
+    }
+  };
+
   const isOnline = bridgeStatus.status === 'online';
   const isRunning = bridgeStatus.running;
+  const isWaitingManual = Boolean(bridgeStatus.waiting_for_manual && isRunning);
   const selectedCount = workers.filter((w) => w.selected).length;
   const completedCount = workers.filter((w) => w.status === 'success').length || bridgeStatus.success;
   const errorCount = workers.filter((w) => w.status === 'error').length || bridgeStatus.errors;
@@ -945,6 +966,44 @@ export default function GosuslugiVksView() {
                 onChange={(e) => setWorkAddress(e.target.value)}
                 className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
               />
+            </div>
+          </div>
+        )}
+
+        {/* HUMAN-IN-THE-LOOP: MANUAL INTERVENTION BANNER WHEN GOSUSLUGI SHOWS RED VALIDATION ERROR OR DISABLED CONTINUE */}
+        {isWaitingManual && (
+          <div className="mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/70 border-2 border-amber-400 dark:border-amber-500/70 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-300">
+                  {lang === 'ru'
+                    ? 'ПАУЗА РОБОТА: ТРЕБУЕТСЯ РУЧНАЯ ПРАВКА В БРАУЗЕРЕ CHROME (ГОСУСЛУГИ)'
+                    : 'ROBOT DURAKLATILDI: GOSUSLUGİ EKRANINDA MANUEL DÜZELTME BEKLENİYOR'}
+                </div>
+                <div className="text-xs text-amber-800 dark:text-amber-200 mt-0.5">
+                  {bridgeStatus.manual_message ||
+                    (lang === 'ru'
+                      ? 'На странице Госуслуг кнопка «Продолжить» неактивна (серая) или есть красное поле. Исправьте поле в открытом окне Chrome — робот автоматически продолжит!'
+                      : 'Gosuslugi sayfasında «Продолжить» butonu pasif (gri) veya kırmızı uyarı var. Açık Chrome penceresinde ilgili alanı düzeltin; buton mavi olunca robot otomatik devam edecektir!')}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleManualContinue}
+                className="h-9 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+              >
+                <Play className="w-3.5 h-3.5 fill-white" />
+                <span>
+                  {lang === 'ru'
+                    ? 'Исправлено в Chrome — Продолжить'
+                    : "Chrome'da Düzelttim — Devam Et"}
+                </span>
+              </button>
             </div>
           </div>
         )}
@@ -1295,7 +1354,12 @@ export default function GosuslugiVksView() {
 
                       {/* Status Column */}
                       <td className="p-3 whitespace-nowrap">
-                        {isProcessing ? (
+                        {isProcessing && isWaitingManual ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500 text-white shadow-xs animate-pulse">
+                            <AlertCircle className="w-3 h-3" />
+                            {lang === 'ru' ? 'Ручная правка...' : 'Manuel Düzeltme...'}
+                          </span>
+                        ) : isProcessing ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-600 text-white shadow-xs animate-pulse">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             {lang === 'ru' ? 'Заполняется...' : 'İşleniyor...'}

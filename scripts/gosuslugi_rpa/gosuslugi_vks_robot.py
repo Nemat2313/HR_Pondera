@@ -3,11 +3,11 @@ Pondera HR - Gosuslugi VKS Salary Notification RPA Worker (Python + Playwright)
 Automated Foreign Worker VKS Salary Notification to MVD (Gosuslugi Service 600585/1)
 
 Replaces Power Automate Desktop (PAD) flow (from 11.docx) with direct Playwright automation.
-Supports:
+Features:
 1. Attaching to open Chrome with active Gosuslugi/Rutoken session (CDP: http://localhost:9222)
-2. Launching Chrome with Persistent User Profile
-3. Processing data from Excel or Pondera HR UI Queue (active_vks_queue.json)
-4. Complete error recovery, retry modals ('Попробовать ещё раз'), and PDF receipt download
+2. Strict verification that 'Продолжить' is enabled (blue/active) and no red errors exist before advancing
+3. Human-in-the-Loop (Manual Intervention Mode): If any page has a validation error or disabled 'Продолжить',
+   the robot pauses and waits for the user to either fix the field in Chrome or click 'Продолжить' in Pondera HR UI.
 """
 
 import sys
@@ -24,6 +24,9 @@ from openpyxl.styles import PatternFill
 # Configure UTF-8 stdout
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 
 # Setup logging
 logging.basicConfig(
@@ -43,7 +46,6 @@ except ImportError:
     sys.exit(1)
 
 
-# Default Company & Facility Parameters (matching 11.docx PAD flow variables)
 DEFAULT_CONFIG = {
     "FORM_URL": "https://www.gosuslugi.ru/600585/1/form",
     "COMPANY_ADDRESS": "121108, г. Москва, ул. Ивана Франко, д. 8",
@@ -94,15 +96,147 @@ class GosuslugiVksBot:
 
         return handled
 
-    def click_continue(self, wait_ms: int = 1500):
-        """Finds and clicks the visible 'Продолжить' button."""
+    def type_masked_input(self, selector: str, value: str, delay: int = 35) -> bool:
+        """Fills a Gosuslugi Angular masked input using physical keyboard strokes so validation triggers."""
+        val = str(value or "").strip()
+        if not val:
+            return False
+        loc = self.page.locator(selector).first
+        if loc.count() == 0:
+            return False
+        try:
+            loc.scroll_into_view_if_needed(timeout=3000)
+        except Exception:
+            pass
+        loc.click()
+        self.page.wait_for_timeout(150)
+        self.page.keyboard.press("Control+A")
+        self.page.keyboard.press("Backspace")
+        self.page.wait_for_timeout(100)
+        self.page.keyboard.type(val, delay=delay)
+        self.page.wait_for_timeout(250)
+        self.page.keyboard.press("Tab")
+        self.page.wait_for_timeout(250)
+        return True
+
+    def get_current_heading(self) -> str:
+        try:
+            h1 = self.page.locator("h1:visible").first
+            if h1.count() > 0:
+                return h1.inner_text().strip()
+        except Exception:
+            pass
+        return ""
+
+    def has_red_validation_errors(self) -> List[str]:
+        """Checks if Gosuslugi displays red inline validation errors on the current screen."""
+        errors = []
+        error_phrases = [
+            "Проверьте адрес",
+            "Необходимо указать индекс",
+            "Необходимо указать квартиру",
+            "Необходимо указать дом",
+            "Поле обязательно",
+            "Проверьте правильность",
+            "Укажите корректн",
+        ]
+        for phrase in error_phrases:
+            try:
+                loc = self.page.locator(f"text='{phrase}'")
+                if loc.count() > 0 and loc.first.is_visible():
+                    errors.append(phrase)
+            except Exception:
+                pass
+        return errors
+
+    def click_continue_strict(self, step_name: str, wait_ms: int = 2000):
+        """
+        Ensures 'Продолжить' button is enabled (blue/active) and no red errors block the page.
+        If 'Продолжить' is grey/disabled or red errors remain, enters Human-in-the-Loop pause mode
+        allowing the user to fix the field in Chrome or click 'Продолжить' in the Pondera HR UI.
+        """
         self.check_and_handle_error_modal()
-        btn = self.page.locator("button:has-text('Продолжить'):visible, span:has-text('Продолжить'):visible").last
-        if btn.count() > 0:
-            btn.focus()
-            btn.click()
+        initial_heading = self.get_current_heading()
+
+        # Clear any old manual signal file
+        if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+            try:
+                os.remove(MANUAL_CONTINUE_SIGNAL)
+            except Exception:
+                pass
+
+        # Wait up to 3 seconds for button to become enabled naturally
+        btn_locator = self.page.locator("button:has-text('Продолжить'):visible").last
+        is_ready = False
+
+        for _ in range(6):
+            self.check_and_handle_error_modal()
+            red_errs = self.has_red_validation_errors()
+            if btn_locator.count() > 0:
+                disabled_attr = btn_locator.get_attribute("disabled")
+                cls_attr = btn_locator.get_attribute("class") or ""
+                is_disabled = (disabled_attr is not None) or ("disabled" in cls_attr) or (not btn_locator.is_enabled())
+                if not is_disabled and len(red_errs) == 0:
+                    is_ready = True
+                    break
+            self.page.wait_for_timeout(500)
+
+        if is_ready:
+            logger.info(f"[{step_name}] 'Продолжить' button is active (blue). Clicking...")
+            btn_locator.focus()
+            btn_locator.click()
             self.page.wait_for_timeout(wait_ms)
-        self.check_and_handle_error_modal()
+            self.check_and_handle_error_modal()
+            return
+
+        # If not ready -> Enter Human-in-the-Loop Manual Intervention Mode!
+        red_errs = self.has_red_validation_errors()
+        err_desc = ", ".join(red_errs) if red_errs else "Кнопка «Продолжить» неактивна (серая)"
+        # IMPORTANT: rpa_bridge_server.py parses 'WAITING_FOR_USER:' to show the manual intervention banner in UI
+        logger.warning(
+            f"WAITING_FOR_USER: [{step_name}] На странице Госуслуг требуется проверка ({err_desc}). "
+            f"Исправьте поле в Chrome и нажмите «Продолжить» (или кнопку «Продолжить» в Pondera HR)."
+        )
+
+        # Wait up to 5 minutes (300 seconds) for user to either:
+        # A) Fix the field in Chrome and click 'Продолжить' in Chrome (heading changes)
+        # B) Fix the field in Chrome so 'Продолжить' becomes blue & no red errors, or click 'Resume' in Pondera UI
+        for tick in range(300):
+            self.check_and_handle_error_modal()
+
+            # Check if user already clicked 'Продолжить' directly in Chrome and page advanced
+            current_heading = self.get_current_heading()
+            if initial_heading and current_heading and current_heading != initial_heading:
+                logger.info(f"USER_RESOLVED: Page advanced to '{current_heading}'. Resuming robot...")
+                self.page.wait_for_timeout(1000)
+                return
+
+            # Check if user clicked "Продолжить" in Pondera HR UI (manual_continue.signal)
+            user_signaled = os.path.exists(MANUAL_CONTINUE_SIGNAL)
+            if user_signaled:
+                try:
+                    os.remove(MANUAL_CONTINUE_SIGNAL)
+                except Exception:
+                    pass
+
+            # Check if button is now enabled and red errors are gone
+            red_errs_now = self.has_red_validation_errors()
+            btn_now = self.page.locator("button:has-text('Продолжить'):visible").last
+            if btn_now.count() > 0:
+                disabled_attr = btn_now.get_attribute("disabled")
+                cls_attr = btn_now.get_attribute("class") or ""
+                is_disabled = (disabled_attr is not None) or ("disabled" in cls_attr) or (not btn_now.is_enabled())
+
+                if not is_disabled and (len(red_errs_now) == 0 or user_signaled):
+                    logger.info(f"USER_RESOLVED: [{step_name}] Validation passed! Clicking 'Продолжить'...")
+                    btn_now.focus()
+                    btn_now.click()
+                    self.page.wait_for_timeout(wait_ms)
+                    return
+
+            self.page.wait_for_timeout(1000)
+
+        raise RuntimeError(f"Timeout waiting for manual correction on step: {step_name}")
 
     def fill_vks_notification(self, row: Dict[str, Any]) -> bool:
         """
@@ -127,7 +261,6 @@ class GosuslugiVksBot:
         self.page.wait_for_timeout(2500)
         self.check_and_handle_error_modal()
 
-        # Wait for page text 'Уведомления о трудовой деятельности'
         try:
             self.page.wait_for_selector("text=/Уведомления о трудовой деятельности/i", timeout=20000)
         except Exception:
@@ -195,14 +328,16 @@ class GosuslugiVksBot:
                 logger.info("Filling Organization Status if prompted...")
                 status_input.click()
                 self.page.wait_for_timeout(500)
-                opt = self.page.locator(f".lookup-item:has-text('{self.cfg['TYPE_COMPANY']}'), span:has-text('коммерческая'), span:has-text('Юридическое')").first
+                opt = self.page.locator(
+                    f".lookup-item:has-text('{self.cfg['TYPE_COMPANY']}'), span:has-text('коммерческая'), span:has-text('Юридическое')"
+                ).first
                 if opt.count() > 0 and opt.is_visible():
                     opt.click()
                 else:
                     self.page.keyboard.press("ArrowDown")
                     self.page.keyboard.press("Enter")
                 self.page.wait_for_timeout(800)
-                self.click_continue()
+                self.click_continue_strict("Статус организации")
         except Exception:
             pass
 
@@ -212,7 +347,7 @@ class GosuslugiVksBot:
 
         last_name_input = self.page.locator("#si13_lastNameRu, input[name*='lastNameRu']").first
         last_name_input.wait_for(state="visible", timeout=25000)
-        last_name_input.fill(last_name)
+        self.type_masked_input("#si13_lastNameRu, input[name*='lastNameRu']", last_name, delay=25)
 
         citizenship = str(row.get("ТекущееГражданство", "Турция")).strip()
 
@@ -230,25 +365,15 @@ class GosuslugiVksBot:
         except Exception as e:
             logger.debug(f"Pre-surname citizenship field skipped: {e}")
 
-        # First Name & Middle Name (si13_firstNameRu, si13_secondNameRu)
-        first_name_input = self.page.locator("#si13_firstNameRu, input[name*='firstNameRu']").first
-        first_name_input.fill(first_name)
-
-        second_name_input = self.page.locator("#si13_secondNameRu, input[name*='secondNameRu']").first
-        if second_name_input.count() > 0:
-            second_name_input.fill(middle_name if middle_name else "НЕТ")
+        # First Name & Middle Name
+        self.type_masked_input("#si13_firstNameRu, input[name*='firstNameRu']", first_name, delay=25)
+        self.type_masked_input("#si13_secondNameRu, input[name*='secondNameRu']", middle_name if middle_name else "НЕТ", delay=25)
 
         # Birth Date (di13_birth / __.__.____)
         bdate_str = str(row.get("ДатаРождения", "")).strip()
-        birth_input = self.page.locator("input[name='di13_birth'], input[placeholder*='__.__.____']").first
-        birth_input.click()
-        birth_input.fill("")
-        self.page.keyboard.type(bdate_str, delay=30)
-        self.page.wait_for_timeout(400)
+        self.type_masked_input("input[name='di13_birth'], input[placeholder*='__.__.____']", bdate_str, delay=35)
 
-        # Line 43-47 in PAD: Tab from BirthDate -> Type Citizenship -> Wait -> Down -> Return
-        self.page.keyboard.press("Tab")
-        self.page.wait_for_timeout(300)
+        # Line 43-47 in PAD: Citizenship selection
         self.page.keyboard.type(citizenship, delay=25)
         self.page.wait_for_timeout(1500)
         self.page.keyboard.press("ArrowDown")
@@ -256,48 +381,35 @@ class GosuslugiVksBot:
         self.page.keyboard.press("Enter")
         self.page.wait_for_timeout(500)
 
-        # Place of Birth (si13_pob) - Line 48 in PAD
+        # Place of Birth (si13_pob)
         pob_val = str(row.get("МестоРождения", "")).strip() or citizenship
-        pob_input = self.page.locator("#si13_pob, input[name*='pob']").first
-        if pob_input.count() > 0 and pob_input.is_visible():
-            pob_input.fill(pob_val)
+        self.type_masked_input("#si13_pob, input[name*='pob']", pob_val, delay=25)
 
-        # Gender ('Мужской' / 'Женский') - Lines 49-53 in PAD
+        # Gender ('Мужской' / 'Женский')
         gender = str(row.get("Пол", "Мужской")).strip()
         gender_label = "Женский" if gender.lower().startswith("ж") or gender.lower().startswith("k") else "Мужской"
-        gender_span = self.page.locator(f"span:has-text('{gender_label}')").first
+        gender_span = self.page.locator(f"span:has-text('{gender_label}'), label:has-text('{gender_label}')").first
         if gender_span.count() > 0 and gender_span.is_visible():
             gender_span.click()
         self.page.wait_for_timeout(600)
 
-        self.click_continue(2000)
+        self.click_continue_strict("Шаг 6: Личные данные ВКС", 2000)
 
-        # Step 7: Passport Details ('Укажите данные документа, удостоверяющего личность' - Lines 58-70 in PAD)
+        # Step 7: Passport Details ('Укажите данные документа, удостоверяющего личность')
         logger.info(f"Step 7: Filling Passport {row.get('СерияПаспорта')} {row.get('НомерПаспорта')}...")
         self.check_and_handle_error_modal()
 
         pass_series = self.page.locator("#series, input[name*='series']").first
         pass_series.wait_for(state="visible", timeout=15000)
-        pass_series.fill(str(row.get("СерияПаспорта", "")).strip())
-
-        pass_number = self.page.locator("#number, input[name*='number']").first
-        pass_number.fill(str(row.get("НомерПаспорта", "")).strip())
-
-        pass_issue_date = str(row.get("ДатаВыдачи", "")).strip()
-        issue_date_input = self.page.locator("input[name='di14_issue'], input[placeholder*='__.__.____']").first
-        issue_date_input.click()
-        issue_date_input.fill("")
-        self.page.keyboard.type(pass_issue_date, delay=30)
-        self.page.wait_for_timeout(400)
-
-        issued_by = str(row.get("ПаспортКемВыдан", "")).strip()
-        issued_by_input = self.page.locator("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']").first
-        issued_by_input.fill(issued_by)
+        self.type_masked_input("#series, input[name*='series']", str(row.get("СерияПаспорта", "")).strip(), delay=30)
+        self.type_masked_input("#number, input[name*='number']", str(row.get("НомерПаспорта", "")).strip(), delay=30)
+        self.type_masked_input("input[name='di14_issue'], input[placeholder*='__.__.____']", str(row.get("ДатаВыдачи", "")).strip(), delay=35)
+        self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", str(row.get("ПаспортКемВыдан", "")).strip(), delay=25)
         self.page.wait_for_timeout(600)
 
-        self.click_continue(2000)
+        self.click_continue_strict("Шаг 7: Паспортные данные", 2000)
 
-        # Step 8: Foreigner INN ('Укажите ИНН иностранца' -> Input 'c_foreignerINN' - Lines 71-76 in PAD)
+        # Step 8: Foreigner INN ('Укажите ИНН иностранца' -> Input 'c_foreignerINN')
         logger.info(f"Step 8: Filling Foreigner INN: {row.get('ИНН')}...")
         self.check_and_handle_error_modal()
 
@@ -306,118 +418,122 @@ class GosuslugiVksBot:
             inn_input.wait_for(state="visible", timeout=12000)
             inn_val = str(row.get("ИНН", "")).strip()
             if inn_val:
-                inn_input.fill(inn_val)
+                self.type_masked_input("#c_foreignerINN, input[name*='foreignerINN'], input[id*='INN']", inn_val, delay=30)
             self.page.wait_for_timeout(500)
-            self.click_continue(2000)
+            self.click_continue_strict("Шаг 8: ИНН иностранца", 2000)
         except Exception as e:
             logger.warning(f"Step 8 INN screen note: {e}")
 
-        # Step 9: Work Permit Details ('Укажите данные разрешения на работу' - Lines 77-90 in PAD)
+        # Step 9: Work Permit Details ('Укажите данные разрешения на работу')
         logger.info(f"Step 9: Filling Work Permit (РНР) {row.get('Серия')} {row.get('Номер')}...")
         self.check_and_handle_error_modal()
 
         rnr_series = self.page.locator("#series, input[name*='series']").first
         rnr_series.wait_for(state="visible", timeout=15000)
-        rnr_series.fill(str(row.get("Серия", "")).strip())
+        self.type_masked_input("#series, input[name*='series']", str(row.get("Серия", "")).strip(), delay=30)
+        self.type_masked_input("#number, input[name*='number']", str(row.get("Номер", "")).strip(), delay=30)
+        self.type_masked_input("#s15_dict_2_seriaBlank, #dic15_seriaBlank, input[id*='seriaBlank'], input[name*='seriaBlank']", str(row.get("СерийныйНомер1", "")).strip(), delay=30)
+        self.type_masked_input("input[name='s15_dict_2_numberBlank'], input[name='s15_numberBlank'], input[name*='numberBlank'], input[id*='numberBlank']", str(row.get("СерийныйНомер2", "")).strip(), delay=30)
 
-        rnr_number = self.page.locator("#number, input[name*='number']").first
-        rnr_number.fill(str(row.get("Номер", "")).strip())
-
-        blank_series = self.page.locator("#s15_dict_2_seriaBlank, #dic15_seriaBlank, input[id*='seriaBlank'], input[name*='seriaBlank']").first
-        if blank_series.count() > 0:
-            blank_series.fill(str(row.get("СерийныйНомер1", "")).strip())
-
-        blank_number = self.page.locator("input[name='s15_dict_2_numberBlank'], input[name='s15_numberBlank'], input[name*='numberBlank'], input[id*='numberBlank']").first
-        if blank_number.count() > 0:
-            blank_number.fill(str(row.get("СерийныйНомер2", "")).strip())
-
-        # Optional issue date or issued by if visible on RNR screen
         rnr_issue_date = str(row.get("ДатаВыдачиВКС", "")).strip()
         if rnr_issue_date:
-            rnr_date_loc = self.page.locator("input[placeholder*='__.__.____']:visible")
-            if rnr_date_loc.count() > 0:
-                rnr_date_loc.first.click()
-                self.page.keyboard.type(rnr_issue_date, delay=30)
+            self.type_masked_input("input[placeholder*='__.__.____']:visible", rnr_issue_date, delay=35)
 
         self.page.wait_for_timeout(600)
-        self.click_continue(2000)
+        self.click_continue_strict("Шаг 9: Разрешение на работу ВКС", 2000)
 
-        # Step 10: Employment Contract Details ('Укажите сведения о заключении договора' - Lines 91-109 in PAD)
+        # Step 10: Employment Contract Details & Work Address ('Укажите сведения о заключении договора')
         logger.info("Step 10: Filling Contract Details & Work Address...")
         self.check_and_handle_error_modal()
 
-        # Note: Line 94 in PAD clicks 'Продолжить' if there is an intermediate confirmation screen
+        # Intermediate screen check (Line 94 in PAD)
         try:
-            if self.page.locator("input[name='c_startDate']:visible, #app-radio-3:visible").count() == 0:
+            if self.page.locator("input[name='c_startDate']:visible, #app-radio-3:visible, label:has-text('Трудовой'):visible").count() == 0:
                 inter_btn = self.page.locator("button:has-text('Продолжить'):visible").first
-                if inter_btn.count() > 0:
+                if inter_btn.count() > 0 and inter_btn.is_enabled():
                     inter_btn.click()
                     self.page.wait_for_timeout(1500)
         except Exception:
             pass
 
-        # Select radio 'ri16_type' (#app-radio-3 / Трудовой договор)
-        radio_contract = self.page.locator("#app-radio-3, input[name*='ri16_type']").first
-        if radio_contract.count() > 0:
-            try:
-                radio_contract.check(force=True)
-            except Exception:
-                self.page.locator("label:has-text('Трудовой договор'), span:has-text('Трудовой договор')").first.click()
-        self.page.wait_for_timeout(400)
+        # 10a. Select 'Трудовой' radio button
+        try:
+            trudovoy_lbl = self.page.locator("label[for='app-radio-3'], label:has-text('Трудовой'), #app-radio-3").first
+            if trudovoy_lbl.count() > 0:
+                trudovoy_lbl.click()
+                self.page.wait_for_timeout(300)
+        except Exception:
+            pass
 
-        # Contract Conclusion Date ('ДатаЗаключения' -> input[name='di16_2'] or input[name='di16_1'])
+        # 10b. Contract Dates (Дата заключения, Дата начала действия, Дата окончания действия)
         contract_date = str(row.get("ДатаЗаключения", row.get("ДатаПриема", ""))).strip()
-        c_date_input = self.page.locator("input[name='di16_2'], input[name='di16_1'], input[placeholder*='__.__.____']").first
-        if c_date_input.count() > 0 and contract_date:
-            c_date_input.click()
-            c_date_input.fill("")
-            self.page.keyboard.type(contract_date, delay=30)
+        if contract_date:
+            self.type_masked_input("input[name='di16_2'], input[name='di16_1']", contract_date, delay=35)
 
-        # Contract Start Date ('ДатаНачалаДействия' -> input[name='c_startDate'])
         start_date = str(row.get("ДатаНачалаДействия", contract_date)).strip()
-        start_input = self.page.locator("input[name='c_startDate']").first
-        if start_input.count() > 0 and start_date:
-            start_input.click()
-            start_input.fill("")
-            self.page.keyboard.type(start_date, delay=30)
+        if start_date:
+            self.type_masked_input("input[name='c_startDate']", start_date, delay=35)
 
-        # Contract End Date ('ДатаОканчанияДействия' -> input[name='c_endDate'])
         end_date = str(row.get("ДатаОканчанияДействия", row.get("ДатаОкончанияДействия", ""))).strip()
-        end_input = self.page.locator("input[name='c_endDate']").first
-        if end_input.count() > 0 and end_date:
-            end_input.click()
-            end_input.fill("")
-            self.page.keyboard.type(end_date, delay=30)
+        if end_date:
+            self.type_masked_input("input[name='c_endDate']", end_date, delay=35)
 
-        # Work Address (Month1End in PAD) & Postal Index (Month2End in PAD = 626150)
+        # 10c. Work Address & Fias Dropdown + Postal Code (#index) + 'Нет квартиры'
         work_addr = str(row.get("АдресРаботы", "")).strip() or self.cfg["WORK_ADDRESS"]
         postal_code = str(row.get("Индекс", "")).strip() or str(self.cfg["WORK_POSTAL_CODE"])
 
-        # Line 101-104 in PAD: Tab -> Tab -> Type Address -> Tab
+        # Focus end_date and Tab twice into the address input (as in PAD lines 101-104)
         self.page.keyboard.press("Tab")
-        self.page.wait_for_timeout(150)
-        self.page.keyboard.press("Tab")
-        self.page.wait_for_timeout(150)
-        self.page.keyboard.type(work_addr, delay=20)
-        self.page.wait_for_timeout(1000)
-        self.page.keyboard.press("Tab")
-        self.page.wait_for_timeout(300)
+        self.page.wait_for_timeout(200)
+        self.page.keyboard.type(work_addr, delay=25)
+        self.page.wait_for_timeout(1500)
 
-        # Populate Postal Index (#index) - Line 105 in PAD
-        index_input = self.page.locator("#index, input[name*='index']").first
-        if index_input.count() > 0 and index_input.is_visible():
-            index_input.fill(postal_code)
+        # Select FIAS dropdown suggestion if visible so 'Проверьте адрес' clears
+        try:
+            fias_item = self.page.locator(".lookup-item:visible, .search-input-drop-down-item:visible, [role='option']:visible").first
+            if fias_item.count() > 0 and fias_item.is_visible():
+                fias_item.click()
+            else:
+                self.page.keyboard.press("ArrowDown")
+                self.page.wait_for_timeout(150)
+                self.page.keyboard.press("Enter")
+        except Exception:
+            pass
         self.page.wait_for_timeout(800)
 
-        # Click 'Нет квартиры' - Line 107 in PAD
-        no_apt = self.page.locator("div:has-text('Нет квартиры'), span:has-text('Нет квартиры'), label:has-text('Нет квартиры')").first
-        if no_apt.count() > 0 and no_apt.is_visible():
-            no_apt.click()
-            self.page.wait_for_timeout(400)
+        # Fill Postal Index (input#index inside lib-base-masked-input) using physical keyboard
+        logger.info(f"Filling Postal Code (Индекс): {postal_code}...")
+        self.type_masked_input("input#index, lib-base-masked-input#index input", postal_code, delay=45)
+        self.page.wait_for_timeout(600)
 
-        self.click_continue(2000)
+        # Check 'Нет квартиры' checkbox (label[for='app-checkbox-4'] / lib-checkbox:has-text('Нет квартиры'))
+        logger.info("Checking 'Нет квартиры'...")
+        try:
+            no_apt_loc = self.page.locator(
+                "lib-checkbox:has-text('Нет квартиры') label.check, "
+                "label:has-text('Нет квартиры'), "
+                "div.address-checkbox:has-text('Нет квартиры') label, "
+                "div.text-plain:has-text('Нет квартиры')"
+            ).first
+            if no_apt_loc.count() > 0:
+                no_apt_loc.scroll_into_view_if_needed(timeout=3000)
+                no_apt_loc.click(force=True)
+                self.page.wait_for_timeout(500)
+        except Exception as e:
+            logger.warning(f"Could not click 'Нет квартиры': {e}")
 
-        # Step 11: VKS Salary Payment Details ('Укажите сведения о выплате зарплаты иностранцу' - Lines 110-115 in PAD)
+        # Verify if 'Необходимо указать квартиру' is still visible; if so, click the checkbox span directly
+        if self.page.locator("text='Необходимо указать квартиру'").count() > 0:
+            try:
+                self.page.locator("lib-checkbox:has-text('Нет квартиры') span.checkbox").first.click(force=True)
+                self.page.wait_for_timeout(500)
+            except Exception:
+                pass
+
+        # Strictly verify 'Продолжить' is enabled (blue) and no red errors exist before advancing!
+        self.click_continue_strict("Шаг 10: Договор и Адрес работы", 2000)
+
+        # Step 11: VKS Salary Payment Details ('Укажите сведения о выплате зарплаты иностранцу')
         logger.info(
             f"Step 11: Filling Salary Payment Period ({row.get('НачалоПериода')} - {row.get('КонецПериода')}) "
             f"& Amount: {row.get('РазмерВыплаты')}..."
@@ -430,37 +546,28 @@ class GosuslugiVksBot:
 
         p_start_input = self.page.locator("input[name='di17_start'], input[placeholder*='__.__.____']").first
         p_start_input.wait_for(state="visible", timeout=15000)
-        p_start_input.click()
-        p_start_input.fill("")
-        self.page.keyboard.type(period_start, delay=30)
+        self.type_masked_input("input[name='di17_start']", period_start, delay=35)
+        self.type_masked_input("input[name='di17_end']", period_end, delay=35)
 
-        p_end_input = self.page.locator("input[name='di17_end'], input[placeholder*='__.__.____']").nth(1)
-        if p_end_input.count() > 0:
-            p_end_input.click()
-            p_end_input.fill("")
-            self.page.keyboard.type(period_end, delay=30)
-
-        # Select Radio 'Да' (Line 113 in PAD: SelectRadioButton Div 'Да')
-        yes_radio = self.page.locator("label:has-text('Да'), div:has-text('Да'), span:has-text('Да')").first
+        # Select Radio 'Да' ('Зарплата выплачена полностью? -> Да')
+        yes_radio = self.page.locator("lib-radio:has-text('Да') label, label:has-text('Да'), div:has-text('Да')").first
         if yes_radio.count() > 0 and yes_radio.is_visible():
             yes_radio.click()
             self.page.wait_for_timeout(400)
 
-        # Populate Salary Amount (#si17_paid - Line 114 in PAD)
-        paid_input = self.page.locator("#si17_paid, input[name*='si17_paid'], input[id*='paid']").first
-        paid_input.wait_for(state="visible", timeout=10000)
-        paid_input.fill(paid_amount)
+        # Populate Salary Amount (#si17_paid)
+        self.type_masked_input("#si17_paid, input[name*='si17_paid'], input[id*='paid']", paid_amount, delay=35)
         self.page.wait_for_timeout(600)
 
-        self.click_continue(2000)
+        self.click_continue_strict("Шаг 11: Выплата зарплаты ВКС", 2000)
 
-        # Step 12: MVD Destination Division ('Подразделение МВД, куда отправится уведомление' - Lines 116-119 in PAD)
+        # Step 12: MVD Destination Division ('Подразделение МВД, куда отправится уведомление')
         logger.info("Step 12: Confirming MVD Destination Division...")
         self.check_and_handle_error_modal()
         self.page.wait_for_timeout(1000)
-        self.click_continue(1500)
+        self.click_continue_strict("Шаг 12: Подразделение МВД", 1500)
 
-        # Step 13: Employee Consent Modal ('Подтвердите, что получили согласие работника' -> 'Подтвердить' - Lines 120-122 in PAD)
+        # Step 13: Employee Consent Modal ('Подтвердите, что получили согласие работника' -> 'Подтвердить')
         logger.info("Step 13: Confirming Employee Consent ('Подтвердить')...")
         self.check_and_handle_error_modal()
         try:
@@ -471,15 +578,15 @@ class GosuslugiVksBot:
         except Exception as e:
             logger.debug(f"Consent modal note: {e}")
 
-        # Step 14: Organization Personal Data Consent ('Согласие на обработку персональных данных' -> 'Продолжить' - Lines 123-125 in PAD)
+        # Step 14: Organization Personal Data Consent ('Согласие на обработку персональных данных' -> 'Продолжить')
         logger.info("Step 14: Confirming Personal Data Processing Consent ('Продолжить')...")
         self.check_and_handle_error_modal()
         try:
-            self.click_continue(1500)
+            self.click_continue_strict("Шаг 14: Согласие на обработку ПДн", 1500)
         except Exception:
             pass
 
-        # Step 15: Submit Notification ('Отправить уведомление' - Lines 126-130 in PAD)
+        # Step 15: Submit Notification ('Отправить уведомление')
         logger.info("Step 15: Clicking 'Отправить уведомление'...")
         self.check_and_handle_error_modal()
         submit_btn = self.page.locator("button:has-text('Отправить уведомление'), span:has-text('Отправить уведомление')").first
@@ -489,7 +596,7 @@ class GosuslugiVksBot:
         logger.info(">>> 'Отправить уведомление' CLICKED! <<<")
         self.page.wait_for_timeout(3500)
 
-        # Step 16: Personal Cabinet & Receipt Download ('В личный кабинет' -> 'Заявление' -> 'Показать историю' -> Download PDF - Lines 131-138 in PAD)
+        # Step 16: Personal Cabinet & Receipt Download
         logger.info("Step 16: Navigating to Personal Cabinet to download submission receipt...")
         try:
             cabinet_btn = self.page.locator("button:has-text('В личный кабинет'), span:has-text('В личный кабинет')").first
@@ -520,7 +627,6 @@ class GosuslugiVksBot:
 
 
 def load_excel_records(file_path: str, sheet_name: str = "Sheet1") -> List[Dict[str, Any]]:
-    """Loads VKS worker records from the specified Excel sheet."""
     logger.info(f"Loading records from Excel: {file_path} (Sheet: {sheet_name})")
     wb = openpyxl.load_workbook(file_path, data_only=True)
     if sheet_name not in wb.sheetnames:
@@ -543,7 +649,6 @@ def load_excel_records(file_path: str, sheet_name: str = "Sheet1") -> List[Dict[
 
 
 def mark_row_completed(file_path: str, row_idx: int, success: bool, note: str = ""):
-    """Marks a processed row in Excel with green (OK) or red (Error)."""
     try:
         wb = openpyxl.load_workbook(file_path)
         sheet = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
@@ -562,7 +667,7 @@ def main():
     parser.add_argument("--excel", default=DEFAULT_CONFIG["DEFAULT_EXCEL_PATH"], help="Path to GosUsluga_ ЗП.xlsx")
     parser.add_argument("--sheet", default="Sheet1", help="Sheet name to process")
     parser.add_argument("--json", default="", help="Path to JSON file with VKS worker records")
-    parser.add_argument("--config-json", default="", help="Optional JSON string or file with company/address config overrides")
+    parser.add_argument("--config-json", default="", help="Optional JSON file with company/address config overrides")
     parser.add_argument("--cdp-port", type=int, default=9222, help="Chrome Remote Debugging Port (default 9222)")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of rows to process (0 = all)")
     args = parser.parse_args()
@@ -578,7 +683,7 @@ def main():
     records = []
     json_candidates = [
         args.json,
-        os.path.join(os.path.dirname(__file__), "active_vks_queue.json"),
+        os.path.join(CURRENT_DIR, "active_vks_queue.json"),
     ]
     for jpath in json_candidates:
         if jpath and os.path.exists(jpath):
@@ -669,7 +774,7 @@ def main():
                 if args.excel and row_idx is not None and os.path.exists(args.excel):
                     mark_row_completed(args.excel, row_idx, False, str(ex))
                 try:
-                    page.screenshot(path=os.path.join(os.path.dirname(__file__), f"error_vks_{record.get('Код', idx)}.png"))
+                    page.screenshot(path=os.path.join(CURRENT_DIR, f"error_vks_{record.get('Код', idx)}.png"))
                 except Exception:
                     pass
 
