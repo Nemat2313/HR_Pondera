@@ -283,12 +283,20 @@ class GosuslugiVksBot:
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to highlight the active row in UI
         logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
 
-        # Resume check: if Chrome is ALREADY on 'Уведомление отправлено' ('В личный кабинет'), jump directly to Step 16!
+        # Resume check: if Chrome is ALREADY on 'Уведомление отправлено' ('В личный кабинет') or lk.gosuslugi.ru (and PDF not yet saved), jump to Step 16!
         try:
+            cur_url = self.page.url or ""
             sent_heading = self.page.locator("text='Уведомление отправлено':visible")
             cab_btn = self.page.locator("button:has-text('В личный кабинет'):visible, a:has-text('В личный кабинет'):visible, span:has-text('В личный кабинет'):visible")
-            if sent_heading.count() > 0 and cab_btn.count() > 0:
-                logger.info("Detected open 'Уведомление отправлено' screen in Chrome! Proceeding directly to Step 16 (PDF Download & Rename)...")
+            is_on_sent_screen = sent_heading.count() > 0 and cab_btn.count() > 0
+
+            clean_w_name = self.build_clean_worker_name(row)
+            p_code = self.compute_vks_period_code(row)
+            already_downloaded = list((Path.home() / "Downloads").glob(f"*_{clean_w_name}_{p_code}.pdf"))
+            is_on_lk_for_pending_pdf = ("lk.gosuslugi.ru/notifications" in cur_url or "lk.gosuslugi.ru/order/" in cur_url) and len(already_downloaded) == 0
+
+            if is_on_sent_screen or is_on_lk_for_pending_pdf:
+                logger.info("Detected open submission/cabinet screen in Chrome! Proceeding directly to Step 16 (PDF Download & Rename)...")
                 order_no = self.extract_gosuslugi_order_number()
                 self.execute_step16_cabinet_and_download(row, order_no)
                 logger.info(f"SUCCESS: Notification submitted for {full_name}!")
@@ -778,66 +786,119 @@ class GosuslugiVksBot:
         return True
 
     def execute_step16_cabinet_and_download(self, row: Dict[str, Any], gosuslugi_order_no: str = ""):
-        """Navigates from 'В личный кабинет' -> 'Заявление' -> 'Показать историю' and downloads + renames the PDF receipt."""
+        """
+        Executes all clicks required after 'Отправить' to download and rename the PDF receipt:
+        1) Click 'В личный кабинет' on 'Уведомление отправлено' screen
+        2) On lk.gosuslugi.ru/notifications ('Уведомления'), click the worker's 'Заявление'
+        3) On lk.gosuslugi.ru/order/... ('Уведомления о трудовой деятельности иностранцев'), capture '№ 8265228795' and click 'Показать историю'
+        4) Under 'Документы', click 'Скачать' next to 'req_preview' and rename the downloaded PDF to <GosuslugiNo>_<WorkerName>_<Period>.pdf
+        """
         logger.info("Step 16: Navigating to Personal Cabinet to download and rename submission receipt PDF...")
         try:
+            # 16.1 Click 'В личный кабинет' if currently on the 'Уведомление отправлено' confirmation screen
             cabinet_btn = self.page.locator(
                 "button:has-text('В личный кабинет'):visible, "
                 "a:has-text('В личный кабинет'):visible, "
                 "span:has-text('В личный кабинет'):visible"
             ).first
-            cabinet_btn.wait_for(state="visible", timeout=15000)
-            try:
-                cabinet_btn.click(timeout=5000)
-            except Exception:
-                cabinet_btn.evaluate("el => (el.closest('button, a') || el).click()")
-            self.page.wait_for_timeout(3500)
+            if "lk.gosuslugi.ru" not in (self.page.url or ""):
+                try:
+                    cabinet_btn.wait_for(state="visible", timeout=15000)
+                except Exception:
+                    pass
+            if cabinet_btn.count() > 0 and cabinet_btn.is_visible():
+                logger.info("Step 16.1: Clicking 'В личный кабинет'...")
+                try:
+                    cabinet_btn.click(timeout=5000)
+                except Exception:
+                    cabinet_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                self.page.wait_for_timeout(3500)
 
-            zayavlenie = self.page.locator("h5:has-text('Заявление'), a:has-text('Заявление')").first
-            try:
-                zayavlenie.wait_for(state="visible", timeout=12000)
-            except Exception:
-                pass
-            if zayavlenie.count() > 0 and zayavlenie.is_visible():
-                zayavlenie.click()
-                self.page.wait_for_timeout(3000)
+            # 16.2 On lk.gosuslugi.ru/notifications ('Уведомления'), click the worker's 'Заявление' item
+            if "/order/" not in (self.page.url or ""):
+                zayavlenie = self.page.locator("h5:has-text('Заявление'), a:has-text('Заявление'), text='Заявление зарегистрировано'").first
+                try:
+                    zayavlenie.wait_for(state="visible", timeout=12000)
+                except Exception:
+                    pass
 
-            if not gosuslugi_order_no:
-                gosuslugi_order_no = self.extract_gosuslugi_order_number()
-                if gosuslugi_order_no:
-                    logger.info(f"Step 16: Captured Gosuslugi Application No from order details: {gosuslugi_order_no}")
+                first_name = str(row.get("Имя", "")).strip()
+                clicked_worker_item = False
+                if first_name:
+                    worker_item = self.page.locator(f"text='{first_name}'").first
+                    if worker_item.count() > 0 and worker_item.is_visible():
+                        logger.info(f"Step 16.2: Clicking notification item for '{first_name}'...")
+                        try:
+                            worker_item.click(timeout=4000)
+                            clicked_worker_item = True
+                        except Exception:
+                            pass
 
-            show_history = self.page.locator("a:has-text('Показать историю'), button:has-text('Показать историю')").first
-            try:
-                show_history.wait_for(state="visible", timeout=10000)
-            except Exception:
-                pass
-            if show_history.count() > 0 and show_history.is_visible():
-                show_history.click()
-                self.page.wait_for_timeout(2000)
+                if not clicked_worker_item and zayavlenie.count() > 0 and zayavlenie.is_visible():
+                    logger.info("Step 16.2: Clicking top 'Заявление' in notifications list...")
+                    try:
+                        zayavlenie.click(timeout=5000)
+                    except Exception:
+                        zayavlenie.evaluate("el => (el.closest('a, div.feed-item, lib-feed-item') || el).click()")
+                self.page.wait_for_timeout(3500)
 
+            # 16.3 Capture the Gosuslugi Application No (e.g. '№ 8265228795') from the order details page
+            extracted_no = self.extract_gosuslugi_order_number()
+            if extracted_no:
+                gosuslugi_order_no = extracted_no
+                logger.info(f"Step 16.3: Captured Gosuslugi Application No: {gosuslugi_order_no}")
+
+            # 16.4 Click 'Показать историю' if 'req_preview' is not already expanded on screen
+            req_preview_loc = self.page.locator("text='req_preview':visible")
+            if req_preview_loc.count() == 0:
+                show_history = self.page.locator(
+                    "a:has-text('Показать историю'):visible, "
+                    "button:has-text('Показать историю'):visible, "
+                    "span:has-text('Показать историю'):visible"
+                ).first
+                try:
+                    show_history.wait_for(state="visible", timeout=10000)
+                except Exception:
+                    pass
+                if show_history.count() > 0 and show_history.is_visible():
+                    logger.info("Step 16.4: Clicking 'Показать историю'...")
+                    try:
+                        show_history.scroll_into_view_if_needed(timeout=3000)
+                    except Exception:
+                        pass
+                    try:
+                        show_history.click(timeout=5000)
+                    except Exception:
+                        show_history.evaluate("el => (el.closest('a, button') || el).click()")
+                    self.page.wait_for_timeout(2500)
+
+            # 16.5 Click 'Скачать' next to 'req_preview' under 'Документы' and rename the PDF
             saved_pdf_path = self.download_and_rename_receipt_pdf(row, gosuslugi_order_no)
             if saved_pdf_path:
-                logger.info(f"Step 16: Official Gosuslugi PDF saved as: {saved_pdf_path}")
+                logger.info(f"Step 16.5: Official Gosuslugi PDF saved as: {saved_pdf_path}")
         except Exception as e:
             logger.warning(f"Step 16 receipt download/rename note: {e}")
 
     def extract_gosuslugi_order_number(self) -> str:
-        """Extracts the Gosuslugi application/order number (e.g. '8255536023') from current URL or page text."""
+        """
+        Extracts the Gosuslugi application number (e.g. '8265228795' from '№ 8265228795' under
+        'Уведомления о трудовой деятельности иностранцев').
+        Prioritizes page text ('№ <digits>') over URL '/order/20000...' which is an internal feed ID.
+        """
         try:
-            url_match = re.search(r"/order/(\d{6,15})", self.page.url or "")
-            if url_match:
-                return url_match.group(1)
+            body_text = self.page.locator("body").inner_text(timeout=3000)
+            m = re.search(r"(?:Заявление|Уведомлени\w+)[^\n\r№]*\s*№\s*(\d{6,14})", body_text, re.IGNORECASE)
+            if m:
+                return m.group(1)
+            m2 = re.search(r"№\s*(\d{7,14})", body_text)
+            if m2:
+                return m2.group(1)
         except Exception:
             pass
         try:
-            body_text = self.page.locator("body").inner_text(timeout=3000)
-            m = re.search(r"(?:Заявление|Уведомлени\w+)[^\n\r№]*№\s*(\d{6,15})", body_text, re.IGNORECASE)
-            if m:
-                return m.group(1)
-            m2 = re.search(r"№\s*(\d{7,15})", body_text)
-            if m2:
-                return m2.group(1)
+            url_match = re.search(r"/order/(\d{6,16})", self.page.url or "")
+            if url_match:
+                return url_match.group(1)
         except Exception:
             pass
         return ""
@@ -889,11 +950,11 @@ class GosuslugiVksBot:
 
     def download_and_rename_receipt_pdf(self, row: Dict[str, Any], gosuslugi_order_no: str = "") -> Optional[str]:
         """
-        Clicks the PDF download link inside 'Показать историю' -> 'lk-files' on Gosuslugi,
+        Clicks the 'Скачать' link for 'req_preview' inside 'Документы' on Gosuslugi,
         waits for the PDF to land in ~/Downloads, and renames it to:
             <GosuslugiNo>_<Ad Soyad>_<Donem>.pdf
         Example:
-            8255536023_АБДУЛ РАШИД_2026-3.pdf
+            8265228795_АБДУЛ РАШИД_2026-3.pdf
         """
         downloads_dir = Path.home() / "Downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -909,13 +970,20 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Locate the specific PDF download button inside lk-files / lib-file (matching 11.docx PAD selector)
+        # Wait briefly for 'req_preview' to be visible in the expanded history
+        try:
+            self.page.locator("text='req_preview'").first.wait_for(state="visible", timeout=8000)
+        except Exception:
+            pass
+
+        # Locate the specific 'Скачать' button for 'req_preview' (not 'pd_Agreement' and not 'Скачать всё')
         download_selectors = [
-            "div.history-status.open lk-files lib-file a",
-            "lk-files lib-file:has-text('PDF') a",
+            "lib-file:has-text('req_preview') a:has-text('Скачать')",
             "lib-file:has-text('req_preview') a",
             "a[aria-label*='req_preview']",
             "a[title*='req_preview']",
+            "div.history-status.open lk-files lib-file a",
+            "lk-files lib-file:has-text('PDF') a",
             "lk-files a:has-text('Скачать'):not(:has-text('всё'))",
             "a:has-text('Скачать'):not(:has-text('всё'))",
         ]
@@ -927,18 +995,27 @@ class GosuslugiVksBot:
                 break
 
         if not download_link:
-            logger.warning("Step 16: Could not find visible 'Скачать' PDF link in order history.")
+            logger.warning("Step 16: Could not find visible 'Скачать' PDF link for 'req_preview' in order history.")
             return None
+
+        try:
+            download_link.scroll_into_view_if_needed(timeout=3000)
+        except Exception:
+            pass
 
         downloaded_path: Optional[Path] = None
         click_time = time.time()
 
+        logger.info("Step 16.5: Clicking 'Скачать' for 'req_preview' PDF...")
         # Attempt Playwright download capture + native Chrome ~/Downloads fallback
         try:
             with self.page.expect_download(timeout=6000) as download_info:
-                download_link.click()
+                try:
+                    download_link.click(timeout=4000)
+                except Exception:
+                    download_link.evaluate("el => el.click()")
             dl = download_info.value
-            suggested_name = dl.suggested_filename or f"{gosuslugi_order_no or 'gosuslugi'}.pdf"
+            suggested_name = dl.suggested_filename or f"{gosuslugi_order_no or 'req_preview'}.pdf"
             temp_target = downloads_dir / suggested_name
             dl.save_as(str(temp_target))
             downloaded_path = temp_target
