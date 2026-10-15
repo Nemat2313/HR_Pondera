@@ -283,6 +283,19 @@ class GosuslugiVksBot:
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to highlight the active row in UI
         logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
 
+        # Resume check: if Chrome is ALREADY on 'Уведомление отправлено' ('В личный кабинет'), jump directly to Step 16!
+        try:
+            sent_heading = self.page.locator("text='Уведомление отправлено':visible")
+            cab_btn = self.page.locator("button:has-text('В личный кабинет'):visible, a:has-text('В личный кабинет'):visible, span:has-text('В личный кабинет'):visible")
+            if sent_heading.count() > 0 and cab_btn.count() > 0:
+                logger.info("Detected open 'Уведомление отправлено' screen in Chrome! Proceeding directly to Step 16 (PDF Download & Rename)...")
+                order_no = self.extract_gosuslugi_order_number()
+                self.execute_step16_cabinet_and_download(row, order_no)
+                logger.info(f"SUCCESS: Notification submitted for {full_name}!")
+                return True
+        except Exception:
+            pass
+
         # Step 1: Navigate to https://www.gosuslugi.ru/600585/1/form
         logger.info("Step 1: Navigating to Gosuslugi Service 600585/1/form...")
         try:
@@ -758,11 +771,26 @@ class GosuslugiVksBot:
             logger.warning(f"Step 15 submission check note: {e}")
 
         # Step 16: Personal Cabinet & Receipt PDF Download + Rename (<GosuslugiNo>_<Ad Soyad>_<Donem>.pdf)
+        self.execute_step16_cabinet_and_download(row, gosuslugi_order_no)
+
+        # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to count success
+        logger.info(f"SUCCESS: Notification submitted for {full_name}!")
+        return True
+
+    def execute_step16_cabinet_and_download(self, row: Dict[str, Any], gosuslugi_order_no: str = ""):
+        """Navigates from 'В личный кабинет' -> 'Заявление' -> 'Показать историю' and downloads + renames the PDF receipt."""
         logger.info("Step 16: Navigating to Personal Cabinet to download and rename submission receipt PDF...")
         try:
-            cabinet_btn = self.page.locator("button:has-text('В личный кабинет'), span:has-text('В личный кабинет')").first
+            cabinet_btn = self.page.locator(
+                "button:has-text('В личный кабинет'):visible, "
+                "a:has-text('В личный кабинет'):visible, "
+                "span:has-text('В личный кабинет'):visible"
+            ).first
             cabinet_btn.wait_for(state="visible", timeout=15000)
-            cabinet_btn.click()
+            try:
+                cabinet_btn.click(timeout=5000)
+            except Exception:
+                cabinet_btn.evaluate("el => (el.closest('button, a') || el).click()")
             self.page.wait_for_timeout(3500)
 
             zayavlenie = self.page.locator("h5:has-text('Заявление'), a:has-text('Заявление')").first
@@ -793,10 +821,6 @@ class GosuslugiVksBot:
                 logger.info(f"Step 16: Official Gosuslugi PDF saved as: {saved_pdf_path}")
         except Exception as e:
             logger.warning(f"Step 16 receipt download/rename note: {e}")
-
-        # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to count success
-        logger.info(f"SUCCESS: Notification submitted for {full_name}!")
-        return True
 
     def extract_gosuslugi_order_number(self) -> str:
         """Extracts the Gosuslugi application/order number (e.g. '8255536023') from current URL or page text."""
