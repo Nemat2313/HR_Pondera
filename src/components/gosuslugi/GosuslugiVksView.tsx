@@ -32,6 +32,9 @@ import {
   HelpCircle,
   Filter,
   ShieldAlert,
+  UserPlus,
+  UserMinus,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -40,6 +43,7 @@ import {
 } from '@/lib/exportGosuslugiVksExcel';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import GosuslugiDismissalPanel from './GosuslugiDismissalPanel';
 
 interface BridgeStatus {
   status: 'online' | 'offline';
@@ -378,6 +382,7 @@ export function validateVksWorkerRecord(
 export default function GosuslugiVksView() {
   const { user } = useAuth();
   const { lang } = useLanguage();
+  const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal'>('vks');
 
   const [activeBridgeUrl, setActiveBridgeUrl] = useState(BRIDGE_URLS[0]);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({
@@ -1212,6 +1217,149 @@ export default function GosuslugiVksView() {
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1600px] mx-auto">
+      {/* 3-TAB GOSUSLUGI MVD SERVICE SWITCHER */}
+      <div className="bg-white dark:bg-[#111F38] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Tab 1: VKS Salary Notification */}
+          <button
+            type="button"
+            onClick={() => setServiceTab('vks')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+              serviceTab === 'vks'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Bot className="w-4 h-4 shrink-0" />
+            <span>
+              {lang === 'ru'
+                ? '1. ВКС — Выплата ЗП (МВД)'
+                : '1. VKS Maaş Bildirimi (MVD)'}
+            </span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                serviceTab === 'vks'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+              }`}
+            >
+              600585/1
+            </span>
+          </button>
+
+          {/* Tab 2: Hiring Notification (In Progress) */}
+          <button
+            type="button"
+            onClick={() => setServiceTab('hiring')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+              serviceTab === 'hiring'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
+                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <UserPlus className="w-4 h-4 shrink-0" />
+            <span>
+              {lang === 'ru'
+                ? '2. Прием на работу (Заключение ТД)'
+                : '2. İşe Alım Bildirimi (MVD)'}
+            </span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                serviceTab === 'hiring'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
+              }`}
+            >
+              {lang === 'ru' ? 'В работе' : 'İşlemde'}
+            </span>
+          </button>
+
+          {/* Tab 3: Dismissal Notification (Powerise Port) */}
+          <button
+            type="button"
+            onClick={() => setServiceTab('dismissal')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+              serviceTab === 'dismissal'
+                ? 'bg-gradient-to-r from-rose-600 to-teal-600 text-white shadow-md'
+                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <UserMinus className="w-4 h-4 shrink-0" />
+            <span>
+              {lang === 'ru'
+                ? '3. Увольнение (Расторжение ТД)'
+                : '3. İşten Çıkış Bildirimi (MVD)'}
+            </span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                serviceTab === 'dismissal'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
+              }`}
+            >
+              600585/1
+            </span>
+          </button>
+        </div>
+
+        {/* Shared RPA Agent Status Indicator in Tab Bar */}
+        <div className="flex items-center gap-2 px-2">
+          {isOnline ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              {lang === 'ru' ? 'RPA Агент Онлайн (8088)' : 'RPA Ajanı Aktif (8088)'}
+            </span>
+          ) : (
+            <button
+              onClick={() => setShowAgentGuide(!showAgentGuide)}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 cursor-pointer transition"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span>{lang === 'ru' ? 'Агент не запущен (8088)' : 'Ajan Kapalı (8088)'}</span>
+              <HelpCircle className="w-3 h-3 opacity-75" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* TAB 2: HIRING NOTIFICATION (IN PROGRESS PLACEHOLDER) */}
+      {serviceTab === 'hiring' && (
+        <div className="p-12 bg-white dark:bg-[#131F38]/95 rounded-2xl border border-slate-200/90 dark:border-slate-800 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-xs">
+            <Clock className="w-8 h-8 animate-pulse" />
+          </div>
+          <div className="max-w-lg mx-auto space-y-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800">
+              {lang === 'ru' ? 'Модуль в процессе настройки' : 'Modül Hazırlanıyor (İşlemde)'}
+            </span>
+            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+              {lang === 'ru'
+                ? 'Уведомление МВД о заключении трудового договора (Прием на работу)'
+                : 'Gosuslugi MVD İşe Alım Bildirimi (Sözleşme İmzalama)'}
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              {lang === 'ru'
+                ? 'Автоматическое заполнение формы Госуслуг 600585/1 («О заключении трудового договора с иностранным гражданином») в данный момент находится в разработке. Используйте вкладки «1. ВКС — Выплата ЗП» или «3. Увольнение (Расторжение ТД)».'
+                : 'Yabancı personelin işe giriş / iş sözleşmesi bildirimi (Gosuslugi 600585/1 — О заключении трудового договора) otomasyon modülü şu anda işlemde. Aktif bildirimler için «1. VKS Maaş Bildirimi» veya «3. İşten Çıkış Bildirimi» sekmelerini kullanabilirsiniz.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: DISMISSAL NOTIFICATION (PORTED FROM POWERISE WITH FULL PONDERA HR CONTROLS) */}
+      {serviceTab === 'dismissal' && (
+        <GosuslugiDismissalPanel
+          activeBridgeUrl={activeBridgeUrl}
+          bridgeStatus={bridgeStatus}
+          onOpenChrome={handleOpenChrome}
+          isLaunchingChrome={isLaunchingChrome}
+          onShowAgentGuide={() => setShowAgentGuide(true)}
+        />
+      )}
+
+      {/* TAB 1: VKS SALARY NOTIFICATION */}
+      {serviceTab === 'vks' && (
+        <>
       {/* Hidden Excel File Input */}
       <input
         type="file"
@@ -2820,6 +2968,8 @@ export default function GosuslugiVksView() {
           <div ref={terminalEndRef} />
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

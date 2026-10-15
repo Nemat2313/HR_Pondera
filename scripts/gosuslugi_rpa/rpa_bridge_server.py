@@ -101,7 +101,11 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
     RPAState.mode = mode
     RPAState.add_log(f"=== Запуск робота Playwright Gosuslugi (Режим: {mode.upper()}) ===")
 
-    script_name = "gosuslugi_vks_robot.py"
+    if mode == "dismissal":
+        script_name = "gosuslugi_dismissal_robot.py"
+    else:
+        script_name = "gosuslugi_vks_robot.py"
+
     script_path = os.path.join(CURRENT_DIR, script_name)
     cmd = [sys.executable, script_path]
 
@@ -285,15 +289,18 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             json_file = ""
             config_file = ""
 
+            queue_filename = "active_dismissal_queue.json" if mode == "dismissal" else "active_vks_queue.json"
+            cfg_filename = "active_dismissal_config.json" if mode == "dismissal" else "active_vks_config.json"
+
             if records and isinstance(records, list) and len(records) > 0:
-                json_file = os.path.join(CURRENT_DIR, "active_vks_queue.json")
+                json_file = os.path.join(CURRENT_DIR, queue_filename)
                 with open(json_file, "w", encoding="utf-8") as f:
                     json.dump(records, f, ensure_ascii=False, indent=2)
                 RPAState.total = len(records)
-                RPAState.add_log(f"Получено {len(records)} записей напрямую из Pondera HR UI.")
+                RPAState.add_log(f"Получено {len(records)} записей напрямую из Pondera HR UI ({mode.upper()}).")
 
             if config_overrides and isinstance(config_overrides, dict):
-                config_file = os.path.join(CURRENT_DIR, "active_vks_config.json")
+                config_file = os.path.join(CURRENT_DIR, cfg_filename)
                 with open(config_file, "w", encoding="utf-8") as cf:
                     json.dump(config_overrides, cf, ensure_ascii=False, indent=2)
 
