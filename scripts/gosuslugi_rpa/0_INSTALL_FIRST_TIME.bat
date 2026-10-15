@@ -6,8 +6,8 @@ echo   Установка компонентов Pondera HR Gosuslugi RPA...
 echo   Pondera HR Gosuslugi RPA bilesenleri kuruluyor...
 echo ========================================================
 echo.
-pip install playwright openpyxl
-playwright install chromium
+python -m pip install playwright openpyxl
+python -m playwright install chromium
 echo.
 echo ========================================================
 echo   ГОТОВО! Теперь запустите START_PONDERA_RPA_BRIDGE.bat

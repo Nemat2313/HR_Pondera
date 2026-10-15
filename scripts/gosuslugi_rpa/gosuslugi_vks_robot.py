@@ -254,9 +254,10 @@ class GosuslugiVksBot:
                         btn.click()
                         self.page.wait_for_timeout(1500)
                         continue
-            # Also break immediately if a consent modal ('Подтвердить'), submit ('Отправить уведомление'), or final ('В личный кабинет') button appeared
+            # Also break immediately if a consent modal ('Подтвердить'), submit ('Отправить' / 'Отправить уведомление'), or final ('В личный кабинет') button appeared
             special_btn = self.page.locator(
                 "button:has-text('Подтвердить'):visible, "
+                "button:has-text('Отправить'):visible, "
                 "button:has-text('Отправить уведомление'):visible, "
                 "button:has-text('В личный кабинет'):visible"
             ).first
@@ -705,24 +706,35 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Step 15: Submit Notification ('Отправить уведомление') or verify final screen ('В личный кабинет')
-        logger.info("Step 15: Checking for 'Отправить уведомление' or final confirmation screen...")
+        # Step 15: Submit Notification ('Отправить' / 'Отправить уведомление') or verify final screen ('В личный кабинет')
+        logger.info("Step 15: Checking for 'Отправить' / 'Отправить уведомление' or final confirmation screen...")
         self.check_and_handle_error_modal()
         gosuslugi_order_no = ""
         try:
             final_or_submit = self.page.locator(
+                "button:has-text('Отправить'):visible, "
                 "button:has-text('Отправить уведомление'):visible, "
-                "span:has-text('Отправить уведомление'):visible, "
+                "span:has-text('Отправить'):visible, "
                 "button:has-text('В личный кабинет'):visible"
             ).first
             final_or_submit.wait_for(state="visible", timeout=15000)
 
-            submit_btn = self.page.locator("button:has-text('Отправить уведомление'):visible, span:has-text('Отправить уведомление'):visible").first
+            submit_btn = self.page.locator(
+                "button:has-text('Отправить уведомление'):visible, "
+                "button:has-text('Отправить'):visible, "
+                "span:has-text('Отправить уведомление'):visible, "
+                "span:has-text('Отправить'):visible"
+            ).first
             if submit_btn.count() > 0 and submit_btn.is_visible():
+                try:
+                    submit_btn.scroll_into_view_if_needed(timeout=3000)
+                except Exception:
+                    pass
                 submit_btn.focus()
                 submit_btn.click()
-                logger.info(">>> 'Отправить уведомление' CLICKED! <<<")
-                self.page.wait_for_timeout(3500)
+                logger.info(">>> 'Отправить' CLICKED! Waiting for Gosuslugi confirmation screen... <<<")
+                self.page.wait_for_timeout(4000)
+                self.check_and_handle_error_modal()
             else:
                 logger.info(">>> Final notification screen ('В личный кабинет') reached! <<<")
 
