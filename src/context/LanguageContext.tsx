@@ -21,6 +21,7 @@ const translations: Record<string, { tr: string; ru: string }> = {
   nav_sites: { tr: 'Şantiye & Projeler', ru: 'Участки и Проекты' },
   nav_demographics: { tr: 'Demografi & İstatistik', ru: 'Демография и Статистика' },
   nav_turnover: { tr: 'Yönetim & Turnover', ru: 'Текучесть и Управление' },
+  nav_gosuslugi: { tr: 'Gosuslugi (ВКС & МВД)', ru: 'Госуслуги (ВКС и МВД)' },
   nav_database: { tr: 'Excel & Veritabanı', ru: 'Excel и База данных' },
   nav_admin: { tr: 'Kullanıcı & RLS', ru: 'Пользователи и RLS' },
   nav_main_menu: { tr: 'ANA MENÜ', ru: 'ГЛАВНОЕ МЕНЮ' },
@@ -28,6 +29,7 @@ const translations: Record<string, { tr: string; ru: string }> = {
   nav_db_sub: { tr: 'SQLite In-Memory Hızında', ru: 'Быстрая база SQLite' },
   badge_kpi: { tr: 'KPI', ru: 'KPI' },
   badge_new: { tr: 'Yeni', ru: 'Новое' },
+  badge_rpa: { tr: 'RPA', ru: 'RPA' },
   badge_report: { tr: 'Rapor', ru: 'Отчет' },
   badge_admin: { tr: 'Admin', ru: 'Админ' },
 

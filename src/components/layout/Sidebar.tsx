@@ -17,6 +17,7 @@ import {
   MapPin,
   Briefcase,
   FileCheck2,
+  Bot,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -50,6 +51,13 @@ export default function Sidebar({
       icon: LayoutDashboard,
       badge: 'KPI',
       badgeColor: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
+    },
+    {
+      id: 'gosuslugi',
+      label: t('nav_gosuslugi'),
+      icon: Bot,
+      badge: t('badge_rpa'),
+      badgeColor: 'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
     },
     {
       id: 'compliance',
