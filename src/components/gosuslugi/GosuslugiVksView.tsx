@@ -413,6 +413,7 @@ export default function GosuslugiVksView() {
   const [ufmsDept] = useState('ОВТМ УВМ УМВД РОССИИ ПО ТЮМЕНСКОЙ ОБЛАСТИ');
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [showAgentGuide, setShowAgentGuide] = useState(false);
+  const [showRobotWidget, setShowRobotWidget] = useState(false);
 
   const [workers, setWorkers] = useState<GosuslugiVksWorkerRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1302,30 +1303,59 @@ export default function GosuslugiVksView() {
           </button>
         </div>
 
-        {/* Shared RPA Agent Status Indicator + Gosuslugi Blue/Green Logo & Animated Robot in Top Right Corner */}
+        {/* Shared RPA Agent Status Indicator + Official Blue/Red Gosuslugi Logo in Top Right Corner */}
         <div className="flex items-center gap-2.5 px-2">
           <style>{`
-            @keyframes rpaRobotFloat {
-              0%, 100% { transform: translateY(0px); }
-              50% { transform: translateY(-2.5px); }
+            @keyframes rpaBotRoam {
+              0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+              25% { transform: translate(-6px, -7px) rotate(-1.5deg); }
+              50% { transform: translate(0px, -11px) rotate(0deg); }
+              75% { transform: translate(6px, -6px) rotate(1.5deg); }
             }
-            @keyframes rpaLaserScan {
-              0%, 100% { transform: translateX(-5px); opacity: 0.75; }
-              50% { transform: translateX(5px); opacity: 1; }
+            @keyframes rpaWaveArm {
+              0%, 100% { transform: rotate(0deg); }
+              25% { transform: rotate(-22deg); }
+              50% { transform: rotate(8deg); }
+              75% { transform: rotate(-18deg); }
             }
-            @keyframes rpaAntennaPulse {
-              0%, 100% { transform: scale(1); opacity: 0.9; }
-              50% { transform: scale(1.35); opacity: 0.35; }
+            @keyframes rpaEyeScan {
+              0%, 100% { transform: translateX(0px); }
+              30% { transform: translateX(-2.5px); }
+              70% { transform: translateX(2.5px); }
             }
-            .rpa-robot-float {
-              animation: rpaRobotFloat 2.4s ease-in-out infinite;
+            @keyframes rpaEyeBlink {
+              0%, 46%, 50%, 96%, 100% { transform: scaleY(1); }
+              48%, 98% { transform: scaleY(0.15); }
             }
-            .rpa-laser-scan {
-              animation: rpaLaserScan 1.6s ease-in-out infinite;
+            @keyframes rpaThrusterPulse {
+              0%, 100% { transform: scaleX(0.9) scaleY(1); opacity: 0.7; }
+              50% { transform: scaleX(1.18) scaleY(1.25); opacity: 1; }
             }
-            .rpa-antenna-pulse {
-              transform-origin: 18px 4px;
-              animation: rpaAntennaPulse 1.4s ease-in-out infinite;
+            @keyframes rpaAntennaPing {
+              0% { transform: scale(0.9); opacity: 0.9; }
+              100% { transform: scale(2.1); opacity: 0; }
+            }
+            .rpa-bot-roam {
+              animation: rpaBotRoam 4.2s ease-in-out infinite;
+            }
+            .rpa-wave-arm {
+              transform-origin: 68px 54px;
+              animation: rpaWaveArm 2.2s ease-in-out infinite;
+            }
+            .rpa-eye-scan {
+              animation: rpaEyeScan 3.4s ease-in-out infinite;
+            }
+            .rpa-eye-blink {
+              transform-origin: 48px 34px;
+              animation: rpaEyeBlink 4.5s ease-in-out infinite;
+            }
+            .rpa-thruster-pulse {
+              transform-origin: 48px 84px;
+              animation: rpaThrusterPulse 1.3s ease-in-out infinite;
+            }
+            .rpa-antenna-ping {
+              transform-origin: 48px 10px;
+              animation: rpaAntennaPing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
             }
           `}</style>
 
@@ -1345,67 +1375,16 @@ export default function GosuslugiVksView() {
             </button>
           )}
 
-          {/* GOSUSLUGI BLUE & GREEN BRAND BADGE + COMPACT ANIMATED RPA ROBOT */}
+          {/* OFFICIAL GOSUSLUGI BLUE & RED LOGO BADGE (Exact uploaded logo) */}
           <div
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-gradient-to-r from-sky-50/90 via-white to-emerald-50/90 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/60 border border-sky-200/80 dark:border-teal-500/30 shadow-2xs select-none"
-            title="Госуслуги (ЕПГУ 600585/1) — Pondera RPA Автоматизация"
+            className="inline-flex items-center px-3 py-1.5 rounded-xl bg-white dark:bg-white/95 border border-slate-200/90 dark:border-slate-300 shadow-2xs select-none"
+            title="Госуслуги (ЕПГУ 600585/1)"
           >
-            {/* Zero-Extra-Space Animated Cyber-Robot Mascot */}
-            <svg
-              viewBox="0 0 36 36"
-              fill="none"
-              className="w-7 h-7 shrink-0 rpa-robot-float"
-              aria-label="Animated Gosuslugi RPA Robot"
-            >
-              <defs>
-                <linearGradient id="rpaBotHeadGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#0284c7" />
-                  <stop offset="100%" stopColor="#10b981" />
-                </linearGradient>
-              </defs>
-              {/* Radar Pulse Ring */}
-              <circle cx="18" cy="4" r="3" fill="#10b981" className="rpa-antenna-pulse" />
-              {/* Antenna Stem & Tip */}
-              <line x1="18" y1="5" x2="18" y2="10" stroke="#0284c7" strokeWidth="2.2" strokeLinecap="round" />
-              <circle cx="18" cy="4" r="2" fill="#06b6d4" />
-              {/* Side Ears */}
-              <rect x="3" y="15" width="3" height="7" rx="1.5" fill="#0284c7" />
-              <rect x="30" y="15" width="3" height="7" rx="1.5" fill="#10b981" />
-              {/* Robot Head */}
-              <rect
-                x="6"
-                y="10"
-                width="24"
-                height="18"
-                rx="6"
-                fill="url(#rpaBotHeadGrad)"
-                stroke="#ffffff"
-                strokeWidth="1"
-              />
-              {/* Dark Cyber Visor */}
-              <rect x="9" y="13.5" width="18" height="8" rx="3.5" fill="#0f172a" />
-              {/* Blinking Cyber Eyes */}
-              <circle cx="14" cy="17.5" r="2" fill="#38bdf8" />
-              <circle cx="22" cy="17.5" r="2" fill="#34d399" />
-              {/* Scanning Laser Beam */}
-              <rect
-                x="15.5"
-                y="16.5"
-                width="5"
-                height="2"
-                rx="1"
-                fill="#a7f3d0"
-                className="rpa-laser-scan"
-              />
-              {/* Smile / Audio Wave Bar */}
-              <rect x="13" y="24" width="10" height="1.8" rx="0.9" fill="#ffffff" fillOpacity="0.85" />
-            </svg>
-
-            {/* Official Gosuslugi Geometric Wordmark in Blue ("гос") + Emerald Green ("услуги") */}
-            <div className="flex items-baseline leading-none tracking-tight font-black text-[17px] sm:text-[18px]" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif" }}>
-              <span className="text-[#0066B3] dark:text-[#38bdf8] font-extrabold">гос</span>
-              <span className="text-[#059669] dark:text-[#10b981] font-extrabold">услуги</span>
-            </div>
+            <img
+              src="/gosuslugi-logo.png"
+              alt="госуслуги"
+              className="h-5 sm:h-5.5 w-auto object-contain block"
+            />
           </div>
         </div>
       </div>
@@ -3058,6 +3037,263 @@ export default function GosuslugiVksView() {
       </div>
         </>
       )}
+
+      {/* FLOATING AI/RPA ASSISTANT ROBOT COMPANION (Zero Layout Space, Bottom-Right Like Website AI Chatbot Launchers) */}
+      <div className="fixed bottom-5 right-6 z-40 flex flex-col items-end pointer-events-none select-none">
+        {/* Interactive Popup Card when Robot is Clicked */}
+        {showRobotWidget && (
+          <div className="mb-3 w-72 sm:w-80 rounded-2xl bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-md border border-emerald-200/90 dark:border-emerald-500/40 shadow-2xl p-3.5 pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                  {lang === 'ru' ? 'Робот-ассистент Госуслуги' : 'Gosuslugi RPA Robot Asistanı'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRobotWidget(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs px-1.5 py-0.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2 text-[11px]">
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/70 dark:border-slate-800">
+                <span className="text-slate-500 dark:text-slate-400 font-semibold">
+                  {lang === 'ru' ? 'Мост RPA (8088):' : 'RPA Köprüsü (8088):'}
+                </span>
+                <span className={`font-bold ${isOnline ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  {isOnline
+                    ? lang === 'ru' ? '● Активен' : '● Aktif (Bağlı)'
+                    : lang === 'ru' ? '○ Офлайн' : '○ Kapalı'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/70 dark:border-slate-800">
+                <span className="text-slate-500 dark:text-slate-400 font-semibold">
+                  {lang === 'ru' ? 'Браузер Chrome (9222):' : 'Chrome Oturumu (9222):'}
+                </span>
+                <span className={`font-bold ${bridgeStatus.chrome_ready ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {bridgeStatus.chrome_ready
+                    ? lang === 'ru' ? '● Готов' : '● Hazır'
+                    : lang === 'ru' ? '○ Не открыт' : '○ Açık Değil'}
+                </span>
+              </div>
+
+              <div className="px-2.5 py-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/50 text-slate-700 dark:text-slate-200 leading-snug">
+                {isRunning ? (
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                    ⚡ {bridgeStatus.active_worker_name || (lang === 'ru' ? 'Заполнение формы ЕПГУ...' : 'Gosuslugi formu dolduruluyor...')}
+                  </span>
+                ) : bridgeStatus.logs.length > 0 ? (
+                  <span className="font-mono text-[10px] line-clamp-2">
+                    {bridgeStatus.logs[bridgeStatus.logs.length - 1]?.text}
+                  </span>
+                ) : (
+                  <span>
+                    {lang === 'ru'
+                      ? 'Робот готов автоматически заполнять формы МВД (ВКС ЗП и Увольнение) на портале Госуслуг.'
+                      : 'Robot; Gosuslugi MVD (VKS Maaş ve İşten Çıkış) formlarını otomatik doldurmaya hazır.'}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={handleOpenChrome}
+                  disabled={isLaunchingChrome}
+                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-xs transition cursor-pointer disabled:opacity-50"
+                >
+                  {lang === 'ru' ? '1. Открыть Chrome' : '1. Chrome Aç (9222)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAgentGuide(true);
+                    setShowRobotWidget(false);
+                  }}
+                  className="py-1.5 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-[11px] transition cursor-pointer"
+                >
+                  {lang === 'ru' ? 'Инструкция' : 'Kurulum'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Robot Launcher + Speech Bubble */}
+        <div className="flex items-center gap-2.5 pointer-events-auto group">
+          {/* Speech Bubble Pill */}
+          <button
+            type="button"
+            onClick={() => setShowRobotWidget((prev) => !prev)}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-emerald-200/90 dark:border-emerald-500/40 shadow-lg text-[11px] font-bold text-slate-800 dark:text-slate-100 hover:border-emerald-400 transition-all cursor-pointer"
+          >
+            <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-amber-500 animate-ping' : isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+            <span>
+              {isRunning
+                ? lang === 'ru' ? 'Робот заполняет ЕПГУ...' : 'Robot Formu Dolduruyor...'
+                : isOnline
+                ? lang === 'ru' ? 'RPA Робот Готов' : 'RPA Robotu Hazır'
+                : lang === 'ru' ? 'RPA Робот' : 'Gosuslugi RPA Robotu'}
+            </span>
+          </button>
+
+          {/* 3D-Style Animated Roaming/Floating AI Robot Avatar */}
+          <button
+            type="button"
+            onClick={() => setShowRobotWidget((prev) => !prev)}
+            title={lang === 'ru' ? 'Открыть ассистента Робота Госуслуг' : 'Gosuslugi RPA Robot Asistanını Aç'}
+            className="relative w-16 h-16 sm:w-18 sm:h-18 flex items-center justify-center cursor-pointer focus:outline-none rpa-bot-roam"
+          >
+            {/* Ambient Glow Behind Robot */}
+            <span className="absolute inset-1 rounded-full bg-gradient-to-tr from-emerald-500/25 via-sky-500/20 to-teal-400/25 blur-md group-hover:scale-110 transition-transform" />
+
+            <svg
+              viewBox="0 0 96 96"
+              fill="none"
+              className="w-full h-full drop-shadow-[0_8px_16px_rgba(16,185,129,0.32)]"
+              aria-label="Floating Gosuslugi RPA Robot"
+            >
+              <defs>
+                <linearGradient id="botShell3D" x1="20" y1="14" x2="76" y2="74" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#ffffff" />
+                  <stop offset="55%" stopColor="#e0f2fe" />
+                  <stop offset="100%" stopColor="#a7f3d0" />
+                </linearGradient>
+                <linearGradient id="botAccentGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#0066B3" />
+                  <stop offset="100%" stopColor="#10b981" />
+                </linearGradient>
+                <linearGradient id="botVisorGrad" x1="28" y1="24" x2="68" y2="44" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#0f172a" />
+                  <stop offset="100%" stopColor="#1e293b" />
+                </linearGradient>
+              </defs>
+
+              {/* Hover Jet Thruster Glow Ring at Bottom */}
+              <ellipse
+                cx="48"
+                cy="86"
+                rx="16"
+                ry="4"
+                fill="#10b981"
+                fillOpacity="0.45"
+                className="rpa-thruster-pulse"
+              />
+              <ellipse
+                cx="48"
+                cy="84"
+                rx="9"
+                ry="2.5"
+                fill="#38bdf8"
+                className="rpa-thruster-pulse"
+              />
+
+              {/* Antenna Radar Ping */}
+              <circle cx="48" cy="10" r="4.5" fill="#10b981" className="rpa-antenna-ping" />
+              <line x1="48" y1="11" x2="48" y2="19" stroke="#0066B3" strokeWidth="3" strokeLinecap="round" />
+              <circle cx="48" cy="10" r="3.5" fill="#0066B3" />
+              <circle cx="47" cy="9" r="1.2" fill="#ffffff" />
+
+              {/* Left Floating Arm */}
+              <g>
+                <rect
+                  x="13"
+                  y="49"
+                  width="9"
+                  height="18"
+                  rx="4.5"
+                  transform="rotate(14 13 49)"
+                  fill="url(#botShell3D)"
+                  stroke="#0284c7"
+                  strokeWidth="1.5"
+                />
+                <circle cx="15" cy="66" r="3.2" fill="#0066B3" />
+              </g>
+
+              {/* Right Waving Arm (Animated) */}
+              <g className="rpa-wave-arm">
+                <rect
+                  x="73"
+                  y="42"
+                  width="9"
+                  height="19"
+                  rx="4.5"
+                  transform="rotate(-28 73 42)"
+                  fill="url(#botShell3D)"
+                  stroke="#10b981"
+                  strokeWidth="1.5"
+                />
+                <circle cx="71" cy="40" r="3.5" fill="#10b981" />
+              </g>
+
+              {/* Robot Floating Torso / Body */}
+              <path
+                d="M31 50C31 46.6863 33.6863 44 37 44H59C62.3137 44 65 46.6863 65 50V63C65 71.2843 58.2843 78 50 78H46C37.7157 78 31 71.2843 31 63V50Z"
+                fill="url(#botShell3D)"
+                stroke="url(#botAccentGrad)"
+                strokeWidth="2"
+              />
+
+              {/* Chest Core Badge (Gosuslugi Blue & Red + Pondera Emerald Ring) */}
+              <rect x="38" y="52" width="20" height="12" rx="6" fill="#0f172a" />
+              <circle cx="44" cy="58" r="2.8" fill="#38bdf8" />
+              <circle cx="52" cy="58" r="2.8" fill="#fb7185" />
+              <path d="M40 69H56" stroke="#0284c7" strokeWidth="2" strokeLinecap="round" strokeOpacity="0.5" />
+
+              {/* Side Head Headphones / Ears */}
+              <rect x="18" y="27" width="5" height="13" rx="2.5" fill="#0066B3" />
+              <rect x="73" y="27" width="5" height="13" rx="2.5" fill="#EE2F53" />
+
+              {/* Robot 3D Glossy Head */}
+              <rect
+                x="22"
+                y="18"
+                width="52"
+                height="30"
+                rx="14"
+                fill="url(#botShell3D)"
+                stroke="url(#botAccentGrad)"
+                strokeWidth="2.2"
+              />
+              {/* Head Gloss Highlight */}
+              <path
+                d="M32 22H64"
+                stroke="#ffffff"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeOpacity="0.9"
+              />
+
+              {/* Cyber Face Visor Screen */}
+              <rect x="28" y="24" width="40" height="18" rx="9" fill="url(#botVisorGrad)" />
+
+              {/* Animated Scanning & Blinking Eyes + Happy Cyber Smile */}
+              <g className="rpa-eye-scan">
+                <g className="rpa-eye-blink">
+                  {/* Left Glowing Eye */}
+                  <circle cx="39" cy="32.5" r="4.2" fill="#38bdf8" />
+                  <circle cx="37.8" cy="31.2" r="1.4" fill="#ffffff" />
+                  {/* Right Glowing Eye */}
+                  <circle cx="57" cy="32.5" r="4.2" fill="#34d399" />
+                  <circle cx="55.8" cy="31.2" r="1.4" fill="#ffffff" />
+                </g>
+                {/* Friendly Robot Smile Arc */}
+                <path
+                  d="M44 37.5C45.3 39.2 50.7 39.2 52 37.5"
+                  stroke="#a7f3d0"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </g>
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
