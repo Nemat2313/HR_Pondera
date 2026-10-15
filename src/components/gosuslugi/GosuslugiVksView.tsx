@@ -27,6 +27,8 @@ import {
   Users,
   Activity,
   ChevronRight,
+  Info,
+  HelpCircle,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -106,6 +108,7 @@ export default function GosuslugiVksView() {
     'ОПВМ ОМВД России по Кингисеппскому району Ленинградской области'
   );
   const [showConfigPanel, setShowConfigPanel] = useState(false);
+  const [showAgentGuide, setShowAgentGuide] = useState(false);
 
   const [workers, setWorkers] = useState<GosuslugiVksWorkerRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -544,11 +547,12 @@ export default function GosuslugiVksView() {
         showNotice('error', 'Chrome başlatılamadı.');
       }
     } catch {
+      setShowAgentGuide(true);
       showNotice(
         'error',
         lang === 'ru'
-          ? 'Локальный RPA агент (порт 8088) не запущен! Запустите START_PONDERA_RPA_BRIDGE.bat'
-          : 'Yerel RPA Ajanı (Port 8088) açık değil! START_PONDERA_RPA_BRIDGE.bat dosyasını çalıştırın.'
+          ? 'Локальный RPA агент (порт 8088) не запущен! Скачайте пакет агента и запустите START_PONDERA_RPA_BRIDGE.bat'
+          : 'Yerel RPA Ajanı (Port 8088) açık değil! Ajan paketini indirip START_PONDERA_RPA_BRIDGE.bat dosyasını çalıştırın.'
       );
     } finally {
       setIsLaunchingChrome(false);
@@ -609,11 +613,12 @@ export default function GosuslugiVksView() {
 
   const handleStartRobot = async (limit: number = 0, singleWorker?: GosuslugiVksWorkerRecord) => {
     if (bridgeStatus.status !== 'online') {
+      setShowAgentGuide(true);
       showNotice(
         'error',
         lang === 'ru'
-          ? 'Локальный RPA агент не запущен! Запустите scripts\\gosuslugi_rpa\\START_PONDERA_RPA_BRIDGE.bat'
-          : 'Yerel RPA Ajanı çalışmıyor! Lütfen scripts\\gosuslugi_rpa\\START_PONDERA_RPA_BRIDGE.bat dosyasını başlatın.'
+          ? 'Локальный RPA агент не запущен! Скачайте агент и дважды нажмите START_PONDERA_RPA_BRIDGE.bat'
+          : 'Yerel RPA Ajanı çalışmıyor! Lütfen ajan paketini indirip START_PONDERA_RPA_BRIDGE.bat dosyasına çift tıklayın.'
       );
       return;
     }
@@ -716,8 +721,13 @@ export default function GosuslugiVksView() {
     );
   });
 
+  const descriptionTooltipText =
+    lang === 'ru'
+      ? 'Полная замена Power Automate Desktop (PAD). Загрузите список ВКС из Excel или базы Pondera HR и отслеживайте заполнение каждой строки на Госуслугах в реальном времени.'
+      : 'Power Automate Desktop (PAD) yerine doğrudan tarayıcı otomasyonu. Excel yükleyin veya veritabanından VKS uzmanlarını çekin; hangi satırın Gosuslugi üzerinde işlendiğini canlı takip edin.';
+
   return (
-    <div className="p-3 sm:p-5 lg:p-7 space-y-5 max-w-[1600px] mx-auto">
+    <div className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1600px] mx-auto">
       {/* Hidden Excel File Input */}
       <input
         type="file"
@@ -730,7 +740,7 @@ export default function GosuslugiVksView() {
       {/* Toast Notification Banner */}
       {toastMsg && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-center justify-between shadow-sm transition-all ${
+          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-sm transition-all ${
             toastMsg.type === 'success'
               ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-200'
               : toastMsg.type === 'error'
@@ -755,69 +765,72 @@ export default function GosuslugiVksView() {
         </div>
       )}
 
-      {/* TOP HERO CARD (Seamless Light & Dark Theme) */}
-      <div className="bg-white dark:bg-gradient-to-r dark:from-[#111F38] dark:via-[#152544] dark:to-[#11263F] rounded-2xl border border-slate-200/90 dark:border-emerald-500/30 p-5 sm:p-6 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden">
-        {/* Subtle decorative gradient in light/dark */}
-        <div className="absolute -top-12 -right-12 w-72 h-72 bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent rounded-full blur-2xl pointer-events-none" />
-
-        {/* Top Badges Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100 dark:border-slate-800/80 relative z-10">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-500/30">
-              <Bot className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              Pondera Playwright RPA (PAD Замена)
-            </span>
-
-            {isOnline ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-teal-50 dark:bg-teal-500/15 border border-teal-200 dark:border-teal-500/30 text-teal-700 dark:text-teal-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                {lang === 'ru' ? 'RPA Агент Онлайн (Порт 8088)' : 'RPA Ajanı Онлайн (Port 8088)'}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                {lang === 'ru' ? 'Агент не запущен (Порт 8088)' : 'Ajan Beklemede (Port 8088)'}
-              </span>
-            )}
-
-            {bridgeStatus.chrome_ready && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300">
-                <Globe className="w-3.5 h-3.5" />
-                Chrome CDP (9222) Готов
-              </span>
-            )}
-          </div>
-
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200/70 dark:border-slate-700">
-            Госуслуги ЕПГУ • Форма 600585/1 (Выплата ЗП ВКС)
-          </span>
-        </div>
-
-        {/* Title & Action Buttons */}
-        <div className="mt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
-          <div className="flex items-start gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-600/20 shrink-0 mt-0.5">
-              <Bot className="w-6 h-6" />
+      {/* COMPACT TOP HEADER BAR (Slim Height + Hover Tooltip Info Icon) */}
+      <div className="bg-white dark:bg-gradient-to-r dark:from-[#111F38] dark:via-[#152544] dark:to-[#11263F] rounded-2xl border border-slate-200/90 dark:border-emerald-500/30 px-4 py-3 text-slate-900 dark:text-white shadow-xs dark:shadow-xl relative">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Left: Icon + Title + Hover Tooltip + Status Badges */}
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-xs shrink-0">
+              <Bot className="w-5 h-5" />
             </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
                 {lang === 'ru'
-                  ? 'Уведомление МВД о выплате зарплаты ВКС (Госуслуги)'
-                  : 'Gosuslugi VKS Maaş & Çalışma Bildirimi Otomasyonu (МВД РФ)'}
+                  ? 'Уведомление МВД о выплате ЗП ВКС (Госуслуги)'
+                  : 'Gosuslugi VKS Maaş & Çalışma Bildirimi (МВД)'}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-3xl leading-relaxed">
-                {lang === 'ru'
-                  ? 'Полная замена Power Automate Desktop (PAD). Загрузите список ВКС из Excel или базы Pondera HR и отслеживайте заполнение каждой строки на Госуслугах в реальном времени.'
-                  : 'Power Automate Desktop (PAD) yerine doğrudan tarayıcı otomasyonu. Excel yükleyin veya veritabanından VKS uzmanlarını çekin; hangi satırın Gosuslugi üzerinde işlendiğini canlı takip edin.'}
-              </p>
+
+              {/* Hover Tooltip Icon for Description */}
+              <div className="relative group inline-flex items-center">
+                <button
+                  type="button"
+                  className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/80 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-700 flex items-center justify-center transition cursor-help"
+                  aria-label="Info"
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </button>
+                <div className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute left-0 top-8 z-50 w-80 sm:w-96 p-3 rounded-xl bg-slate-900 text-white text-xs leading-relaxed shadow-xl border border-slate-700">
+                  <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
+                    <Bot className="w-3.5 h-3.5" />
+                    <span>Pondera Playwright RPA (Форма ЕПГУ 600585/1)</span>
+                  </div>
+                  {descriptionTooltipText}
+                </div>
+              </div>
+
+              {/* Live Agent Status Pill */}
+              {isOnline ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {lang === 'ru' ? 'RPA Агент Онлайн' : 'RPA Ajanı Aktif'}
+                </span>
+              ) : (
+                <button
+                  onClick={() => setShowAgentGuide(!showAgentGuide)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/25 cursor-pointer transition"
+                  title={lang === 'ru' ? 'Нажмите, чтобы скачать агент для ПК' : 'Bilgisayarınıza RPA ajanını indirmek için tıklayın'}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span>{lang === 'ru' ? 'Агент не запущен (8088)' : 'Ajan Kapalı (8088)'}</span>
+                  <HelpCircle className="w-3 h-3 opacity-75" />
+                </button>
+              )}
+
+              {bridgeStatus.chrome_ready && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300">
+                  <Globe className="w-3 h-3" />
+                  Chrome (9222)
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Primary Action Buttons */}
+          {/* Right: Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 cursor-pointer transition"
+              className="h-8 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>{lang === 'ru' ? 'Загрузить Excel (ВКС)' : 'Excel Yükle (VKS)'}</span>
@@ -826,7 +839,7 @@ export default function GosuslugiVksView() {
             <button
               onClick={handleLoadFromDatabase}
               disabled={isLoadingDb}
-              className="h-9 px-3.5 rounded-xl border border-teal-200 dark:border-teal-500/40 bg-teal-50/80 dark:bg-teal-950/40 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-teal-800 dark:text-teal-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
+              className="h-8 px-3 rounded-xl border border-teal-200 dark:border-teal-500/40 bg-teal-50/80 dark:bg-teal-950/40 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-teal-800 dark:text-teal-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
             >
               {isLoadingDb ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" />
@@ -838,7 +851,7 @@ export default function GosuslugiVksView() {
 
             <button
               onClick={handleExportExcel}
-              className="h-9 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+              className="h-8 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
             >
               <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>
@@ -854,7 +867,7 @@ export default function GosuslugiVksView() {
 
             <button
               onClick={() => setShowConfigPanel(!showConfigPanel)}
-              className={`h-9 px-3.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
+              className={`h-8 px-3 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
                 showConfigPanel
                   ? 'border-amber-300 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300'
                   : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -868,7 +881,7 @@ export default function GosuslugiVksView() {
 
         {/* Collapsible PAD Form Parameters (Period, Address, Postal Code) */}
         {showConfigPanel && (
-          <div className="mt-5 pt-4 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50/90 dark:bg-slate-900/70 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800">
+          <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50/90 dark:bg-slate-900/70 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
             <div>
               <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -879,7 +892,7 @@ export default function GosuslugiVksView() {
                 value={periodStart}
                 onChange={(e) => setPeriodStart(e.target.value)}
                 placeholder="01.07.2026"
-                className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
               />
             </div>
 
@@ -893,7 +906,7 @@ export default function GosuslugiVksView() {
                 value={periodEnd}
                 onChange={(e) => setPeriodEnd(e.target.value)}
                 placeholder="30.09.2026"
-                className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
               />
             </div>
 
@@ -907,14 +920,14 @@ export default function GosuslugiVksView() {
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value)}
                 placeholder="626150"
-                className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
               />
             </div>
 
             <div className="flex items-end">
               <button
                 onClick={handleApplyGlobalParamsToRows}
-                className="w-full h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer transition shadow-xs"
+                className="w-full h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer transition"
               >
                 {lang === 'ru' ? 'Применить ко всем строкам' : 'Tüm Satırlara Uygula'}
               </button>
@@ -930,7 +943,7 @@ export default function GosuslugiVksView() {
                 type="text"
                 value={workAddress}
                 onChange={(e) => setWorkAddress(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
               />
             </div>
           </div>
@@ -938,20 +951,20 @@ export default function GosuslugiVksView() {
 
         {/* Active Row Progress Banner (Real-Time Row Indicator) */}
         {(isRunning || activeWorkerObj || bridgeStatus.processed > 0) && (
-          <div className="mt-4 p-4 rounded-xl bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-500/40 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
+          <div className="mt-3 p-3 rounded-xl bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-500/40 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               {isRunning ? (
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-600/20 animate-pulse">
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-sm animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 </div>
               ) : (
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold">
-                  <CheckCircle2 className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold">
+                  <CheckCircle2 className="w-4 h-4" />
                 </div>
               )}
               <div>
-                <div className="text-[11px] uppercase tracking-wider font-extrabold text-teal-700 dark:text-teal-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
+                <div className="text-[10.5px] uppercase tracking-wider font-extrabold text-teal-700 dark:text-teal-300 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
                   {isRunning
                     ? lang === 'ru'
                       ? 'СЕЙЧАС ОБРАБАТЫВАЕТСЯ СТРОКА НА ГОСУСЛУГАХ:'
@@ -960,7 +973,7 @@ export default function GosuslugiVksView() {
                     ? 'СТАТУС ПАКЕТНОЙ ОТПРАВКИ:'
                     : 'TOPLU GÖNDERİM DURUMU:'}
                 </div>
-                <div className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white mt-0.5">
+                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
                   {activeWorkerObj ? (
                     <>
                       {activeWorkerObj.lastName} {activeWorkerObj.firstName} {activeWorkerObj.middleName}{' '}
@@ -986,19 +999,19 @@ export default function GosuslugiVksView() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 text-xs font-mono">
-              <div className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+            <div className="flex items-center gap-2.5 text-xs font-mono">
+              <div className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
                 <span className="text-slate-500">{lang === 'ru' ? 'Прогресс: ' : 'İlerleme: '}</span>
                 <strong className="text-slate-900 dark:text-white">
                   {bridgeStatus.processed} / {bridgeStatus.total || selectedCount}
                 </strong>
               </div>
-              <div className="px-3 py-1.5 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
+              <div className="px-2.5 py-1 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
                 <span>{lang === 'ru' ? 'Успешно: ' : 'Başarılı: '}</span>
                 <strong>{bridgeStatus.success}</strong>
               </div>
               {bridgeStatus.errors > 0 && (
-                <div className="px-3 py-1.5 rounded-lg bg-rose-100/80 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-500/30 text-rose-800 dark:text-rose-300">
+                <div className="px-2.5 py-1 rounded-lg bg-rose-100/80 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-500/30 text-rose-800 dark:text-rose-300">
                   <span>{lang === 'ru' ? 'Ошибок: ' : 'Hatalı: '}</span>
                   <strong>{bridgeStatus.errors}</strong>
                 </div>
@@ -1008,31 +1021,31 @@ export default function GosuslugiVksView() {
         )}
       </div>
 
-      {/* 4 KPI SUMMARY CARDS (Pondera HR Signature Style) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
+      {/* 4 KPI SUMMARY CARDS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">
+            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
               {lang === 'ru' ? 'В очереди ВКС' : 'Listelenen VKS'}
             </span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+            <div className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
               {workers.length}
               <span className="text-xs font-normal text-slate-400 ml-1.5">
                 ({lang === 'ru' ? `выбрано ${selectedCount}` : `${selectedCount} seçili`})
               </span>
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50">
-            <Users className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50">
+            <Users className="w-4 h-4" />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">
+            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
               {lang === 'ru' ? 'Текущая строка' : 'Aktif İşlenen Satır'}
             </span>
-            <div className="text-sm font-extrabold text-teal-700 dark:text-teal-300 mt-1.5 truncate max-w-[180px]">
+            <div className="text-xs sm:text-sm font-extrabold text-teal-700 dark:text-teal-300 mt-1 truncate max-w-[180px]">
               {activeWorkerObj
                 ? `${activeWorkerObj.lastName} ${activeWorkerObj.firstName}`
                 : isRunning
@@ -1044,17 +1057,17 @@ export default function GosuslugiVksView() {
                 : 'Başlatılmadı'}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-600 dark:text-teal-400 flex items-center justify-center border border-teal-100 dark:border-teal-800/50">
-            <Activity className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-600 dark:text-teal-400 flex items-center justify-center border border-teal-100 dark:border-teal-800/50">
+            <Activity className="w-4 h-4" />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">
+            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
               {lang === 'ru' ? 'Отправлено в МВД' : 'Gosuslugi Gönderilen'}
             </span>
-            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+            <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
               {completedCount}
               {errorCount > 0 && (
                 <span className="text-xs font-bold text-rose-500 ml-2">
@@ -1063,28 +1076,28 @@ export default function GosuslugiVksView() {
               )}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50">
-            <ShieldCheck className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50">
+            <ShieldCheck className="w-4 h-4" />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">
+            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
               {lang === 'ru' ? 'Отчетный период ЗП' : 'VKS Bildirim Dönemi'}
             </span>
-            <div className="text-xs font-extrabold font-mono text-slate-800 dark:text-slate-200 mt-2">
+            <div className="text-xs font-extrabold font-mono text-slate-800 dark:text-slate-200 mt-1.5">
               {periodStart} — {periodEnd}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-800/50">
-            <Calendar className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-800/50">
+            <Calendar className="w-4 h-4" />
           </div>
         </div>
       </div>
 
       {/* Control Bar: Search & Robot Launch Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#131C31] p-3.5 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#131C31] p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1108,7 +1121,7 @@ export default function GosuslugiVksView() {
                 className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition"
               >
                 <Download className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                <span>JSON Kuyruk</span>
+                <span>{lang === 'ru' ? 'Очередь JSON' : 'JSON Kuyruk'}</span>
               </button>
 
               <button
@@ -1180,55 +1193,27 @@ export default function GosuslugiVksView() {
       {/* Main VKS Queue Table */}
       <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#131C31] overflow-hidden shadow-xs">
         {workers.length === 0 ? (
-          <div className="p-10 sm:p-14 text-center flex flex-col items-center justify-center space-y-5">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200/70 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs">
-              <FileSpreadsheet className="w-8 h-8" />
+          <div className="p-10 sm:p-12 text-center flex flex-col items-center justify-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200/70 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs">
+              <FileSpreadsheet className="w-7 h-7" />
             </div>
-            <div className="max-w-xl space-y-1.5">
-              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
+            <div className="max-w-xl space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 {lang === 'ru'
                   ? 'Список уведомлений ВКС пока пуст'
                   : 'VKS Bildirim Listesi Henüz Boş'}
               </h3>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 {lang === 'ru'
-                  ? 'Загрузите файл Excel (GosUsluga_ ЗП.xlsx), чтобы сформировать список, или подтяните специалистов ВКС напрямую из базы данных Pondera HR. При запуске робота активная строка будет подсвечиваться в таблице.'
-                  : 'Listeyi oluşturmak için Excel dosyanızı (GosUsluga_ ЗП.xlsx) yükleyin veya doğrudan Pondera HR veritabanındaki VKS uzmanlarını listeye çekin. Gönderim başladığında hangi satırda işlem yapıldığı tabloda canlı olarak vurgulanır.'}
+                  ? 'Загрузите файл Excel (GosUsluga_ ЗП.xlsx), чтобы сформировать список, или подтяните специалистов ВКС напрямую из базы данных Pondera HR.'
+                  : 'Listeyi oluşturmak için Excel dosyanızı (GosUsluga_ ЗП.xlsx) yükleyin veya doğrudan Pondera HR veritabanındaki VKS uzmanlarını listeye çekin.'}
               </p>
             </div>
 
-            {/* 3-Step Visual Workflow Guide */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl w-full pt-1 text-left">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                  1
-                </span>
-                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                  {lang === 'ru' ? 'Загрузите Excel или ВКС из БД' : 'Excel Yükleyin veya Sistemden Çekin'}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-lg bg-teal-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                  2
-                </span>
-                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                  {lang === 'ru' ? 'Откройте Chrome (Порт 9222)' : 'Chrome Açıp Gosuslugi Girişi Yapın'}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                  3
-                </span>
-                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                  {lang === 'ru' ? 'Следите за активной строкой' : 'Canlı Satır Takibiyle Gönderin'}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="h-10 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-sm shadow-emerald-600/20 transition"
+                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-xs transition"
               >
                 <Upload className="w-4 h-4" />
                 <span>{lang === 'ru' ? 'Загрузить Excel (GosUsluga_ ЗП.xlsx)' : 'Excel Yükle (GosUsluga_ ЗП.xlsx)'}</span>
@@ -1236,7 +1221,7 @@ export default function GosuslugiVksView() {
               <button
                 onClick={handleLoadFromDatabase}
                 disabled={isLoadingDb}
-                className="h-10 px-5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 font-bold text-xs inline-flex items-center gap-2 cursor-pointer transition"
+                className="h-9 px-4 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 font-bold text-xs inline-flex items-center gap-2 cursor-pointer transition"
               >
                 <Database className="w-4 h-4 text-teal-600 dark:text-teal-400" />
                 <span>{lang === 'ru' ? 'Загрузить специалистов ВКС из базы' : 'Veritabanından VKS Uzmanlarını Yükle'}</span>
@@ -1489,57 +1474,110 @@ export default function GosuslugiVksView() {
         )}
       </div>
 
-      {/* Offline Helper Banner (Light & Dark Adaptive) */}
+      {/* Offline Helper Banner + 1-Click Agent ZIP Download for HR Managers */}
       {!isOnline && (
-        <div className="p-3.5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-200/90 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span>
-              {lang === 'ru' ? (
-                <>
-                  Для прямой отправки из браузера запустите локальный мост RPA (без Power Automate Desktop):{' '}
-                  <code className="bg-amber-100/90 dark:bg-black/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md font-mono text-amber-900 dark:text-amber-300 font-semibold">
-                    scripts\gosuslugi_rpa\START_PONDERA_RPA_BRIDGE.bat
-                  </code>
-                </>
-              ) : (
-                <>
-                  Power Automate Desktop olmadan tek tıkla Gosuslugi gönderimi için yerel RPA köprüsünü çalıştırın:{' '}
-                  <code className="bg-amber-100/90 dark:bg-black/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md font-mono text-amber-900 dark:text-amber-300 font-semibold">
-                    scripts\gosuslugi_rpa\START_PONDERA_RPA_BRIDGE.bat
-                  </code>
-                </>
-              )}
-            </span>
+        <div className="p-3.5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-200/90 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                {lang === 'ru' ? (
+                  <>
+                    <strong>Локальный агент Госуслуг не запущен на этом ПК.</strong> Скачайте архив агента и дважды нажмите{' '}
+                    <code className="bg-amber-100/90 dark:bg-black/40 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded font-mono text-amber-900 dark:text-amber-300 font-semibold">
+                      START_PONDERA_RPA_BRIDGE.bat
+                    </code>
+                  </>
+                ) : (
+                  <>
+                    <strong>Bu bilgisayarda Gosuslugi Yerel Ajanı açık değil.</strong> Ajan paketini indirip klasöre çıkarın ve{' '}
+                    <code className="bg-amber-100/90 dark:bg-black/40 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded font-mono text-amber-900 dark:text-amber-300 font-semibold">
+                      START_PONDERA_RPA_BRIDGE.bat
+                    </code>{' '}
+                    dosyasına çift tıklayın.
+                  </>
+                )}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href="/Pondera_Gosuslugi_Agent.zip"
+                download="Pondera_Gosuslugi_Agent.zip"
+                className="h-8 px-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] inline-flex items-center gap-1.5 shadow-2xs transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>
+                  {lang === 'ru'
+                    ? 'Скачать Агент для ПК (.zip)'
+                    : 'Bilgisayar İçin RPA Ajanını İndir (.zip)'}
+                </span>
+              </a>
+
+              <button
+                onClick={() => setShowAgentGuide(!showAgentGuide)}
+                className="h-8 px-3 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-900/40 hover:bg-amber-100/60 text-amber-900 dark:text-amber-100 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>{lang === 'ru' ? 'Как запустить?' : 'Nasıl Çalıştırılır?'}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    'cd c:\\Users\\nemat\\HR_Pondera\\scripts\\gosuslugi_rpa && START_PONDERA_RPA_BRIDGE.bat'
+                  );
+                  setCopiedCmd(true);
+                  setTimeout(() => setCopiedCmd(false), 2500);
+                }}
+                className="h-8 px-2.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-900/40 hover:bg-amber-100/60 text-amber-900 dark:text-amber-100 font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
+                title={lang === 'ru' ? 'Скопировать команду' : 'Komutu Kopyala'}
+              >
+                {copiedCmd ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(
-                'cd c:\\Users\\nemat\\HR_Pondera\\scripts\\gosuslugi_rpa && START_PONDERA_RPA_BRIDGE.bat'
-              );
-              setCopiedCmd(true);
-              setTimeout(() => setCopiedCmd(false), 2500);
-            }}
-            className="h-8 px-3 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-900/40 hover:bg-amber-100/60 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-100 font-bold text-[11px] inline-flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
-          >
-            {copiedCmd ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>
-              {copiedCmd
-                ? lang === 'ru'
-                  ? 'Скопировано'
-                  : 'Kopyalandı'
-                : lang === 'ru'
-                ? 'Копировать команду'
-                : 'Komutu Kopyala'}
-            </span>
-          </button>
+          {showAgentGuide && (
+            <div className="pt-2.5 border-t border-amber-200/80 dark:border-amber-800/60 grid grid-cols-1 md:grid-cols-3 gap-2.5 text-[11px]">
+              <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/60 dark:border-amber-800/50">
+                <strong className="block text-amber-900 dark:text-amber-300 mb-0.5">
+                  {lang === 'ru' ? 'Шаг 1: Скачайте и распакуйте' : 'Adım 1: İndirin ve Klasöre Çıkarın'}
+                </strong>
+                <span className="text-slate-600 dark:text-slate-300">
+                  {lang === 'ru'
+                    ? 'Скачайте Pondera_Gosuslugi_Agent.zip на рабочий стол. Если запускаете впервые — дважды нажмите 0_INSTALL_FIRST_TIME.bat.'
+                    : 'Pondera_Gosuslugi_Agent.zip dosyasını masaüstüne çıkarın. İlk kez kuruyorsanız 0_INSTALL_FIRST_TIME.bat dosyasına çift tıklayın.'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/60 dark:border-amber-800/50">
+                <strong className="block text-amber-900 dark:text-amber-300 mb-0.5">
+                  {lang === 'ru' ? 'Шаг 2: Дважды нажмите батник' : 'Adım 2: Çift Tıklayıp Açık Bırakın'}
+                </strong>
+                <span className="text-slate-600 dark:text-slate-300">
+                  {lang === 'ru'
+                    ? 'Дважды нажмите START_PONDERA_RPA_BRIDGE.bat. Откроется окно моста, а здесь на сайте статус станет зеленым «RPA Агент Онлайн».'
+                    : 'START_PONDERA_RPA_BRIDGE.bat dosyasına çift tıklayın. Pencere açık kaldığı sürece bu ekranda yeşil "RPA Ajanı Aktif" yazacaktır.'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/60 dark:border-amber-800/50">
+                <strong className="block text-amber-900 dark:text-amber-300 mb-0.5">
+                  {lang === 'ru' ? 'Шаг 3: Войдите в Госуслуги и отправьте' : 'Adım 3: Gosuslugi Girişi & Gönderim'}
+                </strong>
+                <span className="text-slate-600 dark:text-slate-300">
+                  {lang === 'ru'
+                    ? 'Нажмите «1. Открыть Chrome», войдите в свой аккаунт Госуслуг (с ЭЦП/Рутокен) и нажмите «2. Отправить в Госуслуги»!'
+                    : '"1. Chrome Aç" butonuna basıp kendi E-İmza/Rutoken\'ınızla Gosuslugi\'ye girin ve "2. Gönder" butonuna basın!'}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Live Execution Log Panel (Light & Dark Adaptive) */}
+      {/* Live Execution Log Panel */}
       <div className="rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
-        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 font-mono">
+        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 font-mono">
           <div className="flex items-center gap-2 font-sans font-bold text-slate-700 dark:text-slate-200">
             <Terminal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>
@@ -1556,7 +1594,7 @@ export default function GosuslugiVksView() {
           )}
         </div>
 
-        <div className="p-3.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 max-h-44 overflow-y-auto space-y-1 bg-slate-50/50 dark:bg-slate-950/70">
+        <div className="p-3 font-mono text-[11px] text-slate-700 dark:text-slate-300 max-h-40 overflow-y-auto space-y-1 bg-slate-50/50 dark:bg-slate-950/70">
           {bridgeStatus.logs.length === 0 ? (
             <div className="text-slate-400 dark:text-slate-500 italic">
               {lang === 'ru'
