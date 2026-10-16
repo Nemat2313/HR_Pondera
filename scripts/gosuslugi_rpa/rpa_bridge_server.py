@@ -50,31 +50,34 @@ def save_applications_ledger(items):
 
 def scan_downloads_pdfs():
     """Scans ~/Downloads for Gosuslugi PDFs (<Sicil>_<AppNo>_<Name>_<Period>.pdf or <AppNo>_<Name>_<Period>.pdf)."""
+    import re
     downloads_dir = Path.home() / "Downloads"
     found = []
     if not downloads_dir.exists():
         return found
+    period_re = re.compile(r"^20\d{2}-[1-4]$")
+    app_no_re = re.compile(r"^[1-9]\d{9}$")
     for pdf_path in downloads_dir.glob("*.pdf"):
         stem = pdf_path.stem
         parts = stem.split("_")
-        if len(parts) >= 4 and parts[0].isdigit() and parts[1].isdigit() and len(parts[1]) >= 7:
+        if len(parts) >= 4 and parts[0].isdigit() and app_no_re.match(parts[1]) and period_re.match(parts[-1]):
             found.append({
                 "sicil": parts[0],
                 "sicil_no": parts[0],
                 "application_no": parts[1],
-                "worker_name": parts[2],
-                "period_code": parts[3],
+                "worker_name": "_".join(parts[2:-1]),
+                "period_code": parts[-1],
                 "pdf_filename": pdf_path.name,
                 "gosuslugi_status": "Заявление зарегистрировано",
                 "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pdf_path.stat().st_mtime)),
             })
-        elif len(parts) >= 3 and parts[0].isdigit() and len(parts[0]) >= 7:
+        elif len(parts) >= 3 and app_no_re.match(parts[0]) and period_re.match(parts[-1]):
             found.append({
                 "sicil": "",
                 "sicil_no": "",
                 "application_no": parts[0],
-                "worker_name": parts[1],
-                "period_code": parts[2],
+                "worker_name": "_".join(parts[1:-1]),
+                "period_code": parts[-1],
                 "pdf_filename": pdf_path.name,
                 "gosuslugi_status": "Заявление зарегистрировано",
                 "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pdf_path.stat().st_mtime)),

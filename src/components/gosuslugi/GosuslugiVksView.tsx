@@ -1326,27 +1326,31 @@ export default function GosuslugiVksView() {
         }
       }
       for (const w of workers) {
-        if (w.applicationNo) {
-          appMap.set(w.applicationNo, {
-            sicil_no: w.sicil || w.code,
-            worker_name: `${w.lastName} ${w.firstName}`.trim(),
-            citizenship: w.citizenship,
-            notification_type: 'VKS_SALARY',
-            period_code: periodCode,
-            application_no: w.applicationNo,
-            gosuslugi_status: w.gosuslugiStatus || 'Отправлено',
-            pdf_filename: w.pdfFilename || '',
-          });
-        }
+        const key = w.applicationNo || `sicil:${w.sicil || w.code || w.id}`;
+        const fullWorkerName = [w.lastName, w.firstName, w.middleName]
+          .filter((p) => p && p.trim().toLowerCase() !== 'нет')
+          .join(' ')
+          .trim();
+        appMap.set(key, {
+          sicil_no: w.sicil || w.code,
+          worker_name: fullWorkerName || `${w.lastName} ${w.firstName}`.trim(),
+          citizenship: w.citizenship,
+          notification_type: 'VKS_SALARY',
+          period_code: periodCode,
+          application_no: w.applicationNo || '',
+          gosuslugi_status: w.gosuslugiStatus || 'Отправлено',
+          pdf_filename: w.pdfFilename || '',
+        });
       }
 
       const recordsToCheck = Array.from(appMap.values());
-      if (recordsToCheck.length > 0) {
+      const withAppNo = recordsToCheck.filter((r) => Boolean(r.application_no));
+      if (withAppNo.length > 0) {
         // Persist scanned PDF application numbers to Pondera DB immediately
         fetch('/api/gosuslugi/submissions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ records: recordsToCheck }),
+          body: JSON.stringify({ records: withAppNo }),
         }).catch(() => {});
       }
 
@@ -1364,8 +1368,8 @@ export default function GosuslugiVksView() {
         showNotice(
           'success',
           lang === 'ru'
-            ? `Запущена проверка статусов заявлений на Госуслугах (${recordsToCheck.length} заявл.: «Услуга оказана» / «Услуга отказана»)...`
-            : `Gosuslugi başvuru durum sorgulama robotu başlatıldı (${recordsToCheck.length} başvuru no: «Услуга оказана» / «Услуга отказана»)...`
+            ? `Запущена массовая проверка статусов в «Заявления» (lk.gosuslugi.ru/orders) без поштучного поиска...`
+            : `Gosuslugi «Заявления» (lk.gosuslugi.ru/orders) üzerinden toplu başvuru durum sorgulama başlatıldı...`
         );
       } else {
         const err = await res.json();
@@ -2623,9 +2627,15 @@ export default function GosuslugiVksView() {
                         ) : w.status === 'success' || w.applicationNo ? (
                           <div className="space-y-0.5 leading-tight">
                             {w.gosuslugiStatus &&
-                            /отказан|ошибк|возврат/i.test(w.gosuslugiStatus) ? (
+                            /отказан|ошибк|возврат|не оказан/i.test(w.gosuslugiStatus) ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap font-sans">
                                 <AlertCircle className="w-3 h-3 shrink-0" />
+                                {w.gosuslugiStatus}
+                              </span>
+                            ) : w.gosuslugiStatus &&
+                              /промежуточн|обработк|зарегистрирован/i.test(w.gosuslugiStatus) ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 whitespace-nowrap font-sans">
+                                <RefreshCw className="w-3 h-3 shrink-0" />
                                 {w.gosuslugiStatus}
                               </span>
                             ) : w.gosuslugiStatus &&
