@@ -426,7 +426,7 @@ export default function GosuslugiVksView() {
     '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й'
   );
   const [postalCode, setPostalCode] = useState('626150');
-  const [ufmsDept] = useState('ОВТМ УВМ УМВД РОССИИ ПО ТЮМЕНСКОЙ ОБЛАСТИ');
+  const [ufmsDept] = useState('ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ');
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [showAgentGuide, setShowAgentGuide] = useState(false);
   const [showRobotWidget, setShowRobotWidget] = useState(false);

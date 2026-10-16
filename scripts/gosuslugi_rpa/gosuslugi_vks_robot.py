@@ -56,7 +56,7 @@ DEFAULT_CONFIG = {
     "WORK_REGION": "Тюменская",
     "WORK_ADDRESS": "626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й",
     "WORK_POSTAL_CODE": "626150",
-    "UFMS_DEPARTMENT": "ОВТМ УВМ УМВД РОССИИ ПО ТЮМЕНСКОЙ ОБЛАСТИ",
+    "UFMS_DEPARTMENT": "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ",
     "PERIOD_START": "01.07.2026",
     "PERIOD_END": "19.08.2026",
     "PERIOD_CODE": "2026-3",
@@ -975,10 +975,124 @@ class GosuslugiVksBot:
         except Exception as e:
             logger.debug(f"set_address_checkbox({label_text}, {should_check}) note: {e}")
 
+    def ensure_moscow_mvd_department(self) -> bool:
+        """
+        Ensures that on Step 12 ('Подразделение МВД, куда отправится уведомление' /
+        'Выберите подразделение МВД, куда отправится уведомление'), the robot clicks 'Изменить'
+        if needed and selects 'ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ'
+        before clicking 'Продолжить'.
+        Returns True if this step handled an action on the MVD screen.
+        """
+        target_dept = str(self.cfg.get("UFMS_DEPARTMENT", "")).strip()
+        if not target_dept or "ТЮМЕН" in target_dept.upper():
+            target_dept = "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ"
+
+        # Case A: Pre-selected MVD screen ('Подразделение МВД, куда отправится уведомление') with #dic18 & 'Изменить' button
+        dic18_readonly = self.page.locator("input#dic18:visible").first
+        izmenit_btn = self.page.locator(
+            "lib-button[data-button-type='skipstep'] button:visible, "
+            "button:has-text('Изменить'):visible"
+        ).first
+
+        if dic18_readonly.count() > 0 or izmenit_btn.count() > 0:
+            cur_dept = ""
+            if dic18_readonly.count() > 0:
+                try:
+                    cur_dept = dic18_readonly.input_value().strip()
+                except Exception:
+                    pass
+
+            if "МОСКВ" not in cur_dept.upper():
+                logger.info(
+                    f"Step 12: Pre-selected MVD is '{cur_dept or 'non-Moscow'}' -> clicking 'Изменить' to select '{target_dept}'..."
+                )
+                if izmenit_btn.count() > 0 and izmenit_btn.is_visible():
+                    try:
+                        izmenit_btn.click(timeout=3000)
+                    except Exception:
+                        izmenit_btn.evaluate("el => (el.closest('button') || el).click()")
+                    self.page.wait_for_timeout(800)
+            else:
+                logger.info(f"Step 12: MVD department already set to '{cur_dept}' -> clicking 'Продолжить'...")
+                cont_btn = self.page.locator(
+                    "lib-button[data-button-type='nextstep'] button:visible, "
+                    "button:has-text('Продолжить'):visible"
+                ).last
+                if cont_btn.count() > 0 and cont_btn.is_enabled():
+                    cont_btn.click(timeout=3000)
+                    self.page.wait_for_timeout(1500)
+                    return True
+
+        # Case B: Manual MVD lookup screen ('Выберите подразделение МВД, куда отправится уведомление') with #dic18_byHand
+        by_hand_inp = self.page.locator("input#dic18_byHand:visible").first
+        if by_hand_inp.count() > 0 and by_hand_inp.is_visible():
+            cont_btn = self.page.locator(
+                "lib-button[data-button-type='nextstep'] button:visible, "
+                "button:has-text('Продолжить'):visible"
+            ).last
+            cur_hand_val = ""
+            try:
+                cur_hand_val = by_hand_inp.input_value().strip()
+            except Exception:
+                pass
+
+            cont_ready = (
+                cont_btn.count() > 0
+                and cont_btn.is_enabled()
+                and (cont_btn.get_attribute("disabled") is None)
+                and ("disabled" not in (cont_btn.get_attribute("class") or ""))
+            )
+
+            if not (cont_ready and "МОСКВ" in cur_hand_val.upper()):
+                logger.info(f"Step 12: Selecting MVD department '{target_dept}' in #dic18_byHand...")
+                by_hand_inp.click()
+                self.page.wait_for_timeout(150)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(200)
+                by_hand_inp.fill(target_dept)
+                self.page.wait_for_timeout(1200)
+
+                lookup_items = self.page.locator(".lookup-item:not(.nothing-found):visible")
+                if lookup_items.count() == 0:
+                    self.page.keyboard.press("Control+A")
+                    self.page.keyboard.press("Backspace")
+                    self.page.wait_for_timeout(150)
+                    by_hand_inp.press_sequentially(target_dept, delay=30)
+                    self.page.wait_for_timeout(1500)
+
+                moscow_opt = self.page.locator(
+                    ".lookup-item:has-text('ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ'):has-text('МОСКВЕ'):visible, "
+                    ".lookup-item:has-text('МОСКВЕ'):visible, "
+                    ".lookup-item:not(.nothing-found):visible"
+                ).first
+                if moscow_opt.count() > 0 and moscow_opt.is_visible():
+                    opt_txt = moscow_opt.inner_text().strip()
+                    logger.info(f"Step 12: Clicking MVD lookup option: '{opt_txt}'...")
+                    try:
+                        moscow_opt.click(timeout=3000)
+                    except Exception:
+                        moscow_opt.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(700)
+
+            # Now click 'Продолжить' if enabled
+            if cont_btn.count() > 0 and cont_btn.is_enabled() and (cont_btn.get_attribute("disabled") is None):
+                logger.info("Step 12: MVD department selected -> clicking 'Продолжить'...")
+                try:
+                    cont_btn.focus()
+                    cont_btn.click(timeout=3000)
+                except Exception:
+                    cont_btn.evaluate("el => (el.closest('button') || el).click()")
+                self.page.wait_for_timeout(1500)
+                return True
+
+        return False
+
     def complete_mvd_and_submit_flow(self) -> str:
         """
         State-machine loop for Steps 12 -> 13 -> 14 -> 15:
-        Advances through 'Подразделение МВД', 'Подтвердить' consent modal, 'Согласие на обработку ПДн',
+        Advances through 'Подразделение МВД' (selecting Moscow OВТМ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ),
+        'Подтвердить' consent modal, 'Согласие на обработку ПДн',
         and reliably clicks 'Отправить' on 'Уведомление готово к отправке' until 'Уведомление отправлено'
         or 'В личный кабинет' is reached.
         """
@@ -997,7 +1111,13 @@ class GosuslugiVksBot:
                 "span:has-text('В личный кабинет'):visible"
             )
             if sent_text.count() > 0 or cabinet_btn.count() > 0 or "lk.gosuslugi.ru" in cur_url:
-                logger.info(">>> Final confirmation screen ('Уведомление отправлено' / 'В личный кабинет') reached! <<<")
+                no_poa = self.page.locator("text='недостаточно полномочий':visible")
+                if no_poa.count() > 0:
+                    logger.warning(
+                        "Step 15 Warning: Gosuslugi displayed 'У вас недостаточно полномочий для отправки уведомлений' (требуется доверенность руководителя)."
+                    )
+                else:
+                    logger.info(">>> Final confirmation screen ('Уведомление отправлено' / 'В личный кабинет') reached! <<<")
                 gosuslugi_order_no = self.extract_gosuslugi_order_number()
                 if gosuslugi_order_no:
                     logger.info(f"Step 15: Captured Gosuslugi Application No: {gosuslugi_order_no}")
@@ -1033,7 +1153,12 @@ class GosuslugiVksBot:
                 self.page.wait_for_timeout(1200)
                 continue
 
-            # 4) Check if 'Продолжить' button is visible (Step 12: Подразделение МВД or Step 14: Согласие на обработку ПДн)
+            # 3.5) Step 12: Check if on MVD Department screen ('Подразделение МВД, куда отправится уведомление')
+            # and ensure 'ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ' is selected via 'Изменить'
+            if self.ensure_moscow_mvd_department():
+                continue
+
+            # 4) Check if 'Продолжить' button is visible (Step 14: Согласие на обработку ПДн or other intermediate steps)
             cont_btn = self.page.locator("button:has-text('Продолжить'):visible").last
             if cont_btn.count() > 0 and cont_btn.is_visible():
                 disabled_attr = cont_btn.get_attribute("disabled")
@@ -1173,7 +1298,9 @@ class GosuslugiVksBot:
 
             # 16.2 On lk.gosuslugi.ru/notifications ('Уведомления'), click the worker's 'Заявление' item
             if "/order/" not in (self.page.url or ""):
-                zayavlenie = self.page.locator("h5:has-text('Заявление'), a:has-text('Заявление'), text='Заявление зарегистрировано'").first
+                zayavlenie = self.page.locator(
+                    "h5:has-text('Заявление'), a:has-text('Заявление'), span:has-text('Заявление зарегистрировано'), div:has-text('Заявление зарегистрировано')"
+                ).first
                 try:
                     zayavlenie.wait_for(state="visible", timeout=12000)
                 except Exception:
