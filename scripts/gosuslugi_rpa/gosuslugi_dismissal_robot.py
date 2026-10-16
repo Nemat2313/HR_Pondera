@@ -113,28 +113,19 @@ class GosuslugiDismissalBot:
         return handled
 
     def handle_draft_dialog_if_present(self) -> bool:
-        """Check if Gosuslugi displays draft list modal and handle it cleanly."""
+        """Check if Gosuslugi displays draft list modal, delete oldest draft if needed, and click 'Создать заявление'."""
         try:
-            limit_msg = self.page.locator("text='Нельзя создать новое заявление', text='Продолжите заполнять черновик'")
-            if limit_msg.count() > 0 and limit_msg.first.is_visible():
-                logger.info("Detected draft limit modal. Re-using latest draft by clicking 'Перейти в черновик'...")
-                open_draft = self.page.locator(
-                    "a:has-text('Перейти в черновик'), button:has-text('Перейти в черновик'), span:has-text('Перейти в черновик')"
-                ).first
-                if open_draft.count() > 0 and open_draft.is_visible():
-                    open_draft.click()
-                    self.page.wait_for_timeout(3000)
-                    return True
-
+            draft_items = self.page.locator(".draft-list .draft, epgu-constructor-draft-list .draft")
             draft_modal_btn = self.page.locator(
-                "lib-button.conf-modal__button button:visible, "
-                ".conf-modal__controls button:visible, "
-                "button:has-text('Создать заявление'):visible, "
-                "button:has-text('Создать новое заявление'):visible, "
-                "button:has-text('Новое заявление'):visible"
+                "lib-button.conf-modal__button button, "
+                ".conf-modal__controls button, "
+                "button:has-text('Создать заявление'), "
+                "button:has-text('Создать новое заявление'), "
+                "button:has-text('Новое заявление')"
             ).first
-            if draft_modal_btn.count() > 0 and draft_modal_btn.is_visible():
-                logger.info("Detected Gosuslugi draft modal. Scrolling modal to bottom & clicking 'Создать заявление'...")
+
+            if (draft_modal_btn.count() > 0 and draft_modal_btn.is_visible()) or draft_items.count() > 0:
+                logger.info("Detected Gosuslugi draft modal. Scrolling modal to bottom...")
                 try:
                     self.page.evaluate(
                         """() => {
@@ -150,16 +141,43 @@ class GosuslugiDismissalBot:
                 except Exception:
                     pass
                 self.page.wait_for_timeout(250)
-                try:
-                    draft_modal_btn.scroll_into_view_if_needed(timeout=1500)
-                except Exception:
-                    pass
-                try:
-                    draft_modal_btn.click(timeout=2500)
-                except Exception:
-                    draft_modal_btn.evaluate("el => (el.closest('button') || el).click()")
-                self.page.wait_for_timeout(1800)
-                return True
+
+                btn_disabled = True
+                if draft_modal_btn.count() > 0 and draft_modal_btn.is_visible():
+                    dis_attr = draft_modal_btn.get_attribute("disabled")
+                    cls_attr = draft_modal_btn.get_attribute("class") or ""
+                    btn_disabled = (dis_attr is not None) or ("disabled" in cls_attr) or (not draft_modal_btn.is_enabled())
+
+                if btn_disabled or draft_items.count() >= 9:
+                    del_btns = self.page.locator(
+                        ".draft-list .draft button.draft-link:has-text('Удалить'), "
+                        "epgu-constructor-draft-list button:has-text('Удалить'), "
+                        "button.draft-link:has-text('Удалить')"
+                    )
+                    if del_btns.count() > 0:
+                        oldest_del = del_btns.last
+                        logger.info("Deleting oldest draft ('Удалить') so 'Создать заявление' becomes active...")
+                        try:
+                            oldest_del.scroll_into_view_if_needed(timeout=1500)
+                        except Exception:
+                            pass
+                        try:
+                            oldest_del.click(timeout=2500)
+                        except Exception:
+                            oldest_del.evaluate("el => el.click()")
+                        self.page.wait_for_timeout(800)
+
+                if draft_modal_btn.count() > 0:
+                    try:
+                        draft_modal_btn.scroll_into_view_if_needed(timeout=1500)
+                    except Exception:
+                        pass
+                    try:
+                        draft_modal_btn.click(timeout=2500)
+                    except Exception:
+                        draft_modal_btn.evaluate("el => (el.closest('button') || el).click()")
+                    self.page.wait_for_timeout(1800)
+                    return True
         except Exception:
             pass
         return False
@@ -442,32 +460,45 @@ class GosuslugiDismissalBot:
         self.page.keyboard.type(bdate_str, delay=40)
         self.page.wait_for_timeout(500)
 
-        # Citizenship (#dic13_ctz + .lookup-item click)
+        # Citizenship (#dic13_ctz + press_sequentially + exact .lookup-item click)
         citizenship = str(row.get("ТекущееГражданство", "Узбекистан")).strip()
+        ctz_lower = citizenship.lower()
         for _ctz_try in range(3):
-            ctz_inp = self.page.locator("#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible").first
+            disp = self.page.locator("lib-lookup .displayed.lookup-item").first
+            if disp.count() > 0 and disp.is_visible() and ctz_lower in disp.inner_text().strip().lower():
+                break
+            clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
+            if clr_btn.count() > 0 and clr_btn.is_visible():
+                try:
+                    clr_btn.click(timeout=2000)
+                except Exception:
+                    clr_btn.evaluate("el => el.click()")
+                self.page.wait_for_timeout(300)
+            ctz_inp = self.page.locator("#dic13_ctz, input[id*='ctz'], lib-lookup input.search-input").first
             if ctz_inp.count() == 0:
                 break
             ctz_inp.click()
             self.page.wait_for_timeout(150)
             self.page.keyboard.press("Control+A")
             self.page.keyboard.press("Backspace")
-            ctz_inp.fill(citizenship)
-            self.page.wait_for_timeout(750)
-            if self.page.locator(".lookup-item:not(.nothing-found):visible").count() == 0:
-                self.page.keyboard.press("Control+A")
-                self.page.keyboard.press("Backspace")
-                ctz_inp.press_sequentially(citizenship, delay=45)
-                self.page.wait_for_timeout(900)
-            ctz_opt = self.page.locator(f".lookup-item:has-text('{citizenship}'):visible, .lookup-item:not(.nothing-found):visible").first
-            if ctz_opt.count() > 0 and ctz_opt.is_visible():
-                ctz_opt.click()
+            self.page.wait_for_timeout(150)
+            ctz_inp.press_sequentially(citizenship, delay=65)
+            self.page.wait_for_timeout(900)
+            options = self.page.locator(
+                "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
+                "div[role='listbox'] .lookup-item:not(.nothing-found):visible"
+            )
+            matched_opt = None
+            for idx in range(options.count()):
+                cand = options.nth(idx)
+                if ctz_lower in cand.inner_text().strip().lower():
+                    matched_opt = cand
+                    break
+            if matched_opt is not None:
+                matched_opt.click()
                 self.page.wait_for_timeout(500)
-            else:
-                self.page.keyboard.press("ArrowDown")
-                self.page.keyboard.press("Enter")
-                self.page.wait_for_timeout(400)
-            if self.page.locator("#dic13_ctz:visible").count() == 0:
+            disp_after = self.page.locator("lib-lookup .displayed.lookup-item").first
+            if disp_after.count() > 0 and disp_after.is_visible() and ctz_lower in disp_after.inner_text().strip().lower():
                 break
 
         # Place of birth (si13_pob)

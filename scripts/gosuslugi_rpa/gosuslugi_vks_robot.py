@@ -131,76 +131,97 @@ class GosuslugiVksBot:
 
     def fill_citizenship_strict(self, citizenship: str) -> bool:
         """
-        Reliably fills 'Гражданство' (#dic13_ctz) on Step 6 and clicks the matching '.lookup-item'
-        from the Gosuslugi dropdown list so it never stays empty with 'Обязательно для заполнения'.
+        Reliably fills 'Гражданство' (#dic13_ctz) on Step 6 using real keystrokes (`press_sequentially`)
+        so Gosuslugi's <lib-lookup> filters the country list, then clicks the exact matching option
+        inside `#lookup-list-wrap` and verifies `.displayed.lookup-item` matches `citizenship`
+        (preventing accidental selection of the first unfiltered item 'Абхазия').
         """
         ctz_val = str(citizenship or "Турция").strip()
+        ctz_lower = ctz_val.lower()
+
         for attempt in range(1, 4):
             try:
-                ctz_inp = self.page.locator(
-                    "#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible"
-                ).first
-
-                # When a citizenship option is selected on Gosuslugi, #dic13_ctz becomes hidden and is replaced by the selected chip
-                if ctz_inp.count() == 0:
-                    if self.page.locator("text='Обязательно для заполнения':visible").count() == 0:
+                # 1) Check if `.displayed.lookup-item` already shows the right country
+                displayed = self.page.locator("lib-lookup .displayed.lookup-item").first
+                if displayed.count() > 0 and displayed.is_visible():
+                    cur_selected = displayed.inner_text().strip()
+                    if cur_selected and ctz_lower in cur_selected.lower():
+                        logger.info(f"Step 6: Гражданство already verified as '{cur_selected}'.")
                         return True
-                    # If there's a clear button on an invalid selection, clear it so #dic13_ctz re-appears
-                    clr_btn = self.page.locator("button.search-clear:visible").first
-                    if clr_btn.count() > 0 and clr_btn.is_visible():
-                        clr_btn.click()
-                        self.page.wait_for_timeout(300)
-                        ctz_inp = self.page.locator(
-                            "#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible"
-                        ).first
+                    # Wrong country selected (e.g. 'Абхазия') -> click 'button.search-clear' (X)
+                    logger.warning(
+                        f"Step 6: Гражданство shows '{cur_selected}' instead of '{ctz_val}' -> clearing..."
+                    )
 
-                if ctz_inp.count() == 0 or not ctz_inp.is_visible():
-                    return True
+                clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
+                if clr_btn.count() > 0 and clr_btn.is_visible():
+                    try:
+                        clr_btn.click(timeout=2000)
+                    except Exception:
+                        clr_btn.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(300)
+
+                ctz_inp = self.page.locator(
+                    "#dic13_ctz, input[id*='ctz'], lib-lookup input.search-input"
+                ).first
+                if ctz_inp.count() == 0:
+                    return False
 
                 try:
                     ctz_inp.scroll_into_view_if_needed(timeout=2000)
                 except Exception:
                     pass
 
+                # 2) Focus #dic13_ctz, clear any text, and type character-by-character so Angular filters the list!
                 ctz_inp.click()
                 self.page.wait_for_timeout(150)
                 self.page.keyboard.press("Control+A")
                 self.page.keyboard.press("Backspace")
-                self.page.wait_for_timeout(150)
-                ctz_inp.fill(ctz_val)
-                self.page.wait_for_timeout(750)
+                self.page.wait_for_timeout(200)
+                ctz_inp.press_sequentially(ctz_val, delay=65)
+                self.page.wait_for_timeout(900)
 
-                lookup_items = self.page.locator(".lookup-item:not(.nothing-found):visible")
-                if lookup_items.count() == 0:
-                    self.page.keyboard.press("Control+A")
-                    self.page.keyboard.press("Backspace")
-                    self.page.wait_for_timeout(150)
-                    ctz_inp.press_sequentially(ctz_val, delay=45)
-                    self.page.wait_for_timeout(950)
+                # 3) Find the exact matching option inside `#lookup-list-wrap .lookup-item` (never pick unfiltered index 0!)
+                options = self.page.locator(
+                    "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
+                    "div[role='listbox'] .lookup-item:not(.nothing-found):visible"
+                )
+                matched_opt = None
+                opt_count = options.count()
+                # Prefer exact case-insensitive match first, then substring match
+                for idx in range(opt_count):
+                    cand = options.nth(idx)
+                    txt = cand.inner_text().strip()
+                    if txt.lower() == ctz_lower:
+                        matched_opt = cand
+                        break
+                if matched_opt is None:
+                    for idx in range(opt_count):
+                        cand = options.nth(idx)
+                        txt = cand.inner_text().strip()
+                        if ctz_lower in txt.lower():
+                            matched_opt = cand
+                            break
 
-                opt = self.page.locator(
-                    f".lookup-item:has-text('{ctz_val}'):visible, .lookup-item:not(.nothing-found):visible"
-                ).first
-                if opt.count() > 0 and opt.is_visible():
-                    logger.info(f"Step 6: Selecting Гражданство option '{opt.inner_text().strip()}' (attempt {attempt})...")
+                if matched_opt is not None:
+                    opt_text = matched_opt.inner_text().strip()
+                    logger.info(f"Step 6: Selecting Гражданство option '{opt_text}' (attempt {attempt})...")
                     try:
-                        opt.click(timeout=2500)
+                        matched_opt.click(timeout=2500)
                     except Exception:
-                        opt.evaluate("el => el.click()")
+                        matched_opt.evaluate("el => el.click()")
                     self.page.wait_for_timeout(550)
-                else:
-                    self.page.keyboard.press("ArrowDown")
-                    self.page.wait_for_timeout(150)
-                    self.page.keyboard.press("Enter")
-                    self.page.wait_for_timeout(500)
 
-                # Verify that #dic13_ctz is now selected (hidden or not invalid)
-                still_vis = self.page.locator("#dic13_ctz:visible").first
-                if still_vis.count() == 0:
-                    return True
-                cls_after = still_vis.get_attribute("class") or ""
-                if "invalid" not in cls_after and still_vis.input_value().strip():
-                    return True
+                # 4) Verify `.displayed.lookup-item` now contains the requested country
+                displayed_after = self.page.locator("lib-lookup .displayed.lookup-item").first
+                if displayed_after.count() > 0 and displayed_after.is_visible():
+                    sel_after = displayed_after.inner_text().strip()
+                    if ctz_lower in sel_after.lower():
+                        logger.info(f"Step 6: Confirmed Гражданство = '{sel_after}'.")
+                        return True
+                    logger.warning(
+                        f"Step 6: Expected '{ctz_val}' in Гражданство, but got '{sel_after}' on attempt {attempt}."
+                    )
             except Exception as e:
                 logger.debug(f"fill_citizenship_strict attempt {attempt} note: {e}")
                 self.page.wait_for_timeout(400)
@@ -323,8 +344,10 @@ class GosuslugiVksBot:
                     self.type_masked_input("input[name='di13_birth'], input[placeholder*='__.__.____']", bdate_str, delay=35)
                     repaired = True
 
-                if self.page.locator("#dic13_ctz:visible").count() > 0 or "Обязательно для заполнения" in self.has_red_validation_errors():
-                    logger.info(f"Auto-repair Step 6: Re-selecting Гражданство ('{citizenship}')...")
+                disp_ctz = self.page.locator("lib-lookup .displayed.lookup-item").first
+                cur_ctz_txt = disp_ctz.inner_text().strip().lower() if (disp_ctz.count() > 0 and disp_ctz.is_visible()) else ""
+                if (not cur_ctz_txt) or (citizenship.lower() not in cur_ctz_txt) or ("Обязательно для заполнения" in self.has_red_validation_errors()):
+                    logger.info(f"Auto-repair Step 6: Re-selecting Гражданство ('{citizenship}', was '{cur_ctz_txt or 'empty'}')...")
                     self.fill_citizenship_strict(citizenship)
                     repaired = True
 
@@ -642,6 +665,8 @@ class GosuslugiVksBot:
         already_on_form_modal = (
             "600585/1/form" in cur_url_now
             and self.page.locator(
+                ".draft-list .draft:visible, "
+                "button.draft-link:has-text('Удалить'):visible, "
                 "lib-button.conf-modal__button button:visible, "
                 "button:has-text('Создать заявление'):visible, "
                 "button:has-text('Создать новое заявление'):visible, "
@@ -671,21 +696,24 @@ class GosuslugiVksBot:
         # 3) Once 'О выплате зарплаты высококвалифицированному специалисту' (epgu-cf-ui-long-button / button) appears:
         #    click it and advance to Step 4.
         step3_selected = False
+        create_click_attempts = 0
         for tick in range(50):
             self.check_and_handle_error_modal()
 
-            # Priority 1: Drafts Modal ('Выберите черновик...' -> scroll modal & click 'Создать заявление')
+            # Priority 1: Drafts Modal ('Выберите черновик...' -> delete oldest draft if needed, scroll modal & click 'Создать заявление')
+            draft_items = self.page.locator(".draft-list .draft, epgu-constructor-draft-list .draft")
             create_btn = self.page.locator(
-                "lib-button.conf-modal__button button:visible, "
-                ".conf-modal__controls button:visible, "
-                "button:has-text('Создать заявление'):visible, "
-                "button:has-text('Создать новое заявление'):visible, "
-                "button:has-text('Новое заявление'):visible"
+                "lib-button.conf-modal__button button, "
+                ".conf-modal__controls button, "
+                "button:has-text('Создать заявление'), "
+                "button:has-text('Создать новое заявление'), "
+                "button:has-text('Новое заявление')"
             ).first
-            if create_btn.count() > 0 and create_btn.is_visible():
-                logger.info("Step 2: Scrolling drafts modal ('Уведомления о трудовой деятельности иностранцев') to bottom & clicking 'Создать заявление'...")
+
+            if (create_btn.count() > 0 and create_btn.is_visible()) or draft_items.count() > 0:
+                logger.info("Step 2: Drafts modal ('Уведомления о трудовой деятельности иностранцев') detected...")
                 try:
-                    # Scroll internal modal scrollbars (ng-scrollbar, .ng-scroll-viewport, .conf-modal__body) and all scrollable ancestors
+                    # Scroll internal modal scrollbars (ng-scrollbar, .ng-scroll-viewport, .conf-modal__body) to bottom first
                     self.page.evaluate(
                         """() => {
                             const scrollTargets = document.querySelectorAll(
@@ -720,21 +748,60 @@ class GosuslugiVksBot:
                 except Exception:
                     pass
                 self.page.wait_for_timeout(250)
-                try:
-                    create_btn.scroll_into_view_if_needed(timeout=1500)
-                except Exception:
-                    pass
-                try:
-                    create_btn.click(timeout=2500)
-                except Exception:
+
+                # Check if 'Создать заявление' is disabled/inactive OR if too many drafts block creation
+                btn_disabled = True
+                if create_btn.count() > 0 and create_btn.is_visible():
+                    dis_attr = create_btn.get_attribute("disabled")
+                    cls_attr = create_btn.get_attribute("class") or ""
+                    btn_disabled = (dis_attr is not None) or ("disabled" in cls_attr) or (not create_btn.is_enabled())
+
+                if btn_disabled or create_click_attempts >= 1 or draft_items.count() >= 9:
+                    del_btns = self.page.locator(
+                        ".draft-list .draft button.draft-link:has-text('Удалить'), "
+                        "epgu-constructor-draft-list button:has-text('Удалить'), "
+                        "button.draft-link:has-text('Удалить')"
+                    )
+                    if del_btns.count() > 0:
+                        oldest_del = del_btns.last
+                        logger.info(
+                            f"Step 2: Deleting oldest draft (total drafts: {draft_items.count()}) so 'Создать заявление' becomes active..."
+                        )
+                        try:
+                            oldest_del.scroll_into_view_if_needed(timeout=1500)
+                        except Exception:
+                            pass
+                        try:
+                            oldest_del.click(timeout=2500)
+                        except Exception:
+                            oldest_del.evaluate("el => el.click()")
+                        self.page.wait_for_timeout(800)
+
+                # Re-locate and click 'Создать заявление'
+                if create_btn.count() > 0:
                     try:
-                        box = create_btn.bounding_box()
-                        if box and box["width"] > 5 and box["height"] > 5:
-                            self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        else:
-                            create_btn.evaluate("el => (el.closest('button') || el).click()")
+                        create_btn.scroll_into_view_if_needed(timeout=1500)
                     except Exception:
-                        create_btn.evaluate("el => (el.closest('button') || el).click()")
+                        pass
+                    disabled_now = (
+                        (create_btn.get_attribute("disabled") is not None)
+                        or ("disabled" in (create_btn.get_attribute("class") or ""))
+                        or (not create_btn.is_enabled())
+                    )
+                    if not disabled_now:
+                        logger.info("Step 2: Clicking active 'Создать заявление'...")
+                        create_click_attempts += 1
+                        try:
+                            create_btn.click(timeout=2500)
+                        except Exception:
+                            try:
+                                box = create_btn.bounding_box()
+                                if box and box["width"] > 5 and box["height"] > 5:
+                                    self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                                else:
+                                    create_btn.evaluate("el => (el.closest('button') || el).click()")
+                            except Exception:
+                                create_btn.evaluate("el => (el.closest('button') || el).click()")
                 self.page.wait_for_timeout(900)
                 continue
 
@@ -1352,17 +1419,20 @@ class GosuslugiVksBot:
                     return True
 
         # Case B: Manual MVD lookup screen ('Выберите подразделение МВД, куда отправится уведомление') with #dic18_byHand
-        by_hand_inp = self.page.locator("input#dic18_byHand:visible").first
-        if by_hand_inp.count() > 0 and by_hand_inp.is_visible():
+        by_hand_inp = self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first
+        mvd_heading = self.page.locator("h1:has-text('Выберите подразделение МВД'):visible")
+        if (by_hand_inp.count() > 0 and by_hand_inp.is_visible()) or mvd_heading.count() > 0:
             cont_btn = self.page.locator(
                 "lib-button[data-button-type='nextstep'] button:visible, "
                 "button:has-text('Продолжить'):visible"
             ).last
-            cur_hand_val = ""
-            try:
-                cur_hand_val = by_hand_inp.input_value().strip()
-            except Exception:
-                pass
+
+            displayed_mvd = self.page.locator("lib-lookup .displayed.lookup-item").first
+            cur_disp_txt = (
+                displayed_mvd.inner_text().strip().upper()
+                if (displayed_mvd.count() > 0 and displayed_mvd.is_visible())
+                else ""
+            )
 
             cont_ready = (
                 cont_btn.count() > 0
@@ -1371,40 +1441,71 @@ class GosuslugiVksBot:
                 and ("disabled" not in (cont_btn.get_attribute("class") or ""))
             )
 
-            if not (cont_ready and "МОСКВ" in cur_hand_val.upper()):
-                logger.info(f"Step 12: Selecting MVD department '{target_dept}' in #dic18_byHand...")
-                by_hand_inp.click()
-                self.page.wait_for_timeout(150)
-                self.page.keyboard.press("Control+A")
-                self.page.keyboard.press("Backspace")
-                self.page.wait_for_timeout(200)
-                by_hand_inp.fill(target_dept)
-                self.page.wait_for_timeout(1200)
+            if not (cont_ready and "ТРУДОВОЙ МИГРАЦИИ" in cur_disp_txt and "МОСКВ" in cur_disp_txt):
+                logger.info(
+                    f"Step 12: Typing 'мос' in #dic18_byHand to select '{target_dept}'..."
+                )
+                # Clear existing text or wrong selection via the X ('button.search-clear') button if present
+                clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
+                if clr_btn.count() > 0 and clr_btn.is_visible():
+                    try:
+                        clr_btn.click(timeout=2000)
+                    except Exception:
+                        clr_btn.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(300)
 
-                lookup_items = self.page.locator(".lookup-item:not(.nothing-found):visible")
-                if lookup_items.count() == 0:
+                by_hand_inp = self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first
+                if by_hand_inp.count() > 0:
+                    by_hand_inp.click()
+                    self.page.wait_for_timeout(150)
                     self.page.keyboard.press("Control+A")
                     self.page.keyboard.press("Backspace")
-                    self.page.wait_for_timeout(150)
-                    by_hand_inp.press_sequentially(target_dept, delay=30)
-                    self.page.wait_for_timeout(1500)
+                    self.page.wait_for_timeout(200)
+                    # Type 'мос' character-by-character so Gosuslugi's <lib-lookup> opens the Moscow MVD list!
+                    by_hand_inp.press_sequentially("мос", delay=90)
+                    self.page.wait_for_timeout(1100)
 
-                moscow_opt = self.page.locator(
-                    ".lookup-item:has-text('ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ'):has-text('МОСКВЕ'):visible, "
-                    ".lookup-item:has-text('МОСКВЕ'):visible, "
+                options = self.page.locator(
+                    "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
+                    "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
                     ".lookup-item:not(.nothing-found):visible"
-                ).first
-                if moscow_opt.count() > 0 and moscow_opt.is_visible():
-                    opt_txt = moscow_opt.inner_text().strip()
+                )
+                matched_mvd = None
+                opt_count = options.count()
+                for idx in range(opt_count):
+                    cand = options.nth(idx)
+                    txt_up = cand.inner_text().strip().upper()
+                    if "ТРУДОВОЙ МИГРАЦИИ" in txt_up and "МОСКВ" in txt_up:
+                        matched_mvd = cand
+                        break
+                if matched_mvd is None:
+                    for idx in range(opt_count):
+                        cand = options.nth(idx)
+                        txt_up = cand.inner_text().strip().upper()
+                        if "ГУ МВД РОССИИ ПО Г. МОСКВЕ" in txt_up or "УВМ ГУ МВД" in txt_up:
+                            matched_mvd = cand
+                            break
+
+                if matched_mvd is not None:
+                    opt_txt = matched_mvd.inner_text().strip()
                     logger.info(f"Step 12: Clicking MVD lookup option: '{opt_txt}'...")
                     try:
-                        moscow_opt.click(timeout=3000)
+                        matched_mvd.click(timeout=3000)
                     except Exception:
-                        moscow_opt.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(700)
+                        matched_mvd.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(800)
 
             # Now click 'Продолжить' if enabled
-            if cont_btn.count() > 0 and cont_btn.is_enabled() and (cont_btn.get_attribute("disabled") is None):
+            cont_btn = self.page.locator(
+                "lib-button[data-button-type='nextstep'] button:visible, "
+                "button:has-text('Продолжить'):visible"
+            ).last
+            if (
+                cont_btn.count() > 0
+                and cont_btn.is_enabled()
+                and (cont_btn.get_attribute("disabled") is None)
+                and ("disabled" not in (cont_btn.get_attribute("class") or ""))
+            ):
                 logger.info("Step 12: MVD department selected -> clicking 'Продолжить'...")
                 try:
                     cont_btn.focus()
