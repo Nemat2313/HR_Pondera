@@ -442,13 +442,33 @@ class GosuslugiDismissalBot:
         self.page.keyboard.type(bdate_str, delay=40)
         self.page.wait_for_timeout(500)
 
-        # Citizenship
-        citizenship = str(row.get("ТекущееГражданство", "Узбекистан"))
-        self.page.keyboard.press("Tab")
-        self.page.keyboard.type(citizenship, delay=40)
-        self.page.wait_for_timeout(1000)
-        self.page.keyboard.press("ArrowDown")
-        self.page.keyboard.press("Enter")
+        # Citizenship (#dic13_ctz + .lookup-item click)
+        citizenship = str(row.get("ТекущееГражданство", "Узбекистан")).strip()
+        for _ctz_try in range(3):
+            ctz_inp = self.page.locator("#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible").first
+            if ctz_inp.count() == 0:
+                break
+            ctz_inp.click()
+            self.page.wait_for_timeout(150)
+            self.page.keyboard.press("Control+A")
+            self.page.keyboard.press("Backspace")
+            ctz_inp.fill(citizenship)
+            self.page.wait_for_timeout(750)
+            if self.page.locator(".lookup-item:not(.nothing-found):visible").count() == 0:
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                ctz_inp.press_sequentially(citizenship, delay=45)
+                self.page.wait_for_timeout(900)
+            ctz_opt = self.page.locator(f".lookup-item:has-text('{citizenship}'):visible, .lookup-item:not(.nothing-found):visible").first
+            if ctz_opt.count() > 0 and ctz_opt.is_visible():
+                ctz_opt.click()
+                self.page.wait_for_timeout(500)
+            else:
+                self.page.keyboard.press("ArrowDown")
+                self.page.keyboard.press("Enter")
+                self.page.wait_for_timeout(400)
+            if self.page.locator("#dic13_ctz:visible").count() == 0:
+                break
 
         # Place of birth (si13_pob)
         pob_input = self.page.locator("input[name*='pob'], input[id*='pob']")

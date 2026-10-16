@@ -65,10 +65,17 @@ DEFAULT_CONFIG = {
 }
 
 
+class RestartZayavkaException(Exception):
+    """Raised when step auto-repair cannot activate 'Продолжить' on Attempt 1 so the entire Zayavka restarts from Step 1."""
+    pass
+
+
 class GosuslugiVksBot:
     def __init__(self, page: Page, config: Dict[str, Any] = None):
         self.page = page
         self.cfg = {**DEFAULT_CONFIG, **(config or {})}
+        self.current_row: Dict[str, Any] = {}
+        self.allow_full_restart: bool = True
 
     def check_and_handle_error_modal(self) -> bool:
         """Equivalent to PAD GetError subflow: Click 'Попробовать ещё раз' or MVD warning continue."""
@@ -122,6 +129,84 @@ class GosuslugiVksBot:
         self.page.wait_for_timeout(250)
         return True
 
+    def fill_citizenship_strict(self, citizenship: str) -> bool:
+        """
+        Reliably fills 'Гражданство' (#dic13_ctz) on Step 6 and clicks the matching '.lookup-item'
+        from the Gosuslugi dropdown list so it never stays empty with 'Обязательно для заполнения'.
+        """
+        ctz_val = str(citizenship or "Турция").strip()
+        for attempt in range(1, 4):
+            try:
+                ctz_inp = self.page.locator(
+                    "#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible"
+                ).first
+
+                # When a citizenship option is selected on Gosuslugi, #dic13_ctz becomes hidden and is replaced by the selected chip
+                if ctz_inp.count() == 0:
+                    if self.page.locator("text='Обязательно для заполнения':visible").count() == 0:
+                        return True
+                    # If there's a clear button on an invalid selection, clear it so #dic13_ctz re-appears
+                    clr_btn = self.page.locator("button.search-clear:visible").first
+                    if clr_btn.count() > 0 and clr_btn.is_visible():
+                        clr_btn.click()
+                        self.page.wait_for_timeout(300)
+                        ctz_inp = self.page.locator(
+                            "#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible"
+                        ).first
+
+                if ctz_inp.count() == 0 or not ctz_inp.is_visible():
+                    return True
+
+                try:
+                    ctz_inp.scroll_into_view_if_needed(timeout=2000)
+                except Exception:
+                    pass
+
+                ctz_inp.click()
+                self.page.wait_for_timeout(150)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(150)
+                ctz_inp.fill(ctz_val)
+                self.page.wait_for_timeout(750)
+
+                lookup_items = self.page.locator(".lookup-item:not(.nothing-found):visible")
+                if lookup_items.count() == 0:
+                    self.page.keyboard.press("Control+A")
+                    self.page.keyboard.press("Backspace")
+                    self.page.wait_for_timeout(150)
+                    ctz_inp.press_sequentially(ctz_val, delay=45)
+                    self.page.wait_for_timeout(950)
+
+                opt = self.page.locator(
+                    f".lookup-item:has-text('{ctz_val}'):visible, .lookup-item:not(.nothing-found):visible"
+                ).first
+                if opt.count() > 0 and opt.is_visible():
+                    logger.info(f"Step 6: Selecting Гражданство option '{opt.inner_text().strip()}' (attempt {attempt})...")
+                    try:
+                        opt.click(timeout=2500)
+                    except Exception:
+                        opt.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(550)
+                else:
+                    self.page.keyboard.press("ArrowDown")
+                    self.page.wait_for_timeout(150)
+                    self.page.keyboard.press("Enter")
+                    self.page.wait_for_timeout(500)
+
+                # Verify that #dic13_ctz is now selected (hidden or not invalid)
+                still_vis = self.page.locator("#dic13_ctz:visible").first
+                if still_vis.count() == 0:
+                    return True
+                cls_after = still_vis.get_attribute("class") or ""
+                if "invalid" not in cls_after and still_vis.input_value().strip():
+                    return True
+            except Exception as e:
+                logger.debug(f"fill_citizenship_strict attempt {attempt} note: {e}")
+                self.page.wait_for_timeout(400)
+
+        return False
+
     def get_current_heading(self) -> str:
         try:
             h1 = self.page.locator("h1:visible").first
@@ -132,14 +217,15 @@ class GosuslugiVksBot:
         return ""
 
     def has_red_validation_errors(self) -> List[str]:
-        """Checks if Gosuslugi displays red inline validation errors on the current screen."""
+        """Checks if Gosuslugi displays red inline validation errors or invalid inputs on the current screen."""
         errors = []
         error_phrases = [
+            "Обязательно для заполнения",
+            "Поле обязательно",
             "Проверьте адрес",
             "Необходимо указать индекс",
             "Необходимо указать квартиру",
             "Необходимо указать дом",
-            "Поле обязательно",
             "Проверьте правильность",
             "Укажите корректн",
         ]
@@ -150,13 +236,199 @@ class GosuslugiVksBot:
                     errors.append(phrase)
             except Exception:
                 pass
+
+        try:
+            val_msgs = self.page.locator("lib-validation-message.control-error-text:visible, .validation-messages:visible")
+            for idx in range(min(val_msgs.count(), 5)):
+                txt = val_msgs.nth(idx).inner_text().strip()
+                if txt and txt not in errors:
+                    errors.append(txt)
+        except Exception:
+            pass
+
+        try:
+            invalid_inps = self.page.locator("input.invalid:visible, textarea.invalid:visible")
+            if invalid_inps.count() > 0 and not errors:
+                inp_id = invalid_inps.first.get_attribute("id") or invalid_inps.first.get_attribute("name") or "поле"
+                errors.append(f"Не заполнено или некорректно поле ({inp_id})")
+        except Exception:
+            pass
+
         return errors
+
+    def is_input_empty_or_invalid(self, selector: str) -> bool:
+        """Returns True if the visible input matching `selector` is empty or has class `invalid`."""
+        try:
+            loc = self.page.locator(selector).first
+            if loc.count() == 0 or not loc.is_visible():
+                return False
+            val = loc.input_value().strip()
+            cls = loc.get_attribute("class") or ""
+            return (not val) or ("invalid" in cls)
+        except Exception:
+            return False
+
+    def auto_repair_current_step(self, step_name: str) -> bool:
+        """
+        Inspects the current screen when 'Продолжить' is disabled or red validation errors
+        ('Обязательно для заполнения', etc.) appear, and automatically re-fills/selects
+        any missing or invalid fields.
+        """
+        row = self.current_row or {}
+        if not row:
+            return False
+
+        repaired = False
+        logger.info(f"[{step_name}] Inspecting fields on screen for automatic self-healing...")
+
+        try:
+            # 1) Step 3: Goal selection ('О выплате зарплаты высококвалифицированному специалисту')
+            vks_radio = self.page.locator(
+                "label:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible, "
+                "span:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible"
+            ).first
+            if vks_radio.count() > 0 and vks_radio.is_visible():
+                vks_radio.click()
+                self.page.wait_for_timeout(400)
+                repaired = True
+
+            # 2) Step 6: Personal Details (Фамилия, Имя, Отчество, Дата рождения, Гражданство, Место рождения, Пол)
+            if self.page.locator("#si13_lastNameRu:visible, #si13_firstNameRu:visible, #dic13_ctz:visible").count() > 0 or "Шаг 6" in step_name:
+                last_name = str(row.get("Фамилия", "")).strip() or "Нет"
+                first_name = str(row.get("Имя", "")).strip()
+                middle_name = str(row.get("Отчество", "")).strip() or "НЕТ"
+                bdate_str = str(row.get("ДатаРождения", "")).strip()
+                citizenship = str(row.get("ТекущееГражданство", "Турция")).strip()
+                pob_val = str(row.get("МестоРождения", "")).strip() or citizenship
+                gender = str(row.get("Пол", "Мужской")).strip()
+                gender_label = "Женский" if gender.lower().startswith("ж") or gender.lower().startswith("k") else "Мужской"
+
+                if self.is_input_empty_or_invalid("#si13_lastNameRu, input[name*='lastNameRu']"):
+                    logger.info("Auto-repair Step 6: Re-filling Фамилия...")
+                    self.type_masked_input("#si13_lastNameRu, input[name*='lastNameRu']", last_name, delay=30)
+                    repaired = True
+
+                if self.is_input_empty_or_invalid("#si13_firstNameRu, input[name*='firstNameRu']"):
+                    logger.info("Auto-repair Step 6: Re-filling Имя...")
+                    self.type_masked_input("#si13_firstNameRu, input[name*='firstNameRu']", first_name, delay=30)
+                    repaired = True
+
+                if self.is_input_empty_or_invalid("#si13_secondNameRu, input[name*='secondNameRu']"):
+                    logger.info("Auto-repair Step 6: Re-filling Отчество...")
+                    self.type_masked_input("#si13_secondNameRu, input[name*='secondNameRu']", middle_name, delay=30)
+                    repaired = True
+
+                if self.is_input_empty_or_invalid("input[name='di13_birth']"):
+                    logger.info("Auto-repair Step 6: Re-filling Дата рождения...")
+                    self.type_masked_input("input[name='di13_birth'], input[placeholder*='__.__.____']", bdate_str, delay=35)
+                    repaired = True
+
+                if self.page.locator("#dic13_ctz:visible").count() > 0 or "Обязательно для заполнения" in self.has_red_validation_errors():
+                    logger.info(f"Auto-repair Step 6: Re-selecting Гражданство ('{citizenship}')...")
+                    self.fill_citizenship_strict(citizenship)
+                    repaired = True
+
+                if self.is_input_empty_or_invalid("#si13_pob, input[name*='pob']"):
+                    logger.info("Auto-repair Step 6: Re-filling Место рождения...")
+                    self.type_masked_input("#si13_pob, input[name*='pob']", pob_val, delay=30)
+                    repaired = True
+
+                gender_span = self.page.locator(
+                    f"label.radio:has-text('{gender_label}'):visible, span:has-text('{gender_label}'):visible"
+                ).first
+                if gender_span.count() > 0 and gender_span.is_visible():
+                    gender_span.click()
+                    self.page.wait_for_timeout(300)
+                    repaired = True
+
+            # 3) Step 7: Passport Details
+            if self.page.locator("input[name='di14_issue']:visible, #si14_issuedBy_125:visible").count() > 0 or "Шаг 7" in step_name:
+                p_series_val = str(row.get("СерияПаспорта", "")).strip()
+                if p_series_val.lower() not in ("", "не заполнено", "нет", "-") and self.is_input_empty_or_invalid("#series:visible"):
+                    self.type_masked_input("#series, input[name*='series']", p_series_val, delay=30)
+                    repaired = True
+                if self.is_input_empty_or_invalid("#number:visible"):
+                    self.type_masked_input("#number, input[name*='number']", str(row.get("НомерПаспорта", "")).strip(), delay=30)
+                    repaired = True
+                if self.is_input_empty_or_invalid("input[name='di14_issue']:visible"):
+                    self.type_masked_input("input[name='di14_issue'], input[placeholder*='__.__.____']", str(row.get("ДатаВыдачи", "")).strip(), delay=35)
+                    repaired = True
+                if self.is_input_empty_or_invalid("#si14_issuedBy_125:visible, input[id*='issuedBy']:visible"):
+                    self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", str(row.get("ПаспортКемВыдан", "")).strip(), delay=25)
+                    repaired = True
+
+            # 4) Step 9: Work Permit (РНР) Details
+            if self.page.locator("input[id*='seriaBlank']:visible, input[name*='numberBlank']:visible").count() > 0 or "Шаг 9" in step_name:
+                if self.is_input_empty_or_invalid("#series:visible"):
+                    self.type_masked_input("#series, input[name*='series']", str(row.get("Серия", "")).strip(), delay=30)
+                    repaired = True
+                if self.is_input_empty_or_invalid("#number:visible"):
+                    self.type_masked_input("#number, input[name*='number']", str(row.get("Номер", "")).strip(), delay=30)
+                    repaired = True
+                if self.is_input_empty_or_invalid("input[id*='seriaBlank']:visible, input[name*='seriaBlank']:visible"):
+                    self.type_masked_input("#s15_dict_2_seriaBlank, #dic15_seriaBlank, input[id*='seriaBlank'], input[name*='seriaBlank']", str(row.get("СерийныйНомер1", "")).strip(), delay=30)
+                    repaired = True
+                if self.is_input_empty_or_invalid("input[name*='numberBlank']:visible, input[id*='numberBlank']:visible"):
+                    self.type_masked_input("input[name='s15_dict_2_numberBlank'], input[name='s15_numberBlank'], input[name*='numberBlank'], input[id*='numberBlank']", str(row.get("СерийныйНомер2", "")).strip(), delay=30)
+                    repaired = True
+                rnr_issue_date = str(row.get("ДатаВыдачиВКС", "")).strip()
+                if rnr_issue_date and self.is_input_empty_or_invalid("input[placeholder*='__.__.____']:visible"):
+                    self.type_masked_input("input[placeholder*='__.__.____']:visible", rnr_issue_date, delay=35)
+                    repaired = True
+
+            # 5) Step 10: Contract & Work Address
+            if self.page.locator("input[name='di16_1']:visible, input[name='c_startDate']:visible, input#index:visible").count() > 0 or "Шаг 10" in step_name:
+                trudovoy_lbl = self.page.locator("label.radio:has-text('Трудовой'):visible, lib-radio:has-text('Трудовой') label:visible").first
+                if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
+                    trudovoy_lbl.click()
+                    self.page.wait_for_timeout(250)
+                contract_date = str(row.get("ДатаЗаключения", row.get("ДатаПриема", ""))).strip()
+                if contract_date and self.is_input_empty_or_invalid("input[name='di16_1']:visible, input[name='di16_2']:visible"):
+                    self.type_masked_input("input[name='di16_1'], input[name='di16_2']", contract_date, delay=35)
+                start_date = str(row.get("ДатаНачалаДействия", contract_date)).strip()
+                if start_date and self.is_input_empty_or_invalid("input[name='c_startDate']:visible"):
+                    self.type_masked_input("input[name='c_startDate']", start_date, delay=35)
+                end_date = str(row.get("ДатаОканчанияДействия", row.get("ДатаОкончанияДействия", ""))).strip()
+                if end_date and self.is_input_empty_or_invalid("input[name='c_endDate']:visible"):
+                    self.type_masked_input("input[name='c_endDate']", end_date, delay=35)
+                postal_code = str(row.get("Индекс", "")).strip() or str(self.cfg["WORK_POSTAL_CODE"])
+                self.fill_postal_code_strict(postal_code)
+                self.set_address_checkbox("Нет дома", "houseCheckbox", True)
+                self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+                repaired = True
+
+            # 6) Step 11: Salary Payment Period & Amount
+            if self.page.locator("input[name='di17_start']:visible, #si17_paid:visible").count() > 0 or "Шаг 11" in step_name:
+                period_start = str(row.get("НачалоПериода", "")).strip() or self.cfg["PERIOD_START"]
+                period_end = str(row.get("КонецПериода", "")).strip() or self.cfg["PERIOD_END"]
+                paid_amount = str(row.get("РазмерВыплаты", "")).strip()
+                if self.is_input_empty_or_invalid("input[name='di17_start']:visible"):
+                    self.type_masked_input("input[name='di17_start']", period_start, delay=35)
+                if self.is_input_empty_or_invalid("input[name='di17_end']:visible"):
+                    self.type_masked_input("input[name='di17_end']", period_end, delay=35)
+                yes_radio = self.page.locator("label.radio:has-text('Да'):visible, lib-radio:has-text('Да') label:visible").first
+                if yes_radio.count() > 0 and yes_radio.is_visible():
+                    yes_radio.click()
+                    self.page.wait_for_timeout(300)
+                if self.is_input_empty_or_invalid("#si17_paid:visible, input[name='si17_paid']:visible"):
+                    self.type_masked_input("#si17_paid, input[name='si17_paid']", paid_amount, delay=35)
+                repaired = True
+
+        except Exception as e:
+            logger.debug(f"auto_repair_current_step({step_name}) note: {e}")
+
+        self.page.wait_for_timeout(600)
+        return repaired
 
     def click_continue_strict(self, step_name: str, wait_ms: int = 2000):
         """
         Ensures 'Продолжить' button is enabled (blue/active) and no red errors block the page.
-        If 'Продолжить' is grey/disabled or red errors remain, enters Human-in-the-Loop pause mode
-        allowing the user to fix the field in Chrome or click 'Продолжить' in the Pondera HR UI.
+        1) Waits up to 3 seconds for 'Продолжить' to become active naturally.
+        2) If 'Продолжить' is still inactive or red validation warnings ('Обязательно для заполнения', etc.) exist,
+           automatically runs up to 3 field-level self-healing passes (`auto_repair_current_step`).
+        3) If still inactive after 3 repair passes on Attempt 1 (`self.allow_full_restart`), raises `RestartZayavkaException`
+           so the robot automatically restarts the entire Zayavka from Step 1!
+        4) On Attempt 2, enters Human-in-the-Loop pause mode if still blocked.
         """
         self.check_and_handle_error_modal()
         initial_heading = self.get_current_heading()
@@ -168,7 +440,7 @@ class GosuslugiVksBot:
             except Exception:
                 pass
 
-        # Wait up to 3 seconds for button to become enabled naturally
+        # Phase 1: Wait up to 3 seconds for button to become enabled naturally
         btn_locator = self.page.locator("button:has-text('Продолжить'):visible").last
         is_ready = False
 
@@ -191,29 +463,53 @@ class GosuslugiVksBot:
             self.wait_for_screen_transition(initial_heading, wait_ms)
             return
 
-        # If not ready -> Enter Human-in-the-Loop Manual Intervention Mode!
+        # Phase 2: Automatic Field-Level Self-Healing (up to 3 repair passes)
+        for repair_pass in range(1, 4):
+            red_errs = self.has_red_validation_errors()
+            err_summary = ", ".join(red_errs) if red_errs else "Кнопка «Продолжить» неактивна"
+            logger.warning(
+                f"[{step_name}] Validation/button check ({err_summary}) -> Auto-repair pass {repair_pass}/3..."
+            )
+            self.auto_repair_current_step(step_name)
+            self.check_and_handle_error_modal()
+
+            btn_locator = self.page.locator("button:has-text('Продолжить'):visible").last
+            red_errs_after = self.has_red_validation_errors()
+            if btn_locator.count() > 0:
+                disabled_attr = btn_locator.get_attribute("disabled")
+                cls_attr = btn_locator.get_attribute("class") or ""
+                is_disabled = (disabled_attr is not None) or ("disabled" in cls_attr) or (not btn_locator.is_enabled())
+                if not is_disabled and len(red_errs_after) == 0:
+                    logger.info(f"[{step_name}] Auto-repair pass {repair_pass} succeeded! Clicking 'Продолжить'...")
+                    btn_locator.focus()
+                    btn_locator.click()
+                    self.wait_for_screen_transition(initial_heading, wait_ms)
+                    return
+
+        # Phase 3: If auto-repair exhausted on Attempt 1 -> Restart the entire Zayavka from Step 1!
         red_errs = self.has_red_validation_errors()
         err_desc = ", ".join(red_errs) if red_errs else "Кнопка «Продолжить» неактивна (серая)"
-        # IMPORTANT: rpa_bridge_server.py parses 'WAITING_FOR_USER:' to show the manual intervention banner in UI
+        if self.allow_full_restart:
+            logger.warning(
+                f"[{step_name}] Auto-repair exhausted ({err_desc}) -> Restarting this Zayavka from Step 1!"
+            )
+            raise RestartZayavkaException(f"[{step_name}] {err_desc}")
+
+        # Phase 4 (Attempt 2 last resort): Human-in-the-Loop Manual Intervention Mode
         logger.warning(
             f"WAITING_FOR_USER: [{step_name}] На странице Госуслуг требуется проверка ({err_desc}). "
             f"Исправьте поле в Chrome и нажмите «Продолжить» (или кнопку «Продолжить» в Pondera HR)."
         )
 
-        # Wait up to 5 minutes (300 seconds) for user to either:
-        # A) Fix the field in Chrome and click 'Продолжить' in Chrome (heading changes)
-        # B) Fix the field in Chrome so 'Продолжить' becomes blue & no red errors, or click 'Resume' in Pondera UI
         for tick in range(300):
             self.check_and_handle_error_modal()
 
-            # Check if user already clicked 'Продолжить' directly in Chrome and page advanced
             current_heading = self.get_current_heading()
             if initial_heading and current_heading and current_heading != initial_heading:
                 logger.info(f"USER_RESOLVED: Page advanced to '{current_heading}'. Resuming robot...")
                 self.page.wait_for_timeout(1000)
                 return
 
-            # Check if user clicked "Продолжить" in Pondera HR UI (manual_continue.signal)
             user_signaled = os.path.exists(MANUAL_CONTINUE_SIGNAL)
             if user_signaled:
                 try:
@@ -221,7 +517,6 @@ class GosuslugiVksBot:
                 except Exception:
                     pass
 
-            # Check if button is now enabled and red errors are gone
             red_errs_now = self.has_red_validation_errors()
             btn_now = self.page.locator("button:has-text('Продолжить'):visible").last
             if btn_now.count() > 0:
@@ -272,14 +567,52 @@ class GosuslugiVksBot:
 
     def fill_vks_notification(self, row: Dict[str, Any]) -> bool:
         """
-        Executes the complete Gosuslugi VKS Salary Notification flow from 11.docx for a single employee.
+        Executes the complete Gosuslugi VKS Salary Notification flow for a single employee.
+        If any step cannot activate 'Продолжить' even after 3 field-level auto-repair attempts,
+        automatically restarts the entire Zayavka from Step 1 (Attempt 2/2).
         """
+        self.current_row = row
         last_name = str(row.get("Фамилия", "")).strip()
         first_name = str(row.get("Имя", "")).strip()
         middle_name = str(row.get("Отчество", "")).strip()
         code = str(row.get("Код", row.get("Sicil", ""))).strip()
         full_name = f"{last_name} {first_name} {middle_name}".strip()
 
+        for form_attempt in (1, 2):
+            self.allow_full_restart = (form_attempt == 1)
+            try:
+                if form_attempt > 1:
+                    logger.warning(
+                        f"=== RETRYING ZAYAVKA FROM SCRATCH (Attempt {form_attempt}/2) for {full_name} (Код: {code}) ==="
+                    )
+                return self._execute_vks_notification_attempt(row, full_name, code, last_name, first_name, middle_name, form_attempt)
+            except RestartZayavkaException as rex:
+                logger.warning(
+                    f"Attempt {form_attempt} triggered full Zayavka restart ({rex}) -> starting fresh Zayavka from Step 1..."
+                )
+                self.page.wait_for_timeout(1500)
+                continue
+            except Exception as ex:
+                if form_attempt == 1:
+                    logger.warning(
+                        f"Attempt 1 encountered error ({ex}) -> restarting Zayavka from Step 1 (Attempt 2/2)..."
+                    )
+                    self.page.wait_for_timeout(1500)
+                    continue
+                raise
+
+        return False
+
+    def _execute_vks_notification_attempt(
+        self,
+        row: Dict[str, Any],
+        full_name: str,
+        code: str,
+        last_name: str,
+        first_name: str,
+        middle_name: str,
+        form_attempt: int = 1,
+    ) -> bool:
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to highlight the active row in UI
         logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
 
@@ -530,13 +863,8 @@ class GosuslugiVksBot:
         bdate_str = str(row.get("ДатаРождения", "")).strip()
         self.type_masked_input("input[name='di13_birth'], input[placeholder*='__.__.____']", bdate_str, delay=35)
 
-        # Citizenship selection (Гражданство)
-        self.page.keyboard.type(citizenship, delay=25)
-        self.page.wait_for_timeout(1500)
-        self.page.keyboard.press("ArrowDown")
-        self.page.wait_for_timeout(100)
-        self.page.keyboard.press("Enter")
-        self.page.wait_for_timeout(500)
+        # Citizenship selection (Гражданство -> #dic13_ctz + .lookup-item click)
+        self.fill_citizenship_strict(citizenship)
 
         # Place of Birth (si13_pob)
         pob_val = str(row.get("МестоРождения", "")).strip() or citizenship
