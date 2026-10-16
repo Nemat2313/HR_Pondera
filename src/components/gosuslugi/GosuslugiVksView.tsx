@@ -563,7 +563,7 @@ export default function GosuslugiVksView() {
         permit: 'VKS',
         status: 'Mevcut',
         includeDetails: 'true',
-        limit: '500',
+        limit: '50000',
       });
       if (user) {
         params.set('userScopeType', user.scope_type);
@@ -1218,210 +1218,249 @@ export default function GosuslugiVksView() {
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1600px] mx-auto">
-      {/* 3-TAB GOSUSLUGI MVD SERVICE SWITCHER */}
-      <div className="bg-white dark:bg-[#111F38] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Tab 1: VKS Salary Notification */}
-          <button
-            type="button"
-            onClick={() => setServiceTab('vks')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              serviceTab === 'vks'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
-                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Bot className="w-4 h-4 shrink-0" />
-            <span>
-              {lang === 'ru'
-                ? '1. ВКС — Выплата ЗП (МВД)'
-                : '1. VKS Maaş Bildirimi (MVD)'}
-            </span>
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                serviceTab === 'vks'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-              }`}
-            >
-              600585/1
-            </span>
-          </button>
+      {/* Animations for RPA Assistant */}
+      <style>{`
+        @keyframes rpaBotRoam {
+          0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+          25% { transform: translate(-6px, -7px) rotate(-1.5deg); }
+          50% { transform: translate(0px, -11px) rotate(0deg); }
+          75% { transform: translate(6px, -6px) rotate(1.5deg); }
+        }
+        @keyframes rpaWaveArm {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-22deg); }
+          50% { transform: rotate(8deg); }
+          75% { transform: rotate(-18deg); }
+        }
+        @keyframes rpaEyeScan {
+          0%, 100% { transform: translateX(0px); }
+          30% { transform: translateX(-2.5px); }
+          70% { transform: translateX(2.5px); }
+        }
+        @keyframes rpaEyeBlink {
+          0%, 46%, 50%, 96%, 100% { transform: scaleY(1); }
+          48%, 98% { transform: scaleY(0.15); }
+        }
+        @keyframes rpaThrusterPulse {
+          0%, 100% { transform: scaleX(0.9) scaleY(1); opacity: 0.7; }
+          50% { transform: scaleX(1.18) scaleY(1.25); opacity: 1; }
+        }
+        @keyframes rpaAntennaPing {
+          0% { transform: scale(0.9); opacity: 0.9; }
+          100% { transform: scale(2.1); opacity: 0; }
+        }
+        .rpa-bot-roam {
+          animation: rpaBotRoam 4.2s ease-in-out infinite;
+        }
+        .rpa-wave-arm {
+          transform-origin: 68px 54px;
+          animation: rpaWaveArm 2.2s ease-in-out infinite;
+        }
+        .rpa-eye-scan {
+          animation: rpaEyeScan 3.4s ease-in-out infinite;
+        }
+        .rpa-eye-blink {
+          transform-origin: 48px 34px;
+          animation: rpaEyeBlink 4.5s ease-in-out infinite;
+        }
+        .rpa-thruster-pulse {
+          transform-origin: 48px 84px;
+          animation: rpaThrusterPulse 1.3s ease-in-out infinite;
+        }
+        .rpa-antenna-ping {
+          transform-origin: 48px 10px;
+          animation: rpaAntennaPing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+      `}</style>
 
-          {/* Tab 2: Hiring Notification (In Progress) */}
-          <button
-            type="button"
-            onClick={() => setServiceTab('hiring')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              serviceTab === 'hiring'
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
-                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <UserPlus className="w-4 h-4 shrink-0" />
-            <span>
-              {lang === 'ru'
-                ? '2. Прием на работу (Заключение ТД)'
-                : '2. İşe Alım Bildirimi (MVD)'}
-            </span>
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                serviceTab === 'hiring'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
-              }`}
-            >
-              {lang === 'ru' ? 'В работе' : 'İşlemde'}
-            </span>
-          </button>
-
-          {/* Tab 3: Dismissal Notification (Powerise Port) */}
-          <button
-            type="button"
-            onClick={() => setServiceTab('dismissal')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              serviceTab === 'dismissal'
-                ? 'bg-gradient-to-r from-rose-600 to-teal-600 text-white shadow-md'
-                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <UserMinus className="w-4 h-4 shrink-0" />
-            <span>
-              {lang === 'ru'
-                ? '3. Увольнение (Расторжение ТД)'
-                : '3. İşten Çıkış Bildirimi (MVD)'}
-            </span>
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                serviceTab === 'dismissal'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
-              }`}
-            >
-              600585/1
-            </span>
-          </button>
-        </div>
-
-        {/* Shared RPA Agent Status Indicator + Official Blue/Red Gosuslugi Logo in Top Right Corner */}
-        <div className="flex items-center gap-2.5 px-2">
-          <style>{`
-            @keyframes rpaBotRoam {
-              0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
-              25% { transform: translate(-6px, -7px) rotate(-1.5deg); }
-              50% { transform: translate(0px, -11px) rotate(0deg); }
-              75% { transform: translate(6px, -6px) rotate(1.5deg); }
-            }
-            @keyframes rpaWaveArm {
-              0%, 100% { transform: rotate(0deg); }
-              25% { transform: rotate(-22deg); }
-              50% { transform: rotate(8deg); }
-              75% { transform: rotate(-18deg); }
-            }
-            @keyframes rpaEyeScan {
-              0%, 100% { transform: translateX(0px); }
-              30% { transform: translateX(-2.5px); }
-              70% { transform: translateX(2.5px); }
-            }
-            @keyframes rpaEyeBlink {
-              0%, 46%, 50%, 96%, 100% { transform: scaleY(1); }
-              48%, 98% { transform: scaleY(0.15); }
-            }
-            @keyframes rpaThrusterPulse {
-              0%, 100% { transform: scaleX(0.9) scaleY(1); opacity: 0.7; }
-              50% { transform: scaleX(1.18) scaleY(1.25); opacity: 1; }
-            }
-            @keyframes rpaAntennaPing {
-              0% { transform: scale(0.9); opacity: 0.9; }
-              100% { transform: scale(2.1); opacity: 0; }
-            }
-            .rpa-bot-roam {
-              animation: rpaBotRoam 4.2s ease-in-out infinite;
-            }
-            .rpa-wave-arm {
-              transform-origin: 68px 54px;
-              animation: rpaWaveArm 2.2s ease-in-out infinite;
-            }
-            .rpa-eye-scan {
-              animation: rpaEyeScan 3.4s ease-in-out infinite;
-            }
-            .rpa-eye-blink {
-              transform-origin: 48px 34px;
-              animation: rpaEyeBlink 4.5s ease-in-out infinite;
-            }
-            .rpa-thruster-pulse {
-              transform-origin: 48px 84px;
-              animation: rpaThrusterPulse 1.3s ease-in-out infinite;
-            }
-            .rpa-antenna-ping {
-              transform-origin: 48px 10px;
-              animation: rpaAntennaPing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-            }
-          `}</style>
-
-          {isOnline ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              {lang === 'ru' ? 'RPA Агент Онлайн (8088)' : 'RPA Ajanı Aktif (8088)'}
-            </span>
-          ) : (
+      {/* PAGE-CONNECTED TAB BAR + TOP HEADER SECTION */}
+      <div>
+        {/* Connected Folder/Page Tabs Row */}
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-slate-200/90 dark:border-slate-800 pr-2">
+          <div className="flex items-end gap-1 overflow-x-auto no-scrollbar">
+            {/* Tab 1: VKS Salary Notification */}
             <button
-              onClick={() => setShowAgentGuide(!showAgentGuide)}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 cursor-pointer transition"
+              type="button"
+              onClick={() => setServiceTab('vks')}
+              className={`group relative px-4 rounded-t-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border border-b-0 select-none whitespace-nowrap ${
+                serviceTab === 'vks'
+                  ? 'bg-white dark:bg-[#111F38] text-emerald-700 dark:text-emerald-400 border-slate-200/90 dark:border-slate-800 -mb-px z-10 pt-2.5 pb-[11px] shadow-[0_-2px_6px_rgba(15,23,42,0.03)]'
+                  : 'bg-slate-100/90 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200/70 dark:border-slate-800/70 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-200 py-2'
+              }`}
             >
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span>{lang === 'ru' ? 'Агент не запущен (8088)' : 'Ajan Kapalı (8088)'}</span>
-              <HelpCircle className="w-3 h-3 opacity-75" />
+              <span
+                className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
+                  serviceTab === 'vks' ? 'bg-emerald-600 dark:bg-emerald-500 opacity-100' : 'opacity-0'
+                }`}
+              />
+              <Bot
+                className={`w-4 h-4 shrink-0 ${
+                  serviceTab === 'vks'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}
+              />
+              <span>
+                {lang === 'ru'
+                  ? '1. ВКС — Выплата ЗП (МВД)'
+                  : '1. VKS Maaş Bildirimi (MVD)'}
+              </span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                  serviceTab === 'vks'
+                    ? 'bg-emerald-100 dark:bg-emerald-950/90 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/80'
+                    : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                600585/1
+              </span>
             </button>
-          )}
 
-          {/* OFFICIAL GOSUSLUGI BLUE & RED LOGO BADGE (Exact uploaded logo) */}
-          <div
-            className="inline-flex items-center px-3 py-1.5 rounded-xl bg-white dark:bg-white/95 border border-slate-200/90 dark:border-slate-300 shadow-2xs select-none"
-            title="Госуслуги (ЕПГУ 600585/1)"
-          >
-            <img
-              src="/gosuslugi-logo.png"
-              alt="госуслуги"
-              className="h-5 sm:h-5.5 w-auto object-contain block"
-            />
+            {/* Tab 2: Hiring Notification (In Progress) */}
+            <button
+              type="button"
+              onClick={() => setServiceTab('hiring')}
+              className={`group relative px-4 rounded-t-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border border-b-0 select-none whitespace-nowrap ${
+                serviceTab === 'hiring'
+                  ? 'bg-white dark:bg-[#111F38] text-amber-700 dark:text-amber-400 border-slate-200/90 dark:border-slate-800 -mb-px z-10 pt-2.5 pb-[11px] shadow-[0_-2px_6px_rgba(15,23,42,0.03)]'
+                  : 'bg-slate-100/90 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200/70 dark:border-slate-800/70 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-200 py-2'
+              }`}
+            >
+              <span
+                className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
+                  serviceTab === 'hiring' ? 'bg-amber-500 opacity-100' : 'opacity-0'
+                }`}
+              />
+              <UserPlus
+                className={`w-4 h-4 shrink-0 ${
+                  serviceTab === 'hiring'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}
+              />
+              <span>
+                {lang === 'ru'
+                  ? '2. Прием на работу (Заключение ТД)'
+                  : '2. İşe Alım Bildirimi (MVD)'}
+              </span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                  serviceTab === 'hiring'
+                    ? 'bg-amber-100 dark:bg-amber-950/90 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80'
+                    : 'bg-amber-100/70 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400'
+                }`}
+              >
+                {lang === 'ru' ? 'В работе' : 'İşlemde'}
+              </span>
+            </button>
+
+            {/* Tab 3: Dismissal Notification (Powerise Port) */}
+            <button
+              type="button"
+              onClick={() => setServiceTab('dismissal')}
+              className={`group relative px-4 rounded-t-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border border-b-0 select-none whitespace-nowrap ${
+                serviceTab === 'dismissal'
+                  ? 'bg-white dark:bg-[#111F38] text-rose-700 dark:text-rose-400 border-slate-200/90 dark:border-slate-800 -mb-px z-10 pt-2.5 pb-[11px] shadow-[0_-2px_6px_rgba(15,23,42,0.03)]'
+                  : 'bg-slate-100/90 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200/70 dark:border-slate-800/70 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-200 py-2'
+              }`}
+            >
+              <span
+                className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
+                  serviceTab === 'dismissal' ? 'bg-rose-600 dark:bg-rose-500 opacity-100' : 'opacity-0'
+                }`}
+              />
+              <UserMinus
+                className={`w-4 h-4 shrink-0 ${
+                  serviceTab === 'dismissal'
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}
+              />
+              <span>
+                {lang === 'ru'
+                  ? '3. Увольнение (Расторжение ТД)'
+                  : '3. İşten Çıkış Bildirimi (MVD)'}
+              </span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                  serviceTab === 'dismissal'
+                    ? 'bg-rose-100 dark:bg-rose-950/90 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/80'
+                    : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                600585/1
+              </span>
+            </button>
+          </div>
+
+          {/* Shared RPA Agent Status Indicator + Official Blue/Red Gosuslugi Logo in Top Right Corner */}
+          <div className="flex items-center gap-2.5 pb-1.5">
+            {isOnline ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                {lang === 'ru' ? 'RPA Агент Онлайн (8088)' : 'RPA Ajanı Aktif (8088)'}
+              </span>
+            ) : (
+              <button
+                onClick={() => setShowAgentGuide(!showAgentGuide)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 cursor-pointer transition"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span>{lang === 'ru' ? 'Агент не запущен (8088)' : 'Ajan Kapalı (8088)'}</span>
+                <HelpCircle className="w-3 h-3 opacity-75" />
+              </button>
+            )}
+
+            {/* OFFICIAL GOSUSLUGI BLUE & RED LOGO BADGE */}
+            <div
+              className="inline-flex items-center px-3 py-1 rounded-xl bg-white dark:bg-white/95 border border-slate-200/90 dark:border-slate-300 shadow-2xs select-none"
+              title="Госуслуги (ЕПГУ 600585/1)"
+            >
+              <img
+                src="/gosuslugi-logo.png"
+                alt="госуслуги"
+                className="h-4.5 sm:h-5 w-auto object-contain block"
+              />
+            </div>
           </div>
         </div>
+
+        {/* TAB 2: HIRING NOTIFICATION (CONNECTED TO TAB BAR) */}
+        {serviceTab === 'hiring' && (
+          <div className="p-12 bg-white dark:bg-[#111F38] rounded-b-2xl border border-t-0 border-slate-200/90 dark:border-slate-800 text-center space-y-4 shadow-xs">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-xs">
+              <Clock className="w-8 h-8 animate-pulse" />
+            </div>
+            <div className="max-w-lg mx-auto space-y-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800">
+                {lang === 'ru' ? 'Модуль в процессе настройки' : 'Modül Hazırlanıyor (İşlemde)'}
+              </span>
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                {lang === 'ru'
+                  ? 'Уведомление МВД о заключении трудового договора (Прием на работу)'
+                  : 'Gosuslugi MVD İşe Alım Bildirimi (Sözleşme İmzalama)'}
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                {lang === 'ru'
+                  ? 'Автоматическое заполнение формы Госуслуг 600585/1 («О заключении трудового договора с иностранным гражданином») в данный момент находится в разработке. Используйте вкладки «1. ВКС — Выплата ЗП» или «3. Увольнение (Расторжение ТД)».'
+                  : 'Yabancı personelin işe giriş / iş sözleşmesi bildirimi (Gosuslugi 600585/1 — О заключении трудового договора) otomasyon modülü şu anda işlemde. Aktif bildirimler için «1. VKS Maaş Bildirimi» veya «3. İşten Çıkış Bildirimi» sekmelerini kullanabilirsiniz.'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* TAB 2: HIRING NOTIFICATION (IN PROGRESS PLACEHOLDER) */}
-      {serviceTab === 'hiring' && (
-        <div className="p-12 bg-white dark:bg-[#131F38]/95 rounded-2xl border border-slate-200/90 dark:border-slate-800 text-center space-y-4 shadow-xs">
-          <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-xs">
-            <Clock className="w-8 h-8 animate-pulse" />
-          </div>
-          <div className="max-w-lg mx-auto space-y-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800">
-              {lang === 'ru' ? 'Модуль в процессе настройки' : 'Modül Hazırlanıyor (İşlemde)'}
-            </span>
-            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-              {lang === 'ru'
-                ? 'Уведомление МВД о заключении трудового договора (Прием на работу)'
-                : 'Gosuslugi MVD İşe Alım Bildirimi (Sözleşme İmzalama)'}
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              {lang === 'ru'
-                ? 'Автоматическое заполнение формы Госуслуг 600585/1 («О заключении трудового договора с иностранным гражданином») в данный момент находится в разработке. Используйте вкладки «1. ВКС — Выплата ЗП» или «3. Увольнение (Расторжение ТД)».'
-                : 'Yabancı personelin işe giriş / iş sözleşmesi bildirimi (Gosuslugi 600585/1 — О заключении трудового договора) otomasyon modülü şu anda işlemde. Aktif bildirimler için «1. VKS Maaş Bildirimi» veya «3. İşten Çıkış Bildirimi» sekmelerini kullanabilirsiniz.'}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* TAB 3: DISMISSAL NOTIFICATION (PORTED FROM POWERISE WITH FULL PONDERA HR CONTROLS) */}
       {serviceTab === 'dismissal' && (
-        <GosuslugiDismissalPanel
-          activeBridgeUrl={activeBridgeUrl}
-          bridgeStatus={bridgeStatus}
-          onOpenChrome={handleOpenChrome}
-          isLaunchingChrome={isLaunchingChrome}
-          onShowAgentGuide={() => setShowAgentGuide(true)}
-        />
+        <div className="-mt-4">
+          <GosuslugiDismissalPanel
+            activeBridgeUrl={activeBridgeUrl}
+            bridgeStatus={bridgeStatus}
+            onOpenChrome={handleOpenChrome}
+            isLaunchingChrome={isLaunchingChrome}
+            onShowAgentGuide={() => setShowAgentGuide(true)}
+          />
+        </div>
       )}
 
       {/* TAB 1: VKS SALARY NOTIFICATION */}
@@ -1436,36 +1475,8 @@ export default function GosuslugiVksView() {
         className="hidden"
       />
 
-      {/* Toast Notification Banner */}
-      {toastMsg && (
-        <div
-          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-sm transition-all ${
-            toastMsg.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-200'
-              : toastMsg.type === 'error'
-              ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200'
-              : 'bg-teal-50 dark:bg-teal-950/60 border-teal-200 dark:border-teal-800/80 text-teal-800 dark:text-teal-200'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            {toastMsg.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-            )}
-            <span>{toastMsg.text}</span>
-          </div>
-          <button
-            onClick={() => setToastMsg(null)}
-            className="px-2 py-0.5 rounded-lg text-[11px] hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* COMPACT TOP HEADER BAR (Slim Height + Hover Tooltip Info Icon) */}
-      <div className="bg-white dark:bg-gradient-to-r dark:from-[#111F38] dark:via-[#152544] dark:to-[#11263F] rounded-2xl border border-slate-200/90 dark:border-emerald-500/30 px-4 py-3 text-slate-900 dark:text-white shadow-xs dark:shadow-xl relative">
+      {/* COMPACT TOP HEADER BAR (CONNECTED DIRECTLY TO TAB BAR ABOVE) */}
+      <div className="-mt-4 bg-white dark:bg-[#111F38] rounded-b-2xl border border-t-0 border-slate-200/90 dark:border-slate-800 px-4 py-3.5 text-slate-900 dark:text-white shadow-xs relative">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Left: Icon + Title + Hover Tooltip + Status Badges */}
           <div className="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -1799,6 +1810,34 @@ export default function GosuslugiVksView() {
           </div>
         )}
       </div>
+
+      {/* Toast Notification Banner */}
+      {toastMsg && (
+        <div
+          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-sm transition-all ${
+            toastMsg.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-200'
+              : toastMsg.type === 'error'
+              ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200'
+              : 'bg-teal-50 dark:bg-teal-950/60 border-teal-200 dark:border-teal-800/80 text-teal-800 dark:text-teal-200'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {toastMsg.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            )}
+            <span>{toastMsg.text}</span>
+          </div>
+          <button
+            onClick={() => setToastMsg(null)}
+            className="px-2 py-0.5 rounded-lg text-[11px] hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* 5 KPI SUMMARY CARDS (Including Ready vs Blocked/Invalid Data Stats) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -2205,9 +2244,9 @@ export default function GosuslugiVksView() {
         ) : (
           <div className="overflow-x-auto max-h-[540px]">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10.5px] tracking-wider">
+              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10.5px] tracking-wider whitespace-nowrap">
                 <tr>
-                  <th className="p-3 w-9 text-center">
+                  <th className="py-2.5 px-2.5 w-9 text-center">
                     <input
                       type="checkbox"
                       checked={validCount > 0 && validWorkers.every((w) => w.selected)}
@@ -2220,18 +2259,18 @@ export default function GosuslugiVksView() {
                       }
                     />
                   </th>
-                  <th className="p-3 w-10 text-center">№</th>
-                  <th className="p-3">Статус / Проверка данных</th>
-                  <th className="p-3">Код / Sicil</th>
-                  <th className="p-3">ФИО (Кириллица)</th>
-                  <th className="p-3">Гражданство / Д.Р.</th>
-                  <th className="p-3">Паспорт (Серия № / Выдан)</th>
-                  <th className="p-3">ИНН</th>
-                  <th className="p-3">Разрешение ВКС (РНР / Бланк)</th>
-                  <th className="p-3">Договор (Закл. / Начало / Конец)</th>
-                  <th className="p-3">Период ЗП / Индекс</th>
-                  <th className="p-3">Размер выплаты (₽)</th>
-                  <th className="p-3 text-right">Действие</th>
+                  <th className="py-2.5 px-2 w-9 text-center">№</th>
+                  <th className="py-2.5 px-2.5 min-w-[190px]">Статус / Проверка данных</th>
+                  <th className="py-2.5 px-2.5">Код / Sicil</th>
+                  <th className="py-2.5 px-2.5 min-w-[210px]">ФИО (Кириллица)</th>
+                  <th className="py-2.5 px-2.5 min-w-[125px]">Гражданство / Д.Р.</th>
+                  <th className="py-2.5 px-2.5 min-w-[175px]">Паспорт (Серия № / Выдан)</th>
+                  <th className="py-2.5 px-2.5">ИНН</th>
+                  <th className="py-2.5 px-2.5 min-w-[165px]">Разрешение ВКС (РНР / Бланк)</th>
+                  <th className="py-2.5 px-3 min-w-[185px]">Договор (Закл. / Начало / Конец)</th>
+                  <th className="py-2.5 px-2.5 min-w-[155px]">Период ЗП / Индекс</th>
+                  <th className="py-2.5 px-2.5">Размер выплаты (₽)</th>
+                  <th className="py-2.5 px-2.5 text-right">Действие</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 font-mono text-[11.5px]">
@@ -2273,7 +2312,7 @@ export default function GosuslugiVksView() {
                           : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/40'
                       }`}
                     >
-                      <td className="p-3 text-center">
+                      <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
                         <input
                           type="checkbox"
                           checked={isRowValid && w.selected}
@@ -2291,61 +2330,75 @@ export default function GosuslugiVksView() {
                           }
                         />
                       </td>
-                      <td className="p-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                      <td className="py-2.5 px-2 text-center text-slate-400 font-bold whitespace-nowrap">
+                        {idx + 1}
+                      </td>
 
-                      {/* Status & Pre-Flight Validation Column */}
-                      <td className="p-3 min-w-[190px] max-w-[260px]">
+                      {/* Status & Pre-Flight Validation Column (Max 3 lines) */}
+                      <td
+                        className="py-2.5 px-2.5 min-w-[190px] max-w-[235px]"
+                        title={
+                          !isRowValid
+                            ? rowVal.issues.map((iss) => (lang === 'ru' ? iss.ru : iss.tr)).join('\n')
+                            : undefined
+                        }
+                      >
                         {isProcessing && isWaitingManual ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500 text-white shadow-xs animate-pulse">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500 text-white shadow-xs animate-pulse whitespace-nowrap">
                             <AlertCircle className="w-3 h-3" />
                             {lang === 'ru' ? 'Ручная правка...' : 'Manuel Düzeltme...'}
                           </span>
                         ) : isProcessing ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-600 text-white shadow-xs animate-pulse">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-600 text-white shadow-xs animate-pulse whitespace-nowrap">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             {lang === 'ru' ? 'Заполняется...' : 'İşleniyor...'}
                           </span>
                         ) : !isRowValid ? (
-                          <div className="space-y-1 font-sans">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-extrabold bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-700 dark:text-rose-300">
+                          <div className="space-y-0.5 font-sans">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-extrabold bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap">
                               <ShieldAlert className="w-3 h-3 shrink-0" />
                               {lang === 'ru'
                                 ? `Нельзя отправить (${rowVal.issues.length})`
                                 : `İşleme Alınamaz (${rowVal.issues.length})`}
                             </span>
-                            <ul className="text-[10px] leading-tight text-rose-600 dark:text-rose-300 space-y-0.5 pl-1">
-                              {rowVal.issues.map((iss, iIdx) => (
-                                <li key={iIdx} className="flex items-start gap-1">
-                                  <span className="text-rose-500 font-bold">•</span>
-                                  <span>{lang === 'ru' ? iss.ru : iss.tr}</span>
+                            <ul className="text-[10px] leading-tight text-rose-600 dark:text-rose-300 space-y-0.5 pl-0.5">
+                              {rowVal.issues.slice(0, 2).map((iss, iIdx) => (
+                                <li key={iIdx} className="flex items-center gap-1 truncate max-w-[220px]">
+                                  <span className="text-rose-500 font-bold shrink-0">•</span>
+                                  <span className="truncate">
+                                    {lang === 'ru' ? iss.ru : iss.tr}
+                                    {iIdx === 1 && rowVal.issues.length > 2
+                                      ? ` (+${rowVal.issues.length - 2})`
+                                      : ''}
+                                  </span>
                                 </li>
                               ))}
                             </ul>
                           </div>
                         ) : w.status === 'success' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                             <CheckCircle2 className="w-3 h-3" />
                             {lang === 'ru' ? 'Отправлено' : 'Gönderildi'}
                           </span>
                         ) : w.status === 'error' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/40 text-rose-700 dark:text-rose-300">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap">
                             <AlertCircle className="w-3 h-3" />
                             {lang === 'ru' ? 'Ошибка ЕПГУ' : 'Gosuslugi Hatası'}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                             <CheckCircle2 className="w-3 h-3" />
                             {lang === 'ru' ? 'Готов к отправке' : 'İşleme Hazır'}
                           </span>
                         )}
                       </td>
 
-                      <td className="p-3 text-teal-700 dark:text-teal-400 font-bold whitespace-nowrap">
+                      <td className="py-2.5 px-2.5 text-teal-700 dark:text-teal-400 font-bold whitespace-nowrap">
                         {w.code || w.sicil}
                       </td>
 
-                      {/* Full Name */}
-                      <td className="p-3 font-sans font-bold text-slate-900 dark:text-white">
+                      {/* Full Name & Position (Max 3 lines) */}
+                      <td className="py-2.5 px-2.5 font-sans font-bold text-slate-900 dark:text-white min-w-[210px] max-w-[250px]">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[150px]">
                             <input
@@ -2382,23 +2435,31 @@ export default function GosuslugiVksView() {
                             />
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-start gap-1">
                             {isProcessing && (
-                              <ChevronRight className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <ChevronRight className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                             )}
-                            <span className={fErr.name ? 'text-rose-600 dark:text-rose-400' : ''}>
+                            <span
+                              className={`line-clamp-2 leading-snug ${
+                                fErr.name ? 'text-rose-600 dark:text-rose-400' : ''
+                              }`}
+                              title={`${w.lastName || '—'} ${w.firstName || '—'} ${w.middleName || ''}`}
+                            >
                               {w.lastName || '—'} {w.firstName || '—'}{' '}
                               <span className="text-slate-400 font-normal">{w.middleName}</span>
                             </span>
                           </div>
                         )}
-                        <div className="text-[10px] text-slate-400 font-normal mt-0.5">
+                        <div
+                          className="text-[10px] text-slate-400 font-normal mt-0.5 truncate max-w-[235px]"
+                          title={w.position}
+                        >
                           {w.position}
                         </div>
                       </td>
 
-                      {/* Citizenship, Place of Birth & BirthDate */}
-                      <td className="p-3 font-sans">
+                      {/* Citizenship, Place of Birth & BirthDate (2 lines) */}
+                      <td className="py-2.5 px-2.5 font-sans min-w-[125px] whitespace-nowrap">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[130px]">
                             <input
@@ -2441,16 +2502,17 @@ export default function GosuslugiVksView() {
                         ) : (
                           <>
                             <div
-                              className={`font-semibold ${
+                              className={`font-semibold truncate max-w-[140px] ${
                                 fErr.citizenship
                                   ? 'text-rose-600 dark:text-rose-400'
                                   : 'text-slate-700 dark:text-slate-200'
                               }`}
+                              title={w.citizenship}
                             >
                               {w.citizenship || '—'}
                             </div>
                             <div
-                              className={`text-[10.5px] font-mono ${
+                              className={`text-[10.5px] font-mono whitespace-nowrap ${
                                 fErr.birthDate
                                   ? 'text-rose-600 dark:text-rose-400 font-bold underline decoration-wavy'
                                   : 'text-slate-400'
@@ -2462,8 +2524,8 @@ export default function GosuslugiVksView() {
                         )}
                       </td>
 
-                      {/* Passport */}
-                      <td className="p-3">
+                      {/* Passport (2 lines) */}
+                      <td className="py-2.5 px-2.5 min-w-[175px] whitespace-nowrap">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[145px]">
                             <div className="flex gap-1">
@@ -2516,7 +2578,7 @@ export default function GosuslugiVksView() {
                         ) : (
                           <>
                             <div
-                              className={`font-bold ${
+                              className={`font-bold whitespace-nowrap ${
                                 fErr.passport
                                   ? 'text-rose-600 dark:text-rose-400'
                                   : 'text-slate-800 dark:text-slate-200'
@@ -2525,7 +2587,7 @@ export default function GosuslugiVksView() {
                               {w.passportSeries} {w.passportNumber || '—'}
                             </div>
                             <div
-                              className={`text-[10px] truncate max-w-[160px] ${
+                              className={`text-[10px] truncate max-w-[180px] ${
                                 fErr.passport ? 'text-rose-500 font-semibold' : 'text-slate-400'
                               }`}
                               title={`${w.passportIssueDate} ${w.passportIssuedBy}`}
@@ -2536,8 +2598,8 @@ export default function GosuslugiVksView() {
                         )}
                       </td>
 
-                      {/* INN */}
-                      <td className="p-3">
+                      {/* INN (1 line) */}
+                      <td className="py-2.5 px-2.5 whitespace-nowrap">
                         {isEditing ? (
                           <input
                             value={w.inn}
@@ -2558,8 +2620,8 @@ export default function GosuslugiVksView() {
                         )}
                       </td>
 
-                      {/* RNR & Blank */}
-                      <td className="p-3">
+                      {/* RNR & Blank (2 lines, widened) */}
+                      <td className="py-2.5 px-2.5 min-w-[165px] whitespace-nowrap">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[155px]">
                             <div className="flex gap-1">
@@ -2626,7 +2688,7 @@ export default function GosuslugiVksView() {
                         ) : (
                           <>
                             <div
-                              className={`font-semibold ${
+                              className={`font-semibold whitespace-nowrap ${
                                 fErr.rnr
                                   ? 'text-rose-600 dark:text-rose-400 font-bold'
                                   : 'text-slate-800 dark:text-slate-200'
@@ -2635,7 +2697,7 @@ export default function GosuslugiVksView() {
                               РНР: {w.rnrSeries || '—'} {w.rnrNumber || '—'}
                             </div>
                             <div
-                              className={`text-[10px] ${
+                              className={`text-[10px] whitespace-nowrap ${
                                 fErr.rnr ? 'text-rose-500 font-semibold' : 'text-slate-400'
                               }`}
                             >
@@ -2645,10 +2707,10 @@ export default function GosuslugiVksView() {
                         )}
                       </td>
 
-                      {/* Contract Dates */}
-                      <td className="p-3 text-[10.5px] text-slate-600 dark:text-slate-400">
+                      {/* Contract Dates: Widened column, strictly 3 lines (Закл / С / По) instead of 6 lines */}
+                      <td className="py-2.5 px-3 min-w-[185px] whitespace-nowrap text-[10.5px] text-slate-600 dark:text-slate-400">
                         {isEditing ? (
-                          <div className="flex flex-col gap-1 min-w-[145px]">
+                          <div className="flex flex-col gap-1 min-w-[155px]">
                             <div className="flex items-center gap-1">
                               <span className="w-10 text-[9.5px] text-slate-400">Закл:</span>
                               <input
@@ -2697,23 +2759,26 @@ export default function GosuslugiVksView() {
                           </div>
                         ) : (
                           <div
-                            className={
+                            className={`leading-snug space-y-0.5 ${
                               fErr.contract ? 'text-rose-600 dark:text-rose-400 font-bold' : ''
-                            }
+                            }`}
                           >
-                            <div>
-                              Закл:{' '}
+                            <div className="whitespace-nowrap">
+                              Закл.:{' '}
                               <span className="text-slate-800 dark:text-slate-200 font-semibold">
                                 {w.contractDate || '—'}
                               </span>
                             </div>
-                            <div>
-                              С: {w.contractStartDate || '—'} По:{' '}
+                            <div className="whitespace-nowrap">
+                              С: <span className="text-slate-700 dark:text-slate-300">{w.contractStartDate || '—'}</span>
+                            </div>
+                            <div className="whitespace-nowrap">
+                              По:{' '}
                               <span
                                 className={
                                   fErr.contract
                                     ? 'underline decoration-wavy text-rose-600 dark:text-rose-400'
-                                    : ''
+                                    : 'text-slate-700 dark:text-slate-300'
                                 }
                               >
                                 {w.contractEndDate || '—'}
@@ -2723,8 +2788,8 @@ export default function GosuslugiVksView() {
                         )}
                       </td>
 
-                      {/* Salary Period & Postal Code */}
-                      <td className="p-3 text-[10.5px] whitespace-nowrap text-slate-700 dark:text-slate-300">
+                      {/* Salary Period & Postal Code (2 lines) */}
+                      <td className="py-2.5 px-2.5 min-w-[155px] text-[10.5px] whitespace-nowrap text-slate-700 dark:text-slate-300">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[115px]">
                             <input

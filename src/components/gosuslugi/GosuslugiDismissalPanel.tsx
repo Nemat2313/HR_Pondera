@@ -360,7 +360,7 @@ export default function GosuslugiDismissalPanel({
       const params = new URLSearchParams({
         status: 'Ayrılan',
         includeDetails: 'true',
-        limit: '500',
+        limit: '50000',
       });
       if (user) {
         params.set('userScopeType', user.scope_type);
@@ -833,39 +833,9 @@ export default function GosuslugiDismissalPanel({
   });
 
   return (
-    <div className="space-y-5">
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div
-          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 shadow-lg animate-in fade-in duration-200 ${
-            toastMsg.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200'
-              : toastMsg.type === 'error'
-              ? 'bg-rose-50 dark:bg-rose-950/70 border-rose-300 dark:border-rose-700 text-rose-900 dark:text-rose-200'
-              : 'bg-cyan-50 dark:bg-cyan-950/70 border-cyan-300 dark:border-cyan-700 text-cyan-900 dark:text-cyan-200'
-          }`}
-        >
-          <div className="flex items-center gap-2.5 text-xs font-bold">
-            {toastMsg.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            ) : toastMsg.type === 'error' ? (
-              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-            ) : (
-              <Sparkles className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
-            )}
-            <span>{toastMsg.text}</span>
-          </div>
-          <button
-            onClick={() => setToastMsg(null)}
-            className="text-xs font-bold opacity-70 hover:opacity-100 cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Top Action & Configuration Bar */}
-      <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4">
+    <div className="space-y-4">
+      {/* Top Action & Configuration Bar (Connected directly to the top Tab Bar) */}
+      <div className="p-4 sm:p-5 bg-white dark:bg-[#111F38] rounded-b-2xl border border-t-0 border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* Load Dismissed from DB */}
@@ -923,8 +893,8 @@ export default function GosuslugiDismissalPanel({
               onClick={() => setShowConfigPanel(!showConfigPanel)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                 showConfigPanel
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  ? 'bg-teal-600 text-white border-teal-600'
+                  : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <Settings2 className="w-3.5 h-3.5" />
@@ -1035,25 +1005,25 @@ export default function GosuslugiDismissalPanel({
           </div>
         )}
 
-        {/* Filter Pills & Search */}
+        {/* Filter Pills & Search (Light & Dark Mode Harmonized) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-[11px] font-bold gap-1 flex-wrap">
             <button
               onClick={() => setQueueFilter('all')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                 queueFilter === 'all'
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               {lang === 'ru' ? 'Все' : 'Tümü'} ({syncedWorkers.length})
             </button>
             <button
               onClick={() => setQueueFilter('ready')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                 queueFilter === 'ready'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
               }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1063,10 +1033,12 @@ export default function GosuslugiDismissalPanel({
             </button>
             <button
               onClick={() => setQueueFilter('invalid')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                 queueFilter === 'invalid'
-                  ? 'bg-rose-600 text-white'
-                  : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                  ? 'bg-rose-600 text-white shadow-2xs'
+                  : invalidWorkersCount > 0
+                  ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
               }`}
             >
               <ShieldAlert className="w-3.5 h-3.5" />
@@ -1076,10 +1048,10 @@ export default function GosuslugiDismissalPanel({
             </button>
             <button
               onClick={() => setQueueFilter('sent')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                 queueFilter === 'sent'
-                  ? 'bg-cyan-600 text-white'
-                  : 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300'
+                  ? 'bg-teal-600 text-white shadow-2xs'
+                  : 'text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40'
               }`}
             >
               {lang === 'ru' ? 'Отправлено' : 'Gönderildi'} ({sentCount})
@@ -1114,13 +1086,43 @@ export default function GosuslugiDismissalPanel({
         </div>
       </div>
 
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div
+          className={`p-3 rounded-xl border flex items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200 ${
+            toastMsg.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-200 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200'
+              : toastMsg.type === 'error'
+              ? 'bg-rose-50 dark:bg-rose-950/70 border-rose-200 dark:border-rose-700 text-rose-900 dark:text-rose-200'
+              : 'bg-teal-50 dark:bg-teal-950/70 border-teal-200 dark:border-teal-700 text-teal-900 dark:text-teal-200'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 text-xs font-bold">
+            {toastMsg.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            ) : toastMsg.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+            )}
+            <span>{toastMsg.text}</span>
+          </div>
+          <button
+            onClick={() => setToastMsg(null)}
+            className="text-xs font-bold opacity-70 hover:opacity-100 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Workers Table */}
-      <div className="bg-white dark:bg-[#131F38]/95 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="overflow-x-auto max-h-[500px]">
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-slate-50 dark:bg-slate-900/90 text-slate-600 dark:text-slate-300 font-bold uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3 px-3">
+                <th className="py-2.5 px-3">
                   <input
                     type="checkbox"
                     checked={validWorkersCount > 0 && selectedValidCount === validWorkersCount}
@@ -1128,16 +1130,16 @@ export default function GosuslugiDismissalPanel({
                     className="rounded border-slate-300 cursor-pointer"
                   />
                 </th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Статус / Проверка' : 'Durum / Kontrol'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Таб. №' : 'Sicil'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'ФИО (Кириллица)' : 'Ad Soyad (Kiril)'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Дата рожд. / Пол' : 'Doğum / Cinsiyet'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Гражданство' : 'Uyruk'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Паспорт (Серия/№/Дата/Кем)' : 'Pasaport Bilgileri'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Патент и Бланк' : 'Patent & Blank No'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Дата приема / увольнения' : 'Giriş / Çıkış Tarihi'}</th>
-                <th className="py-3 px-3">{lang === 'ru' ? 'Должность / Собств. жел.' : 'Görev / İstifa'}</th>
-                <th className="py-3 px-3 text-right">{lang === 'ru' ? 'Действия' : 'İşlem'}</th>
+                <th className="py-2.5 px-3 min-w-[165px]">{lang === 'ru' ? 'Статус / Проверка' : 'Durum / Kontrol'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Таб. №' : 'Sicil'}</th>
+                <th className="py-2.5 px-3 min-w-[180px]">{lang === 'ru' ? 'ФИО (Кириллица)' : 'Ad Soyad (Kiril)'}</th>
+                <th className="py-2.5 px-3 min-w-[120px]">{lang === 'ru' ? 'Дата рожд. / Пол' : 'Doğum / Cinsiyet'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Гражданство' : 'Uyruk'}</th>
+                <th className="py-2.5 px-3 min-w-[175px]">{lang === 'ru' ? 'Паспорт (Серия/№/Дата/Кем)' : 'Pasaport Bilgileri'}</th>
+                <th className="py-2.5 px-3 min-w-[160px]">{lang === 'ru' ? 'Патент и Бланк' : 'Patent & Blank No'}</th>
+                <th className="py-2.5 px-3 min-w-[155px]">{lang === 'ru' ? 'Дата приема / увольнения' : 'Giriş / Çıkış Tarihi'}</th>
+                <th className="py-2.5 px-3 min-w-[145px]">{lang === 'ru' ? 'Должность / Собств. жел.' : 'Görev / İstifa'}</th>
+                <th className="py-2.5 px-3 text-right">{lang === 'ru' ? 'Действия' : 'İşlem'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -1216,10 +1218,10 @@ export default function GosuslugiDismissalPanel({
                           {w.sicil}
                         </td>
                         <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-900 dark:text-white">
+                          <div className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
                             {w.lastName} {w.firstName}
                           </div>
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[200px]">
                             {w.middleName || '—'}
                           </div>
                         </td>
@@ -1234,7 +1236,7 @@ export default function GosuslugiDismissalPanel({
                           <div className="font-mono font-bold text-slate-900 dark:text-white">
                             {w.passportSeries} {w.passportNumber || '—'}
                           </div>
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[160px]">
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[175px]" title={`${w.passportIssueDate} ${w.passportIssuedBy}`}>
                             {w.passportIssueDate} • {w.passportIssuedBy}
                           </div>
                         </td>
@@ -1255,7 +1257,7 @@ export default function GosuslugiDismissalPanel({
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
-                          <div className="font-semibold text-slate-900 dark:text-white truncate max-w-[140px]">
+                          <div className="font-semibold text-slate-900 dark:text-white truncate max-w-[150px]" title={w.position}>
                             {w.position}
                           </div>
                           <div className="text-[10px] text-slate-500 dark:text-slate-400">
@@ -1466,42 +1468,44 @@ export default function GosuslugiDismissalPanel({
         </div>
       </div>
 
-      {/* Live Playwright Robot Terminal */}
-      <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-lg">
-        <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs text-slate-300">
-          <div className="flex items-center gap-2 font-mono font-bold">
-            <Terminal className="w-4 h-4 text-emerald-400" />
+      {/* Live Playwright Robot Log Panel (Light & Dark Mode Harmonized) */}
+      <div className="rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 font-mono">
+          <div className="flex items-center gap-2 font-sans font-bold text-slate-700 dark:text-slate-200">
+            <Terminal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>
               {lang === 'ru'
                 ? 'Журнал выполнения RPA (Увольнение — Госуслуги 600585/1)'
                 : 'Canlı RPA Robot Günlüğü (İşten Çıkış — Gosuslugi 600585/1)'}
             </span>
           </div>
-          <span className="text-[11px] font-mono text-slate-400">
-            {lang === 'ru' ? 'Успешно:' : 'Başarılı:'} <strong className="text-emerald-400">{bridgeStatus.success}</strong> •{' '}
-            {lang === 'ru' ? 'Ошибок:' : 'Hata:'} <strong className="text-rose-400">{bridgeStatus.errors}</strong>
+          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            {lang === 'ru' ? 'Успешно:' : 'Başarılı:'}{' '}
+            <strong className="text-emerald-600 dark:text-emerald-400">{bridgeStatus.success}</strong> •{' '}
+            {lang === 'ru' ? 'Ошибок:' : 'Hata:'}{' '}
+            <strong className="text-rose-600 dark:text-rose-400">{bridgeStatus.errors}</strong>
           </span>
         </div>
-        <div className="p-4 h-44 overflow-y-auto font-mono text-[11px] space-y-1 text-slate-300">
+        <div className="p-3 font-mono text-[11px] text-slate-700 dark:text-slate-300 max-h-40 overflow-y-auto space-y-1 bg-slate-50/50 dark:bg-slate-950/70">
           {bridgeStatus.logs.length === 0 ? (
-            <p className="text-slate-500">
+            <p className="text-slate-400 dark:text-slate-500 italic">
               {lang === 'ru'
                 ? 'Ожидание запуска робота (Увольнение)...'
                 : 'İşten çıkış robotunun başlatılması bekleniyor...'}
             </p>
           ) : (
             bridgeStatus.logs.map((l, idx) => (
-              <div key={idx} className="leading-relaxed">
-                <span className="text-slate-500 mr-2">[{l.time}]</span>
+              <div key={idx} className="flex items-start gap-2 leading-snug">
+                <span className="text-slate-400 dark:text-slate-500 shrink-0">[{l.time}]</span>
                 <span
                   className={
                     l.text.includes('SUCCESS')
-                      ? 'text-emerald-400 font-bold'
+                      ? 'text-emerald-600 dark:text-emerald-400 font-bold'
                       : l.text.includes('ERROR') || l.text.includes('Ошибка')
-                      ? 'text-rose-400 font-bold'
+                      ? 'text-rose-600 dark:text-rose-400 font-bold'
                       : l.text.includes('Step')
-                      ? 'text-cyan-300'
-                      : 'text-slate-200'
+                      ? 'text-teal-700 dark:text-teal-300 font-bold'
+                      : 'text-slate-700 dark:text-slate-300'
                   }
                 >
                   {l.text}
