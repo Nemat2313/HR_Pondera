@@ -304,82 +304,106 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Step 1: Navigate to https://www.gosuslugi.ru/600585/1/form
-        logger.info("Step 1: Navigating to Gosuslugi Service 600585/1/form...")
-        try:
-            self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=60000)
-        except Exception as e:
-            logger.warning(f"Navigation warning: {e}")
+        # Step 1: Navigate to https://www.gosuslugi.ru/600585/1/form (or reuse immediately if already open on form/modal)
+        cur_url_now = self.page.url or ""
+        already_on_form_modal = (
+            "600585/1/form" in cur_url_now
+            and self.page.locator(
+                "button:has-text('Создать заявление'):visible, "
+                "button:has-text('Создать новое заявление'):visible, "
+                "button:has-text('Новое заявление'):visible, "
+                "button:has-text('Начать'):visible, "
+                "span:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible"
+            ).count() > 0
+        )
 
-        self.page.wait_for_timeout(2500)
+        if already_on_form_modal:
+            logger.info("Step 1: Gosuslugi 600585/1/form modal is already open in Chrome — skipping reload!")
+        else:
+            logger.info("Step 1: Navigating to Gosuslugi Service 600585/1/form...")
+            try:
+                self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=60000)
+            except Exception as e:
+                logger.warning(f"Navigation warning: {e}")
+
+            # Poll quickly (every 300ms, max 8s) until any interactive button/option on 600585/1/form becomes visible
+            for _ in range(26):
+                self.check_and_handle_error_modal()
+                if self.page.locator(
+                    "button:has-text('Создать заявление'):visible, "
+                    "button:has-text('Создать новое заявление'):visible, "
+                    "button:has-text('Новое заявление'):visible, "
+                    "button:has-text('Начать'):visible, "
+                    "span:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible, "
+                    "epgu-cf-ui-long-button:has-text('О выплате'):visible"
+                ).count() > 0:
+                    break
+                self.page.wait_for_timeout(300)
+
         self.check_and_handle_error_modal()
 
-        try:
-            self.page.wait_for_selector("text=/Уведомления о трудовой деятельности/i", timeout=20000)
-        except Exception:
-            pass
-
-        # Step 2: Check for 'Создать новое заявление' / 'Новое заявление' modal & 'Начать' (auto-scroll to bottom so user never needs to scroll)
-        for _ in range(3):
-            try:
-                self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            except Exception:
-                pass
-            self.page.wait_for_timeout(700)
+        # Step 2: Immediately click 'Создать заявление' / 'Создать новое заявление' & 'Начать' if present
+        for _ in range(4):
+            # Break immediately if Step 3 ('О выплате зарплаты...') is already visible
+            if self.page.locator(
+                "span:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible, "
+                "epgu-cf-ui-long-button:has-text('О выплате'):visible"
+            ).count() > 0:
+                break
 
             clicked_step2 = False
             try:
                 new_order_btn = self.page.locator(
-                    "button:has-text('Создать новое заявление'), "
-                    "span:has-text('Создать новое заявление'), "
-                    "button:has-text('Создать заявление'), "
-                    "button:has-text('Новое заявление'), "
-                    "span:has-text('Новое заявление'), "
-                    "a:has-text('Создать новое заявление')"
+                    "button:has-text('Создать заявление'):visible, "
+                    "button:has-text('Создать новое заявление'):visible, "
+                    "button:has-text('Новое заявление'):visible, "
+                    "a:has-text('Создать заявление'):visible, "
+                    "a:has-text('Создать новое заявление'):visible, "
+                    "span:has-text('Создать заявление'):visible, "
+                    "span:has-text('Создать новое заявление'):visible"
                 ).first
-                if new_order_btn.count() > 0:
+                if new_order_btn.count() > 0 and new_order_btn.is_visible():
+                    logger.info("Step 2: Clicking 'Создать заявление' immediately...")
                     try:
-                        new_order_btn.scroll_into_view_if_needed(timeout=2000)
+                        new_order_btn.scroll_into_view_if_needed(timeout=1500)
                     except Exception:
                         pass
-                    if new_order_btn.is_visible():
-                        logger.info("Step 2: Auto-scrolling & clicking 'Создать новое заявление'...")
-                        try:
-                            new_order_btn.click(timeout=3000)
-                        except Exception:
-                            new_order_btn.evaluate("el => (el.closest('button, a') || el).click()")
-                        clicked_step2 = True
-                        self.page.wait_for_timeout(2000)
+                    try:
+                        new_order_btn.click(timeout=2500)
+                    except Exception:
+                        new_order_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                    clicked_step2 = True
+                    self.page.wait_for_timeout(900)
             except Exception:
                 pass
 
             try:
                 start_btn = self.page.locator(
-                    "button:has-text('Начать'), "
-                    "span:has-text('Начать'), "
-                    "a:has-text('Начать')"
+                    "button:has-text('Начать'):visible, "
+                    "a:has-text('Начать'):visible, "
+                    "span:has-text('Начать'):visible"
                 ).first
-                if start_btn.count() > 0:
+                if start_btn.count() > 0 and start_btn.is_visible():
+                    logger.info("Step 2b: Clicking 'Начать'...")
                     try:
-                        start_btn.scroll_into_view_if_needed(timeout=2000)
+                        start_btn.scroll_into_view_if_needed(timeout=1500)
                     except Exception:
                         pass
-                    if start_btn.is_visible():
-                        logger.info("Step 2b: Auto-scrolling & clicking 'Начать'...")
-                        try:
-                            start_btn.click(timeout=3000)
-                        except Exception:
-                            start_btn.evaluate("el => (el.closest('button, a') || el).click()")
-                        clicked_step2 = True
-                        self.page.wait_for_timeout(2000)
+                    try:
+                        start_btn.click(timeout=2500)
+                    except Exception:
+                        start_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                    clicked_step2 = True
+                    self.page.wait_for_timeout(900)
             except Exception:
                 pass
 
-            # Break early once Step 3 ('О выплате зарплаты...') is visible on screen
-            if self.page.locator("text=/О выплате зарплаты/i").count() > 0:
-                break
             if not clicked_step2:
-                break
+                try:
+                    self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(350)
 
         # Step 3: Select 'О выплате зарплаты высококвалифицированному специалисту'
         logger.info("Step 3: Selecting 'О выплате зарплаты высококвалифицированному специалисту'...")
@@ -391,7 +415,7 @@ class GosuslugiVksBot:
         ).first
         vks_option.wait_for(state="visible", timeout=20000)
         vks_option.click()
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(1200)
 
         # Step 4: Click 'Перейти к уведомлению'
         logger.info("Step 4: Clicking 'Перейти к уведомлению'...")
@@ -571,6 +595,9 @@ class GosuslugiVksBot:
         work_addr = str(row.get("АдресРаботы", "")).strip() or self.cfg["WORK_ADDRESS"]
         postal_code = str(row.get("Индекс", "")).strip() or str(self.cfg["WORK_POSTAL_CODE"])
 
+        # Parse explicit House (д. / дом / стр. / вл.) and Apartment/Office (кв. / оф. / помещ.) from work_addr
+        parsed_house, parsed_apt = self.parse_address_house_and_apt(work_addr)
+
         # Ensure closed-mode checkboxes (houseCheckboxClosed, apartmentCheckboxClosed) are unchecked before typing into textarea
         for closed_fcn in ("houseCheckboxClosed", "apartmentCheckboxClosed"):
             try:
@@ -606,7 +633,7 @@ class GosuslugiVksBot:
             self.page.wait_for_timeout(200)
             self.page.keyboard.type(dadata_query, delay=30)
 
-        self.page.wait_for_timeout(2000)
+        self.page.wait_for_timeout(1800)
 
         # Select matching FIAS/DaData suggestion item from dropdown
         try:
@@ -619,14 +646,14 @@ class GosuslugiVksBot:
                     if txt_i.endswith("квартал 5") or txt_i.endswith("кв-л 5") or txt_i.endswith("5-й"):
                         lookup_items.nth(idx_i).click()
                         clicked_kv5 = True
-                        self.page.wait_for_timeout(1000)
+                        self.page.wait_for_timeout(900)
                         break
                 if not clicked_kv5:
                     lookup_items.first.click()
-                    self.page.wait_for_timeout(1000)
+                    self.page.wait_for_timeout(900)
             elif item_count > 0:
                 lookup_items.first.click()
-                self.page.wait_for_timeout(1000)
+                self.page.wait_for_timeout(900)
         except Exception:
             pass
 
@@ -637,75 +664,93 @@ class GosuslugiVksBot:
                 if clarify_btn.count() > 0 and clarify_btn.is_visible():
                     logger.info("Clicking 'Уточнить адрес' to open detailed address fields...")
                     clarify_btn.click()
-                    self.page.wait_for_timeout(800)
+                    self.page.wait_for_timeout(700)
         except Exception:
             pass
 
-        # Fill Postal Index (input#index) and ensure all 6 digits are entered
+        # Fill Postal Index (input#index) AND click the lookup suggestion item (e.g. '626150') if it pops up!
         logger.info(f"Checking/Filling Postal Code (Индекс): {postal_code}...")
-        try:
-            idx_input = self.page.locator("input#index:visible").first
-            idx_input.wait_for(state="visible", timeout=5000)
-            for attempt in range(3):
-                cur_val = idx_input.input_value().strip()
-                if cur_val == postal_code:
-                    break
-                idx_input.click()
-                self.page.wait_for_timeout(150)
-                self.page.keyboard.press("Control+A")
-                for _ in range(8):
-                    self.page.keyboard.press("Backspace")
-                    self.page.keyboard.press("Delete")
-                self.page.wait_for_timeout(150)
-                idx_input.press_sequentially(postal_code, delay=75)
-                self.page.wait_for_timeout(250)
-                self.page.keyboard.press("Tab")
-                self.page.wait_for_timeout(300)
-        except Exception as e:
-            logger.warning(f"Postal code input warning: {e}")
+        self.fill_postal_code_strict(postal_code)
 
-        # If address is '5-й' (industrial zone without house number), ensure 'input#house' is empty and 'Нет дома' is checked
-        logger.info("Checking 'Нет дома' if applicable...")
+        # Smart House (Дом) & 'Нет дома' handling:
+        # - If address has a house number (parsed_house or DaData filled input#house and not industrial zone 5-й):
+        #   leave 'Нет дома' FALSE (unchecked) and ensure input#house has the house number.
+        # - Otherwise (no house number): ensure input#house is empty and 'Нет дома' is TRUE (checked).
         try:
             house_inp = self.page.locator("input#house:visible").first
-            if is_tobolsk_kv5 and house_inp.count() > 0 and house_inp.input_value().strip():
-                house_inp.click()
-                self.page.keyboard.press("Control+A")
-                self.page.keyboard.press("Backspace")
-                self.page.wait_for_timeout(200)
+            if is_tobolsk_kv5 and not parsed_house:
+                if house_inp.count() > 0 and house_inp.input_value().strip():
+                    house_inp.click()
+                    self.page.keyboard.press("Control+A")
+                    self.page.keyboard.press("Backspace")
+                    self.page.wait_for_timeout(150)
 
-            house_val = house_inp.input_value().strip() if house_inp.count() > 0 else ""
-            if not house_val:
-                house_cb_inp = self.page.locator("lib-checkbox[formcontrolname='houseCheckbox'] input[type='checkbox']").first
-                if house_cb_inp.count() > 0:
-                    if not house_cb_inp.is_checked():
-                        self.page.locator("lib-checkbox[formcontrolname='houseCheckbox'] label.check").first.click()
-                        self.page.wait_for_timeout(300)
-                else:
-                    no_house_lbl = self.page.locator("label:has-text('Нет дома'):visible").last
-                    if no_house_lbl.count() > 0:
-                        no_house_lbl.click()
-                        self.page.wait_for_timeout(300)
-        except Exception as e:
-            logger.debug(f"'Нет дома' check note: {e}")
+            current_house_val = house_inp.input_value().strip() if house_inp.count() > 0 else ""
+            effective_house = parsed_house or ("" if is_tobolsk_kv5 else current_house_val)
 
-        # Check 'Нет квартиры' (lib-checkbox[formcontrolname='apartmentCheckbox'] inside .extended-fields)
-        logger.info("Checking 'Нет квартиры'...")
-        try:
-            apt_cb_inp = self.page.locator("lib-checkbox[formcontrolname='apartmentCheckbox'] input[type='checkbox']").first
-            if apt_cb_inp.count() > 0:
-                if not apt_cb_inp.is_checked():
-                    self.page.locator("lib-checkbox[formcontrolname='apartmentCheckbox'] label.check").first.click()
-                    self.page.wait_for_timeout(300)
+            if effective_house:
+                logger.info(f"Address has House No '{effective_house}' -> keeping 'Нет дома' FALSE and filling Дом...")
+                self.set_address_checkbox("Нет дома", "houseCheckbox", False)
+                if house_inp.count() > 0 and house_inp.input_value().strip() != effective_house:
+                    house_inp.click()
+                    self.page.keyboard.press("Control+A")
+                    self.page.keyboard.press("Backspace")
+                    house_inp.press_sequentially(effective_house, delay=60)
+                    self.page.wait_for_timeout(400)
+                    house_opt = self.page.locator(f".lookup-item:has-text('{effective_house}'):visible").first
+                    if house_opt.count() > 0 and house_opt.is_visible():
+                        house_opt.click()
+                        self.page.wait_for_timeout(300)
+                    else:
+                        self.page.keyboard.press("Tab")
             else:
-                no_apt_lbl = self.page.locator("label:has-text('Нет квартиры'):visible").last
-                if no_apt_lbl.count() > 0:
-                    no_apt_lbl.click()
-                    self.page.wait_for_timeout(300)
+                logger.info("Address has no House No -> setting 'Нет дома' = TRUE...")
+                self.set_address_checkbox("Нет дома", "houseCheckbox", True)
         except Exception as e:
-            logger.warning(f"Could not click 'Нет квартиры': {e}")
+            logger.debug(f"House / 'Нет дома' handling note: {e}")
+
+        # Smart Apartment (Квартира) & 'Нет квартиры' handling:
+        # - If address has an apartment/office number (parsed_apt or DaData filled input#apartment):
+        #   leave 'Нет квартиры' FALSE (unchecked) and fill Квартира.
+        # - Otherwise: set 'Нет квартиры' = TRUE (checked).
+        try:
+            apt_inp = self.page.locator(
+                "input#apartment:visible, input#flat:visible, input[formcontrolname*='apart']:visible, input[id*='apart']:visible"
+            ).first
+            current_apt_val = apt_inp.input_value().strip() if apt_inp.count() > 0 else ""
+            effective_apt = parsed_apt or current_apt_val
+
+            if effective_apt:
+                logger.info(f"Address has Apartment/Office No '{effective_apt}' -> keeping 'Нет квартиры' FALSE and filling Квартира...")
+                self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", False)
+                if apt_inp.count() > 0 and apt_inp.input_value().strip() != effective_apt:
+                    apt_inp.click()
+                    self.page.keyboard.press("Control+A")
+                    self.page.keyboard.press("Backspace")
+                    apt_inp.press_sequentially(effective_apt, delay=60)
+                    self.page.wait_for_timeout(300)
+                    self.page.keyboard.press("Tab")
+            else:
+                logger.info("Address has no Apartment No -> setting 'Нет квартиры' = TRUE...")
+                self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+        except Exception as e:
+            logger.debug(f"Apartment / 'Нет квартиры' handling note: {e}")
 
         self.page.wait_for_timeout(500)
+
+        # Fallback Check: If 'Продолжить' is STILL not active (grey/disabled) or red address errors exist,
+        # automatically re-verify postal code and force 'Нет дома' / 'Нет квартиры' = TRUE so the form can advance!
+        if not self.is_continue_button_ready():
+            logger.info("Step 10 Fallback: 'Продолжить' not yet active — trying checkbox & postal code auto-recovery...")
+            self.fill_postal_code_strict(postal_code)
+            red_errs = self.has_red_validation_errors()
+            house_inp = self.page.locator("input#house:visible").first
+            house_empty = (house_inp.count() == 0) or (not house_inp.input_value().strip())
+            if "Необходимо указать дом" in red_errs or house_empty or not self.is_continue_button_ready():
+                self.set_address_checkbox("Нет дома", "houseCheckbox", True)
+            if "Необходимо указать квартиру" in red_errs or not effective_apt or not self.is_continue_button_ready():
+                self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+            self.page.wait_for_timeout(600)
 
         # Strictly verify 'Продолжить' is enabled (blue) and no red errors exist before advancing!
         self.click_continue_strict("Шаг 10: Договор и Адрес работы", 2000)
@@ -736,95 +781,313 @@ class GosuslugiVksBot:
         self.type_masked_input("#si17_paid, input[name='si17_paid']", paid_amount, delay=35)
         self.page.wait_for_timeout(600)
 
-        self.click_continue_strict("Шаг 11: Выплата зарплаты ВКС", 2500)
+        self.click_continue_strict("Шаг 11: Выплата зарплаты ВКС", 2000)
 
-        # Step 12: MVD Destination Division ('Подразделение МВД, куда отправится уведомление')
-        logger.info("Step 12: Waiting for MVD Destination Division screen...")
-        self.check_and_handle_error_modal()
-        try:
-            self.page.locator("h1:has-text('Подразделение МВД')").first.wait_for(state="visible", timeout=20000)
-        except Exception:
-            pass
-        self.page.wait_for_timeout(1000)
-        self.click_continue_strict("Шаг 12: Подразделение МВД", 2000)
+        # Steps 12 -> 13 -> 14 -> 15: Resilient State-Machine Loop through MVD Division, Consents, and Final 'Отправить'
+        gosuslugi_order_no = self.complete_mvd_and_submit_flow()
 
-        # Step 13: Employee Consent Modal ('Подтвердите, что получили согласие работника' -> 'Подтвердить')
-        logger.info("Step 13: Confirming Employee Consent ('Подтвердить')...")
-        self.check_and_handle_error_modal()
-        try:
-            confirm_btn = self.page.locator("button:has-text('Подтвердить'), span:has-text('Подтвердить')").first
-            confirm_btn.wait_for(state="visible", timeout=10000)
-            confirm_btn.click()
-            self.page.wait_for_timeout(1500)
-        except Exception as e:
-            logger.debug(f"Consent modal note: {e}")
-
-        # Step 14: Organization Personal Data Consent ('Согласие на обработку персональных данных' -> 'Продолжить')
-        logger.info("Step 14: Confirming Personal Data Processing Consent ('Продолжить')...")
-        self.check_and_handle_error_modal()
-        try:
-            if self.page.locator("button:has-text('Продолжить'):visible").count() > 0:
-                self.click_continue_strict("Шаг 14: Согласие на обработку ПДн", 1500)
-        except Exception:
-            pass
-
-        # Step 15: Submit Notification ('Отправить' / 'Отправить уведомление') or verify final screen ('В личный кабинет')
-        logger.info("Step 15: Checking for 'Отправить' / 'Отправить уведомление' or final confirmation screen...")
-        self.check_and_handle_error_modal()
-        gosuslugi_order_no = ""
-        try:
-            final_or_submit = self.page.locator(
-                "button:has-text('Отправить'):visible, "
-                "a:has-text('Отправить'):visible, "
-                "lib-button:has-text('Отправить'):visible, "
-                "span:has-text('Отправить'):visible, "
-                "button:has-text('В личный кабинет'):visible, "
-                "a:has-text('В личный кабинет'):visible"
-            ).first
-            final_or_submit.wait_for(state="visible", timeout=15000)
-
-            submit_btn = self.page.locator(
-                "button:has-text('Отправить уведомление'):visible, "
-                "button:has-text('Отправить'):visible, "
-                "lib-button:has-text('Отправить'):visible, "
-                "a:has-text('Отправить'):visible, "
-                "span:has-text('Отправить'):visible"
-            ).first
-            if submit_btn.count() > 0 and submit_btn.is_visible():
-                try:
-                    submit_btn.scroll_into_view_if_needed(timeout=3000)
-                except Exception:
-                    pass
-                try:
-                    submit_btn.focus()
-                    submit_btn.click(timeout=5000)
-                except Exception:
-                    submit_btn.evaluate("el => el.click()")
-                logger.info(">>> 'Отправить' CLICKED! Waiting for Gosuslugi confirmation screen... <<<")
-                self.page.wait_for_timeout(2000)
-                # If button is still visible on 'Уведомление готово к отправке', trigger native JS click on button
-                if self.page.locator("text='Уведомление готово к отправке'").count() > 0 and submit_btn.is_visible():
-                    try:
-                        submit_btn.evaluate("el => (el.closest('button, a') || el).click()")
-                    except Exception:
-                        pass
-                self.page.wait_for_timeout(3500)
-                self.check_and_handle_error_modal()
-            else:
-                logger.info(">>> Final notification screen ('В личный кабинет') reached! <<<")
-
-            gosuslugi_order_no = self.extract_gosuslugi_order_number()
-            if gosuslugi_order_no:
-                logger.info(f"Step 15: Captured Gosuslugi Application No: {gosuslugi_order_no}")
-        except Exception as e:
-            logger.warning(f"Step 15 submission check note: {e}")
-
-        # Step 16: Personal Cabinet & Receipt PDF Download + Rename (<GosuslugiNo>_<Ad Soyad>_<Donem>.pdf)
+        # Step 16: Personal Cabinet & Receipt PDF Download + Rename (<Sicil>_<GosuslugiNo>_<Ad Soyad>_<Donem>.pdf)
         self.execute_step16_cabinet_and_download(row, gosuslugi_order_no)
 
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to count success
         logger.info(f"SUCCESS: Notification submitted for {full_name}!")
         return True
+
+    def is_continue_button_ready(self) -> bool:
+        """Returns True if 'Продолжить' button is visible, enabled, and no red validation errors are on screen."""
+        red_errs = self.has_red_validation_errors()
+        if len(red_errs) > 0:
+            return False
+        btn_locator = self.page.locator("button:has-text('Продолжить'):visible").last
+        if btn_locator.count() == 0:
+            return False
+        disabled_attr = btn_locator.get_attribute("disabled")
+        cls_attr = btn_locator.get_attribute("class") or ""
+        is_disabled = (disabled_attr is not None) or ("disabled" in cls_attr) or (not btn_locator.is_enabled())
+        return not is_disabled
+
+    def parse_address_house_and_apt(self, work_addr: str):
+        """
+        Extracts explicit house number (д., дом) and apartment/office number (кв., квартира, оф., офис)
+        from a Russian address string, ignoring 'кв-л' / 'квартал'.
+        """
+        clean_addr = re.sub(r"кв-л\.?\s*\d+[-йа-я]*", "", work_addr, flags=re.IGNORECASE)
+        clean_addr = re.sub(r"квартал\s*\d+[-йа-я]*", "", clean_addr, flags=re.IGNORECASE)
+
+        house_val = ""
+        m_house = re.search(
+            r"(?:^|[\s,])(?:д\.|дом|вл\.|владение)\s*([0-9]+[а-яА-Яa-zA-Z0-9/\-]*)",
+            clean_addr,
+            re.IGNORECASE,
+        )
+        if m_house:
+            house_val = m_house.group(1).strip(" .,")
+
+        apt_val = ""
+        m_apt = re.search(
+            r"(?:^|[\s,])(?:кв\.|квартира|оф\.|офис|помещ\.|пом\.|каб\.)\s*([0-9]+[а-яА-Яa-zA-Z0-9/\-]*)",
+            clean_addr,
+            re.IGNORECASE,
+        )
+        if m_apt:
+            apt_val = m_apt.group(1).strip(" .,")
+
+        return house_val, apt_val
+
+    def fill_postal_code_strict(self, postal_code: str):
+        """Fills 6-digit postal code into input#index and selects the autocomplete dropdown item if shown."""
+        if not postal_code:
+            return
+        try:
+            idx_input = self.page.locator("input#index:visible").first
+            if idx_input.count() == 0:
+                return
+            for _ in range(3):
+                cur_val = idx_input.input_value().strip()
+                if cur_val == postal_code:
+                    # Also close any open lookup dropdown for postal code by clicking the matching item
+                    idx_opt = self.page.locator(
+                        f".lookup-item:has-text('{postal_code}'):visible, "
+                        f"li:has-text('{postal_code}'):visible, "
+                        f"div.lookup-item:has-text('{postal_code}'):visible"
+                    ).first
+                    if idx_opt.count() > 0 and idx_opt.is_visible():
+                        try:
+                            idx_opt.click(timeout=1500)
+                            self.page.wait_for_timeout(250)
+                        except Exception:
+                            pass
+                    break
+
+                idx_input.click()
+                self.page.wait_for_timeout(120)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(120)
+                idx_input.press_sequentially(postal_code, delay=65)
+                self.page.wait_for_timeout(450)
+
+                # If Gosuslugi shows a popup suggestion with the postal code (e.g. '626150'), click it!
+                idx_opt = self.page.locator(
+                    f".lookup-item:has-text('{postal_code}'):visible, "
+                    f"li:has-text('{postal_code}'):visible, "
+                    f"div.lookup-item:has-text('{postal_code}'):visible"
+                ).first
+                if idx_opt.count() > 0 and idx_opt.is_visible():
+                    try:
+                        idx_opt.click(timeout=1500)
+                        self.page.wait_for_timeout(300)
+                    except Exception:
+                        self.page.keyboard.press("ArrowDown")
+                        self.page.keyboard.press("Enter")
+                        self.page.wait_for_timeout(250)
+                else:
+                    self.page.keyboard.press("Tab")
+                    self.page.wait_for_timeout(250)
+        except Exception as e:
+            logger.warning(f"Postal code input warning: {e}")
+
+    def set_address_checkbox(self, label_text: str, form_control_name: str, should_check: bool):
+        """Reliably sets 'Нет дома' or 'Нет квартиры' checkbox to should_check (True/False)."""
+        try:
+            # Prefer visible lib-checkbox with matching formcontrolname or label text
+            cb_containers = self.page.locator(
+                f"lib-checkbox[formcontrolname='{form_control_name}']:visible, "
+                f"lib-checkbox:has-text('{label_text}'):visible"
+            )
+            if cb_containers.count() > 0:
+                target_cb = cb_containers.last
+                inp = target_cb.locator("input[type='checkbox']").first
+                is_currently_checked = False
+                if inp.count() > 0:
+                    try:
+                        is_currently_checked = inp.is_checked()
+                    except Exception:
+                        cls_str = (target_cb.get_attribute("class") or "") + " " + (inp.get_attribute("class") or "")
+                        is_currently_checked = "checked" in cls_str
+                if is_currently_checked != should_check:
+                    lbl = target_cb.locator("label.check, label").first
+                    if lbl.count() > 0 and lbl.is_visible():
+                        lbl.click(timeout=2000)
+                    else:
+                        target_cb.click(timeout=2000)
+                    self.page.wait_for_timeout(250)
+                return
+
+            # Fallback: visible label with text
+            lbl_loc = self.page.locator(f"label:has-text('{label_text}'):visible").last
+            if lbl_loc.count() > 0 and lbl_loc.is_visible() and should_check:
+                lbl_loc.click(timeout=2000)
+                self.page.wait_for_timeout(250)
+        except Exception as e:
+            logger.debug(f"set_address_checkbox({label_text}, {should_check}) note: {e}")
+
+    def complete_mvd_and_submit_flow(self) -> str:
+        """
+        State-machine loop for Steps 12 -> 13 -> 14 -> 15:
+        Advances through 'Подразделение МВД', 'Подтвердить' consent modal, 'Согласие на обработку ПДн',
+        and reliably clicks 'Отправить' on 'Уведомление готово к отправке' until 'Уведомление отправлено'
+        or 'В личный кабинет' is reached.
+        """
+        logger.info("Steps 12-15: Advancing through MVD division, consents, and final 'Отправить' screen...")
+        gosuslugi_order_no = ""
+
+        for tick in range(55):
+            self.check_and_handle_error_modal()
+            cur_url = self.page.url or ""
+
+            # 1) Check if we have ALREADY reached the final confirmation screen ('Уведомление отправлено' / 'В личный кабинет') or lk.gosuslugi.ru
+            sent_text = self.page.locator("text='Уведомление отправлено':visible, text='Заявление отправлено':visible")
+            cabinet_btn = self.page.locator(
+                "button:has-text('В личный кабинет'):visible, "
+                "a:has-text('В личный кабинет'):visible, "
+                "span:has-text('В личный кабинет'):visible"
+            )
+            if sent_text.count() > 0 or cabinet_btn.count() > 0 or "lk.gosuslugi.ru" in cur_url:
+                logger.info(">>> Final confirmation screen ('Уведомление отправлено' / 'В личный кабинет') reached! <<<")
+                gosuslugi_order_no = self.extract_gosuslugi_order_number()
+                if gosuslugi_order_no:
+                    logger.info(f"Step 15: Captured Gosuslugi Application No: {gosuslugi_order_no}")
+                return gosuslugi_order_no
+
+            # 2) Check if 'Уведомление готово к отправке' or 'Отправить' button is visible on screen
+            ready_to_send_heading = self.page.locator("text='Уведомление готово к отправке':visible")
+            submit_candidates = self.page.locator(
+                "button:has-text('Отправить уведомление'):visible, "
+                "button:has-text('Отправить'):visible, "
+                "epgu-cf-ui-button:has-text('Отправить'):visible, "
+                "lib-button:has-text('Отправить'):visible, "
+                "a.button:has-text('Отправить'):visible"
+            )
+            if ready_to_send_heading.count() > 0 or submit_candidates.count() > 0:
+                logger.info("Step 15: 'Уведомление готово к отправке' detected — clicking 'Отправить'...")
+                self.click_otpravit_bulletproof()
+                self.page.wait_for_timeout(2200)
+                continue
+
+            # 3) Check if Employee Consent Modal ('Подтвердите, что получили согласие работника' -> 'Подтвердить') is visible
+            confirm_btn = self.page.locator(
+                "button:has-text('Подтвердить'):visible, "
+                "lib-button:has-text('Подтвердить'):visible, "
+                "span:has-text('Подтвердить'):visible"
+            ).first
+            if confirm_btn.count() > 0 and confirm_btn.is_visible():
+                logger.info("Step 13: Clicking 'Подтвердить' on employee consent modal...")
+                try:
+                    confirm_btn.click(timeout=2500)
+                except Exception:
+                    confirm_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                self.page.wait_for_timeout(1200)
+                continue
+
+            # 4) Check if 'Продолжить' button is visible (Step 12: Подразделение МВД or Step 14: Согласие на обработку ПДн)
+            cont_btn = self.page.locator("button:has-text('Продолжить'):visible").last
+            if cont_btn.count() > 0 and cont_btn.is_visible():
+                disabled_attr = cont_btn.get_attribute("disabled")
+                cls_attr = cont_btn.get_attribute("class") or ""
+                is_disabled = (disabled_attr is not None) or ("disabled" in cls_attr) or (not cont_btn.is_enabled())
+                if not is_disabled:
+                    h_txt = self.get_current_heading()
+                    logger.info(f"Steps 12/14: Clicking active 'Продолжить' on '{h_txt or 'MVD/Consent'}'...")
+                    try:
+                        cont_btn.focus()
+                        cont_btn.click(timeout=3000)
+                    except Exception:
+                        cont_btn.evaluate("el => (el.closest('button') || el).click()")
+                    self.page.wait_for_timeout(1500)
+                    continue
+
+            self.page.wait_for_timeout(800)
+
+        gosuslugi_order_no = self.extract_gosuslugi_order_number()
+        return gosuslugi_order_no
+
+    def click_otpravit_bulletproof(self):
+        """
+        Clicks the blue 'Отправить' button on the 'Уведомление готово к отправке' screen
+        using 3 independent strategies (Playwright click, Mouse bounding-box click, and DOM JS dispatch)
+        so Angular/Gosuslugi always registers the submission.
+        """
+        selectors = [
+            "epgu-cf-ui-constructor-screen-pad button:has-text('Отправить'):visible",
+            "epgu-cf-ui-button:has-text('Отправить') button:visible",
+            "lib-button:has-text('Отправить') button:visible",
+            "button.button:has-text('Отправить'):visible",
+            "button:has-text('Отправить уведомление'):visible",
+            "button:has-text('Отправить'):visible",
+            "epgu-cf-ui-button:has-text('Отправить'):visible",
+            "lib-button:has-text('Отправить'):visible",
+            "span:has-text('Отправить'):visible",
+        ]
+        target = None
+        for sel in selectors:
+            loc = self.page.locator(sel)
+            if loc.count() > 0:
+                # Pick the last visible match (main form action button at bottom of card)
+                for idx in range(loc.count() - 1, -1, -1):
+                    cand = loc.nth(idx)
+                    if cand.is_visible():
+                        target = cand
+                        break
+            if target is not None:
+                break
+
+        if target is None:
+            return
+
+        try:
+            target.scroll_into_view_if_needed(timeout=2000)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(200)
+
+        # Method 1: Standard Playwright focus + click
+        clicked = False
+        try:
+            target.focus()
+            target.click(timeout=3000, force=False)
+            clicked = True
+            logger.info(">>> 'Отправить' clicked via Playwright! <<<")
+        except Exception:
+            pass
+
+        # Wait briefly and check if still on 'Уведомление готово к отправке'
+        self.page.wait_for_timeout(900)
+        if self.page.locator("text='Уведомление готово к отправке':visible").count() == 0 and clicked:
+            return
+
+        # Method 2: Physical mouse coordinate click at center of the button bounding box
+        try:
+            box = target.bounding_box()
+            if box and box["width"] > 5 and box["height"] > 5:
+                cx = box["x"] + box["width"] / 2
+                cy = box["y"] + box["height"] / 2
+                self.page.mouse.move(cx, cy)
+                self.page.wait_for_timeout(100)
+                self.page.mouse.down()
+                self.page.wait_for_timeout(80)
+                self.page.mouse.up()
+                logger.info(f">>> 'Отправить' clicked via Mouse Coordinates ({int(cx)}, {int(cy)})! <<<")
+        except Exception:
+            pass
+
+        self.page.wait_for_timeout(900)
+        if self.page.locator("text='Уведомление готово к отправке':visible").count() == 0:
+            return
+
+        # Method 3: DOM JavaScript click on button / closest button / inner button
+        try:
+            target.evaluate(
+                """el => {
+                    const btn = el.closest('button') || el.querySelector('button') || el;
+                    btn.focus();
+                    btn.click();
+                    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                }"""
+            )
+            logger.info(">>> 'Отправить' clicked via DOM JavaScript dispatch! <<<")
+        except Exception:
+            pass
 
     def execute_step16_cabinet_and_download(self, row: Dict[str, Any], gosuslugi_order_no: str = ""):
         """
@@ -1092,6 +1355,8 @@ class GosuslugiVksBot:
 
         if not downloaded_path or not downloaded_path.exists():
             logger.warning("Step 16: PDF download was triggered, but the new file was not detected in ~/Downloads.")
+            if gosuslugi_order_no:
+                self.register_application_submission(row, gosuslugi_order_no, "")
             return None
 
         # Determine Gosuslugi Number prefix:
@@ -1105,20 +1370,94 @@ class GosuslugiVksBot:
             else (gosuslugi_order_no or self.extract_gosuslugi_order_number() or stem)
         )
 
+        sicil = re.sub(r'[<>:"/\\|?*]+', "", str(row.get("Sicil") or row.get("Код") or "").strip())
         worker_name = self.build_clean_worker_name(row)
         period_code = self.compute_vks_period_code(row)
 
-        new_filename = f"{final_gosuslugi_no}_{worker_name}_{period_code}.pdf"
+        if sicil:
+            new_filename = f"{sicil}_{final_gosuslugi_no}_{worker_name}_{period_code}.pdf"
+        else:
+            new_filename = f"{final_gosuslugi_no}_{worker_name}_{period_code}.pdf"
         new_filepath = downloads_dir / new_filename
 
         try:
             if downloaded_path.resolve() != new_filepath.resolve():
                 os.replace(str(downloaded_path), str(new_filepath))
             logger.info(f"Step 16: Renamed Gosuslugi PDF '{downloaded_path.name}' -> '{new_filename}'")
+            self.register_application_submission(row, final_gosuslugi_no, new_filename)
             return str(new_filepath)
         except Exception as e:
             logger.warning(f"Step 16: Could not rename '{downloaded_path}' to '{new_filepath}': {e}")
+            self.register_application_submission(row, final_gosuslugi_no, downloaded_path.name)
             return str(downloaded_path)
+
+    def register_application_submission(self, row: Dict[str, Any], application_no: str, pdf_filename: str = ""):
+        """
+        Records the Gosuslugi Application Number (№ Заявления) and PDF filename for EBA upload & status tracking:
+        1) Emits structured 'APPLICATION_REGISTERED: {...}' log line for rpa_bridge_server.py
+        2) Persists to local 'gosuslugi_applications.json'
+        3) Posts to Pondera HR '/api/gosuslugi/submissions' SQLite endpoint
+        """
+        app_no = str(application_no or "").strip()
+        if not app_no:
+            return
+        sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
+        worker_name = self.build_clean_worker_name(row)
+        citizenship = str(row.get("ТекущееГражданство", "")).strip()
+        period_code = self.compute_vks_period_code(row)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        entry = {
+            "sicil": sicil,
+            "sicil_no": sicil,
+            "worker_name": worker_name,
+            "citizenship": citizenship,
+            "notification_type": "vks_salary",
+            "period_code": period_code,
+            "application_no": app_no,
+            "gosuslugi_status": "Заявление зарегистрировано",
+            "pdf_filename": pdf_filename,
+            "submitted_at": now_str,
+        }
+
+        # 1) Emit structured log line for rpa_bridge_server.py
+        logger.info(f"APPLICATION_REGISTERED: {json.dumps(entry, ensure_ascii=False)}")
+
+        # 2) Save to local JSON ledger
+        ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+        try:
+            existing = []
+            if os.path.exists(ledger_path):
+                with open(ledger_path, "r", encoding="utf-8") as lf:
+                    existing = json.load(lf)
+                    if not isinstance(existing, list):
+                        existing = []
+            updated = False
+            for idx, item in enumerate(existing):
+                if str(item.get("sicil")) == sicil and str(item.get("period_code")) == period_code:
+                    existing[idx] = {**item, **entry}
+                    updated = True
+                    break
+            if not updated:
+                existing.append(entry)
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                json.dump(existing, lf, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.debug(f"Could not write gosuslugi_applications.json: {e}")
+
+        # 3) Post to Pondera HR Next.js API (non-blocking)
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                "http://localhost:3000/api/gosuslugi/submissions",
+                data=json.dumps(entry, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=2.5) as _:
+                pass
+        except Exception:
+            pass
 
 
 def load_excel_records(file_path: str, sheet_name: str = "Sheet1") -> List[Dict[str, Any]]:

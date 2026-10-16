@@ -35,6 +35,7 @@ import {
   UserPlus,
   UserMinus,
   Clock,
+  RefreshCw,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -44,6 +45,20 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import GosuslugiDismissalPanel from './GosuslugiDismissalPanel';
+
+export interface GosuslugiSubmissionEntry {
+  sicil_no?: string;
+  worker_name?: string;
+  citizenship?: string;
+  notification_type?: string;
+  period_code?: string;
+  application_no: string;
+  gosuslugi_status?: string;
+  status_detail?: string;
+  pdf_filename?: string;
+  submitted_at?: string;
+  checked_at?: string;
+}
 
 interface BridgeStatus {
   status: 'online' | 'offline';
@@ -60,6 +75,7 @@ interface BridgeStatus {
   manual_message?: string | null;
   completed_codes?: string[];
   error_codes?: string[];
+  submissions?: Record<string, GosuslugiSubmissionEntry>;
   logs: Array<{ time: string; text: string }>;
 }
 
@@ -421,6 +437,9 @@ export default function GosuslugiVksView() {
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [isLaunchingChrome, setIsLaunchingChrome] = useState(false);
   const [isStartingRobot, setIsStartingRobot] = useState(false);
+  const [isCheckingStatuses, setIsCheckingStatuses] = useState(false);
+  const [savedSubmissions, setSavedSubmissions] = useState<Record<string, GosuslugiSubmissionEntry>>({});
+  const syncedAppsRef = useRef<Set<string>>(new Set());
   const [toastMsg, setToastMsg] = useState<{
     type: 'success' | 'error' | 'info';
     text: string;
@@ -438,6 +457,37 @@ export default function GosuslugiVksView() {
       setToastMsg((prev) => (prev?.text === text ? null : prev));
     }, 5500);
   };
+
+  // Load saved Gosuslugi application numbers and statuses from Pondera HR DB
+  useEffect(() => {
+    let active = true;
+    const loadSavedSubmissions = async () => {
+      try {
+        const res = await fetch('/api/gosuslugi/submissions?type=VKS_SALARY');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (active && json.success && Array.isArray(json.data)) {
+          const bySicil: Record<string, GosuslugiSubmissionEntry> = {};
+          for (const row of json.data as GosuslugiSubmissionEntry[]) {
+            if (row.sicil_no) {
+              bySicil[String(row.sicil_no)] = row;
+            }
+            if (row.application_no) {
+              bySicil[`app:${row.application_no}`] = row;
+              syncedAppsRef.current.add(`${row.application_no}:${row.gosuslugi_status || ''}`);
+            }
+          }
+          setSavedSubmissions(bySicil);
+        }
+      } catch {
+        // Silent fallback
+      }
+    };
+    loadSavedSubmissions();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Format YYYY-MM-DD or Excel serial date to DD.MM.YYYY
   const formatDateRu = (val: any): string => {
@@ -473,13 +523,27 @@ export default function GosuslugiVksView() {
     let validCnt = 0;
     let invalidCnt = 0;
     const processed = list.map((w) => {
-      const v = validateVksWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr');
+      const codeKey = w.code || w.sicil;
+      const savedSub =
+        (codeKey && savedSubmissions[codeKey]) ||
+        (w.applicationNo && savedSubmissions[`app:${w.applicationNo}`]);
+      const enriched: GosuslugiVksWorkerRecord = savedSub
+        ? {
+            ...w,
+            applicationNo: w.applicationNo || savedSub.application_no,
+            gosuslugiStatus: w.gosuslugiStatus || savedSub.gosuslugi_status || 'Отправлено',
+            pdfFilename: w.pdfFilename || savedSub.pdf_filename,
+            status: savedSub.application_no ? 'success' : w.status,
+          }
+        : w;
+
+      const v = validateVksWorkerRecord(enriched, lang === 'ru' ? 'ru' : 'tr');
       if (v.isValid) {
         validCnt++;
-        return { ...w, selected: true };
+        return { ...enriched, selected: true };
       } else {
         invalidCnt++;
-        return { ...w, selected: false };
+        return { ...enriched, selected: false };
       }
     });
     return { processed, validCnt, invalidCnt };
@@ -498,14 +562,71 @@ export default function GosuslugiVksView() {
               setActiveBridgeUrl(url);
               setBridgeStatus(data);
 
+              // Sync any newly registered applications or updated statuses from RPA bridge to Pondera DB
+              if (data.submissions && Object.keys(data.submissions).length > 0) {
+                const subValues = Object.values(data.submissions);
+                const unsynced = subValues.filter((s) => {
+                  if (!s.application_no) return false;
+                  const sig = `${s.application_no}:${s.gosuslugi_status || ''}`;
+                  if (syncedAppsRef.current.has(sig)) return false;
+                  syncedAppsRef.current.add(sig);
+                  return true;
+                });
+
+                if (unsynced.length > 0) {
+                  setSavedSubmissions((prev) => {
+                    const next = { ...prev };
+                    for (const s of unsynced) {
+                      if (s.sicil_no) next[String(s.sicil_no)] = s;
+                      if (s.application_no) next[`app:${s.application_no}`] = s;
+                    }
+                    return next;
+                  });
+                  fetch('/api/gosuslugi/submissions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ records: unsynced }),
+                  }).catch(() => {});
+                }
+              }
+
               setWorkers((prev) =>
                 prev.map((w) => {
                   const codeKey = w.code || w.sicil;
+                  let nextW = w;
+
+                  // Enrich with application number & status from bridge submissions
+                  if (data.submissions) {
+                    const matchedSub = Object.values(data.submissions).find(
+                      (s) =>
+                        (codeKey && s.sicil_no && String(s.sicil_no) === String(codeKey)) ||
+                        (w.applicationNo && s.application_no === w.applicationNo)
+                    );
+                    if (matchedSub) {
+                      const nextAppNo = matchedSub.application_no || w.applicationNo;
+                      const nextGosStatus = matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено';
+                      const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
+                      if (
+                        nextAppNo !== w.applicationNo ||
+                        nextGosStatus !== w.gosuslugiStatus ||
+                        nextPdf !== w.pdfFilename
+                      ) {
+                        nextW = {
+                          ...nextW,
+                          applicationNo: nextAppNo,
+                          gosuslugiStatus: nextGosStatus,
+                          pdfFilename: nextPdf,
+                          status: 'success',
+                        };
+                      }
+                    }
+                  }
+
                   if (data.completed_codes && codeKey && data.completed_codes.includes(codeKey)) {
-                    return w.status === 'success' ? w : { ...w, status: 'success' };
+                    return nextW.status === 'success' ? nextW : { ...nextW, status: 'success' };
                   }
                   if (data.error_codes && codeKey && data.error_codes.includes(codeKey)) {
-                    return w.status === 'error' ? w : { ...w, status: 'error' };
+                    return nextW.status === 'error' ? nextW : { ...nextW, status: 'error' };
                   }
                   const isCurrent =
                     data.running &&
@@ -515,12 +636,12 @@ export default function GosuslugiVksView() {
                           .toLowerCase()
                           .includes(data.active_worker_name.toLowerCase())));
                   if (isCurrent) {
-                    return w.status === 'processing' ? w : { ...w, status: 'processing' };
+                    return nextW.status === 'processing' ? nextW : { ...nextW, status: 'processing' };
                   }
-                  if (!data.running && w.status === 'processing') {
-                    return { ...w, status: 'pending' };
+                  if (!data.running && nextW.status === 'processing') {
+                    return { ...nextW, status: 'pending' };
                   }
-                  return w;
+                  return nextW;
                 })
               );
             }
@@ -1163,6 +1284,105 @@ export default function GosuslugiVksView() {
     }
   };
 
+  // Second Button (Item 5): Scan downloaded PDFs & Query Gosuslugi statuses by application_no (№ Заявления)
+  const handleCheckGosuslugiStatuses = async () => {
+    if (bridgeStatus.status !== 'online') {
+      setShowAgentGuide(true);
+      showNotice(
+        'error',
+        lang === 'ru'
+          ? 'Локальный RPA агент не запущен! Скачайте обновлённый агент и запустите START_PONDERA_RPA_BRIDGE.bat'
+          : 'Yerel RPA Ajanı çalışmıyor! Lütfen güncel ajan paketini indirip START_PONDERA_RPA_BRIDGE.bat dosyasını çalıştırın.'
+      );
+      return;
+    }
+
+    setIsCheckingStatuses(true);
+    try {
+      // 1. First scan ~/Downloads on the bridge for any existing PDFs (<Sicil>_<AppNo>_... or <AppNo>_...)
+      let scannedList: GosuslugiSubmissionEntry[] = [];
+      try {
+        const scanRes = await fetch(`${activeBridgeUrl}/scan-pdfs`, { method: 'POST' });
+        if (scanRes.ok) {
+          const scanJson = await scanRes.json();
+          if (scanJson.submissions) {
+            scannedList = Object.values(scanJson.submissions);
+          }
+        }
+      } catch {
+        // Ignore scan error
+      }
+
+      // 2. Merge with workers that have applicationNo and savedSubmissions from DB
+      const appMap = new Map<string, GosuslugiSubmissionEntry>();
+      for (const s of Object.values(savedSubmissions)) {
+        if (s.application_no) {
+          appMap.set(s.application_no, s);
+        }
+      }
+      for (const s of scannedList) {
+        if (s.application_no) {
+          appMap.set(s.application_no, { ...(appMap.get(s.application_no) || {}), ...s });
+        }
+      }
+      for (const w of workers) {
+        if (w.applicationNo) {
+          appMap.set(w.applicationNo, {
+            sicil_no: w.sicil || w.code,
+            worker_name: `${w.lastName} ${w.firstName}`.trim(),
+            citizenship: w.citizenship,
+            notification_type: 'VKS_SALARY',
+            period_code: periodCode,
+            application_no: w.applicationNo,
+            gosuslugi_status: w.gosuslugiStatus || 'Отправлено',
+            pdf_filename: w.pdfFilename || '',
+          });
+        }
+      }
+
+      const recordsToCheck = Array.from(appMap.values());
+      if (recordsToCheck.length > 0) {
+        // Persist scanned PDF application numbers to Pondera DB immediately
+        fetch('/api/gosuslugi/submissions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: recordsToCheck }),
+        }).catch(() => {});
+      }
+
+      // 3. Launch the standalone Gosuslugi Status Checker script on the bridge
+      const res = await fetch(`${activeBridgeUrl}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'check_status',
+          records: recordsToCheck,
+        }),
+      });
+
+      if (res.ok) {
+        showNotice(
+          'success',
+          lang === 'ru'
+            ? `Запущена проверка статусов заявлений на Госуслугах (${recordsToCheck.length} заявл.: «Услуга оказана» / «Услуга отказана»)...`
+            : `Gosuslugi başvuru durum sorgulama robotu başlatıldı (${recordsToCheck.length} başvuru no: «Услуга оказана» / «Услуга отказана»)...`
+        );
+      } else {
+        const err = await res.json();
+        showNotice('error', err.error || 'Durum sorgulama başlatılamadı.');
+      }
+    } catch {
+      showNotice(
+        'error',
+        lang === 'ru'
+          ? 'Ошибка запуска проверки статусов Госуслуг.'
+          : 'Gosuslugi durum sorgulama başlatılırken hata oluştu.'
+      );
+    } finally {
+      setIsCheckingStatuses(false);
+    }
+  };
+
   const isOnline = bridgeStatus.status === 'online';
   const isRunning = bridgeStatus.running;
   const isWaitingManual = Boolean(bridgeStatus.waiting_for_manual && isRunning);
@@ -1193,7 +1413,8 @@ export default function GosuslugiVksView() {
       w.sicil.toLowerCase().includes(q) ||
       w.passportNumber.toLowerCase().includes(q) ||
       w.inn.toLowerCase().includes(q) ||
-      w.rnrNumber.toLowerCase().includes(q)
+      w.rnrNumber.toLowerCase().includes(q) ||
+      (w.applicationNo && w.applicationNo.toLowerCase().includes(q))
     );
   });
 
@@ -1687,12 +1908,14 @@ export default function GosuslugiVksView() {
                   className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
                 />
               </div>
-              <div className="md:w-80 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-800 dark:text-emerald-300">
+              <div className="md:w-88 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-800 dark:text-emerald-300">
                 <div className="font-bold">
-                  {lang === 'ru' ? 'Формат скачиваемого PDF:' : 'İndirilen PDF Dosya Adı Formatı:'}
+                  {lang === 'ru'
+                    ? 'Формат PDF (с табельным № для EBA):'
+                    : 'İndirilen PDF Formatı (EBA Sicil No ile):'}
                 </div>
                 <div className="font-mono font-bold truncate">
-                  {`<GosuslugiNo>_<Ad Soyad>_${periodCode || '2026-3'}.pdf`}
+                  {`<Sicil>_<GosuslugiNo>_<Ad Soyad>_${periodCode || '2026-3'}.pdf`}
                 </div>
               </div>
             </div>
@@ -2179,6 +2402,28 @@ export default function GosuslugiVksView() {
                     : `2. Seçilenleri Gosuslugi'ye Gönder (${selectedValidCount})`}
                 </span>
               </button>
+
+              <button
+                onClick={handleCheckGosuslugiStatuses}
+                disabled={isCheckingStatuses}
+                title={
+                  lang === 'ru'
+                    ? 'Проверить статусы отправленных заявлений по № заявления на Госуслугах («Услуга оказана» / «Услуга отказана»)'
+                    : 'Kaydedilen başvuru numaralarından (№ Заявления) Gosuslugi durumlarını sorgula («Услуга оказана» / «Услуга отказана»)'
+                }
+                className="h-9 px-3.5 rounded-xl border border-indigo-200 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-800 dark:text-indigo-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 ${
+                    isCheckingStatuses ? 'animate-spin' : ''
+                  }`}
+                />
+                <span>
+                  {lang === 'ru'
+                    ? '3. Проверить статусы ГУ (№ Заявл.)'
+                    : '3. Başvuru Durumlarını Sorgula (№)'}
+                </span>
+              </button>
             </>
           )}
         </div>
@@ -2260,7 +2505,7 @@ export default function GosuslugiVksView() {
                     />
                   </th>
                   <th className="py-2.5 px-2 w-9 text-center">№</th>
-                  <th className="py-2.5 px-2.5 min-w-[190px]">Статус / Проверка данных</th>
+                  <th className="py-2.5 px-2.5 min-w-[205px]">Статус ГУ / № Заявления</th>
                   <th className="py-2.5 px-2.5">Код / Sicil</th>
                   <th className="py-2.5 px-2.5 min-w-[210px]">ФИО (Кириллица)</th>
                   <th className="py-2.5 px-2.5 min-w-[125px]">Гражданство / Д.Р.</th>
@@ -2334,13 +2579,13 @@ export default function GosuslugiVksView() {
                         {idx + 1}
                       </td>
 
-                      {/* Status & Pre-Flight Validation Column (Max 3 lines) */}
+                      {/* Status & Application Number Column (Max 3 lines) */}
                       <td
-                        className="py-2.5 px-2.5 min-w-[190px] max-w-[235px]"
+                        className="py-2.5 px-2.5 min-w-[205px] max-w-[245px]"
                         title={
                           !isRowValid
                             ? rowVal.issues.map((iss) => (lang === 'ru' ? iss.ru : iss.tr)).join('\n')
-                            : undefined
+                            : w.pdfFilename || undefined
                         }
                       >
                         {isProcessing && isWaitingManual ? (
@@ -2375,11 +2620,37 @@ export default function GosuslugiVksView() {
                               ))}
                             </ul>
                           </div>
-                        ) : w.status === 'success' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                            <CheckCircle2 className="w-3 h-3" />
-                            {lang === 'ru' ? 'Отправлено' : 'Gönderildi'}
-                          </span>
+                        ) : w.status === 'success' || w.applicationNo ? (
+                          <div className="space-y-0.5 leading-tight">
+                            {w.gosuslugiStatus &&
+                            /отказан|ошибк|возврат/i.test(w.gosuslugiStatus) ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap font-sans">
+                                <AlertCircle className="w-3 h-3 shrink-0" />
+                                {w.gosuslugiStatus}
+                              </span>
+                            ) : w.gosuslugiStatus &&
+                              /оказан|исполнен|принят/i.test(w.gosuslugiStatus) ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-100 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-200 whitespace-nowrap font-sans">
+                                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                {w.gosuslugiStatus}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 whitespace-nowrap font-sans">
+                                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                {w.gosuslugiStatus || (lang === 'ru' ? 'Отправлено' : 'Gönderildi')}
+                              </span>
+                            )}
+                            {w.applicationNo && (
+                              <div className="text-[10.5px] font-mono font-bold text-indigo-700 dark:text-indigo-300 truncate">
+                                № {w.applicationNo}
+                              </div>
+                            )}
+                            {w.pdfFilename && (
+                              <div className="text-[9.5px] text-slate-400 truncate max-w-[220px]">
+                                PDF: {w.pdfFilename}
+                              </div>
+                            )}
+                          </div>
                         ) : w.status === 'error' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap">
                             <AlertCircle className="w-3 h-3" />

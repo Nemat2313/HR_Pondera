@@ -33,6 +33,9 @@ export interface GosuslugiVksWorkerRecord {
   periodEnd: string; // КонецПериода (di17_end)
   salaryAmount: string; // РазмерВыплаты (si17_paid)
   position: string; // Должность
+  applicationNo?: string; // № Заявления Госуслуги (напр. 8255536023)
+  gosuslugiStatus?: string; // Статус на Госуслугах (Услуга оказана / Услуга отказана / В обработке / Отправлено)
+  pdfFilename?: string; // Имя скачанного PDF-файла
 }
 
 export const GOSUSLUGI_VKS_EXCEL_COLUMNS = [
@@ -64,6 +67,8 @@ export const GOSUSLUGI_VKS_EXCEL_COLUMNS = [
   'Должность',
   'АдресРаботы',
   'Индекс',
+  'НомерЗаявления',
+  'СтатусГосуслуги',
 ];
 
 export function exportGosuslugiVksExcel(records: GosuslugiVksWorkerRecord[], filename?: string) {
@@ -96,6 +101,8 @@ export function exportGosuslugiVksExcel(records: GosuslugiVksWorkerRecord[], fil
     r.position || 'СПЕЦИАЛИСТ',
     r.workAddress || '',
     r.postalCode || '626150',
+    r.applicationNo || '',
+    r.gosuslugiStatus || '',
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([GOSUSLUGI_VKS_EXCEL_COLUMNS, ...rows]);
@@ -129,6 +136,8 @@ export function exportGosuslugiVksExcel(records: GosuslugiVksWorkerRecord[], fil
     { wch: 18 }, // Должность
     { wch: 35 }, // АдресРаботы
     { wch: 10 }, // Индекс
+    { wch: 16 }, // НомерЗаявления
+    { wch: 18 }, // СтатусГосуслуги
   ];
 
   const wb = XLSX.utils.book_new();

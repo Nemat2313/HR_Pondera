@@ -1,8 +1,9 @@
 """
 Pondera HR & Powerise Local RPA Bridge Server
 Listens on http://127.0.0.1:8088 and http://localhost:8088 to bridge web UI commands
-directly to local Playwright automation (VKS Salary Notification, Hiring, Dismissal) and Chrome instances.
-Includes full Chrome Private Network Access (PNA), CORS support, and Human-in-the-Loop manual intervention.
+directly to local Playwright automation (VKS Salary Notification, Hiring, Dismissal, Status Check) and Chrome instances.
+Includes full Chrome Private Network Access (PNA), CORS support, Human-in-the-Loop manual intervention,
+and Gosuslugi Application Number (№ Заявления) + Status synchronization.
 """
 
 import sys
@@ -12,6 +13,7 @@ import socket
 import threading
 import subprocess
 import time
+from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
@@ -22,6 +24,62 @@ PORT = 8088
 CHROME_CDP_PORT = 9222
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
+APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+
+
+def load_saved_applications():
+    items = []
+    if os.path.exists(APPLICATIONS_LEDGER):
+        try:
+            with open(APPLICATIONS_LEDGER, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    items = data
+        except Exception:
+            pass
+    return items
+
+
+def save_applications_ledger(items):
+    try:
+        with open(APPLICATIONS_LEDGER, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def scan_downloads_pdfs():
+    """Scans ~/Downloads for Gosuslugi PDFs (<Sicil>_<AppNo>_<Name>_<Period>.pdf or <AppNo>_<Name>_<Period>.pdf)."""
+    downloads_dir = Path.home() / "Downloads"
+    found = []
+    if not downloads_dir.exists():
+        return found
+    for pdf_path in downloads_dir.glob("*.pdf"):
+        stem = pdf_path.stem
+        parts = stem.split("_")
+        if len(parts) >= 4 and parts[0].isdigit() and parts[1].isdigit() and len(parts[1]) >= 7:
+            found.append({
+                "sicil": parts[0],
+                "sicil_no": parts[0],
+                "application_no": parts[1],
+                "worker_name": parts[2],
+                "period_code": parts[3],
+                "pdf_filename": pdf_path.name,
+                "gosuslugi_status": "Заявление зарегистрировано",
+                "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pdf_path.stat().st_mtime)),
+            })
+        elif len(parts) >= 3 and parts[0].isdigit() and len(parts[0]) >= 7:
+            found.append({
+                "sicil": "",
+                "sicil_no": "",
+                "application_no": parts[0],
+                "worker_name": parts[1],
+                "period_code": parts[2],
+                "pdf_filename": pdf_path.name,
+                "gosuslugi_status": "Заявление зарегистрировано",
+                "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pdf_path.stat().st_mtime)),
+            })
+    return found
 
 
 class RPAState:
@@ -40,6 +98,27 @@ class RPAState:
     active_worker_name = None
     completed_codes = []
     error_codes = []
+    submissions = load_saved_applications()
+
+    @classmethod
+    def upsert_submission(cls, entry: dict):
+        if not entry or not isinstance(entry, dict):
+            return
+        app_no = str(entry.get("application_no") or "").strip()
+        sicil = str(entry.get("sicil") or entry.get("sicil_no") or "").strip()
+        if not app_no and not sicil:
+            return
+        updated = False
+        for idx, existing in enumerate(cls.submissions):
+            ex_app = str(existing.get("application_no") or "").strip()
+            ex_sicil = str(existing.get("sicil") or existing.get("sicil_no") or "").strip()
+            if (app_no and ex_app == app_no) or (sicil and ex_sicil == sicil and str(existing.get("period_code") or "") == str(entry.get("period_code") or "")):
+                cls.submissions[idx] = {**existing, **entry}
+                updated = True
+                break
+        if not updated:
+            cls.submissions.append(entry)
+        save_applications_ledger(cls.submissions)
 
     @classmethod
     def add_log(cls, msg: str):
@@ -70,6 +149,26 @@ def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
             return s.connect_ex((host, port)) == 0
     except Exception:
         return False
+
+
+def free_port_if_occupied(port: int):
+    """Terminates any stale Python bridge process occupying port 8088 so the newest script version always runs."""
+    if not is_port_open(port):
+        return
+    if sys.platform == "win32":
+        try:
+            out = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True, text=True)
+            my_pid = os.getpid()
+            for line in out.splitlines():
+                if "LISTENING" in line:
+                    parts = line.strip().split()
+                    pid = int(parts[-1])
+                    if pid != my_pid and pid > 0:
+                        print(f"[RPA BRIDGE] Terminating older RPA Bridge process (PID {pid}) on port {port}...")
+                        subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        time.sleep(0.8)
+        except Exception:
+            pass
 
 
 def launch_chrome_debug():
@@ -103,6 +202,8 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
 
     if mode == "dismissal":
         script_name = "gosuslugi_dismissal_robot.py"
+    elif mode == "check_status":
+        script_name = "gosuslugi_status_checker.py"
     else:
         script_name = "gosuslugi_vks_robot.py"
 
@@ -111,10 +212,10 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
 
     if json_file and os.path.exists(json_file):
         cmd.extend(["--json", json_file])
-    else:
+    elif mode != "check_status":
         cmd.extend(["--sheet", sheet])
 
-    if config_file and os.path.exists(config_file):
+    if config_file and os.path.exists(config_file) and mode != "check_status":
         cmd.extend(["--config-json", config_file])
 
     if limit > 0:
@@ -138,16 +239,30 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                 RPAState.add_log(clean_line)
 
                 # Detect active worker
-                for marker in ["Starting Gosuslugi VKS for: ", "Starting Gosuslugi Dismissal for: "]:
+                for marker in [
+                    "Starting Gosuslugi VKS for: ",
+                    "Starting Gosuslugi Dismissal for: ",
+                    "Checking Gosuslugi Status for: ",
+                ]:
                     if marker in clean_line:
                         try:
                             after = clean_line.split(marker)[1]
                             name = after.split(" (Код:")[0].strip()
-                            code = after.split("(Код: ")[1].split(")")[0].strip() if "(Код: " in after else ""
+                            code = after.split("(Код: ")[1].split(")")[0].split(",")[0].strip() if "(Код: " in after else ""
                             RPAState.active_worker_name = name
                             RPAState.active_worker_code = code
                             RPAState.waiting_for_manual = False
                             RPAState.manual_message = None
+                        except Exception:
+                            pass
+
+                # Detect Gosuslugi Application Number Registration & Status Updates
+                for json_marker in ["APPLICATION_REGISTERED:", "APPLICATION_STATUS_UPDATED:"]:
+                    if json_marker in clean_line:
+                        try:
+                            raw_json = clean_line.split(json_marker, 1)[1].strip()
+                            parsed_entry = json.loads(raw_json)
+                            RPAState.upsert_submission(parsed_entry)
                         except Exception:
                             pass
 
@@ -160,7 +275,7 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                         RPAState.waiting_for_manual = False
                         RPAState.manual_message = None
 
-                if "SUCCESS: Notification submitted" in clean_line:
+                if "SUCCESS: Notification submitted" in clean_line or "SUCCESS: Status checked" in clean_line:
                     RPAState.waiting_for_manual = False
                     RPAState.manual_message = None
                     RPAState.success += 1
@@ -226,6 +341,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 "active_worker_name": RPAState.active_worker_name,
                 "completed_codes": RPAState.completed_codes,
                 "error_codes": RPAState.error_codes,
+                "submissions": RPAState.submissions,
                 "logs": RPAState.logs[-60:],
             }
             self.send_response(200)
@@ -254,6 +370,17 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"success": ok}).encode("utf-8"))
+
+        elif parsed.path == "/scan-pdfs":
+            discovered = scan_downloads_pdfs()
+            for d in discovered:
+                RPAState.upsert_submission(d)
+            RPAState.add_log(f"Просканирована папка Загрузки: найдено {len(discovered)} PDF-квитанций Госуслуг.")
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "discovered": discovered, "submissions": RPAState.submissions}, ensure_ascii=False).encode("utf-8"))
 
         elif parsed.path == "/manual-continue":
             try:
@@ -289,8 +416,15 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             json_file = ""
             config_file = ""
 
-            queue_filename = "active_dismissal_queue.json" if mode == "dismissal" else "active_vks_queue.json"
-            cfg_filename = "active_dismissal_config.json" if mode == "dismissal" else "active_vks_config.json"
+            if mode == "dismissal":
+                queue_filename = "active_dismissal_queue.json"
+                cfg_filename = "active_dismissal_config.json"
+            elif mode == "check_status":
+                queue_filename = "active_status_check_queue.json"
+                cfg_filename = "active_status_check_config.json"
+            else:
+                queue_filename = "active_vks_queue.json"
+                cfg_filename = "active_vks_config.json"
 
             if records and isinstance(records, list) and len(records) > 0:
                 json_file = os.path.join(CURRENT_DIR, queue_filename)
@@ -344,10 +478,17 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    # Automatically free port 8088 if an older RPA Bridge instance is still running in the background
+    free_port_if_occupied(PORT)
+    # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts
+    for d in scan_downloads_pdfs():
+        RPAState.upsert_submission(d)
+
     server = HTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
     print("=====================================================")
-    print(f"  Pondera HR RPA Bridge Server running on http://127.0.0.1:{PORT}")
+    print(f"  Pondera HR RPA Bridge Server v2.4 running on http://127.0.0.1:{PORT}")
     print(f"  Chrome Debugging Port: {CHROME_CDP_PORT}")
+    print(f"  Tracked Gosuslugi Applications: {len(RPAState.submissions)}")
     print("=====================================================")
     try:
         server.serve_forever()

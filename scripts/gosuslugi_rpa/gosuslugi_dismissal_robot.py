@@ -162,14 +162,44 @@ class GosuslugiDismissalBot:
             if not gos_num:
                 gos_num = str(row.get("Код") or row.get("Sicil") or int(time.time()))
 
+            sicil = re.sub(r'[\\/*?:"<>|]', "", str(row.get("Sicil") or row.get("Код") or "").strip())
             last_n = str(row.get("Фамилия", "")).strip()
             first_n = str(row.get("Имя", "")).strip()
             worker_label = f"{last_n} {first_n}".strip() if last_n.lower() not in ["нет", ""] else first_n
             worker_label = re.sub(r'[\\/*?:"<>|]', "_", worker_label)
 
             downloads_dir = os.path.expandvars(r"%USERPROFILE%\Downloads")
-            target_pdf_name = f"{gos_num}_{worker_label}_Увольнение.pdf"
+            if sicil and sicil != gos_num:
+                target_pdf_name = f"{sicil}_{gos_num}_{worker_label}_Увольнение.pdf"
+            else:
+                target_pdf_name = f"{gos_num}_{worker_label}_Увольнение.pdf"
             target_pdf_path = os.path.join(downloads_dir, target_pdf_name)
+
+            entry = {
+                "sicil": sicil,
+                "sicil_no": sicil,
+                "worker_name": worker_label,
+                "citizenship": str(row.get("ТекущееГражданство", "")).strip(),
+                "notification_type": "dismissal",
+                "period_code": str(row.get("ДатаУволь", "")).strip(),
+                "application_no": gos_num,
+                "gosuslugi_status": "Заявление зарегистрировано",
+                "pdf_filename": target_pdf_name,
+                "submitted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            logger.info(f"APPLICATION_REGISTERED: {json.dumps(entry, ensure_ascii=False)}")
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    "http://localhost:3000/api/gosuslugi/submissions",
+                    data=json.dumps(entry, ensure_ascii=False).encode("utf-8"),
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=2.5) as _:
+                    pass
+            except Exception:
+                pass
 
             # Click "Показать все" if visible
             show_all = self.page.locator("button:has-text('Показать все'), span:has-text('Показать все'), a:has-text('Показать все')").first

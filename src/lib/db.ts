@@ -32,6 +32,24 @@ function ensureUsersTable(db: any) {
       insert.run(4, 'Ust Luga Şantiye Yönetimi', 'ustluga@pondera.com', 'ustluga123', 'user', 'region', 'Ust Luga', now);
       insert.run(5, 'DGP-02 Proje Yönetimi', 'dgp02@pondera.com', 'dgp123', 'user', 'project', 'TOBOLSK DGP-2 PROJESİ', now);
     }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS gosuslugi_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sicil_no TEXT NOT NULL,
+        worker_name TEXT,
+        citizenship TEXT,
+        notification_type TEXT NOT NULL DEFAULT 'vks_salary',
+        period_code TEXT DEFAULT '',
+        application_no TEXT NOT NULL,
+        gosuslugi_status TEXT NOT NULL DEFAULT 'Отправлено',
+        status_detail TEXT DEFAULT '',
+        pdf_filename TEXT DEFAULT '',
+        submitted_at TEXT NOT NULL,
+        checked_at TEXT DEFAULT '',
+        UNIQUE(sicil_no, notification_type, period_code)
+      );
+    `);
   } catch {
     // Ignore if database is opened in read-only filesystem
   }
