@@ -127,13 +127,38 @@ class GosuslugiDismissalBot:
                     return True
 
             draft_modal_btn = self.page.locator(
-                "button:has-text('Создать заявление'), span:has-text('Создать заявление'), "
-                "button:has-text('Создать новое заявление'), button:has-text('Новое заявление')"
+                "lib-button.conf-modal__button button:visible, "
+                ".conf-modal__controls button:visible, "
+                "button:has-text('Создать заявление'):visible, "
+                "button:has-text('Создать новое заявление'):visible, "
+                "button:has-text('Новое заявление'):visible"
             ).first
             if draft_modal_btn.count() > 0 and draft_modal_btn.is_visible():
-                logger.info("Detected Gosuslugi draft modal. Clicking 'Создать новое заявление'...")
-                draft_modal_btn.click()
-                self.page.wait_for_timeout(2000)
+                logger.info("Detected Gosuslugi draft modal. Scrolling modal to bottom & clicking 'Создать заявление'...")
+                try:
+                    self.page.evaluate(
+                        """() => {
+                            document.querySelectorAll('ng-scrollbar, .ng-scroll-viewport, .ng-scroll-content, .conf-modal__body, .conf-modal__content, div').forEach(el => {
+                                if (el.scrollHeight > el.clientHeight + 10) {
+                                    try { el.scrollTop = el.scrollHeight; } catch (e) {}
+                                }
+                            });
+                            const btn = document.querySelector('lib-button.conf-modal__button button, .conf-modal__controls button');
+                            if (btn) btn.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+                        }"""
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(250)
+                try:
+                    draft_modal_btn.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    draft_modal_btn.click(timeout=2500)
+                except Exception:
+                    draft_modal_btn.evaluate("el => (el.closest('button') || el).click()")
+                self.page.wait_for_timeout(1800)
                 return True
         except Exception:
             pass

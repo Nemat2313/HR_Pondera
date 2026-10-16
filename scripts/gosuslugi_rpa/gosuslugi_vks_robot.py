@@ -309,11 +309,13 @@ class GosuslugiVksBot:
         already_on_form_modal = (
             "600585/1/form" in cur_url_now
             and self.page.locator(
+                "lib-button.conf-modal__button button:visible, "
                 "button:has-text('Создать заявление'):visible, "
                 "button:has-text('Создать новое заявление'):visible, "
                 "button:has-text('Новое заявление'):visible, "
                 "button:has-text('Начать'):visible, "
-                "span:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible"
+                "epgu-cf-ui-long-button:has-text('О выплате'):visible, "
+                "button:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible"
             ).count() > 0
         )
 
@@ -326,103 +328,154 @@ class GosuslugiVksBot:
             except Exception as e:
                 logger.warning(f"Navigation warning: {e}")
 
-            # Poll quickly (every 300ms, max 8s) until any interactive button/option on 600585/1/form becomes visible
-            for _ in range(26):
-                self.check_and_handle_error_modal()
-                if self.page.locator(
-                    "button:has-text('Создать заявление'):visible, "
-                    "button:has-text('Создать новое заявление'):visible, "
-                    "button:has-text('Новое заявление'):visible, "
-                    "button:has-text('Начать'):visible, "
-                    "span:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible, "
-                    "epgu-cf-ui-long-button:has-text('О выплате'):visible"
-                ).count() > 0:
-                    break
-                self.page.wait_for_timeout(300)
-
         self.check_and_handle_error_modal()
 
-        # Step 2: Immediately click 'Создать заявление' / 'Создать новое заявление' & 'Начать' if present
-        for _ in range(4):
-            # Break immediately if Step 3 ('О выплате зарплаты...') is already visible
-            if self.page.locator(
-                "span:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible, "
-                "epgu-cf-ui-long-button:has-text('О выплате'):visible"
-            ).count() > 0:
-                break
+        # Steps 2 & 3 Unified State-Machine:
+        # 1) If Drafts Modal ('Уведомления о трудовой деятельности иностранцев' / 'Выберите черновик') is open:
+        #    Scroll the modal's internal scrollbar (ng-scrollbar / .ng-scroll-viewport / .conf-modal__body) to the bottom
+        #    so 'Создать заявление' at the bottom of the drafts list is brought into view, then click it.
+        # 2) If 'Начать' landing screen is open: click 'Начать'.
+        # 3) Once 'О выплате зарплаты высококвалифицированному специалисту' (epgu-cf-ui-long-button / button) appears:
+        #    click it and advance to Step 4.
+        step3_selected = False
+        for tick in range(50):
+            self.check_and_handle_error_modal()
 
-            clicked_step2 = False
-            try:
-                new_order_btn = self.page.locator(
-                    "button:has-text('Создать заявление'):visible, "
-                    "button:has-text('Создать новое заявление'):visible, "
-                    "button:has-text('Новое заявление'):visible, "
-                    "a:has-text('Создать заявление'):visible, "
-                    "a:has-text('Создать новое заявление'):visible, "
-                    "span:has-text('Создать заявление'):visible, "
-                    "span:has-text('Создать новое заявление'):visible"
-                ).first
-                if new_order_btn.count() > 0 and new_order_btn.is_visible():
-                    logger.info("Step 2: Clicking 'Создать заявление' immediately...")
-                    try:
-                        new_order_btn.scroll_into_view_if_needed(timeout=1500)
-                    except Exception:
-                        pass
-                    try:
-                        new_order_btn.click(timeout=2500)
-                    except Exception:
-                        new_order_btn.evaluate("el => (el.closest('button, a') || el).click()")
-                    clicked_step2 = True
-                    self.page.wait_for_timeout(900)
-            except Exception:
-                pass
-
-            try:
-                start_btn = self.page.locator(
-                    "button:has-text('Начать'):visible, "
-                    "a:has-text('Начать'):visible, "
-                    "span:has-text('Начать'):visible"
-                ).first
-                if start_btn.count() > 0 and start_btn.is_visible():
-                    logger.info("Step 2b: Clicking 'Начать'...")
-                    try:
-                        start_btn.scroll_into_view_if_needed(timeout=1500)
-                    except Exception:
-                        pass
-                    try:
-                        start_btn.click(timeout=2500)
-                    except Exception:
-                        start_btn.evaluate("el => (el.closest('button, a') || el).click()")
-                    clicked_step2 = True
-                    self.page.wait_for_timeout(900)
-            except Exception:
-                pass
-
-            if not clicked_step2:
+            # Priority 1: Drafts Modal ('Выберите черновик...' -> scroll modal & click 'Создать заявление')
+            create_btn = self.page.locator(
+                "lib-button.conf-modal__button button:visible, "
+                ".conf-modal__controls button:visible, "
+                "button:has-text('Создать заявление'):visible, "
+                "button:has-text('Создать новое заявление'):visible, "
+                "button:has-text('Новое заявление'):visible"
+            ).first
+            if create_btn.count() > 0 and create_btn.is_visible():
+                logger.info("Step 2: Scrolling drafts modal ('Уведомления о трудовой деятельности иностранцев') to bottom & clicking 'Создать заявление'...")
                 try:
-                    self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    # Scroll internal modal scrollbars (ng-scrollbar, .ng-scroll-viewport, .conf-modal__body) and all scrollable ancestors
+                    self.page.evaluate(
+                        """() => {
+                            const scrollTargets = document.querySelectorAll(
+                                'ng-scrollbar, .ng-scroll-viewport, .ng-scroll-content, .conf-modal__body, .conf-modal__content, .modal-body'
+                            );
+                            scrollTargets.forEach(el => {
+                                try { el.scrollTop = el.scrollHeight; } catch (e) {}
+                            });
+                            document.querySelectorAll('div').forEach(el => {
+                                if (el.scrollHeight > el.clientHeight + 10) {
+                                    try { el.scrollTop = el.scrollHeight; } catch (e) {}
+                                }
+                            });
+                            const btn = document.querySelector(
+                                'lib-button.conf-modal__button button, .conf-modal__controls button'
+                            ) || Array.from(document.querySelectorAll('button')).find(
+                                b => (b.innerText || '').includes('Создать заявление') || (b.innerText || '').includes('Создать новое')
+                            );
+                            if (btn) {
+                                let p = btn.parentElement;
+                                while (p) {
+                                    if (p.scrollHeight > p.clientHeight) {
+                                        try { p.scrollTop = p.scrollHeight; } catch (e) {}
+                                    }
+                                    p = p.parentElement;
+                                }
+                                btn.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+                            }
+                            window.scrollTo(0, document.body.scrollHeight);
+                        }"""
+                    )
                 except Exception:
                     pass
-                self.page.wait_for_timeout(350)
+                self.page.wait_for_timeout(250)
+                try:
+                    create_btn.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    create_btn.click(timeout=2500)
+                except Exception:
+                    try:
+                        box = create_btn.bounding_box()
+                        if box and box["width"] > 5 and box["height"] > 5:
+                            self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                        else:
+                            create_btn.evaluate("el => (el.closest('button') || el).click()")
+                    except Exception:
+                        create_btn.evaluate("el => (el.closest('button') || el).click()")
+                self.page.wait_for_timeout(900)
+                continue
 
-        # Step 3: Select 'О выплате зарплаты высококвалифицированному специалисту'
-        logger.info("Step 3: Selecting 'О выплате зарплаты высококвалифицированному специалисту'...")
-        self.check_and_handle_error_modal()
-        vks_option = self.page.locator(
-            "span:has-text('О выплате зарплаты высококвалифицированному специалисту'), "
-            "button:has-text('О выплате зарплаты высококвалифицированному специалисту'), "
-            "epgu-cf-ui-long-button:has-text('О выплате')"
-        ).first
-        vks_option.wait_for(state="visible", timeout=20000)
-        vks_option.click()
-        self.page.wait_for_timeout(1200)
+            # Priority 2: 'Начать' button on the service start screen
+            start_btn = self.page.locator(
+                "button:has-text('Начать'):visible, "
+                "lib-button:has-text('Начать') button:visible, "
+                "epgu-cf-ui-button:has-text('Начать') button:visible, "
+                "a.button:has-text('Начать'):visible"
+            ).first
+            if start_btn.count() > 0 and start_btn.is_visible():
+                logger.info("Step 2b: Clicking 'Начать'...")
+                try:
+                    start_btn.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    start_btn.click(timeout=2500)
+                except Exception:
+                    start_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                self.page.wait_for_timeout(900)
+                continue
+
+            # Priority 3: Step 3 VKS option button ('О выплате зарплаты высококвалифицированному специалисту')
+            # Note: Do NOT match plain <span> on the 'Начать' landing page; target interactive option buttons!
+            vks_option = self.page.locator(
+                "epgu-cf-ui-long-button:has-text('О выплате'):visible, "
+                "button:has-text('О выплате зарплаты высококвалифицированному специалисту'):visible, "
+                "div.long-button:has-text('О выплате'):visible"
+            ).first
+            if vks_option.count() > 0 and vks_option.is_visible():
+                logger.info("Step 3: Selecting 'О выплате зарплаты высококвалифицированному специалисту'...")
+                try:
+                    vks_option.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    vks_option.click(timeout=3000)
+                except Exception:
+                    vks_option.evaluate("el => (el.closest('button, epgu-cf-ui-long-button') || el).click()")
+                step3_selected = True
+                self.page.wait_for_timeout(1200)
+                break
+
+            self.page.wait_for_timeout(350)
+
+        if not step3_selected:
+            logger.info("Step 3 (Fallback): Waiting for 'О выплате зарплаты высококвалифицированному специалисту'...")
+            vks_option = self.page.locator(
+                "epgu-cf-ui-long-button:has-text('О выплате'), "
+                "button:has-text('О выплате зарплаты высококвалифицированному специалисту'), "
+                "span:has-text('О выплате зарплаты высококвалифицированному специалисту')"
+            ).last
+            vks_option.wait_for(state="visible", timeout=15000)
+            vks_option.click()
+            self.page.wait_for_timeout(1200)
 
         # Step 4: Click 'Перейти к уведомлению'
         logger.info("Step 4: Clicking 'Перейти к уведомлению'...")
-        go_btn = self.page.locator("button:has-text('Перейти к уведомлению'), span:has-text('Перейти к уведомлению')").first
-        if go_btn.count() > 0 and go_btn.is_visible():
-            go_btn.click()
-            self.page.wait_for_timeout(2000)
+        for _ in range(15):
+            go_btn = self.page.locator(
+                "button:has-text('Перейти к уведомлению'):visible, "
+                "lib-button:has-text('Перейти к уведомлению') button:visible, "
+                "span:has-text('Перейти к уведомлению'):visible"
+            ).first
+            if go_btn.count() > 0 and go_btn.is_visible():
+                try:
+                    go_btn.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                go_btn.click()
+                self.page.wait_for_timeout(1500)
+                break
+            self.page.wait_for_timeout(350)
 
         # Step 5: Verify Organization & Manager Info ('Проверьте сведения об организации и руководителе' -> 'Верно')
         logger.info("Step 5: Confirming organization & manager info ('Верно')...")
