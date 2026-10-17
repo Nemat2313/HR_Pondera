@@ -59,10 +59,42 @@ DEFAULT_CONFIG = {
 }
 
 
+class InsufficientPermissionsError(Exception):
+    """Raised when Gosuslugi blocks submission due to missing power of attorney ('У вас недостаточно полномочий для отправки уведомлений')."""
+    pass
+
+
 class GosuslugiDismissalBot:
     def __init__(self, page: Page, config: Dict[str, Any] = None):
         self.page = page
         self.cfg = {**DEFAULT_CONFIG, **(config or {})}
+
+    def check_and_stop_if_insufficient_permissions(self):
+        try:
+            body_text = ""
+            try:
+                body_text = self.page.locator("body").inner_text(timeout=2000)
+            except Exception:
+                pass
+            body_lower = (body_text or "").lower()
+            has_no_poa = (
+                "недостаточно полномочий для отправки" in body_lower
+                or (
+                    "недостаточно полномочий" in body_lower
+                    and ("сохранится в черновиках" in body_lower or "выдать вам доверенность" in body_lower or "отправить ещё раз" in body_lower)
+                )
+            )
+            if has_no_poa:
+                err_msg = (
+                    "У вас недостаточно полномочий для отправки уведомлений! "
+                    "Заявление сохранено в черновиках (требуется доверенность с полномочием «Подача заявлений»). Робот остановлен."
+                )
+                logger.error(f"FATAL_STOP: {err_msg}")
+                raise InsufficientPermissionsError(err_msg)
+        except InsufficientPermissionsError:
+            raise
+        except Exception:
+            pass
 
     def wait_for_manual_intervention(self, step_msg: str):
         """Pauses the robot and notifies the Pondera HR UI so the user can manually fix a field and click Continue."""
@@ -97,7 +129,11 @@ class GosuslugiDismissalBot:
             pass
 
         try:
-            mvd_warning = self.page.locator("text='Данные не найдены в базе МВД', text='МВД может отказать'")
+            mvd_warning = self.page.locator(
+                "div:has-text('Данные не найдены в базе МВД'):visible, "
+                "p:has-text('МВД может отказать'):visible, "
+                "span:has-text('Данные не найдены в базе МВД'):visible"
+            )
             if mvd_warning.count() > 0 and mvd_warning.first.is_visible():
                 logger.warning("Detected MVD warning modal ('Данные не найдены в базе МВД'). Continuing anyway...")
                 cont_btn = self.page.locator(
@@ -653,14 +689,17 @@ class GosuslugiDismissalBot:
         logger.info("Step 13: Submitting Notification to MVD...")
         submit_btn = self.page.locator(
             "button:has-text('Отправить уведомление'):visible, "
-            "button:has-text('Отправить'):visible, "
-            "epgu-cf-ui-button:has-text('Отправить'):visible"
+            "button:has-text('Отправить'):not(:has-text('ещё раз')):visible, "
+            "epgu-cf-ui-button:has-text('Отправить'):not(:has-text('ещё раз')):visible"
         ).first
         if submit_btn.count() > 0 and submit_btn.is_visible():
             submit_btn.scroll_into_view_if_needed()
             submit_btn.click()
             logger.info(">>> 'Отправить' CLICKED! <<<")
             self.page.wait_for_timeout(4000)
+
+        # Immediately stop if Gosuslugi displayed 'У вас недостаточно полномочий для отправки уведомлений'
+        self.check_and_stop_if_insufficient_permissions()
 
         # Step 14: Personal Cabinet & PDF Receipt Archiving
         self.download_and_rename_receipt_pdf(row)
@@ -834,6 +873,13 @@ def main():
                     fail_count += 1
                     if args.excel and row_idx is not None:
                         mark_row_completed(args.excel, row_idx, False, "Submission failed")
+            except InsufficientPermissionsError as perm_ex:
+                fail_count += 1
+                logger.error(f"Error processing {record.get('Фамилия')}: {perm_ex}")
+                if args.excel and row_idx is not None:
+                    mark_row_completed(args.excel, row_idx, False, str(perm_ex))
+                logger.error("=== ОСТАНОВКА РОБОТА: В текущем аккаунте Госуслуг недостаточно полномочий для отправки уведомлений ===")
+                break
             except Exception as ex:
                 fail_count += 1
                 logger.error(f"Error processing {record.get('Фамилия')}: {ex}")

@@ -60,10 +60,12 @@ def scan_downloads_for_applications() -> List[Dict[str, Any]]:
         return discovered
 
     period_re = re.compile(r"^20\d{2}-[1-4]$")
-    app_no_re = re.compile(r"^[1-9]\d{9}$")
+    app_no_re = re.compile(r"^[789]\d{9}$")
 
     for pdf_path in downloads_dir.glob("*.pdf"):
         stem = pdf_path.stem
+        if stem.startswith("tmp_"):
+            continue
         parts = stem.split("_")
         # Format A: 933532_8255536023_АБДУЛ РАШИД_2026-3.pdf
         if len(parts) >= 4 and parts[0].isdigit() and app_no_re.match(parts[1]) and period_re.match(parts[-1]):
@@ -320,6 +322,39 @@ def normalize_name_for_match(name: str) -> str:
     return " ".join(cleaned.split())
 
 
+def does_citizen_match_worker_name(citizen_text: str, worker_name: str) -> bool:
+    """
+    Strictly verifies that all meaningful name tokens of `worker_name`
+    appear inside `citizen_text` ('Гражданин: ...').
+    Prevents matching 'Куммари Прасад' to 'АБУЛЛАЕВ РАШИД'.
+    """
+    norm_c = normalize_name_for_match(citizen_text)
+    norm_w = normalize_name_for_match(worker_name)
+    if not norm_c or not norm_w:
+        return False
+    w_tokens = [t for t in norm_w.split() if len(t) >= 2]
+    if not w_tokens:
+        return False
+    return all(tok in norm_c for tok in w_tokens)
+
+
+def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
+    """
+    Excludes non-labor services such as 'Уведомления о прибытии и убытии иностранцев'
+    and excludes unsent drafts ('черновик').
+    """
+    if not ord_item:
+        return False
+    srv = str(ord_item.get("service_title") or "").lower()
+    raw_t = str(ord_item.get("raw_title") or "").lower()
+    raw_s = str(ord_item.get("raw_status") or "").lower()
+    if "прибытии и убытии" in srv or "прибытии и убытии" in raw_t:
+        return False
+    if "черновик" in raw_t or "draft" in raw_s:
+        return False
+    return True
+
+
 def sync_updates_to_pondera_api(updates: List[Dict[str, Any]]):
     """Pushes updated application statuses to Pondera HR Next.js API (/api/gosuslugi/submissions)."""
     if not updates:
@@ -414,15 +449,15 @@ def main():
         # TIER 1: Bulk fetch orders directly via Gosuslugi JSON API (no search box typing needed!)
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=args.max_pages)
 
-        # Build secondary lookup by normalized Citizen Name ('Гражданин')
-        orders_by_citizen: Dict[str, Dict[str, Any]] = {}
-        for ord_item in bulk_orders.values():
-            norm_cit = normalize_name_for_match(ord_item.get("citizen_name", ""))
-            if norm_cit and norm_cit not in orders_by_citizen:
-                orders_by_citizen[norm_cit] = ord_item
+        # Filter labor notification orders for citizen lookup
+        labor_orders_list = [
+            ord_item for ord_item in bulk_orders.values()
+            if is_valid_labor_notification_order(ord_item)
+        ]
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         updated_records: List[Dict[str, Any]] = []
+        assigned_app_nos_to_sicil: Dict[str, str] = {}
 
         # Log top recent applications found on the account so user always sees immediate feedback
         if bulk_orders:
@@ -431,7 +466,7 @@ def main():
             for s_idx, s_ord in enumerate(sample_list, 1):
                 logger.info(
                     f"  [{s_idx}] № {s_ord['application_no']} | {s_ord['gosuslugi_status']} | "
-                    f"{s_ord.get('citizen_name') or s_ord.get('service_title') or ''}"
+                    f"{s_ord.get('citizen_name') or ''} | {s_ord.get('service_title') or ''}"
                 )
 
         if records:
@@ -447,39 +482,74 @@ def main():
 
                 matched_order: Optional[Dict[str, Any]] = None
 
-                # 1) Match by application_no in bulk feed
+                # 1) Match by application_no in bulk feed (with citizen & service validation!)
                 if app_no and app_no in bulk_orders:
-                    matched_order = bulk_orders[app_no]
-                    logger.info(
-                        f"  -> Matched № {app_no} in bulk feed (no search needed): {matched_order['gosuslugi_status']}"
-                    )
-
-                # 2) Match by Citizen Name ('Гражданин') in bulk feed if application_no not matched
-                if not matched_order and worker_name:
-                    norm_w = normalize_name_for_match(worker_name)
-                    if norm_w and norm_w in orders_by_citizen:
-                        matched_order = orders_by_citizen[norm_w]
-                        app_no = matched_order["application_no"]
-                        logger.info(
-                            f"  -> Matched '{worker_name}' by Гражданин in bulk feed -> № {app_no}: {matched_order['gosuslugi_status']}"
+                    candidate = bulk_orders[app_no]
+                    if not is_valid_labor_notification_order(candidate):
+                        logger.warning(
+                            f"  -> Rejecting № {app_no} for {worker_name}: wrong service ('{candidate.get('service_title')}') or draft!"
                         )
+                    elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
+                        logger.warning(
+                            f"  -> Rejecting № {app_no} for {worker_name}: order belongs to Гражданин '{candidate['citizen_name']}'!"
+                        )
+                    else:
+                        matched_order = candidate
+                        logger.info(
+                            f"  -> Matched № {app_no} in bulk feed (no search needed): {matched_order['gosuslugi_status']}"
+                        )
+
+                # 2) Match by Citizen Name ('Гражданин') in labor_orders_list if application_no not matched
+                if not matched_order and worker_name:
+                    for cand in labor_orders_list:
+                        cand_no = cand["application_no"]
+                        owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
+                        if owner_sicil and sicil and owner_sicil != sicil:
+                            continue
+                        if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
+                            matched_order = cand
+                            app_no = cand_no
+                            logger.info(
+                                f"  -> Matched '{worker_name}' by Гражданин ('{cand.get('citizen_name')}') -> № {app_no}: {matched_order['gosuslugi_status']}"
+                            )
+                            break
 
                 # 3) Tier 2 Fallback: Query single application_no via ?q=<app_no> or UI search box
                 if not matched_order and app_no:
                     logger.info(f"  -> № {app_no} not in recent bulk feed, querying directly...")
-                    matched_order = query_single_order_by_no(page, app_no)
-                    if matched_order:
-                        logger.info(
-                            f"  -> Found № {app_no} via targeted search: {matched_order['gosuslugi_status']}"
-                        )
+                    candidate = query_single_order_by_no(page, app_no)
+                    if candidate:
+                        if not is_valid_labor_notification_order(candidate):
+                            logger.warning(
+                                f"  -> Rejecting targeted № {app_no}: wrong service ('{candidate.get('service_title')}') or draft!"
+                            )
+                        elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
+                            logger.warning(
+                                f"  -> Rejecting targeted № {app_no} for {worker_name}: belongs to Гражданин '{candidate['citizen_name']}'!"
+                            )
+                        else:
+                            matched_order = candidate
+                            logger.info(
+                                f"  -> Found № {app_no} via targeted search: {matched_order['gosuslugi_status']}"
+                            )
 
                 if matched_order:
+                    final_app_no = matched_order["application_no"]
+                    owner_sicil = assigned_app_nos_to_sicil.get(final_app_no)
+                    if owner_sicil and sicil and owner_sicil != sicil:
+                        logger.warning(
+                            f"  -> Skipping № {final_app_no} for Sicil {sicil}: already assigned to Sicil {owner_sicil}!"
+                        )
+                        continue
+                    if sicil:
+                        assigned_app_nos_to_sicil[final_app_no] = sicil
+
                     updated_entry = {
                         **rec,
                         "sicil": sicil,
                         "sicil_no": sicil,
                         "worker_name": worker_name or matched_order.get("citizen_name") or "",
-                        "application_no": matched_order["application_no"],
+                        "application_no": final_app_no,
                         "gosuslugi_status": matched_order["gosuslugi_status"],
                         "status_detail": matched_order.get("status_detail", ""),
                         "checked_at": now_str,
@@ -492,11 +562,11 @@ def main():
                     )
                 else:
                     logger.info(
-                        f"  -> No matching order found on current Gosuslugi account for {worker_name} (№ {app_no or '—'})."
+                        f"  -> No matching labor notification order found on current Gosuslugi account for {worker_name} (№ {app_no or '—'})."
                     )
         else:
-            # No pre-existing local records — register the recent orders discovered from the Gosuslugi account
-            for s_ord in list(bulk_orders.values())[:50]:
+            # No pre-existing local records — only register labor notification orders
+            for s_ord in labor_orders_list[:50]:
                 entry = {
                     "sicil": "",
                     "sicil_no": "",

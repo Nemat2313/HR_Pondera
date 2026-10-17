@@ -58,7 +58,7 @@ DEFAULT_CONFIG = {
     "WORK_POSTAL_CODE": "626150",
     "UFMS_DEPARTMENT": "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ",
     "PERIOD_START": "01.07.2026",
-    "PERIOD_END": "19.08.2026",
+    "PERIOD_END": "30.09.2026",
     "PERIOD_CODE": "2026-3",
     "DEFAULT_EXCEL_PATH": r"C:\Users\nemat\Downloads\GosUsluga_ ЗП.xlsx",
     "CDP_PORT": 9222,
@@ -70,12 +70,65 @@ class RestartZayavkaException(Exception):
     pass
 
 
+class InsufficientPermissionsError(Exception):
+    """Raised when Gosuslugi blocks submission due to missing power of attorney ('У вас недостаточно полномочий для отправки уведомлений'). Immediately stops the robot."""
+    pass
+
+
 class GosuslugiVksBot:
     def __init__(self, page: Page, config: Dict[str, Any] = None):
         self.page = page
         self.cfg = {**DEFAULT_CONFIG, **(config or {})}
         self.current_row: Dict[str, Any] = {}
         self.allow_full_restart: bool = True
+
+    def check_and_stop_if_insufficient_permissions(self):
+        """
+        Checks if Gosuslugi displays the 'У вас недостаточно полномочий для отправки уведомлений'
+        screen (where the application is only saved as a draft and 'Отправить ещё раз' is shown).
+        If detected, logs a FATAL_STOP error and raises InsufficientPermissionsError to halt the robot immediately.
+        """
+        try:
+            body_text = ""
+            try:
+                body_text = self.page.locator("body").inner_text(timeout=2000)
+            except Exception:
+                pass
+            body_lower = (body_text or "").lower()
+
+            has_no_poa_text = (
+                "недостаточно полномочий для отправки" in body_lower
+                or (
+                    "недостаточно полномочий" in body_lower
+                    and (
+                        "сохранится в черновиках" in body_lower
+                        or "выдать вам доверенность" in body_lower
+                        or "отправить ещё раз" in body_lower
+                        or "отправить еще раз" in body_lower
+                    )
+                )
+            )
+
+            send_again_btn = self.page.locator("button:has-text('Отправить ещё раз'):visible, button:has-text('Отправить еще раз'):visible")
+            no_poa_heading = self.page.locator(
+                "h1:has-text('недостаточно полномочий'):visible, "
+                "h2:has-text('недостаточно полномочий'):visible, "
+                "div:has-text('У вас недостаточно полномочий для отправки уведомлений'):visible"
+            )
+
+            if has_no_poa_text or (send_again_btn.count() > 0 and no_poa_heading.count() > 0):
+                draft_no_match = re.search(r"Заявление\s*№\s*(\d{6,14})\s*сохранится\s*в\s*черновиках", body_text, re.IGNORECASE)
+                draft_info = f" (черновик № {draft_no_match.group(1)})" if draft_no_match else ""
+                err_msg = (
+                    f"У вас недостаточно полномочий для отправки уведомлений{draft_info}! "
+                    f"Заявление сохранено в черновиках, требуется доверенность с полномочием «Подача заявлений». Робот остановлен."
+                )
+                logger.error(f"FATAL_STOP: {err_msg}")
+                raise InsufficientPermissionsError(err_msg)
+        except InsufficientPermissionsError:
+            raise
+        except Exception:
+            pass
 
     def check_and_handle_error_modal(self) -> bool:
         """Equivalent to PAD GetError subflow: Click 'Попробовать ещё раз' or MVD warning continue."""
@@ -91,7 +144,11 @@ class GosuslugiVksBot:
             pass
 
         try:
-            mvd_warning = self.page.locator("text='Данные не найдены в базе МВД', text='МВД может отказать'")
+            mvd_warning = self.page.locator(
+                "div:has-text('Данные не найдены в базе МВД'):visible, "
+                "p:has-text('МВД может отказать'):visible, "
+                "span:has-text('Данные не найдены в базе МВД'):visible"
+            )
             if mvd_warning.count() > 0 and mvd_warning.first.is_visible():
                 logger.warning("Detected MVD warning modal. Clicking continue...")
                 cont_btn = self.page.locator(
@@ -609,6 +666,9 @@ class GosuslugiVksBot:
                         f"=== RETRYING ZAYAVKA FROM SCRATCH (Attempt {form_attempt}/2) for {full_name} (Код: {code}) ==="
                     )
                 return self._execute_vks_notification_attempt(row, full_name, code, last_name, first_name, middle_name, form_attempt)
+            except InsufficientPermissionsError:
+                # Never retry when the Gosuslugi account lacks authority ('У вас недостаточно полномочий для отправки уведомлений')
+                raise
             except RestartZayavkaException as rex:
                 logger.warning(
                     f"Attempt {form_attempt} triggered full Zayavka restart ({rex}) -> starting fresh Zayavka from Step 1..."
@@ -639,31 +699,11 @@ class GosuslugiVksBot:
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to highlight the active row in UI
         logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
 
-        # Resume check: if Chrome is ALREADY on 'Уведомление отправлено' ('В личный кабинет') or lk.gosuslugi.ru (and PDF not yet saved), jump to Step 16!
-        try:
-            cur_url = self.page.url or ""
-            sent_heading = self.page.locator("text='Уведомление отправлено':visible")
-            cab_btn = self.page.locator("button:has-text('В личный кабинет'):visible, a:has-text('В личный кабинет'):visible, span:has-text('В личный кабинет'):visible")
-            is_on_sent_screen = sent_heading.count() > 0 and cab_btn.count() > 0
-
-            clean_w_name = self.build_clean_worker_name(row)
-            p_code = self.compute_vks_period_code(row)
-            already_downloaded = list((Path.home() / "Downloads").glob(f"*_{clean_w_name}_{p_code}.pdf"))
-            is_on_lk_for_pending_pdf = ("lk.gosuslugi.ru/notifications" in cur_url or "lk.gosuslugi.ru/order/" in cur_url) and len(already_downloaded) == 0
-
-            if is_on_sent_screen or is_on_lk_for_pending_pdf:
-                logger.info("Detected open submission/cabinet screen in Chrome! Proceeding directly to Step 16 (PDF Download & Rename)...")
-                order_no = self.extract_gosuslugi_order_number()
-                self.execute_step16_cabinet_and_download(row, order_no)
-                logger.info(f"SUCCESS: Notification submitted for {full_name}!")
-                return True
-        except Exception:
-            pass
-
-        # Step 1: Navigate to https://www.gosuslugi.ru/600585/1/form (or reuse immediately if already open on form/modal)
+        # Step 1: Navigate to https://www.gosuslugi.ru/600585/1/form (or reuse immediately if already open on form start/drafts modal)
         cur_url_now = self.page.url or ""
         already_on_form_modal = (
             "600585/1/form" in cur_url_now
+            and self.page.locator("button:has-text('Отправить ещё раз'):visible, h1:has-text('недостаточно полномочий'):visible").count() == 0
             and self.page.locator(
                 ".draft-list .draft:visible, "
                 "button.draft-link:has-text('Удалить'):visible, "
@@ -700,14 +740,13 @@ class GosuslugiVksBot:
         for tick in range(50):
             self.check_and_handle_error_modal()
 
-            # Priority 1: Drafts Modal ('Выберите черновик...' -> delete oldest draft if needed, scroll modal & click 'Создать заявление')
+            # Priority 1: Drafts Modal ('Выберите черновик...' -> delete oldest draft only if needed, scroll modal & click 'Создать заявление')
             draft_items = self.page.locator(".draft-list .draft, epgu-constructor-draft-list .draft")
             create_btn = self.page.locator(
-                "lib-button.conf-modal__button button, "
-                ".conf-modal__controls button, "
                 "button:has-text('Создать заявление'), "
                 "button:has-text('Создать новое заявление'), "
-                "button:has-text('Новое заявление')"
+                "button:has-text('Новое заявление'), "
+                "lib-button.conf-modal__button button"
             ).first
 
             if (create_btn.count() > 0 and create_btn.is_visible()) or draft_items.count() > 0:
@@ -727,11 +766,9 @@ class GosuslugiVksBot:
                                     try { el.scrollTop = el.scrollHeight; } catch (e) {}
                                 }
                             });
-                            const btn = document.querySelector(
-                                'lib-button.conf-modal__button button, .conf-modal__controls button'
-                            ) || Array.from(document.querySelectorAll('button')).find(
+                            const btn = Array.from(document.querySelectorAll('button')).find(
                                 b => (b.innerText || '').includes('Создать заявление') || (b.innerText || '').includes('Создать новое')
-                            );
+                            ) || document.querySelector('lib-button.conf-modal__button button');
                             if (btn) {
                                 let p = btn.parentElement;
                                 while (p) {
@@ -749,14 +786,14 @@ class GosuslugiVksBot:
                     pass
                 self.page.wait_for_timeout(250)
 
-                # Check if 'Создать заявление' is disabled/inactive OR if too many drafts block creation
+                # Check if 'Создать заявление' is disabled/inactive OR if draft limit (10) blocks creation
                 btn_disabled = True
                 if create_btn.count() > 0 and create_btn.is_visible():
                     dis_attr = create_btn.get_attribute("disabled")
                     cls_attr = create_btn.get_attribute("class") or ""
                     btn_disabled = (dis_attr is not None) or ("disabled" in cls_attr) or (not create_btn.is_enabled())
 
-                if btn_disabled or create_click_attempts >= 1 or draft_items.count() >= 9:
+                if btn_disabled or draft_items.count() >= 10:
                     del_btns = self.page.locator(
                         ".draft-list .draft button.draft-link:has-text('Удалить'), "
                         "epgu-constructor-draft-list button:has-text('Удалить'), "
@@ -1108,7 +1145,11 @@ class GosuslugiVksBot:
         # Expand 'Уточнить адрес' (button.clarify-address) if detailed fields (input#index) are not yet visible
         try:
             if self.page.locator("input#index:visible").count() == 0:
-                clarify_btn = self.page.locator("button.clarify-address, text='Уточнить адрес'").first
+                clarify_btn = self.page.locator(
+                    "button.clarify-address:visible, "
+                    "button:has-text('Уточнить адрес'):visible, "
+                    "span:has-text('Уточнить адрес'):visible"
+                ).first
                 if clarify_btn.count() > 0 and clarify_btn.is_visible():
                     logger.info("Clicking 'Уточнить адрес' to open detailed address fields...")
                     clarify_btn.click()
@@ -1442,48 +1483,70 @@ class GosuslugiVksBot:
             )
 
             if not (cont_ready and "ТРУДОВОЙ МИГРАЦИИ" in cur_disp_txt and "МОСКВ" in cur_disp_txt):
-                logger.info(
-                    f"Step 12: Typing 'мос' in #dic18_byHand to select '{target_dept}'..."
-                )
-                # Clear existing text or wrong selection via the X ('button.search-clear') button if present
-                clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
-                if clr_btn.count() > 0 and clr_btn.is_visible():
-                    try:
-                        clr_btn.click(timeout=2000)
-                    except Exception:
-                        clr_btn.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(300)
-
                 by_hand_inp = self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first
+                cur_inp_val = ""
                 if by_hand_inp.count() > 0:
-                    by_hand_inp.click()
-                    self.page.wait_for_timeout(150)
-                    self.page.keyboard.press("Control+A")
-                    self.page.keyboard.press("Backspace")
-                    self.page.wait_for_timeout(200)
-                    # Type 'мос' character-by-character so Gosuslugi's <lib-lookup> opens the Moscow MVD list!
-                    by_hand_inp.press_sequentially("мос", delay=90)
-                    self.page.wait_for_timeout(1100)
+                    try:
+                        cur_inp_val = (by_hand_inp.input_value() or "").strip().lower()
+                    except Exception:
+                        cur_inp_val = ""
 
-                options = self.page.locator(
+                # Only clear and type 'мос' if it is not already typed in the input
+                if cur_inp_val != "мос":
+                    logger.info(
+                        f"Step 12: Typing 'мос' in #dic18_byHand to select '{target_dept}'..."
+                    )
+                    clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
+                    if clr_btn.count() > 0 and clr_btn.is_visible():
+                        try:
+                            clr_btn.click(timeout=2000)
+                        except Exception:
+                            clr_btn.evaluate("el => el.click()")
+                        self.page.wait_for_timeout(300)
+
+                    if by_hand_inp.count() > 0:
+                        by_hand_inp.click()
+                        self.page.wait_for_timeout(150)
+                        self.page.keyboard.press("Control+A")
+                        self.page.keyboard.press("Backspace")
+                        self.page.wait_for_timeout(200)
+                        # Type 'мос' character-by-character so Gosuslugi's <lib-lookup> queries the Moscow MVD list
+                        by_hand_inp.press_sequentially("мос", delay=90)
+
+                # Wait 3.5 - 4.5 seconds for Gosuslugi's async MVD lookup list to load (do NOT interrupt or re-type while loading!)
+                logger.info("Step 12: Waiting up to 4.5s for MVD dropdown list to appear after 'мос'...")
+                options_selector = (
                     "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
                     "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
                     ".lookup-item:not(.nothing-found):visible"
                 )
+                options = self.page.locator(options_selector)
                 matched_mvd = None
-                opt_count = options.count()
-                for idx in range(opt_count):
-                    cand = options.nth(idx)
-                    txt_up = cand.inner_text().strip().upper()
-                    if "ТРУДОВОЙ МИГРАЦИИ" in txt_up and "МОСКВ" in txt_up:
-                        matched_mvd = cand
-                        break
-                if matched_mvd is None:
-                    for idx in range(opt_count):
-                        cand = options.nth(idx)
-                        txt_up = cand.inner_text().strip().upper()
-                        if "ГУ МВД РОССИИ ПО Г. МОСКВЕ" in txt_up or "УВМ ГУ МВД" in txt_up:
-                            matched_mvd = cand
+
+                for wait_tick in range(15):  # 15 * 300ms = 4.5 seconds max wait
+                    self.page.wait_for_timeout(300)
+                    opt_count = options.count()
+                    if opt_count > 0:
+                        for idx in range(opt_count):
+                            cand = options.nth(idx)
+                            try:
+                                txt_up = cand.inner_text().strip().upper()
+                            except Exception:
+                                continue
+                            if "ТРУДОВОЙ МИГРАЦИИ" in txt_up and "МОСКВ" in txt_up:
+                                matched_mvd = cand
+                                break
+                        if matched_mvd is None:
+                            for idx in range(opt_count):
+                                cand = options.nth(idx)
+                                try:
+                                    txt_up = cand.inner_text().strip().upper()
+                                except Exception:
+                                    continue
+                                if "ГУ МВД РОССИИ ПО Г. МОСКВЕ" in txt_up or "УВМ ГУ МВД" in txt_up:
+                                    matched_mvd = cand
+                                    break
+                        if matched_mvd is not None:
                             break
 
                 if matched_mvd is not None:
@@ -1493,7 +1556,15 @@ class GosuslugiVksBot:
                         matched_mvd.click(timeout=3000)
                     except Exception:
                         matched_mvd.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(800)
+                    self.page.wait_for_timeout(900)
+                else:
+                    # If still not loaded after 4.5s, clear input so next tick can retry cleanly
+                    logger.warning("Step 12: MVD dropdown list did not appear within 4.5s; will retry...")
+                    if by_hand_inp.count() > 0:
+                        try:
+                            by_hand_inp.fill("")
+                        except Exception:
+                            pass
 
             # Now click 'Продолжить' if enabled
             cont_btn = self.page.locator(
@@ -1513,6 +1584,7 @@ class GosuslugiVksBot:
                 except Exception:
                     cont_btn.evaluate("el => (el.closest('button') || el).click()")
                 self.page.wait_for_timeout(1500)
+                self.check_and_stop_if_insufficient_permissions()
                 return True
 
         return False
@@ -1523,48 +1595,55 @@ class GosuslugiVksBot:
         Advances through 'Подразделение МВД' (selecting Moscow OВТМ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ),
         'Подтвердить' consent modal, 'Согласие на обработку ПДн',
         and reliably clicks 'Отправить' on 'Уведомление готово к отправке' until 'Уведомление отправлено'
-        or 'В личный кабинет' is reached.
+        is reached. Immediately halts with InsufficientPermissionsError if 'У вас недостаточно полномочий' appears.
         """
         logger.info("Steps 12-15: Advancing through MVD division, consents, and final 'Отправить' screen...")
         gosuslugi_order_no = ""
 
         for tick in range(55):
             self.check_and_handle_error_modal()
+            # Immediately stop if Gosuslugi shows 'У вас недостаточно полномочий для отправки уведомлений' (Image 3)
+            self.check_and_stop_if_insufficient_permissions()
+
             cur_url = self.page.url or ""
 
-            # 1) Check if we have ALREADY reached the final confirmation screen ('Уведомление отправлено' / 'В личный кабинет') or lk.gosuslugi.ru
-            sent_text = self.page.locator("text='Уведомление отправлено':visible, text='Заявление отправлено':visible")
-            cabinet_btn = self.page.locator(
-                "button:has-text('В личный кабинет'):visible, "
-                "a:has-text('В личный кабинет'):visible, "
-                "span:has-text('В личный кабинет'):visible"
+            # 1) Check if we have reached the actual positive confirmation screen ('Уведомление отправлено' / 'Заявление отправлено')
+            # IMPORTANT: Do NOT rely on 'В личный кабинет' button alone because that button ALSO appears on the 'У вас недостаточно полномочий' draft screen!
+            sent_text = self.page.locator(
+                "h1:has-text('Уведомление отправлено'):visible, "
+                "h1:has-text('Заявление отправлено'):visible, "
+                "h2:has-text('Уведомление отправлено'):visible, "
+                "h2:has-text('Заявление отправлено'):visible, "
+                "h3:has-text('Уведомление отправлено'):visible, "
+                "div.title:has-text('Уведомление отправлено'):visible"
             )
-            if sent_text.count() > 0 or cabinet_btn.count() > 0 or "lk.gosuslugi.ru" in cur_url:
-                no_poa = self.page.locator("text='недостаточно полномочий':visible")
-                if no_poa.count() > 0:
-                    logger.warning(
-                        "Step 15 Warning: Gosuslugi displayed 'У вас недостаточно полномочий для отправки уведомлений' (требуется доверенность руководителя)."
-                    )
-                else:
-                    logger.info(">>> Final confirmation screen ('Уведомление отправлено' / 'В личный кабинет') reached! <<<")
+            if sent_text.count() > 0 or "lk.gosuslugi.ru" in cur_url:
+                self.check_and_stop_if_insufficient_permissions()
+                logger.info(">>> Final confirmation screen ('Уведомление отправлено') reached! <<<")
                 gosuslugi_order_no = self.extract_gosuslugi_order_number()
                 if gosuslugi_order_no:
-                    logger.info(f"Step 15: Captured Gosuslugi Application No: {gosuslugi_order_no}")
+                    logger.info(f"Step 15: Captured Gosuslugi Application No from confirmation screen: {gosuslugi_order_no}")
                 return gosuslugi_order_no
 
             # 2) Check if 'Уведомление готово к отправке' or 'Отправить' button is visible on screen
-            ready_to_send_heading = self.page.locator("text='Уведомление готово к отправке':visible")
+            # Note: Exclude 'Отправить ещё раз' which belongs to the insufficient permissions screen!
+            ready_to_send_heading = self.page.locator(
+                "h1:has-text('Уведомление готово к отправке'):visible, "
+                "h2:has-text('Уведомление готово к отправке'):visible, "
+                "h3:has-text('Уведомление готово к отправке'):visible"
+            )
             submit_candidates = self.page.locator(
                 "button:has-text('Отправить уведомление'):visible, "
-                "button:has-text('Отправить'):visible, "
-                "epgu-cf-ui-button:has-text('Отправить'):visible, "
-                "lib-button:has-text('Отправить'):visible, "
-                "a.button:has-text('Отправить'):visible"
+                "button:has-text('Отправить'):not(:has-text('ещё раз')):not(:has-text('еще раз')):visible, "
+                "epgu-cf-ui-button:has-text('Отправить'):not(:has-text('ещё раз')):visible, "
+                "lib-button:has-text('Отправить'):not(:has-text('ещё раз')):visible, "
+                "a.button:has-text('Отправить'):not(:has-text('ещё раз')):visible"
             )
             if ready_to_send_heading.count() > 0 or submit_candidates.count() > 0:
                 logger.info("Step 15: 'Уведомление готово к отправке' detected — clicking 'Отправить'...")
                 self.click_otpravit_bulletproof()
-                self.page.wait_for_timeout(2200)
+                self.page.wait_for_timeout(2500)
+                self.check_and_stop_if_insufficient_permissions()
                 continue
 
             # 3) Check if Employee Consent Modal ('Подтвердите, что получили согласие работника' -> 'Подтвердить') is visible
@@ -1602,10 +1681,12 @@ class GosuslugiVksBot:
                     except Exception:
                         cont_btn.evaluate("el => (el.closest('button') || el).click()")
                     self.page.wait_for_timeout(1500)
+                    self.check_and_stop_if_insufficient_permissions()
                     continue
 
             self.page.wait_for_timeout(800)
 
+        self.check_and_stop_if_insufficient_permissions()
         gosuslugi_order_no = self.extract_gosuslugi_order_number()
         return gosuslugi_order_no
 
@@ -1616,15 +1697,15 @@ class GosuslugiVksBot:
         so Angular/Gosuslugi always registers the submission.
         """
         selectors = [
-            "epgu-cf-ui-constructor-screen-pad button:has-text('Отправить'):visible",
-            "epgu-cf-ui-button:has-text('Отправить') button:visible",
-            "lib-button:has-text('Отправить') button:visible",
-            "button.button:has-text('Отправить'):visible",
+            "epgu-cf-ui-constructor-screen-pad button:has-text('Отправить'):not(:has-text('ещё раз')):visible",
+            "epgu-cf-ui-button:has-text('Отправить'):not(:has-text('ещё раз')) button:visible",
+            "lib-button:has-text('Отправить'):not(:has-text('ещё раз')) button:visible",
+            "button.button:has-text('Отправить'):not(:has-text('ещё раз')):visible",
             "button:has-text('Отправить уведомление'):visible",
-            "button:has-text('Отправить'):visible",
-            "epgu-cf-ui-button:has-text('Отправить'):visible",
-            "lib-button:has-text('Отправить'):visible",
-            "span:has-text('Отправить'):visible",
+            "button:has-text('Отправить'):not(:has-text('ещё раз')):visible",
+            "epgu-cf-ui-button:has-text('Отправить'):not(:has-text('ещё раз')):visible",
+            "lib-button:has-text('Отправить'):not(:has-text('ещё раз')):visible",
+            "span:has-text('Отправить'):not(:has-text('ещё раз')):visible",
         ]
         target = None
         for sel in selectors:
@@ -1660,7 +1741,11 @@ class GosuslugiVksBot:
 
         # Wait briefly and check if still on 'Уведомление готово к отправке'
         self.page.wait_for_timeout(900)
-        if self.page.locator("text='Уведомление готово к отправке':visible").count() == 0 and clicked:
+        ready_screen_loc = self.page.locator(
+            "h1:has-text('Уведомление готово к отправке'):visible, "
+            "h2:has-text('Уведомление готово к отправке'):visible"
+        )
+        if ready_screen_loc.count() == 0 and clicked:
             return
 
         # Method 2: Physical mouse coordinate click at center of the button bounding box
@@ -1679,7 +1764,7 @@ class GosuslugiVksBot:
             pass
 
         self.page.wait_for_timeout(900)
-        if self.page.locator("text='Уведомление готово к отправке':visible").count() == 0:
+        if ready_screen_loc.count() == 0:
             return
 
         # Method 3: DOM JavaScript click on button / closest button / inner button
@@ -1696,122 +1781,477 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-    def execute_step16_cabinet_and_download(self, row: Dict[str, Any], gosuslugi_order_no: str = ""):
+    @staticmethod
+    def _normalize_ru_tokens(text: str) -> List[str]:
+        """Normalizes Russian/Latin name string into significant lowercase tokens (ignoring 'нет', '-', etc.)."""
+        skip = {"нет", "не", "заполнено", "не заполнено", "-", "none", "null", "no", ""}
+        cleaned = (text or "").lower().replace("ё", "е")
+        cleaned = re.sub(r"[^а-яa-z0-9\s]", " ", cleaned)
+        return [tok for tok in cleaned.split() if len(tok) >= 2 and tok not in skip]
+
+    def does_citizen_match_worker(self, citizen_text: str, row: Dict[str, Any]) -> bool:
         """
-        Executes all clicks required after 'Отправить' to download and rename the PDF receipt:
-        1) Click 'В личный кабинет' on 'Уведомление отправлено' screen
-        2) On lk.gosuslugi.ru/notifications ('Уведомления'), click the worker's 'Заявление'
-        3) On lk.gosuslugi.ru/order/... ('Уведомления о трудовой деятельности иностранцев'), capture '№ 8265228795' and click 'Показать историю'
-        4) Under 'Документы', click 'Скачать' next to 'req_preview' and rename the downloaded PDF to <GosuslugiNo>_<WorkerName>_<Period>.pdf
+        Strictly verifies that the 'Гражданин' field on the Gosuslugi order page/card matches
+        the employee in `row`. Prevents mixing up applications across workers or multiple computers!
+        Example:
+        - Worker: АБУЛЛАЕВ РАШИД НЕТ -> required tokens ['абуллаев', 'рашид']
+        - Gosuslugi 'Гражданин': 'Куммари Прасад' -> tokens ['куммари', 'прасад'] -> returns False!
+        - Gosuslugi 'Гражданин': 'Абуллаев Рашид' -> tokens ['абуллаев', 'рашид'] -> returns True!
         """
-        logger.info("Step 16: Navigating to Personal Cabinet to download and rename submission receipt PDF...")
+        citizen_tokens = self._normalize_ru_tokens(citizen_text)
+        if not citizen_tokens:
+            return False
+
+        # Build primary required tokens from Фамилия + Имя (excluding 'Нет')
+        primary_parts = [
+            str(row.get("Фамилия", "")).strip(),
+            str(row.get("Имя", "")).strip(),
+        ]
+        required_tokens = self._normalize_ru_tokens(" ".join(primary_parts))
+        if not required_tokens:
+            required_tokens = self._normalize_ru_tokens(self.build_clean_worker_name(row))
+        if not required_tokens:
+            return False
+
+        citizen_joined = " ".join(citizen_tokens)
+        for req_tok in required_tokens:
+            if req_tok not in citizen_tokens and req_tok not in citizen_joined:
+                return False
+        return True
+
+    def is_order_already_linked_to_another_worker(self, app_no: str, current_sicil: str) -> bool:
+        """
+        Checks local 'gosuslugi_applications.json' to ensure `app_no` is never linked to two different workers.
+        """
+        clean_app = str(app_no or "").strip()
+        clean_sicil = str(current_sicil or "").strip()
+        if not clean_app:
+            return False
+        ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
         try:
-            # 16.1 Click 'В личный кабинет' if currently on the 'Уведомление отправлено' confirmation screen
-            cabinet_btn = self.page.locator(
-                "button:has-text('В личный кабинет'):visible, "
-                "a:has-text('В личный кабинет'):visible, "
-                "span:has-text('В личный кабинет'):visible"
-            ).first
-            if "lk.gosuslugi.ru" not in (self.page.url or ""):
-                try:
-                    cabinet_btn.wait_for(state="visible", timeout=15000)
-                except Exception:
-                    pass
-            if cabinet_btn.count() > 0 and cabinet_btn.is_visible():
-                logger.info("Step 16.1: Clicking 'В личный кабинет'...")
-                try:
-                    cabinet_btn.click(timeout=5000)
-                except Exception:
-                    cabinet_btn.evaluate("el => (el.closest('button, a') || el).click()")
-                self.page.wait_for_timeout(3500)
+            if os.path.exists(ledger_path):
+                with open(ledger_path, "r", encoding="utf-8") as lf:
+                    items = json.load(lf)
+                if isinstance(items, list):
+                    for it in items:
+                        ex_app = str(it.get("application_no") or "").strip()
+                        ex_sicil = str(it.get("sicil") or it.get("sicil_no") or "").strip()
+                        if ex_app == clean_app and ex_sicil and clean_sicil and ex_sicil != clean_sicil:
+                            return True
+        except Exception:
+            pass
+        return False
 
-            # 16.2 On lk.gosuslugi.ru/notifications ('Уведомления'), click the worker's 'Заявление' item
-            if "/order/" not in (self.page.url or ""):
-                zayavlenie = self.page.locator(
-                    "h5:has-text('Заявление'), a:has-text('Заявление'), span:has-text('Заявление зарегистрировано'), div:has-text('Заявление зарегистрировано')"
-                ).first
-                try:
-                    zayavlenie.wait_for(state="visible", timeout=12000)
-                except Exception:
-                    pass
+    def inspect_open_order_page(self) -> Dict[str, str]:
+        """
+        Inspects the currently open Gosuslugi order details page (https://lk.gosuslugi.ru/order/<feed_id>)
+        and extracts:
+        - order_no: e.g. '8274168553'
+        - service_title: e.g. 'Уведомления о трудовой деятельности иностранцев' or 'Уведомления о прибытии и убытии иностранцев'
+        - citizen_name: value displayed under 'Гражданин' (e.g. 'Куммари Прасад' in Image 1)
+        """
+        # Wait up to 6 seconds for 'Гражданин' or '№' to appear on the order details page
+        for _ in range(12):
+            try:
+                body_now = self.page.locator("body").inner_text(timeout=1500)
+                if "Гражданин" in body_now or "Заявление" in body_now:
+                    break
+            except Exception:
+                pass
+            self.page.wait_for_timeout(500)
 
-                first_name = str(row.get("Имя", "")).strip()
-                clicked_worker_item = False
-                if first_name:
-                    worker_item = self.page.locator(f"text='{first_name}'").first
-                    if worker_item.count() > 0 and worker_item.is_visible():
-                        logger.info(f"Step 16.2: Clicking notification item for '{first_name}'...")
+        info = {"order_no": "", "service_title": "", "citizen_name": ""}
+        try:
+            dom_extracted = self.page.evaluate(
+                """() => {
+                    const res = { order_no: "", service_title: "", citizen_name: "" };
+                    // 1. Heading / Service title
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, .order-title, .title-h3'));
+                    for (const h of headings) {
+                        const t = (h.innerText || "").trim();
+                        if (t.includes("Уведомлени") || t.includes("Заявлени")) {
+                            res.service_title = t.split("\\n")[0].trim();
+                            break;
+                        }
+                    }
+                    // 2. Find 'Гражданин' label and read the value right next to / below it
+                    const allEls = Array.from(document.querySelectorAll('div, span, p, dt, td, label'));
+                    for (const el of allEls) {
+                        const txt = (el.innerText || "").trim();
+                        if (txt === "Гражданин" || txt === "Гражданин:" || txt === "Иностранный гражданин") {
+                            const next = el.nextElementSibling;
+                            if (next && (next.innerText || "").trim()) {
+                                res.citizen_name = (next.innerText || "").trim().split("\\n")[0].trim();
+                                break;
+                            }
+                            if (el.parentElement) {
+                                const pLines = (el.parentElement.innerText || "").split("\\n").map(s => s.trim()).filter(Boolean);
+                                const gIdx = pLines.findIndex(l => l.startsWith("Гражданин"));
+                                if (gIdx !== -1 && pLines[gIdx + 1]) {
+                                    res.citizen_name = pLines[gIdx + 1];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return res;
+                }"""
+            )
+            if isinstance(dom_extracted, dict):
+                info["service_title"] = str(dom_extracted.get("service_title") or "").strip()
+                info["citizen_name"] = str(dom_extracted.get("citizen_name") or "").strip()
+        except Exception:
+            pass
+
+        try:
+            body_text = self.page.locator("body").inner_text(timeout=3000)
+            if not info["citizen_name"]:
+                m_cit = re.search(r"Гражданин\s*:?\s*(?:\r?\n)+\s*([^\r\n]+)", body_text, re.IGNORECASE)
+                if not m_cit:
+                    m_cit = re.search(r"Гражданин\s*:\s*([^\r\n]+)", body_text, re.IGNORECASE)
+                if m_cit:
+                    cand_cit = m_cit.group(1).strip()
+                    if cand_cit.lower() not in ("адрес", "статус", "документы"):
+                        info["citizen_name"] = cand_cit
+
+            if not info["service_title"]:
+                m_srv = re.search(r"(Уведомлени[ея]\s+о\s+[^\r\n№]+)", body_text, re.IGNORECASE)
+                if m_srv:
+                    info["service_title"] = m_srv.group(1).strip()
+
+            m_no = re.search(r"№\s*(\d{8,14})", body_text)
+            if m_no:
+                info["order_no"] = m_no.group(1).strip()
+        except Exception:
+            pass
+
+        if not info["order_no"]:
+            info["order_no"] = self.extract_gosuslugi_order_number()
+
+        return info
+
+    def find_worker_order_via_feeds_api(self, row: Dict[str, Any], expected_order_no: str = "") -> Optional[Dict[str, str]]:
+        """
+        Queries Gosuslugi's internal /api/lk/v1/feeds/ JSON API directly inside the browser session
+        to find the exact order belonging to `row` (matching 'Гражданин' and 'Уведомления о трудовой деятельности иностранцев').
+        Safe when multiple computers submit simultaneously on the same Gosuslugi account!
+        """
+        sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
+        feed_url = (
+            "https://www.gosuslugi.ru/api/lk/v1/feeds/"
+            "?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
+            "&pageSize=25&status=&startDate=&lastFeedId=&lastFeedDate=&q="
+        )
+        try:
+            raw_items = self.page.evaluate(
+                """async (url) => {
+                    const resp = await fetch(url, { credentials: "include", headers: { "Accept": "application/json" } });
+                    if (!resp.ok) return [];
+                    const data = await resp.json();
+                    return Array.isArray(data.items) ? data.items : [];
+                }""",
+                feed_url,
+            )
+        except Exception as e:
+            logger.debug(f"Feeds API lookup note: {e}")
+            raw_items = []
+
+        if not isinstance(raw_items, list):
+            return None
+
+        candidates = []
+        for raw_it in raw_items:
+            if not isinstance(raw_it, dict):
+                continue
+            data_obj = raw_it.get("data") or {}
+            ext_id = str(raw_it.get("extId") or data_obj.get("orderId") or "").strip()
+            feed_id = str(raw_it.get("id") or "").strip()
+            sub_title = str(raw_it.get("subTitle") or "").strip().strip("«»\"'")
+            raw_title = str(raw_it.get("title") or "").strip()
+
+            if not ext_id or not ext_id.isdigit():
+                continue
+
+            # Exclude 'Уведомления о прибытии и убытии иностранцев' (migration registration, not labor/VKS)
+            if "прибытии" in sub_title.lower() or "убытии" in sub_title.lower():
+                continue
+
+            # Exclude drafts
+            if "черновик" in raw_title.lower():
+                continue
+
+            # Exclude orders already linked to another worker
+            if self.is_order_already_linked_to_another_worker(ext_id, sicil):
+                continue
+
+            citizen_name = ""
+            snippets = data_obj.get("snippets") or []
+            if isinstance(snippets, list):
+                for snip in snippets:
+                    if not isinstance(snip, dict):
+                        continue
+                    snip_json_str = snip.get("json")
+                    if snip_json_str and isinstance(snip_json_str, str):
                         try:
-                            worker_item.click(timeout=4000)
-                            clicked_worker_item = True
+                            snip_obj = json.loads(snip_json_str)
+                            for it in snip_obj.get("items") or []:
+                                lbl = str(it.get("label") or "").strip().lower()
+                                txt = str(it.get("text") or "").strip()
+                                if "гражданин" in lbl or "фио" in lbl or "работник" in lbl:
+                                    citizen_name = txt
                         except Exception:
                             pass
 
-                if not clicked_worker_item and zayavlenie.count() > 0 and zayavlenie.is_visible():
-                    logger.info("Step 16.2: Clicking top 'Заявление' in notifications list...")
-                    try:
-                        zayavlenie.click(timeout=5000)
-                    except Exception:
-                        zayavlenie.evaluate("el => (el.closest('a, div.feed-item, lib-feed-item') || el).click()")
-                self.page.wait_for_timeout(3500)
+            if citizen_name:
+                if self.does_citizen_match_worker(citizen_name, row):
+                    item_info = {
+                        "feed_id": feed_id,
+                        "application_no": ext_id,
+                        "citizen_name": citizen_name,
+                        "service_title": sub_title,
+                    }
+                    # Exact match on both Step 15 order number AND Citizen Name -> return immediately!
+                    if expected_order_no and ext_id == expected_order_no:
+                        return item_info
+                    candidates.append(item_info)
 
-            # 16.3 Capture the Gosuslugi Application No (e.g. '№ 8265228795') from the order details page
-            extracted_no = self.extract_gosuslugi_order_number()
-            if extracted_no:
-                gosuslugi_order_no = extracted_no
-                logger.info(f"Step 16.3: Captured Gosuslugi Application No: {gosuslugi_order_no}")
+        if candidates:
+            return candidates[0]
+        return None
 
-            # 16.4 Click 'Показать историю' if 'req_preview' is not already expanded on screen
-            req_preview_loc = self.page.locator("text='req_preview':visible")
-            if req_preview_loc.count() == 0:
-                show_history = self.page.locator(
-                    "a:has-text('Показать историю'):visible, "
-                    "button:has-text('Показать историю'):visible, "
-                    "span:has-text('Показать историю'):visible"
-                ).first
+    def execute_step16_cabinet_and_download(self, row: Dict[str, Any], gosuslugi_order_no: str = ""):
+        """
+        Executes Step 16 after 'Уведомление отправлено' with strict multi-computer & citizen verification:
+        1) Verifies no 'У вас недостаточно полномочий' error is on screen
+        2) Clicks 'В личный кабинет' or navigates to https://lk.gosuslugi.ru/orders
+        3) Finds the exact order where 'Гражданин' matches `row` (and service is 'Уведомления о трудовой деятельности иностранцев',
+           NEVER 'Уведомления о прибытии и убытии иностранцев' or another worker like 'Куммари Прасад'!)
+        4) Verifies 'Гражданин' on the opened https://lk.gosuslugi.ru/order/... page before capturing '№ Заявления' and downloading 'req_preview' PDF
+        5) Renames the PDF to <Sicil>_<VerifiedGosuslugiNo>_<WorkerName>_<Period>.pdf and registers the submission
+        """
+        self.check_and_stop_if_insufficient_permissions()
+        clean_worker_name = self.build_clean_worker_name(row)
+        sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
+        expected_order_no = str(gosuslugi_order_no or "").strip()
+
+        logger.info(
+            f"Step 16: Searching Personal Cabinet for verified Zayavka of Гражданин '{clean_worker_name}' (Код: {sicil})..."
+        )
+
+        # 16.1 Click 'В личный кабинет' if currently on the 'Уведомление отправлено' confirmation screen
+        cabinet_btn = self.page.locator(
+            "button:has-text('В личный кабинет'):visible, "
+            "a:has-text('В личный кабинет'):visible, "
+            "span:has-text('В личный кабинет'):visible"
+        ).first
+        if "lk.gosuslugi.ru" not in (self.page.url or ""):
+            try:
+                cabinet_btn.wait_for(state="visible", timeout=10000)
+            except Exception:
+                pass
+        if cabinet_btn.count() > 0 and cabinet_btn.is_visible():
+            logger.info("Step 16.1: Clicking 'В личный кабинет'...")
+            try:
+                cabinet_btn.click(timeout=5000)
+            except Exception:
+                cabinet_btn.evaluate("el => (el.closest('button, a') || el).click()")
+            self.page.wait_for_timeout(3000)
+
+        verified_order_no = ""
+        checked_urls = set()
+
+        # Up to 3 search passes (allowing Gosuslugi a few seconds to index the newly submitted notification)
+        for search_pass in range(1, 4):
+            # Pass Strategy A: Query Gosuslugi's /api/lk/v1/feeds/ JSON API for exact Citizen Name match
+            api_match = self.find_worker_order_via_feeds_api(row, expected_order_no)
+            if api_match and api_match.get("feed_id"):
+                target_order_url = f"https://lk.gosuslugi.ru/order/{api_match['feed_id']}"
+                logger.info(
+                    f"Step 16.2 (API Match): Found order № {api_match['application_no']} for Гражданин '{api_match['citizen_name']}' -> opening {target_order_url}..."
+                )
                 try:
-                    show_history.wait_for(state="visible", timeout=10000)
+                    self.page.goto(target_order_url, wait_until="domcontentloaded", timeout=30000)
+                    self.page.wait_for_timeout(2500)
+                except Exception as e:
+                    logger.warning(f"Step 16.2 navigation note: {e}")
+
+                page_info = self.inspect_open_order_page()
+                logger.info(
+                    f"Step 16.3: Order Page Check -> № {page_info['order_no']} | Услуга: '{page_info['service_title']}' | Гражданин: '{page_info['citizen_name']}'"
+                )
+                if (
+                    "прибытии" not in page_info["service_title"].lower()
+                    and "убытии" not in page_info["service_title"].lower()
+                    and self.does_citizen_match_worker(page_info["citizen_name"] or api_match["citizen_name"], row)
+                    and not self.is_order_already_linked_to_another_worker(page_info["order_no"] or api_match["application_no"], sicil)
+                ):
+                    verified_order_no = page_info["order_no"] or api_match["application_no"]
+                    logger.info(
+                        f"Step 16.3 VERIFIED: Заявление № {verified_order_no} принадлежит сотруднику '{clean_worker_name}' (Гражданин: '{page_info['citizen_name'] or api_match['citizen_name']}')!"
+                    )
+                    break
+
+            # Pass Strategy B: Inspect https://lk.gosuslugi.ru/orders list and check recent order cards by Citizen Name
+            orders_list_url = "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
+            if "lk.gosuslugi.ru/orders" not in (self.page.url or ""):
+                logger.info(f"Step 16.2 (Pass {search_pass}/3): Navigating to Заявления (lk.gosuslugi.ru/orders)...")
+                try:
+                    self.page.goto(orders_list_url, wait_until="domcontentloaded", timeout=35000)
+                    self.page.wait_for_timeout(3000)
+                except Exception as e:
+                    logger.warning(f"Orders page navigation note: {e}")
+
+            # Collect candidate '/order/...' hrefs from the orders list:
+            # First prioritize cards whose text already contains our worker's name tokens, then recent labor notification cards
+            worker_tokens = self._normalize_ru_tokens(clean_worker_name)
+            candidate_hrefs: List[str] = []
+            try:
+                raw_cards = self.page.evaluate(
+                    """() => {
+                        const results = [];
+                        const links = Array.from(document.querySelectorAll("a[href*='/order/']"));
+                        for (const a of links) {
+                            const href = a.getAttribute("href") || "";
+                            const card = a.closest("div.feed-item, lib-feed-item, .order-item") || a;
+                            const text = (card.innerText || "").trim();
+                            if (href) results.push({ href, text });
+                        }
+                        return results;
+                    }"""
+                )
+                if isinstance(raw_cards, list):
+                    # Pass 1: Cards explicitly mentioning the worker's name on the card
+                    for c in raw_cards:
+                        c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
+                        c_href = str(c.get("href") or "").strip()
+                        if not c_href or "прибытии" in c_text_low or "убытии" in c_text_low or "черновик" in c_text_low:
+                            continue
+                        if worker_tokens and all(tok in c_text_low for tok in worker_tokens):
+                            full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
+                            if full_u not in candidate_hrefs:
+                                candidate_hrefs.append(full_u)
+
+                    # Pass 2: Top 4 recent labor activity orders that haven't been checked yet (in case card snippet didn't render name)
+                    for c in raw_cards[:6]:
+                        c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
+                        c_href = str(c.get("href") or "").strip()
+                        if not c_href or "прибытии" in c_text_low or "убытии" in c_text_low or "черновик" in c_text_low:
+                            continue
+                        # If the card explicitly shows 'Гражданин:' for someone else, skip it immediately without even opening!
+                        m_card_cit = re.search(r"гражданин\s*:\s*([^\n\r]+)", c_text_low)
+                        if m_card_cit and not self.does_citizen_match_worker(m_card_cit.group(1), row):
+                            logger.info(
+                                f"Step 16.2: Skipping card in list because Гражданин '{m_card_cit.group(1).strip()}' != '{clean_worker_name}'"
+                            )
+                            continue
+                        full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
+                        if full_u not in candidate_hrefs and full_u not in checked_urls:
+                            candidate_hrefs.append(full_u)
+            except Exception:
+                pass
+
+            for cand_url in candidate_hrefs[:4]:
+                checked_urls.add(cand_url)
+                logger.info(f"Step 16.2: Opening candidate order {cand_url} to verify 'Гражданин'...")
+                try:
+                    self.page.goto(cand_url, wait_until="domcontentloaded", timeout=30000)
+                    self.page.wait_for_timeout(2500)
+                except Exception:
+                    continue
+
+                page_info = self.inspect_open_order_page()
+                p_no = page_info["order_no"]
+                p_srv = page_info["service_title"]
+                p_cit = page_info["citizen_name"]
+
+                logger.info(
+                    f"Step 16.3: Order Page Check -> № {p_no or '?'} | Услуга: '{p_srv}' | Гражданин: '{p_cit}'"
+                )
+
+                if "прибытии" in p_srv.lower() or "убытии" in p_srv.lower():
+                    logger.warning(
+                        f"Step 16 MISMATCH: Заявление № {p_no} относится к услуге '{p_srv}' (Гражданин: '{p_cit}'), а не к ВКС! Пропускаем..."
+                    )
+                    continue
+
+                if not self.does_citizen_match_worker(p_cit, row):
+                    logger.warning(
+                        f"Step 16 MISMATCH: В заявлении № {p_no} указан Гражданин '{p_cit}', а робот ищет '{clean_worker_name}'! "
+                        f"Чужое заявление пропускается..."
+                    )
+                    continue
+
+                if self.is_order_already_linked_to_another_worker(p_no, sicil):
+                    logger.warning(
+                        f"Step 16 MISMATCH: Заявление № {p_no} уже привязано к другому сотруднику! Пропускаем..."
+                    )
+                    continue
+
+                verified_order_no = p_no
+                logger.info(
+                    f"Step 16.3 VERIFIED: Найдено верное заявление № {verified_order_no} для Гражданина '{p_cit}' (Код: {sicil})!"
+                )
+                break
+
+            if verified_order_no:
+                break
+
+            logger.info(
+                f"Step 16: Waiting 3 seconds before retry pass {search_pass + 1}/3 for '{clean_worker_name}' to appear in Заявления..."
+            )
+            self.page.wait_for_timeout(3000)
+
+        if not verified_order_no:
+            err_msg = (
+                f"Step 16 Error: В личном кабинете Госуслуг не найдено зарегистрированное заявление для гражданина "
+                f"'{clean_worker_name}' (Код: {sicil}). Чужие заявления были отфильтрованы."
+            )
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
+
+        # 16.4 Click 'Показать историю' if 'req_preview' is not already expanded on the verified order screen
+        req_preview_loc = self.page.locator("div:has-text('req_preview'):visible, span:has-text('req_preview'):visible")
+        if req_preview_loc.count() == 0:
+            show_history = self.page.locator(
+                "a:has-text('Показать историю'):visible, "
+                "button:has-text('Показать историю'):visible, "
+                "span:has-text('Показать историю'):visible"
+            ).first
+            try:
+                show_history.wait_for(state="visible", timeout=10000)
+            except Exception:
+                pass
+            if show_history.count() > 0 and show_history.is_visible():
+                logger.info("Step 16.4: Clicking 'Показать историю'...")
+                try:
+                    show_history.scroll_into_view_if_needed(timeout=3000)
                 except Exception:
                     pass
-                if show_history.count() > 0 and show_history.is_visible():
-                    logger.info("Step 16.4: Clicking 'Показать историю'...")
-                    try:
-                        show_history.scroll_into_view_if_needed(timeout=3000)
-                    except Exception:
-                        pass
-                    try:
-                        show_history.click(timeout=5000)
-                    except Exception:
-                        show_history.evaluate("el => (el.closest('a, button') || el).click()")
-                    self.page.wait_for_timeout(2500)
+                try:
+                    show_history.click(timeout=5000)
+                except Exception:
+                    show_history.evaluate("el => (el.closest('a, button') || el).click()")
+                self.page.wait_for_timeout(2500)
 
-            # 16.5 Click 'Скачать' next to 'req_preview' under 'Документы' and rename the PDF
-            saved_pdf_path = self.download_and_rename_receipt_pdf(row, gosuslugi_order_no)
-            if saved_pdf_path:
-                logger.info(f"Step 16.5: Official Gosuslugi PDF saved as: {saved_pdf_path}")
-        except Exception as e:
-            logger.warning(f"Step 16 receipt download/rename note: {e}")
+        # 16.5 Click 'Скачать' next to 'req_preview' under 'Документы' and rename the PDF
+        saved_pdf_path = self.download_and_rename_receipt_pdf(row, verified_order_no)
+        if saved_pdf_path:
+            logger.info(f"Step 16.5: Official Gosuslugi PDF saved as: {saved_pdf_path}")
 
     def extract_gosuslugi_order_number(self) -> str:
         """
         Extracts the Gosuslugi application number (e.g. '8265228795' from '№ 8265228795' under
         'Уведомления о трудовой деятельности иностранцев').
-        Prioritizes page text ('№ <digits>') over URL '/order/20000...' which is an internal feed ID.
+        Prioritizes page text ('№ <digits>') and never returns the internal 16-digit feed ID from '/order/20000...'.
         """
         try:
             body_text = self.page.locator("body").inner_text(timeout=3000)
-            m = re.search(r"(?:Заявление|Уведомлени\w+)[^\n\r№]*\s*№\s*(\d{6,14})", body_text, re.IGNORECASE)
+            m = re.search(r"(?:Заявление|Уведомлени\w+)[^\n\r№]*\s*№\s*(\d{8,14})", body_text, re.IGNORECASE)
             if m:
                 return m.group(1)
-            m2 = re.search(r"№\s*(\d{7,14})", body_text)
+            m2 = re.search(r"№\s*(\d{8,14})", body_text)
             if m2:
                 return m2.group(1)
-        except Exception:
-            pass
-        try:
-            url_match = re.search(r"/order/(\d{6,16})", self.page.url or "")
-            if url_match:
-                return url_match.group(1)
         except Exception:
             pass
         return ""
@@ -1863,11 +2303,9 @@ class GosuslugiVksBot:
 
     def download_and_rename_receipt_pdf(self, row: Dict[str, Any], gosuslugi_order_no: str = "") -> Optional[str]:
         """
-        Clicks the 'Скачать' link for 'req_preview' inside 'Документы' on Gosuslugi,
+        Clicks the 'Скачать' link for 'req_preview' inside 'Документы' on the verified Gosuslugi order page,
         waits for the PDF to land in ~/Downloads, and renames it to:
-            <GosuslugiNo>_<Ad Soyad>_<Donem>.pdf
-        Example:
-            8265228795_АБДУЛ РАШИД_2026-3.pdf
+            <Sicil>_<VerifiedGosuslugiNo>_<Ad Soyad>_<Donem>.pdf
         """
         downloads_dir = Path.home() / "Downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -1909,6 +2347,8 @@ class GosuslugiVksBot:
 
         if not download_link:
             logger.warning("Step 16: Could not find visible 'Скачать' PDF link for 'req_preview' in order history.")
+            if gosuslugi_order_no:
+                self.register_application_submission(row, gosuslugi_order_no, "")
             return None
 
         try:
@@ -1929,18 +2369,20 @@ class GosuslugiVksBot:
                     download_link.evaluate("el => el.click()")
             dl = download_info.value
             suggested_name = dl.suggested_filename or f"{gosuslugi_order_no or 'req_preview'}.pdf"
-            temp_target = downloads_dir / suggested_name
+            temp_target = downloads_dir / f"tmp_{os.getpid()}_{int(click_time)}_{suggested_name}"
             dl.save_as(str(temp_target))
             downloaded_path = temp_target
         except Exception:
             # In CDP mode Chrome often handles the download directly in ~/Downloads without triggering expect_download
             pass
 
+        # Regex matching already-renamed Pondera PDFs so we never pick up an already-renamed PDF from another worker
+        already_renamed_re = re.compile(r"^(?:\d+_)?\d{8,14}_.+_20\d{2}-[1-4]\.pdf$", re.IGNORECASE)
+
         # If Chrome handled the download natively, poll ~/Downloads for the newly created/updated .pdf file
         if not downloaded_path or not downloaded_path.exists():
             for _ in range(30):
                 self.page.wait_for_timeout(500)
-                # Wait if Chrome is still writing a .crdownload partial file
                 active_crdownloads = [
                     p for p in downloads_dir.glob("*.crdownload")
                     if (time.time() - p.stat().st_mtime) < 30
@@ -1951,9 +2393,11 @@ class GosuslugiVksBot:
                 candidates = []
                 for p in downloads_dir.glob("*.pdf"):
                     try:
+                        if already_renamed_re.match(p.name):
+                            continue
                         resolved = p.resolve()
                         mtime = p.stat().st_mtime
-                        if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 2.0):
+                        if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 1.5):
                             candidates.append((mtime, p))
                     except Exception:
                         pass
@@ -1968,15 +2412,13 @@ class GosuslugiVksBot:
                 self.register_application_submission(row, gosuslugi_order_no, "")
             return None
 
-        # Determine Gosuslugi Number prefix:
-        # 1) If downloaded file is already named with Gosuslugi number (e.g. '8255536023.pdf' or '8255536023 (1).pdf'), keep that number
-        # 2) Otherwise use gosuslugi_order_no extracted from the page
+        # Always prioritize the verified Gosuslugi order number from the page; never let a UUID filename overwrite it!
         stem = downloaded_path.stem
-        stem_digits_match = re.match(r"^(\d{5,15})", stem)
+        strict_order_stem_match = re.match(r"^([789]\d{9})(?:\s*\(\d+\))?$", stem)
         final_gosuslugi_no = (
-            stem_digits_match.group(1)
-            if stem_digits_match
-            else (gosuslugi_order_no or self.extract_gosuslugi_order_number() or stem)
+            gosuslugi_order_no
+            or (strict_order_stem_match.group(1) if strict_order_stem_match else "")
+            or self.extract_gosuslugi_order_number()
         )
 
         sicil = re.sub(r'[<>:"/\\|?*]+', "", str(row.get("Sicil") or row.get("Код") or "").strip())
@@ -2002,7 +2444,7 @@ class GosuslugiVksBot:
 
     def register_application_submission(self, row: Dict[str, Any], application_no: str, pdf_filename: str = ""):
         """
-        Records the Gosuslugi Application Number (№ Заявления) and PDF filename for EBA upload & status tracking:
+        Records the verified Gosuslugi Application Number (№ Заявления) and PDF filename for EBA upload & status tracking:
         1) Emits structured 'APPLICATION_REGISTERED: {...}' log line for rpa_bridge_server.py
         2) Persists to local 'gosuslugi_applications.json'
         3) Posts to Pondera HR '/api/gosuslugi/submissions' SQLite endpoint
@@ -2011,6 +2453,12 @@ class GosuslugiVksBot:
         if not app_no:
             return
         sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
+        if self.is_order_already_linked_to_another_worker(app_no, sicil):
+            logger.error(
+                f"Prevented duplicate linking: Application № {app_no} is already linked to another employee!"
+            )
+            return
+
         worker_name = self.build_clean_worker_name(row)
         citizenship = str(row.get("ТекущееГражданство", "")).strip()
         period_code = self.compute_vks_period_code(row)
@@ -2211,6 +2659,17 @@ def main():
                     fail_count += 1
                     if args.excel and row_idx is not None and os.path.exists(args.excel):
                         mark_row_completed(args.excel, row_idx, False, "Submission failed")
+            except InsufficientPermissionsError as perm_ex:
+                fail_count += 1
+                logger.error(f"Error processing {record.get('Фамилия')} {record.get('Имя')}: {perm_ex}")
+                if args.excel and row_idx is not None and os.path.exists(args.excel):
+                    mark_row_completed(args.excel, row_idx, False, str(perm_ex))
+                try:
+                    page.screenshot(path=os.path.join(CURRENT_DIR, f"error_permissions_vks_{record.get('Код', idx)}.png"))
+                except Exception:
+                    pass
+                logger.error("=== ОСТАНОВКА РОБОТА: В текущем аккаунте Госуслуг недостаточно полномочий для отправки уведомлений ===")
+                break
             except Exception as ex:
                 fail_count += 1
                 logger.error(f"Error processing {record.get('Фамилия')}: {ex}")

@@ -73,10 +73,39 @@ interface BridgeStatus {
   active_worker_name?: string | null;
   waiting_for_manual?: boolean;
   manual_message?: string | null;
+  fatal_error?: string | null;
   completed_codes?: string[];
   error_codes?: string[];
-  submissions?: Record<string, GosuslugiSubmissionEntry>;
+  submissions?: GosuslugiSubmissionEntry[] | Record<string, GosuslugiSubmissionEntry>;
   logs: Array<{ time: string; text: string }>;
+}
+
+function doesSubMatchWorker(
+  sub: GosuslugiSubmissionEntry | undefined,
+  w: GosuslugiVksWorkerRecord
+): boolean {
+  if (!sub) return false;
+  const wCode = String(w.code || w.sicil || '').trim();
+  const sCode = String(sub.sicil_no || '').trim();
+  if (wCode && sCode && wCode !== sCode) {
+    return false;
+  }
+  const sName = String(sub.worker_name || '')
+    .toLowerCase()
+    .replace(/\b(нет|no|none|-)\b/gi, ' ')
+    .replace(/[^а-яёa-z0-9\s]/gi, ' ')
+    .trim();
+  if (sName) {
+    const wTokens = [w.lastName, w.firstName]
+      .map((p) => String(p || '').toLowerCase().trim())
+      .filter((p) => p && p !== 'нет' && p !== 'no' && p !== '-')
+      .flatMap((p) => p.split(/\s+/))
+      .filter((tok) => tok.length >= 2);
+    if (wTokens.length > 0 && !wTokens.every((tok) => sName.includes(tok))) {
+      return false;
+    }
+  }
+  return Boolean((wCode && sCode && wCode === sCode) || (w.applicationNo && sub.application_no === w.applicationNo));
 }
 
 export interface VksValidationIssue {
@@ -420,7 +449,7 @@ export default function GosuslugiVksView() {
 
   // Global PAD Form Configuration (matching 933532 PDF & HR Manager's Tobolsk form)
   const [periodStart, setPeriodStart] = useState('01.07.2026');
-  const [periodEnd, setPeriodEnd] = useState('19.08.2026');
+  const [periodEnd, setPeriodEnd] = useState('30.09.2026');
   const [periodCode, setPeriodCode] = useState('2026-3');
   const [workAddress, setWorkAddress] = useState(
     '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й'
@@ -524,9 +553,10 @@ export default function GosuslugiVksView() {
     let invalidCnt = 0;
     const processed = list.map((w) => {
       const codeKey = w.code || w.sicil;
-      const savedSub =
+      const candidateSub =
         (codeKey && savedSubmissions[codeKey]) ||
         (w.applicationNo && savedSubmissions[`app:${w.applicationNo}`]);
+      const savedSub = doesSubMatchWorker(candidateSub, w) ? candidateSub : undefined;
       const enriched: GosuslugiVksWorkerRecord = savedSub
         ? {
             ...w,
@@ -594,17 +624,19 @@ export default function GosuslugiVksView() {
                 prev.map((w) => {
                   const codeKey = w.code || w.sicil;
                   let nextW = w;
+                  const isErrored = Boolean(
+                    data.error_codes && codeKey && data.error_codes.includes(codeKey)
+                  );
 
-                  // Enrich with application number & status from bridge submissions
-                  if (data.submissions) {
-                    const matchedSub = Object.values(data.submissions).find(
-                      (s) =>
-                        (codeKey && s.sicil_no && String(s.sicil_no) === String(codeKey)) ||
-                        (w.applicationNo && s.application_no === w.applicationNo)
+                  // Enrich with application number & status from bridge submissions ONLY if worker is not errored and citizen/sicil matches
+                  if (data.submissions && !isErrored) {
+                    const matchedSub = Object.values(data.submissions).find((s) =>
+                      doesSubMatchWorker(s, w)
                     );
                     if (matchedSub) {
                       const nextAppNo = matchedSub.application_no || w.applicationNo;
-                      const nextGosStatus = matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено';
+                      const nextGosStatus =
+                        matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено';
                       const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
                       if (
                         nextAppNo !== w.applicationNo ||
@@ -622,11 +654,11 @@ export default function GosuslugiVksView() {
                     }
                   }
 
+                  if (isErrored) {
+                    return nextW.status === 'error' ? nextW : { ...nextW, status: 'error' };
+                  }
                   if (data.completed_codes && codeKey && data.completed_codes.includes(codeKey)) {
                     return nextW.status === 'success' ? nextW : { ...nextW, status: 'success' };
-                  }
-                  if (data.error_codes && codeKey && data.error_codes.includes(codeKey)) {
-                    return nextW.status === 'error' ? nextW : { ...nextW, status: 'error' };
                   }
                   const isCurrent =
                     data.running &&
@@ -664,17 +696,17 @@ export default function GosuslugiVksView() {
     };
   }, []);
 
-  // Auto-scroll live log
+  // Auto-scroll ONLY inside the terminal log box (never scroll the main page window!)
+  const lastLogSig =
+    bridgeStatus.logs.length > 0
+      ? `${bridgeStatus.logs.length}:${bridgeStatus.logs[bridgeStatus.logs.length - 1]?.time}:${bridgeStatus.logs[bridgeStatus.logs.length - 1]?.text}`
+      : '';
   useEffect(() => {
-    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [bridgeStatus.logs]);
-
-  // Auto-scroll to currently processing row in table
-  useEffect(() => {
-    if (bridgeStatus.running && activeRowRef.current) {
-      activeRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const container = terminalEndRef.current?.parentElement;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
     }
-  }, [bridgeStatus.active_worker_code, bridgeStatus.active_worker_name]);
+  }, [lastLogSig]);
 
   // Load VKS specialists directly from Pondera HR SQLite database
   const handleLoadFromDatabase = async () => {
@@ -1920,6 +1952,27 @@ export default function GosuslugiVksView() {
                 </div>
                 <div className="font-mono font-bold truncate">
                   {`<Sicil>_<GosuslugiNo>_<Ad Soyad>_${periodCode || '2026-3'}.pdf`}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FATAL STOP BANNER (E.G. INSUFFICIENT PERMISSIONS ON GOSUSLUGI ACCOUNT - IMAGE 3) */}
+        {bridgeStatus.fatal_error && (
+          <div className="mt-3 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/75 border-2 border-rose-500 dark:border-rose-500/80 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-extrabold uppercase tracking-wider text-rose-900 dark:text-rose-200">
+                  {lang === 'ru'
+                    ? 'РОБОТ ОСТАНОВЛЕН: НЕДОСТАТОЧНО ПОЛНОМОЧИЙ НА ГОСУСЛУГАХ'
+                    : 'ROBOT DURDURULDU: GOSUSLUGİ HESABINDA GÖNDERİM YETKİSİ YOK'}
+                </div>
+                <div className="text-xs text-rose-800 dark:text-rose-200 mt-0.5 font-medium">
+                  {bridgeStatus.fatal_error}
                 </div>
               </div>
             </div>

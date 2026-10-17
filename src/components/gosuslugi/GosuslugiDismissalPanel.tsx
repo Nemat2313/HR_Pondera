@@ -50,6 +50,7 @@ interface BridgeStatus {
   active_worker_name?: string | null;
   waiting_for_manual?: boolean;
   manual_message?: string | null;
+  fatal_error?: string | null;
   completed_codes?: string[];
   error_codes?: string[];
   logs: Array<{ time: string; text: string }>;

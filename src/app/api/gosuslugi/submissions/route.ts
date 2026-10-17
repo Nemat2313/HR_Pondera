@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     const params: any[] = [];
 
     if (notificationType) {
-      conditions.push('notification_type = ?');
+      conditions.push('LOWER(notification_type) = LOWER(?)');
       params.push(notificationType);
     }
     if (periodCode) {
@@ -70,7 +70,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const items = Array.isArray(body?.items) ? body.items : body ? [body] : [];
+    const items = Array.isArray(body?.records)
+      ? body.records
+      : Array.isArray(body?.items)
+      ? body.items
+      : body
+      ? [body]
+      : [];
 
     if (items.length === 0) {
       return NextResponse.json({ success: false, message: 'Kayıt verisi bulunamadı.' }, { status: 400 });
@@ -80,6 +86,13 @@ export async function POST(request: Request) {
     ensureTable(db);
 
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    const checkCollisionStmt = db.prepare(`
+      SELECT sicil_no, worker_name
+      FROM gosuslugi_submissions
+      WHERE application_no = ? AND sicil_no != '' AND sicil_no != ?
+      LIMIT 1
+    `);
 
     const stmt = db.prepare(`
       INSERT INTO gosuslugi_submissions (
@@ -104,16 +117,24 @@ export async function POST(request: Request) {
     `);
 
     let upserted = 0;
+    let skippedCollisions = 0;
     for (const item of items) {
       const sicil = String(item.sicil_no || item.sicil || item.code || '').trim();
       const appNo = String(item.application_no || item.applicationNo || '').trim();
       if (!sicil || !appNo) continue;
 
+      // Prevent linking the same Gosuslugi application_no to two different workers across multiple computers
+      const existingOwner = checkCollisionStmt.get(appNo, sicil) as { sicil_no: string; worker_name: string } | undefined;
+      if (existingOwner) {
+        skippedCollisions++;
+        continue;
+      }
+
       stmt.run(
         sicil,
         String(item.worker_name || item.workerName || '').trim(),
         String(item.citizenship || '').trim(),
-        String(item.notification_type || item.notificationType || 'vks_salary').trim(),
+        String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase(),
         String(item.period_code || item.periodCode || '').trim(),
         appNo,
         String(item.gosuslugi_status || item.gosuslugiStatus || 'Отправлено').trim(),
@@ -128,6 +149,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       upserted,
+      skippedCollisions,
     });
   } catch {
     return NextResponse.json(
@@ -192,6 +214,38 @@ export async function PATCH(request: Request) {
   } catch {
     return NextResponse.json(
       { success: false, message: 'Gosuslugi başvuru durumu güncellenemedi.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const appNo = searchParams.get('applicationNo') || '';
+    const sicil = searchParams.get('sicil') || '';
+
+    if (!appNo && !sicil) {
+      return NextResponse.json({ success: false, message: 'Silinecek parametre belirtilmedi.' }, { status: 400 });
+    }
+
+    const db = getDb();
+    ensureTable(db);
+
+    let deleted = 0;
+    if (appNo) {
+      const res = db.prepare('DELETE FROM gosuslugi_submissions WHERE application_no = ?').run(appNo);
+      deleted += res.changes;
+    }
+    if (sicil) {
+      const res = db.prepare('DELETE FROM gosuslugi_submissions WHERE sicil_no = ?').run(sicil);
+      deleted += res.changes;
+    }
+
+    return NextResponse.json({ success: true, deleted });
+  } catch {
+    return NextResponse.json(
+      { success: false, message: 'Kayıt silinemedi.' },
       { status: 500 }
     );
   }

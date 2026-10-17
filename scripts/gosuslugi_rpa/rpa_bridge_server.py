@@ -56,9 +56,11 @@ def scan_downloads_pdfs():
     if not downloads_dir.exists():
         return found
     period_re = re.compile(r"^20\d{2}-[1-4]$")
-    app_no_re = re.compile(r"^[1-9]\d{9}$")
+    app_no_re = re.compile(r"^[789]\d{9}$")
     for pdf_path in downloads_dir.glob("*.pdf"):
         stem = pdf_path.stem
+        if stem.startswith("tmp_"):
+            continue
         parts = stem.split("_")
         if len(parts) >= 4 and parts[0].isdigit() and app_no_re.match(parts[1]) and period_re.match(parts[-1]):
             found.append({
@@ -89,6 +91,7 @@ class RPAState:
     is_running = False
     waiting_for_manual = False
     manual_message = None
+    fatal_error = None
     mode = "vks"
     process = None
     thread = None
@@ -111,6 +114,18 @@ class RPAState:
         sicil = str(entry.get("sicil") or entry.get("sicil_no") or "").strip()
         if not app_no and not sicil:
             return
+        # Guard against multi-computer / cross-worker application_no collision
+        if app_no:
+            for existing in cls.submissions:
+                ex_app = str(existing.get("application_no") or "").strip()
+                ex_sicil = str(existing.get("sicil") or existing.get("sicil_no") or "").strip()
+                if ex_app == app_no and ex_sicil and sicil and ex_sicil != sicil:
+                    print(
+                        f"[RPA BRIDGE] Rejected duplicate application_no {app_no} for Sicil {sicil}: "
+                        f"already linked to Sicil {ex_sicil} ({existing.get('worker_name')})"
+                    )
+                    return
+
         updated = False
         for idx, existing in enumerate(cls.submissions):
             ex_app = str(existing.get("application_no") or "").strip()
@@ -135,6 +150,7 @@ class RPAState:
         cls.logs = []
         cls.waiting_for_manual = False
         cls.manual_message = None
+        cls.fatal_error = None
         cls.total = 0
         cls.processed = 0
         cls.success = 0
@@ -269,6 +285,20 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                         except Exception:
                             pass
 
+                # Detect Fatal Stop (e.g. Insufficient permissions on Gosuslugi: 'У вас недостаточно полномочий для отправки уведомлений')
+                if "FATAL_STOP:" in clean_line:
+                    fatal_msg = clean_line.split("FATAL_STOP:", 1)[1].strip()
+                    RPAState.fatal_error = fatal_msg
+                    RPAState.waiting_for_manual = False
+                    RPAState.manual_message = None
+                    if RPAState.active_worker_code:
+                        if RPAState.active_worker_code in RPAState.completed_codes:
+                            RPAState.completed_codes.remove(RPAState.active_worker_code)
+                        if RPAState.active_worker_code not in RPAState.error_codes:
+                            RPAState.error_codes.append(RPAState.active_worker_code)
+                            RPAState.errors += 1
+                            RPAState.processed += 1
+
                 # Detect Human-in-the-Loop Manual Intervention Pause
                 if "WAITING_FOR_USER:" in clean_line:
                     RPAState.waiting_for_manual = True
@@ -285,13 +315,17 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                     RPAState.processed += 1
                     if RPAState.active_worker_code and RPAState.active_worker_code not in RPAState.completed_codes:
                         RPAState.completed_codes.append(RPAState.active_worker_code)
-                elif "Error processing" in clean_line or "[ERROR]" in clean_line:
+                elif "Error processing" in clean_line or ("[ERROR]" in clean_line and "FATAL_STOP:" not in clean_line):
                     RPAState.waiting_for_manual = False
                     RPAState.manual_message = None
-                    RPAState.errors += 1
-                    RPAState.processed += 1
-                    if RPAState.active_worker_code and RPAState.active_worker_code not in RPAState.error_codes:
-                        RPAState.error_codes.append(RPAState.active_worker_code)
+                    if RPAState.active_worker_code:
+                        if RPAState.active_worker_code not in RPAState.error_codes:
+                            RPAState.error_codes.append(RPAState.active_worker_code)
+                            RPAState.errors += 1
+                            RPAState.processed += 1
+                    elif "Error processing" in clean_line:
+                        RPAState.errors += 1
+                        RPAState.processed += 1
                 elif "Loaded" in clean_line and "records" in clean_line:
                     try:
                         parts = clean_line.split("Loaded ")[1].split(" records")[0]
@@ -334,6 +368,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 "running": RPAState.is_running,
                 "waiting_for_manual": RPAState.waiting_for_manual,
                 "manual_message": RPAState.manual_message,
+                "fatal_error": RPAState.fatal_error,
                 "mode": RPAState.mode,
                 "chrome_ready": chrome_ready,
                 "total": RPAState.total,
