@@ -181,6 +181,27 @@ function parseStrictDateRu(val: string | undefined | null): {
   return { valid: true, empty: false, ts: d.getTime() };
 }
 
+// Format salary amount with mandatory 2 decimal places (kopecks) for Gosuslugi Step 11 ('До копеек')
+function formatSalaryWithKopecks(val: any): string {
+  let s = String(val ?? '').trim();
+  if (!s) return '';
+  s = s.replace(/[\s\u00a0₽рРУБруб]/g, '');
+  if (s.includes(',') && s.includes('.')) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+  const num = Number(s);
+  if (!Number.isNaN(num) && num > 0) {
+    return num.toFixed(2);
+  }
+  return s;
+}
+
 // Comprehensive Gosuslugi VKS Pre-Flight Validator
 export function validateVksWorkerRecord(
   w: GosuslugiVksWorkerRecord,
@@ -750,7 +771,7 @@ export default function GosuslugiVksView() {
             ? 'Женский'
             : 'Мужской';
 
-        const salaryRaw = String(raw['Resmi Maaş'] || '217400').replace('.0', '');
+        const salaryRaw = formatSalaryWithKopecks(raw['Resmi Maaş'] || '217400.00');
 
         return {
           id: `db-vks-${emp.id || idx}`,
@@ -933,7 +954,7 @@ export default function GosuslugiVksView() {
             contractEndDate: formatDateRu(r[idxContractEnd]),
             periodStart: formatDateRu(r[idxPeriodStart]) || periodStart,
             periodEnd: formatDateRu(r[idxPeriodEnd]) || periodEnd,
-            salaryAmount: getVal(r, idxSalary),
+            salaryAmount: formatSalaryWithKopecks(getVal(r, idxSalary)),
             position: getVal(r, idxPosition) || 'СПЕЦИАЛИСТ',
             workAddress: getVal(r, idxWorkAddr) || workAddress,
             postalCode: getVal(r, idxPostal) || postalCode,
@@ -1165,7 +1186,7 @@ export default function GosuslugiVksView() {
       НачалоПериода: w.periodStart || periodStart,
       КонецПериода: w.periodEnd || periodEnd,
       ПериодКод: periodCode,
-      РазмерВыплаты: w.salaryAmount,
+      РазмерВыплаты: formatSalaryWithKopecks(w.salaryAmount),
       Должность: w.position,
       АдресРаботы: w.workAddress || workAddress,
       Индекс: w.postalCode || postalCode,

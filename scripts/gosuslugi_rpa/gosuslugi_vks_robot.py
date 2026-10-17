@@ -294,6 +294,70 @@ class GosuslugiVksBot:
             pass
         return ""
 
+    def format_salary_with_kopecks(self, raw_val: Any) -> str:
+        """
+        Formats any salary amount string/number to always include 2 decimal places (kopecks),
+        e.g., '250000' -> '250000.00', '250000,5' -> '250000.50', '664655.12' -> '664655.12'.
+        Required by Gosuslugi Step 11 ('Размер выплаты, ₽' — 'До копеек' / 'Укажите копейки').
+        """
+        s = str(raw_val or "").strip()
+        if not s:
+            return ""
+        # Strip spaces, non-breaking spaces, and currency labels
+        s = re.sub(r"[\s\u00a0₽рРУБруб]", "", s)
+        if "," in s and "." in s:
+            # Whichever appears last is the decimal separator; earlier ones are thousands separators
+            if s.rfind(",") > s.rfind("."):
+                s = s.replace(".", "").replace(",", ".")
+            else:
+                s = s.replace(",", "")
+        elif "," in s:
+            s = s.replace(",", ".")
+        try:
+            num = float(s)
+            return f"{num:.2f}"
+        except Exception:
+            # Fallback if non-numeric characters remain
+            if "." not in s:
+                return f"{s}.00"
+            parts = s.split(".", 1)
+            dec = (parts[1] + "00")[:2]
+            return f"{parts[0]}.{dec}"
+
+    def fill_salary_amount_strict(self, raw_val: Any) -> bool:
+        """
+        Fills Step 11 'Размер выплаты, ₽' (#si17_paid) ensuring kopecks (.00 / ,00) are always typed
+        so Gosuslugi never blocks with 'Укажите копейки'.
+        """
+        formatted_dot = self.format_salary_with_kopecks(raw_val)
+        if not formatted_dot:
+            return False
+
+        selector = "#si17_paid, input[name='si17_paid']"
+        logger.info(f"Step 11: Typing salary amount with kopecks: {formatted_dot} (raw: {raw_val})")
+        self.type_masked_input(selector, formatted_dot, delay=35)
+        self.page.wait_for_timeout(350)
+
+        # Check if 'Укажите копейки' appeared or if the input ignored '.' and requires ','
+        kopecks_err = self.page.locator("text='Укажите копейки':visible").count() > 0
+        inp_loc = self.page.locator(selector).first
+        cur_val = ""
+        if inp_loc.count() > 0 and inp_loc.is_visible():
+            try:
+                cur_val = inp_loc.input_value().strip()
+            except Exception:
+                cur_val = ""
+
+        if kopecks_err or (cur_val and ("," not in cur_val and "." not in cur_val)):
+            formatted_comma = formatted_dot.replace(".", ",")
+            logger.info(
+                f"Step 11: Retrying salary input with comma decimal separator: {formatted_comma} (current field: '{cur_val}')"
+            )
+            self.type_masked_input(selector, formatted_comma, delay=35)
+            self.page.wait_for_timeout(350)
+
+        return True
+
     def has_red_validation_errors(self) -> List[str]:
         """Checks if Gosuslugi displays red inline validation errors or invalid inputs on the current screen."""
         errors = []
@@ -306,6 +370,7 @@ class GosuslugiVksBot:
             "Необходимо указать дом",
             "Проверьте правильность",
             "Укажите корректн",
+            "Укажите копейки",
         ]
         for phrase in error_phrases:
             try:
@@ -490,8 +555,11 @@ class GosuslugiVksBot:
                 if yes_radio.count() > 0 and yes_radio.is_visible():
                     yes_radio.click()
                     self.page.wait_for_timeout(300)
-                if self.is_input_empty_or_invalid("#si17_paid:visible, input[name='si17_paid']:visible"):
-                    self.type_masked_input("#si17_paid, input[name='si17_paid']", paid_amount, delay=35)
+                if (
+                    self.is_input_empty_or_invalid("#si17_paid:visible, input[name='si17_paid']:visible")
+                    or "Укажите копейки" in self.has_red_validation_errors()
+                ):
+                    self.fill_salary_amount_strict(paid_amount)
                 repaired = True
 
         except Exception as e:
@@ -1245,15 +1313,16 @@ class GosuslugiVksBot:
         self.click_continue_strict("Шаг 10: Договор и Адрес работы", 2000)
 
         # Step 11: VKS Salary Payment Details ('Укажите информацию о выплате зарплаты иностранцу')
+        paid_amount_raw = str(row.get("РазмерВыплаты", "")).strip()
+        paid_amount = self.format_salary_with_kopecks(paid_amount_raw)
         logger.info(
             f"Step 11: Filling Salary Payment Period ({row.get('НачалоПериода')} - {row.get('КонецПериода')}) "
-            f"& Amount: {row.get('РазмерВыплаты')}..."
+            f"& Amount: {paid_amount}..."
         )
         self.check_and_handle_error_modal()
 
         period_start = str(row.get("НачалоПериода", "")).strip() or self.cfg["PERIOD_START"]
         period_end = str(row.get("КонецПериода", "")).strip() or self.cfg["PERIOD_END"]
-        paid_amount = str(row.get("РазмерВыплаты", "")).strip()
 
         p_start_input = self.page.locator("input[name='di17_start']").first
         p_start_input.wait_for(state="visible", timeout=20000)
@@ -1266,8 +1335,8 @@ class GosuslugiVksBot:
             yes_radio.click()
             self.page.wait_for_timeout(400)
 
-        # Populate Salary Amount (#si17_paid)
-        self.type_masked_input("#si17_paid, input[name='si17_paid']", paid_amount, delay=35)
+        # Populate Salary Amount (#si17_paid) with mandatory kopecks (.00)
+        self.fill_salary_amount_strict(paid_amount)
         self.page.wait_for_timeout(600)
 
         self.click_continue_strict("Шаг 11: Выплата зарплаты ВКС", 2000)
