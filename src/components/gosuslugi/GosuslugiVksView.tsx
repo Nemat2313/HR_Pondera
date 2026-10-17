@@ -499,7 +499,6 @@ export default function GosuslugiVksView() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
-  const activeRowRef = useRef<HTMLTableRowElement>(null);
 
   const showNotice = (type: 'success' | 'error' | 'info', text: string) => {
     setToastMsg({ type, text });
@@ -574,9 +573,9 @@ export default function GosuslugiVksView() {
     let invalidCnt = 0;
     const processed = list.map((w) => {
       const codeKey = w.code || w.sicil;
-      const candidateSub =
-        (codeKey && savedSubmissions[codeKey]) ||
-        (w.applicationNo && savedSubmissions[`app:${w.applicationNo}`]);
+      const candidateSub: GosuslugiSubmissionEntry | undefined =
+        (codeKey ? savedSubmissions[codeKey] : undefined) ||
+        (w.applicationNo ? savedSubmissions[`app:${w.applicationNo}`] : undefined);
       const savedSub = doesSubMatchWorker(candidateSub, w) ? candidateSub : undefined;
       const enriched: GosuslugiVksWorkerRecord = savedSub
         ? {
@@ -715,6 +714,11 @@ export default function GosuslugiVksView() {
       isMounted = false;
       clearInterval(interval);
     };
+  }, []);
+
+  // Ensure page starts at the top when opening Gosuslugi view
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   }, []);
 
   // Auto-scroll ONLY inside the terminal log box (never scroll the main page window!)
@@ -1495,7 +1499,7 @@ export default function GosuslugiVksView() {
       : 'Power Automate Desktop (PAD) yerine doğrudan tarayıcı otomasyonu. Excel yükleyin veya veritabanından VKS uzmanlarını çekin; hangi satırın Gosuslugi üzerinde işlendiğini canlı takip edin.';
 
   return (
-    <div className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1600px] mx-auto">
+    <div className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1600px] mx-auto [overflow-anchor:none]">
       {/* Animations for RPA Assistant */}
       <style>{`
         @keyframes rpaBotRoam {
@@ -2622,7 +2626,6 @@ export default function GosuslugiVksView() {
                   return (
                     <tr
                       key={w.id}
-                      ref={isProcessing ? activeRowRef : null}
                       className={`transition-colors align-top ${
                         isProcessing
                           ? 'bg-teal-50/90 dark:bg-teal-950/50 border-l-4 border-l-emerald-500 font-semibold'
