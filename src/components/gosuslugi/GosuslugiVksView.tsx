@@ -489,9 +489,11 @@ export function validateVksWorkerRecord(
     );
   }
 
-  if (cEnd.empty) {
-    addIssue('contract', 'Отсутствует дата окончания договора/РНР', 'Sözleşme / РНР bitiş tarihi eksik');
-  } else if (!cEnd.valid) {
+  // Empty contractEndDate (ДатаОканчанияДействия) is valid and means 'Договор бессрочный' (Indefinite Contract)
+  const isIndefiniteEnd =
+    cEnd.empty ||
+    /^(бессрочн|нет|-|süresiz|suresiz)$/i.test(String(w.contractEndDate || '').trim());
+  if (!isIndefiniteEnd && !cEnd.valid) {
     addIssue(
       'contract',
       `Некорректная дата окончания договора (${w.contractEndDate})`,
@@ -798,16 +800,18 @@ export default function GosuslugiVksView() {
                     data.error_codes && codeKey && data.error_codes.includes(codeKey)
                   );
 
-                  // Enrich with application number & status from bridge submissions ONLY if worker is not errored and citizen/sicil matches
-                  if (data.submissions && !isErrored) {
+                  if (data.submissions) {
                     const matchedSub = Object.values(data.submissions).find((s) =>
                       doesSubMatchWorker(s, w)
                     );
                     if (matchedSub) {
                       const nextAppNo = matchedSub.application_no || w.applicationNo;
                       const nextGosStatus =
-                        matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено';
+                        matchedSub.gosuslugi_status || w.gosuslugiStatus || (isErrored ? '' : 'Отправлено');
                       const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
+                      const isSubErr =
+                        isErrored ||
+                        (!nextAppNo && /^ошибк/i.test(String(matchedSub.gosuslugi_status || '').trim()));
                       if (
                         nextAppNo !== w.applicationNo ||
                         nextGosStatus !== w.gosuslugiStatus ||
@@ -818,7 +822,7 @@ export default function GosuslugiVksView() {
                           applicationNo: nextAppNo,
                           gosuslugiStatus: nextGosStatus,
                           pdfFilename: nextPdf,
-                          status: 'success',
+                          status: isSubErr ? 'error' : 'success',
                         };
                       }
                     }
@@ -2980,10 +2984,20 @@ export default function GosuslugiVksView() {
                             )}
                           </div>
                         ) : w.status === 'error' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap">
-                            <AlertCircle className="w-3 h-3" />
-                            {lang === 'ru' ? 'Ошибка ЕПГУ' : 'Gosuslugi Hatası'}
-                          </span>
+                          <div className="space-y-0.5 leading-tight font-sans">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap">
+                              <AlertCircle className="w-3 h-3 shrink-0" />
+                              {lang === 'ru' ? 'Ошибка ЕПГУ' : 'Gosuslugi Hatası'}
+                            </span>
+                            {w.gosuslugiStatus && (
+                              <div
+                                className="text-[9.5px] text-rose-600 dark:text-rose-300 truncate max-w-[225px]"
+                                title={w.gosuslugiStatus}
+                              >
+                                {w.gosuslugiStatus}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                             <CheckCircle2 className="w-3 h-3" />
@@ -3377,10 +3391,13 @@ export default function GosuslugiVksView() {
                                 className={
                                   fErr.contract
                                     ? 'underline decoration-wavy text-rose-600 dark:text-rose-400'
+                                    : !w.contractEndDate
+                                    ? 'text-emerald-600 dark:text-emerald-400 font-bold'
                                     : 'text-slate-700 dark:text-slate-300'
                                 }
                               >
-                                {w.contractEndDate || '—'}
+                                {w.contractEndDate ||
+                                  (lang === 'ru' ? 'Бессрочный ✓' : 'Бессрочный (Süresiz) ✓')}
                               </span>
                             </div>
                           </div>

@@ -754,7 +754,7 @@ class GosuslugiVksBot:
                     repaired = True
 
             # 5) Step 10: Contract & Work Address
-            if self.page.locator("input[name='di16_1']:visible, input[name='c_startDate']:visible, input#index:visible").count() > 0 or "Шаг 10" in step_name:
+            if self.page.locator("input[name='di16_1']:visible, input[name='c_startDate']:visible, input#index:visible, epgu-constructor-address-input:visible").count() > 0 or "Шаг 10" in step_name:
                 trudovoy_lbl = self.page.locator("label.radio:has-text('Трудовой'):visible, lib-radio:has-text('Трудовой') label:visible").first
                 if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
                     trudovoy_lbl.click()
@@ -766,12 +766,38 @@ class GosuslugiVksBot:
                 if start_date and self.is_input_empty_or_invalid("input[name='c_startDate']:visible"):
                     self.type_masked_input("input[name='c_startDate']", start_date, delay=35)
                 end_date = str(row.get("ДатаОканчанияДействия", row.get("ДатаОкончанияДействия", ""))).strip()
-                if end_date and self.is_input_empty_or_invalid("input[name='c_endDate']:visible"):
-                    self.type_masked_input("input[name='c_endDate']", end_date, delay=35)
+                if self.is_indefinite_contract_date(end_date):
+                    self.set_indefinite_contract_checkbox(True)
+                else:
+                    self.set_indefinite_contract_checkbox(False)
+                    if self.is_input_empty_or_invalid("input[name='c_endDate']:visible"):
+                        self.type_masked_input("input[name='c_endDate']", end_date, delay=35)
+
+                # If 'Проверьте адрес' is shown or detailed address inputs are collapsed, trigger DaData lookup & expand 'Уточнить адрес'
+                red_now = self.has_red_validation_errors()
+                if "Проверьте адрес" in red_now or self.page.locator("input#index:visible").count() == 0:
+                    work_addr = str(row.get("АдресРаботы", "")).strip() or self.cfg["WORK_ADDRESS"]
+                    self.select_dadata_work_address(work_addr)
+                    try:
+                        clarify_btn = self.page.locator(
+                            "button.clarify-address:visible, "
+                            "button:has-text('Уточнить адрес'):visible, "
+                            "span:has-text('Уточнить адрес'):visible"
+                        ).first
+                        if clarify_btn.count() > 0 and clarify_btn.is_visible() and self.page.locator("input#index:visible").count() == 0:
+                            clarify_btn.click()
+                            self.page.wait_for_timeout(700)
+                    except Exception:
+                        pass
+
                 postal_code = str(row.get("Индекс", "")).strip() or str(self.cfg["WORK_POSTAL_CODE"])
                 self.fill_postal_code_strict(postal_code)
-                self.set_address_checkbox("Нет дома", "houseCheckbox", True)
-                self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+                work_addr_for_parse = str(row.get("АдресРаботы", "")).strip() or self.cfg["WORK_ADDRESS"]
+                parsed_house, parsed_apt = self.parse_address_house_and_apt(work_addr_for_parse)
+                if not parsed_house:
+                    self.set_address_checkbox("Нет дома", "houseCheckbox", True)
+                if not parsed_apt:
+                    self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
                 repaired = True
 
             # 6) Step 11: Salary Payment Period & Amount (Monthly breakdown via 'Добавить период')
@@ -794,9 +820,9 @@ class GosuslugiVksBot:
         1) Waits up to 3 seconds for 'Продолжить' to become active naturally.
         2) If 'Продолжить' is still inactive or red validation warnings ('Обязательно для заполнения', etc.) exist,
            automatically runs up to 3 field-level self-healing passes (`auto_repair_current_step`).
-        3) If still inactive after 3 repair passes on Attempt 1 (`self.allow_full_restart`), raises `RestartZayavkaException`
-           so the robot automatically restarts the entire Zayavka from Step 1!
-        4) On Attempt 2, enters Human-in-the-Loop pause mode if still blocked.
+        3) If still inactive after 3 repair passes, does NOT restart from Step 1 with a new draft and does NOT block
+           forever — records the error for this employee and raises RuntimeError so the robot immediately moves
+           to the next employee in the queue!
         """
         self.check_and_handle_error_modal()
         initial_heading = self.get_current_heading()
@@ -831,7 +857,7 @@ class GosuslugiVksBot:
             self.wait_for_screen_transition(initial_heading, wait_ms)
             return
 
-        # Phase 2: Automatic Field-Level Self-Healing (up to 3 repair passes)
+        # Phase 2: Automatic Field-Level Self-Healing (up to 3 repair passes on the current step)
         for repair_pass in range(1, 4):
             red_errs = self.has_red_validation_errors()
             err_summary = ", ".join(red_errs) if red_errs else "Кнопка «Продолжить» неактивна"
@@ -854,54 +880,17 @@ class GosuslugiVksBot:
                     self.wait_for_screen_transition(initial_heading, wait_ms)
                     return
 
-        # Phase 3: If auto-repair exhausted on Attempt 1 -> Restart the entire Zayavka from Step 1!
+        # Phase 3: Auto-repair exhausted (3 tries) -> Do NOT restart with a new draft!
+        # Record error for this employee and move immediately to the next employee.
         red_errs = self.has_red_validation_errors()
-        err_desc = ", ".join(red_errs) if red_errs else "Кнопка «Продолжить» неактивна (серая)"
-        if self.allow_full_restart:
-            logger.warning(
-                f"[{step_name}] Auto-repair exhausted ({err_desc}) -> Restarting this Zayavka from Step 1!"
-            )
-            raise RestartZayavkaException(f"[{step_name}] {err_desc}")
-
-        # Phase 4 (Attempt 2 last resort): Human-in-the-Loop Manual Intervention Mode
-        logger.warning(
-            f"WAITING_FOR_USER: [{step_name}] На странице Госуслуг требуется проверка ({err_desc}). "
-            f"Исправьте поле в Chrome и нажмите «Продолжить» (или кнопку «Продолжить» в Pondera HR)."
+        err_desc = ", ".join(red_errs) if red_errs else "Кнопка «Продолжить» неактивна"
+        err_msg = f"Ошибка [{step_name}]: {err_desc}"
+        logger.error(
+            f"[{step_name}] Не удалось исправить ошибку после 3 попыток ({err_desc}). "
+            f"Фиксируем ошибку по сотруднику и переходим к следующему сотруднику (без повторного создания черновика)."
         )
-
-        for tick in range(300):
-            self.check_and_handle_error_modal()
-
-            current_heading = self.get_current_heading()
-            if initial_heading and current_heading and current_heading != initial_heading:
-                logger.info(f"USER_RESOLVED: Page advanced to '{current_heading}'. Resuming robot...")
-                self.page.wait_for_timeout(1000)
-                return
-
-            user_signaled = os.path.exists(MANUAL_CONTINUE_SIGNAL)
-            if user_signaled:
-                try:
-                    os.remove(MANUAL_CONTINUE_SIGNAL)
-                except Exception:
-                    pass
-
-            red_errs_now = self.has_red_validation_errors()
-            btn_now = self.page.locator("button:has-text('Продолжить'):visible").last
-            if btn_now.count() > 0:
-                disabled_attr = btn_now.get_attribute("disabled")
-                cls_attr = btn_now.get_attribute("class") or ""
-                is_disabled = (disabled_attr is not None) or ("disabled" in cls_attr) or (not btn_now.is_enabled())
-
-                if not is_disabled and (len(red_errs_now) == 0 or user_signaled):
-                    logger.info(f"USER_RESOLVED: [{step_name}] Validation passed! Clicking 'Продолжить'...")
-                    btn_now.focus()
-                    btn_now.click()
-                    self.wait_for_screen_transition(initial_heading, wait_ms)
-                    return
-
-            self.page.wait_for_timeout(1000)
-
-        raise RuntimeError(f"Timeout waiting for manual correction on step: {step_name}")
+        self.register_worker_error(self.current_row or {}, err_msg)
+        raise RuntimeError(err_msg)
 
     def wait_for_screen_transition(self, previous_heading: str, min_wait_ms: int = 1500):
         """Waits until Gosuslugi finishes loading the next screen (h1 changes or modal/final button appears)."""
@@ -935,44 +924,29 @@ class GosuslugiVksBot:
 
     def fill_vks_notification(self, row: Dict[str, Any]) -> bool:
         """
-        Executes the complete Gosuslugi VKS Salary Notification flow for a single employee.
-        If any step cannot activate 'Продолжить' even after 3 field-level auto-repair attempts,
-        automatically restarts the entire Zayavka from Step 1 (Attempt 2/2).
+        Executes the complete Gosuslugi VKS Salary Notification flow for a single employee (1 attempt only).
+        If any step fails validation after 3 field-level auto-repair attempts, records the error for this
+        employee and raises an exception so the batch immediately proceeds to the next employee without
+        creating a new draft from Step 1.
         """
         self.current_row = row
+        self.allow_full_restart = False
         last_name = str(row.get("Фамилия", "")).strip()
         first_name = str(row.get("Имя", "")).strip()
         middle_name = str(row.get("Отчество", "")).strip()
         code = str(row.get("Код", row.get("Sicil", ""))).strip()
         full_name = f"{last_name} {first_name} {middle_name}".strip()
 
-        for form_attempt in (1, 2):
-            self.allow_full_restart = (form_attempt == 1)
-            try:
-                if form_attempt > 1:
-                    logger.warning(
-                        f"=== RETRYING ZAYAVKA FROM SCRATCH (Attempt {form_attempt}/2) for {full_name} (Код: {code}) ==="
-                    )
-                return self._execute_vks_notification_attempt(row, full_name, code, last_name, first_name, middle_name, form_attempt)
-            except InsufficientPermissionsError:
-                # Never retry when the Gosuslugi account lacks authority ('У вас недостаточно полномочий для отправки уведомлений')
-                raise
-            except RestartZayavkaException as rex:
-                logger.warning(
-                    f"Attempt {form_attempt} triggered full Zayavka restart ({rex}) -> starting fresh Zayavka from Step 1..."
-                )
-                self.page.wait_for_timeout(1500)
-                continue
-            except Exception as ex:
-                if form_attempt == 1:
-                    logger.warning(
-                        f"Attempt 1 encountered error ({ex}) -> restarting Zayavka from Step 1 (Attempt 2/2)..."
-                    )
-                    self.page.wait_for_timeout(1500)
-                    continue
-                raise
-
-        return False
+        try:
+            return self._execute_vks_notification_attempt(
+                row, full_name, code, last_name, first_name, middle_name, form_attempt=1
+            )
+        except InsufficientPermissionsError:
+            # Never retry when the Gosuslugi account lacks authority ('У вас недостаточно полномочий для отправки уведомлений')
+            raise
+        except Exception as ex:
+            self.register_worker_error(row, str(ex))
+            raise
 
     def _execute_vks_notification_attempt(
         self,
@@ -1351,7 +1325,7 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # 10b. Contract Dates (Дата заключения, Дата начала действия, Дата окончания действия)
+        # 10b. Contract Dates (Дата заключения, Дата начала действия, Дата окончания действия / Договор бессрочный)
         contract_date = str(row.get("ДатаЗаключения", row.get("ДатаПриема", ""))).strip()
         if contract_date:
             self.type_masked_input("input[name='di16_1'], input[name='di16_2']", contract_date, delay=35)
@@ -1361,7 +1335,11 @@ class GosuslugiVksBot:
             self.type_masked_input("input[name='c_startDate']", start_date, delay=35)
 
         end_date = str(row.get("ДатаОканчанияДействия", row.get("ДатаОкончанияДействия", ""))).strip()
-        if end_date:
+        if self.is_indefinite_contract_date(end_date):
+            logger.info("Step 10: Дата окончания договора пустая -> устанавливаем чекбокс «Договор бессрочный» = TRUE...")
+            self.set_indefinite_contract_checkbox(True)
+        else:
+            self.set_indefinite_contract_checkbox(False)
             self.type_masked_input("input[name='c_endDate']", end_date, delay=35)
 
         # 10c. Work Address (Gosuslugi DaData <textarea class="search-input">)
@@ -1381,54 +1359,8 @@ class GosuslugiVksBot:
             except Exception:
                 pass
 
-        # Normalize query for DaData if it contains 'Восточный промышленный район' and ('5-й' or 'квартал 5')
         is_tobolsk_kv5 = "Восточный промышленный район" in work_addr and ("5-й" in work_addr or "квартал 5" in work_addr or "кв-л 5" in work_addr)
-        dadata_query = (
-            "Тюменская обл, г Тобольск, тер Восточный промышленный район-квартал 5"
-            if is_tobolsk_kv5
-            else work_addr
-        )
-
-        addr_textarea = self.page.locator(
-            "epgu-constructor-address-input textarea, "
-            "lib-dadata-widget textarea, "
-            "textarea.search-input"
-        ).first
-
-        if addr_textarea.count() > 0 and addr_textarea.is_visible():
-            addr_textarea.click()
-            self.page.wait_for_timeout(150)
-            addr_textarea.fill("")
-            self.page.wait_for_timeout(200)
-            addr_textarea.fill(dadata_query)
-        else:
-            self.page.keyboard.press("Tab")
-            self.page.wait_for_timeout(200)
-            self.page.keyboard.type(dadata_query, delay=30)
-
-        self.page.wait_for_timeout(1800)
-
-        # Select matching FIAS/DaData suggestion item from dropdown
-        try:
-            lookup_items = self.page.locator("epgu-constructor-address-input .lookup-item:not(.nothing-found):visible")
-            item_count = lookup_items.count()
-            if is_tobolsk_kv5 and item_count > 0:
-                clicked_kv5 = False
-                for idx_i in range(item_count):
-                    txt_i = lookup_items.nth(idx_i).inner_text().strip()
-                    if txt_i.endswith("квартал 5") or txt_i.endswith("кв-л 5") or txt_i.endswith("5-й"):
-                        lookup_items.nth(idx_i).click()
-                        clicked_kv5 = True
-                        self.page.wait_for_timeout(900)
-                        break
-                if not clicked_kv5:
-                    lookup_items.first.click()
-                    self.page.wait_for_timeout(900)
-            elif item_count > 0:
-                lookup_items.first.click()
-                self.page.wait_for_timeout(900)
-        except Exception:
-            pass
+        self.select_dadata_work_address(work_addr)
 
         # Expand 'Уточнить адрес' (button.clarify-address) if detailed fields (input#index) are not yet visible
         try:
@@ -1548,6 +1480,138 @@ class GosuslugiVksBot:
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to count success
         logger.info(f"SUCCESS: Notification submitted for {full_name}!")
         return True
+
+    def is_indefinite_contract_date(self, val: Any) -> bool:
+        """Returns True if contract end date is empty or explicitly marked as indefinite ('бессрочный')."""
+        s = str(val or "").strip().lower()
+        return s in ("", "бессрочный", "бессрочно", "нет", "-", "none", "null", "süresiz", "suresiz")
+
+    def set_indefinite_contract_checkbox(self, should_check: bool):
+        """Reliably sets the 'Договор бессрочный' checkbox on Step 10 to should_check (True/False)."""
+        try:
+            cb_containers = self.page.locator(
+                "lib-checkbox:has-text('Договор бессрочный'):visible, "
+                "epgu-cf-ui-checkbox:has-text('Договор бессрочный'):visible, "
+                "lib-checkbox:has-text('бессрочный'):visible"
+            )
+            if cb_containers.count() > 0:
+                target_cb = cb_containers.first
+                inp = target_cb.locator("input[type='checkbox']").first
+                is_currently_checked = False
+                if inp.count() > 0:
+                    try:
+                        is_currently_checked = inp.is_checked()
+                    except Exception:
+                        cls_str = (target_cb.get_attribute("class") or "") + " " + (inp.get_attribute("class") or "")
+                        is_currently_checked = "checked" in cls_str
+                if is_currently_checked != should_check:
+                    lbl = target_cb.locator("label.check, label").first
+                    if lbl.count() > 0 and lbl.is_visible():
+                        try:
+                            lbl.click(timeout=2000)
+                        except Exception:
+                            lbl.evaluate("el => el.click()")
+                    else:
+                        target_cb.click(timeout=2000)
+                    self.page.wait_for_timeout(300)
+                return
+
+            # Fallback via DOM JavaScript for 'Договор бессрочный'
+            self.page.evaluate(
+                """(shouldCheck) => {
+                    const labels = Array.from(document.querySelectorAll('label, lib-checkbox'));
+                    for (const el of labels) {
+                        const txt = (el.innerText || '').trim().toLowerCase();
+                        if (txt.includes('договор бессрочный') || txt === 'бессрочный') {
+                            const wrap = el.closest('lib-checkbox') || el;
+                            const inp = wrap.querySelector('input[type="checkbox"]');
+                            const isChecked = inp ? inp.checked : wrap.classList.contains('checked');
+                            if (Boolean(isChecked) !== Boolean(shouldCheck)) {
+                                const clickTarget = wrap.querySelector('label.check, label') || el;
+                                clickTarget.click();
+                            }
+                            break;
+                        }
+                    }
+                }""",
+                should_check,
+            )
+            self.page.wait_for_timeout(250)
+        except Exception as e:
+            logger.debug(f"set_indefinite_contract_checkbox({should_check}) note: {e}")
+
+    def select_dadata_work_address(self, work_addr: str) -> bool:
+        """
+        Fills the Step 10 work address textarea (`epgu-constructor-address-input textarea`),
+        triggers the DaData/FIAS dropdown using real keystrokes, and clicks the matching suggestion item
+        so Gosuslugi never complains 'Проверьте адрес'.
+        """
+        is_tobolsk_kv5 = "Восточный промышленный район" in work_addr and (
+            "5-й" in work_addr or "квартал 5" in work_addr or "кв-л 5" in work_addr
+        )
+        dadata_query = (
+            "Тюменская обл, г Тобольск, тер Восточный промышленный район-квартал 5"
+            if is_tobolsk_kv5
+            else work_addr
+        )
+
+        addr_textarea = self.page.locator(
+            "epgu-constructor-address-input textarea, "
+            "lib-dadata-widget textarea, "
+            "textarea.search-input"
+        ).first
+
+        if addr_textarea.count() > 0 and addr_textarea.is_visible():
+            addr_textarea.click()
+            self.page.wait_for_timeout(150)
+            addr_textarea.fill("")
+            self.page.wait_for_timeout(150)
+            addr_textarea.fill(dadata_query)
+            self.page.wait_for_timeout(150)
+            # Trigger keystroke events so Angular DaData widget always opens the suggestion list
+            self.page.keyboard.press("Space")
+            self.page.wait_for_timeout(120)
+            self.page.keyboard.press("Backspace")
+        else:
+            self.page.keyboard.press("Tab")
+            self.page.wait_for_timeout(200)
+            self.page.keyboard.type(dadata_query, delay=25)
+
+        # Wait up to 2.4s for FIAS/DaData suggestion item to appear and click it
+        lookup_selector = (
+            "epgu-constructor-address-input .lookup-item:not(.nothing-found):visible, "
+            "lib-dadata-widget .lookup-item:not(.nothing-found):visible, "
+            "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
+            ".lookup-item:not(.nothing-found):visible"
+        )
+        lookup_items = self.page.locator(lookup_selector)
+        for _ in range(8):
+            self.page.wait_for_timeout(300)
+            if lookup_items.count() > 0:
+                break
+
+        try:
+            item_count = lookup_items.count()
+            if is_tobolsk_kv5 and item_count > 0:
+                clicked_kv5 = False
+                for idx_i in range(item_count):
+                    txt_i = lookup_items.nth(idx_i).inner_text().strip()
+                    if txt_i.endswith("квартал 5") or txt_i.endswith("кв-л 5") or txt_i.endswith("5-й"):
+                        lookup_items.nth(idx_i).click()
+                        clicked_kv5 = True
+                        self.page.wait_for_timeout(800)
+                        return True
+                if not clicked_kv5:
+                    lookup_items.first.click()
+                    self.page.wait_for_timeout(800)
+                    return True
+            elif item_count > 0:
+                lookup_items.first.click()
+                self.page.wait_for_timeout(800)
+                return True
+        except Exception:
+            pass
+        return False
 
     def is_continue_button_ready(self) -> bool:
         """Returns True if 'Продолжить' button is visible, enabled, and no red validation errors are on screen."""
@@ -1682,7 +1746,8 @@ class GosuslugiVksBot:
         """
         Ensures that on Step 12 ('Подразделение МВД, куда отправится уведомление' /
         'Выберите подразделение МВД, куда отправится уведомление'), the robot clicks 'Изменить'
-        if needed and selects 'ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ'
+        if needed, types 'МОСКВЕ' into #dic18_byHand, and selects
+        'ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ'
         before clicking 'Продолжить'.
         Returns True if this step handled an action on the MVD screen.
         """
@@ -1730,129 +1795,190 @@ class GosuslugiVksBot:
         by_hand_inp = self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first
         mvd_heading = self.page.locator("h1:has-text('Выберите подразделение МВД'):visible")
         if (by_hand_inp.count() > 0 and by_hand_inp.is_visible()) or mvd_heading.count() > 0:
-            cont_btn = self.page.locator(
-                "lib-button[data-button-type='nextstep'] button:visible, "
-                "button:has-text('Продолжить'):visible"
-            ).last
+            for mvd_try in range(1, 4):
+                cont_btn = self.page.locator(
+                    "lib-button[data-button-type='nextstep'] button:visible, "
+                    "button:has-text('Продолжить'):visible"
+                ).last
 
-            displayed_mvd = self.page.locator("lib-lookup .displayed.lookup-item").first
-            cur_disp_txt = (
-                displayed_mvd.inner_text().strip().upper()
-                if (displayed_mvd.count() > 0 and displayed_mvd.is_visible())
-                else ""
-            )
+                displayed_mvd = self.page.locator("lib-lookup .displayed.lookup-item").first
+                cur_disp_txt = (
+                    displayed_mvd.inner_text().strip().upper()
+                    if (displayed_mvd.count() > 0 and displayed_mvd.is_visible())
+                    else ""
+                )
 
-            cont_ready = (
-                cont_btn.count() > 0
-                and cont_btn.is_enabled()
-                and (cont_btn.get_attribute("disabled") is None)
-                and ("disabled" not in (cont_btn.get_attribute("class") or ""))
-            )
+                cont_ready = (
+                    cont_btn.count() > 0
+                    and cont_btn.is_enabled()
+                    and (cont_btn.get_attribute("disabled") is None)
+                    and ("disabled" not in (cont_btn.get_attribute("class") or ""))
+                )
 
-            if not (cont_ready and "ТРУДОВОЙ МИГРАЦИИ" in cur_disp_txt and "МОСКВ" in cur_disp_txt):
+                if cont_ready and "МОСКВ" in cur_disp_txt:
+                    break
+
                 by_hand_inp = self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first
-                cur_inp_val = ""
-                if by_hand_inp.count() > 0:
+                logger.info(
+                    f"Step 12 (Attempt {mvd_try}/3): Typing 'МОСКВЕ' in #dic18_byHand to select '{target_dept}'..."
+                )
+                clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
+                if clr_btn.count() > 0 and clr_btn.is_visible():
                     try:
-                        cur_inp_val = (by_hand_inp.input_value() or "").strip().lower()
+                        clr_btn.click(timeout=2000)
                     except Exception:
-                        cur_inp_val = ""
+                        clr_btn.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(250)
 
-                # Only clear and type 'мос' if it is not already typed in the input
-                if cur_inp_val != "мос":
-                    logger.info(
-                        f"Step 12: Typing 'мос' in #dic18_byHand to select '{target_dept}'..."
-                    )
-                    clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
-                    if clr_btn.count() > 0 and clr_btn.is_visible():
-                        try:
-                            clr_btn.click(timeout=2000)
-                        except Exception:
-                            clr_btn.evaluate("el => el.click()")
-                        self.page.wait_for_timeout(300)
+                if by_hand_inp.count() > 0:
+                    by_hand_inp.click()
+                    self.page.wait_for_timeout(150)
+                    self.page.keyboard.press("Control+A")
+                    self.page.keyboard.press("Backspace")
+                    self.page.wait_for_timeout(200)
+                    # Type 'МОСКВЕ' so the dropdown immediately filters to the exact Moscow MVD division
+                    by_hand_inp.press_sequentially("МОСКВЕ", delay=80)
 
-                    if by_hand_inp.count() > 0:
-                        by_hand_inp.click()
-                        self.page.wait_for_timeout(150)
-                        self.page.keyboard.press("Control+A")
-                        self.page.keyboard.press("Backspace")
-                        self.page.wait_for_timeout(200)
-                        # Type 'мос' character-by-character so Gosuslugi's <lib-lookup> queries the Moscow MVD list
-                        by_hand_inp.press_sequentially("мос", delay=90)
-
-                # Wait 3.5 - 4.5 seconds for Gosuslugi's async MVD lookup list to load (do NOT interrupt or re-type while loading!)
-                logger.info("Step 12: Waiting up to 4.5s for MVD dropdown list to appear after 'мос'...")
+                logger.info("Step 12: Waiting up to 4.5s for MVD dropdown option ('МОСКВЕ')...")
                 options_selector = (
                     "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
                     "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
-                    ".lookup-item:not(.nothing-found):visible"
+                    "lib-lookup .lookup-item:not(.nothing-found):visible, "
+                    ".lookup-item:not(.nothing-found):visible, "
+                    "[role='option']:visible"
                 )
                 options = self.page.locator(options_selector)
-                matched_mvd = None
+                clicked_option = False
 
-                for wait_tick in range(15):  # 15 * 300ms = 4.5 seconds max wait
+                for _ in range(15):  # 15 * 300ms = 4.5 seconds max wait
                     self.page.wait_for_timeout(300)
+
+                    # Strategy 1: Standard Playwright locator match
                     opt_count = options.count()
                     if opt_count > 0:
+                        matched_mvd = None
                         for idx in range(opt_count):
                             cand = options.nth(idx)
                             try:
                                 txt_up = cand.inner_text().strip().upper()
                             except Exception:
                                 continue
-                            if "ТРУДОВОЙ МИГРАЦИИ" in txt_up and "МОСКВ" in txt_up:
+                            if ("ТРУДОВОЙ МИГРАЦИИ" in txt_up and "МОСКВ" in txt_up) or ("ГУ МВД РОССИИ ПО Г. МОСКВЕ" in txt_up):
                                 matched_mvd = cand
                                 break
                         if matched_mvd is None:
-                            for idx in range(opt_count):
-                                cand = options.nth(idx)
-                                try:
-                                    txt_up = cand.inner_text().strip().upper()
-                                except Exception:
-                                    continue
-                                if "ГУ МВД РОССИИ ПО Г. МОСКВЕ" in txt_up or "УВМ ГУ МВД" in txt_up:
-                                    matched_mvd = cand
-                                    break
+                            matched_mvd = options.first
+
                         if matched_mvd is not None:
+                            try:
+                                opt_txt = matched_mvd.inner_text().strip()
+                                logger.info(f"Step 12: Clicking MVD lookup option: '{opt_txt}'...")
+                                matched_mvd.click(timeout=2500)
+                            except Exception:
+                                try:
+                                    matched_mvd.evaluate("el => el.click()")
+                                except Exception:
+                                    pass
+                            clicked_option = True
+                            self.page.wait_for_timeout(800)
                             break
 
-                if matched_mvd is not None:
-                    opt_txt = matched_mvd.inner_text().strip()
-                    logger.info(f"Step 12: Clicking MVD lookup option: '{opt_txt}'...")
+                    # Strategy 2: Deep DOM JavaScript scan for any visible dropdown item containing 'ТРУДОВОЙ МИГРАЦИИ' or 'ПО Г. МОСКВЕ'
+                    dom_box = None
                     try:
-                        matched_mvd.click(timeout=3000)
+                        dom_box = self.page.evaluate(
+                            """() => {
+                                const all = Array.from(document.querySelectorAll('div, li, span, p, a'));
+                                let best = null;
+                                let bestArea = Infinity;
+                                for (const el of all) {
+                                    if (el.closest('button') || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') continue;
+                                    const txt = (el.innerText || '').trim().toUpperCase();
+                                    if (!txt || txt.length > 220) continue;
+                                    if (
+                                        (txt.includes('ТРУДОВОЙ МИГРАЦИИ') && txt.includes('МОСКВ')) ||
+                                        txt.includes('УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ')
+                                    ) {
+                                        const r = el.getBoundingClientRect();
+                                        if (r.width > 40 && r.height >= 14 && r.height <= 130) {
+                                            const area = r.width * r.height;
+                                            if (area < bestArea) {
+                                                bestArea = area;
+                                                best = { el, x: r.left + r.width / 2, y: r.top + r.height / 2, text: txt };
+                                            }
+                                        }
+                                    }
+                                }
+                                if (best) {
+                                    const target = best.el.closest('.lookup-item, [role="option"], li') || best.el;
+                                    target.click();
+                                    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                    return { x: best.x, y: best.y, text: best.text };
+                                }
+                                return null;
+                            }"""
+                        )
                     except Exception:
-                        matched_mvd.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(900)
-                else:
-                    # If still not loaded after 4.5s, clear input so next tick can retry cleanly
-                    logger.warning("Step 12: MVD dropdown list did not appear within 4.5s; will retry...")
-                    if by_hand_inp.count() > 0:
+                        dom_box = None
+
+                    if dom_box:
+                        logger.info(f"Step 12: Clicked MVD option via DOM scan: '{dom_box.get('text')}'...")
                         try:
-                            by_hand_inp.fill("")
+                            self.page.mouse.click(float(dom_box["x"]), float(dom_box["y"]))
                         except Exception:
                             pass
+                        clicked_option = True
+                        self.page.wait_for_timeout(800)
+                        break
 
-            # Now click 'Продолжить' if enabled
-            cont_btn = self.page.locator(
-                "lib-button[data-button-type='nextstep'] button:visible, "
-                "button:has-text('Продолжить'):visible"
-            ).last
-            if (
-                cont_btn.count() > 0
-                and cont_btn.is_enabled()
-                and (cont_btn.get_attribute("disabled") is None)
-                and ("disabled" not in (cont_btn.get_attribute("class") or ""))
-            ):
-                logger.info("Step 12: MVD department selected -> clicking 'Продолжить'...")
-                try:
-                    cont_btn.focus()
-                    cont_btn.click(timeout=3000)
-                except Exception:
-                    cont_btn.evaluate("el => (el.closest('button') || el).click()")
-                self.page.wait_for_timeout(1500)
-                self.check_and_stop_if_insufficient_permissions()
-                return True
+                # Strategy 3: Keyboard ArrowDown + Enter fallback if 'Продолжить' is still disabled
+                cont_btn = self.page.locator(
+                    "lib-button[data-button-type='nextstep'] button:visible, "
+                    "button:has-text('Продолжить'):visible"
+                ).last
+                is_cont_enabled = (
+                    cont_btn.count() > 0
+                    and cont_btn.is_enabled()
+                    and (cont_btn.get_attribute("disabled") is None)
+                    and ("disabled" not in (cont_btn.get_attribute("class") or ""))
+                )
+                if not is_cont_enabled:
+                    try:
+                        self.page.keyboard.press("ArrowDown")
+                        self.page.wait_for_timeout(200)
+                        self.page.keyboard.press("Enter")
+                        self.page.wait_for_timeout(700)
+                    except Exception:
+                        pass
+
+                # Check if 'Продолжить' is now enabled and click it
+                cont_btn = self.page.locator(
+                    "lib-button[data-button-type='nextstep'] button:visible, "
+                    "button:has-text('Продолжить'):visible"
+                ).last
+                if (
+                    cont_btn.count() > 0
+                    and cont_btn.is_enabled()
+                    and (cont_btn.get_attribute("disabled") is None)
+                    and ("disabled" not in (cont_btn.get_attribute("class") or ""))
+                ):
+                    logger.info("Step 12: MVD department selected -> clicking 'Продолжить'...")
+                    try:
+                        cont_btn.focus()
+                        cont_btn.click(timeout=3000)
+                    except Exception:
+                        cont_btn.evaluate("el => (el.closest('button') || el).click()")
+                    self.page.wait_for_timeout(1500)
+                    self.check_and_stop_if_insufficient_permissions()
+                    return True
+
+                logger.warning(f"Step 12: MVD selection attempt {mvd_try}/3 did not enable 'Продолжить' yet...")
+
+            err_msg = "Ошибка [Шаг 12: Подразделение МВД]: Не удалось выбрать подразделение МВД по фильтру «МОСКВЕ» после 3 попыток"
+            self.register_worker_error(self.current_row or {}, err_msg)
+            raise RuntimeError(err_msg)
 
         return False
 
@@ -2770,6 +2896,74 @@ class GosuslugiVksBot:
             logger.debug(f"Could not write gosuslugi_applications.json: {e}")
 
         # 3) Post to Pondera HR Next.js API (non-blocking)
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                "http://localhost:3000/api/gosuslugi/submissions",
+                data=json.dumps(entry, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=2.5) as _:
+                pass
+        except Exception:
+            pass
+
+    def register_worker_error(self, row: Dict[str, Any], error_reason: str):
+        """
+        Records a worker-level error so the system remembers why this worker's notification failed
+        and displays it in the Pondera HR table while the robot immediately moves to the next worker.
+        """
+        if not row:
+            return
+        sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
+        worker_name = self.build_clean_worker_name(row)
+        citizenship = str(row.get("ТекущееГражданство", "")).strip()
+        period_code = self.compute_vks_period_code(row)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        clean_err = str(error_reason or "Ошибка заполнения").strip()
+        if not clean_err.lower().startswith("ошибка"):
+            clean_err = f"Ошибка: {clean_err}"
+
+        entry = {
+            "sicil": sicil,
+            "sicil_no": sicil,
+            "worker_name": worker_name,
+            "citizenship": citizenship,
+            "notification_type": "vks_salary",
+            "period_code": period_code,
+            "application_no": "",
+            "gosuslugi_status": clean_err[:180],
+            "pdf_filename": "",
+            "submitted_at": now_str,
+        }
+
+        logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(entry, ensure_ascii=False)}")
+
+        ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+        try:
+            existing = []
+            if os.path.exists(ledger_path):
+                with open(ledger_path, "r", encoding="utf-8") as lf:
+                    existing = json.load(lf)
+                    if not isinstance(existing, list):
+                        existing = []
+            updated = False
+            for idx, item in enumerate(existing):
+                if str(item.get("sicil")) == sicil and str(item.get("period_code")) == period_code:
+                    # Do not overwrite an already successfully registered application_no
+                    if item.get("application_no"):
+                        return
+                    existing[idx] = {**item, **entry}
+                    updated = True
+                    break
+            if not updated:
+                existing.append(entry)
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                json.dump(existing, lf, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.debug(f"Could not write error to gosuslugi_applications.json: {e}")
+
         try:
             import urllib.request
             req = urllib.request.Request(
