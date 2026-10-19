@@ -791,7 +791,7 @@ def start_telegram_outbox_relay_thread():
                         data = json.loads(resp.read().decode("utf-8"))
                         pending = data.get("pendingOutbox") or []
                         cfg = data.get("telegramConfig") or {}
-                        token = cfg.get("token")
+                        token = cfg.get("botToken") or cfg.get("token")
                         chat_id = cfg.get("chatId")
                         if pending and token and chat_id:
                             delivered_ids = []

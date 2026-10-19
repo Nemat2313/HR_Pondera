@@ -4,8 +4,10 @@ const DEFAULT_BOT_TOKEN = '8675607954:AAF-jIXICz0y15KV5WuJfVbPyZ0j1Q7dnM4';
 const DEFAULT_CHAT_ID = '-5302233059';
 
 export function getTelegramConfig() {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN;
   return {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN,
+    botToken,
+    token: botToken,
     chatId: process.env.TELEGRAM_CHAT_ID || DEFAULT_CHAT_ID,
   };
 }

@@ -78,24 +78,25 @@ export default function Topbar({
       try {
         const res = await fetch('/api/telegram/cron', { cache: 'no-store' });
         const data = await res.json();
+        const tgToken = data?.telegramConfig?.botToken || data?.telegramConfig?.token;
         if (
           data?.success &&
           Array.isArray(data.pendingOutbox) &&
           data.pendingOutbox.length > 0 &&
-          data.telegramConfig?.token &&
+          tgToken &&
           data.telegramConfig?.chatId
         ) {
           const deliveredIds: number[] = [];
           for (const item of data.pendingOutbox) {
             try {
               const tgRes = await fetch(
-                `https://api.telegram.org/bot${data.telegramConfig.token}/sendMessage`,
+                `https://api.telegram.org/bot${tgToken}/sendMessage`,
                 {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json; charset=utf-8' },
                   body: JSON.stringify({
                     chat_id: data.telegramConfig.chatId,
-                    text: item.text,
+                    text: item.text || item.html_text || '',
                     parse_mode: 'HTML',
                     disable_web_page_preview: true,
                   }),
