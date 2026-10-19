@@ -444,11 +444,11 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
         pass
 
     if clicked_h:
-        for _ in range(8):
+        for _ in range(16):
             page.wait_for_timeout(450)
             try:
                 b_after = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-                if "req_preview" in b_after or "Скачать" in b_after:
+                if "req_preview" in b_after:
                     break
             except Exception:
                 pass
@@ -456,7 +456,7 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
     # Only expand collapsed '.history-status:not(.open)' if 'req_preview' is still hidden
     try:
         body_check = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-        if "req_preview" not in body_check and "Скачать" not in body_check:
+        if "req_preview" not in body_check:
             expanded_inner = page.evaluate(
                 r"""() => {
                     let clicked = false;
@@ -471,7 +471,25 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
                 }"""
             )
             if expanded_inner:
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(1200)
+    except Exception:
+        pass
+
+    # Scroll 'req_preview' into center of viewport so its 'Скачать' link is visible
+    try:
+        page.evaluate(
+            r"""() => {
+                const els = Array.from(document.querySelectorAll('span, div, p, a, li'));
+                for (const el of els) {
+                    const t = (el.innerText || el.textContent || '').trim();
+                    if (t === 'req_preview' || (t.includes('req_preview') && t.length < 45)) {
+                        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+                        break;
+                    }
+                }
+            }"""
+        )
+        page.wait_for_timeout(350)
     except Exception:
         pass
 
@@ -580,37 +598,83 @@ def download_missing_pdf_for_order(
 
     def trigger_dl():
         try:
-            clicked = page.evaluate(
-                """() => {
-                    const all = Array.from(document.querySelectorAll('a, button, span, div'));
-                    const dlButtons = all.filter(el => {
-                        if (el.closest('header, footer, nav')) return false;
-                        const t = (el.innerText || el.textContent || '').trim();
-                        if (t !== 'Скачать') return false;
-                        const r = el.getBoundingClientRect();
-                        return r.width > 15 && r.height > 8 && r.height < 90;
-                    });
-                    for (const btn of dlButtons) {
-                        let p = btn.parentElement;
-                        for (let d = 0; d < 5 && p; d++) {
-                            const pt = (p.innerText || '');
-                            if (pt.includes('req_preview')) {
-                                const target = btn.closest('a, button, [role="button"]') || btn;
-                                target.click();
-                                return true;
+            target_box = page.evaluate(
+                r"""() => {
+                    let reqY = null;
+                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                    while (walker.nextNode()) {
+                        const n = walker.currentNode;
+                        if ((n.nodeValue || '').includes('req_preview') && n.parentElement) {
+                            n.parentElement.scrollIntoView({ block: 'center' });
+                            const rr = n.parentElement.getBoundingClientRect();
+                            if (rr.width > 5 && rr.height > 5) {
+                                reqY = rr.top + rr.height / 2;
+                                break;
                             }
-                            p = p.parentElement;
                         }
                     }
-                    if (dlButtons.length > 0) {
-                        const target = dlButtons[0].closest('a, button, [role="button"]') || dlButtons[0];
-                        target.click();
-                        return true;
+
+                    let downloadAllY = null;
+                    const allEls = Array.from(document.querySelectorAll('a, button, span, div'));
+                    for (const el of allEls) {
+                        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                        if (t === 'скачать всё' || t === 'скачать все') {
+                            const r = el.getBoundingClientRect();
+                            if (r.width > 15 && r.height > 8) {
+                                downloadAllY = r.top + r.height / 2;
+                                break;
+                            }
+                        }
                     }
-                    return false;
+
+                    const candidates = [];
+                    for (const el of allEls) {
+                        if (el.closest('header, footer, nav')) continue;
+                        const rawText = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+                        if (rawText !== 'Скачать') continue;
+
+                        const clickable = el.closest('a, button, [role="button"]') || el;
+                        const cText = (clickable.innerText || clickable.textContent || '').replace(/\s+/g, ' ').trim();
+                        const pText = ((clickable.parentElement && clickable.parentElement.innerText) || '').replace(/\s+/g, ' ').trim();
+                        if (cText !== 'Скачать' || /вс[её]/i.test(cText) || /^Скачать\s+вс[её]$/i.test(pText)) {
+                            continue;
+                        }
+
+                        const r = clickable.getBoundingClientRect();
+                        if (r.width < 15 || r.height < 8 || r.height > 90) continue;
+                        const btnY = r.top + r.height / 2;
+                        if (downloadAllY !== null && Math.abs(btnY - downloadAllY) < 18) {
+                            continue;
+                        }
+
+                        const yDiff = (reqY !== null) ? Math.abs(btnY - reqY) : 999;
+                        candidates.push({
+                            x: Math.round(r.left + r.width / 2),
+                            y: Math.round(r.top + r.height / 2),
+                            yDiff,
+                            top: r.top
+                        });
+                    }
+
+                    let chosen = null;
+                    if (reqY !== null) {
+                        const rowMatches = candidates.filter(c => c.yDiff < 40).sort((a, b) => a.yDiff - b.yDiff);
+                        if (rowMatches.length > 0) {
+                            chosen = rowMatches[0];
+                        }
+                    }
+                    if (!chosen && candidates.length > 0) {
+                        candidates.sort((a, b) => a.top - b.top);
+                        chosen = candidates[0];
+                    }
+                    return chosen ? { x: chosen.x, y: chosen.y } : null;
                 }"""
             )
-            if clicked:
+            if target_box and target_box.get("x") and target_box.get("y"):
+                cx, cy = int(target_box["x"]), int(target_box["y"])
+                page.mouse.move(cx, cy)
+                page.wait_for_timeout(80)
+                page.mouse.click(cx, cy)
                 return True
         except Exception:
             pass

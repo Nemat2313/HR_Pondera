@@ -2832,12 +2832,12 @@ class GosuslugiVksBot:
                 except Exception:
                     pass
 
-            # Wait up to 4 seconds for the expanded history ('req_preview' / 'Скачать' / 'Скрыть историю') to finish rendering
-            for _ in range(8):
+            # Wait up to 5 seconds specifically for 'req_preview' in the expanded history
+            for _ in range(10):
                 self.page.wait_for_timeout(500)
                 try:
                     body_after = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-                    if "req_preview" in body_after or "Скачать" in body_after:
+                    if "req_preview" in body_after:
                         return
                 except Exception:
                     pass
@@ -2845,7 +2845,7 @@ class GosuslugiVksBot:
             # If 'Скрыть историю' is now visible (meaning history IS open), only expand collapsed '.history-status:not(.open)' if 'req_preview' is still hidden
             try:
                 body_check = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-                if "req_preview" not in body_check and "Скачать" not in body_check:
+                if "req_preview" not in body_check:
                     self.page.evaluate(
                         r"""() => {
                             const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
@@ -2860,7 +2860,6 @@ class GosuslugiVksBot:
                 body_final = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
                 if (
                     "req_preview" in body_final
-                    or "Скачать" in body_final
                     or "Скрыть историю" in body_final
                     or (clicked_history and "Показать историю" not in body_final)
                 ):
@@ -3467,7 +3466,8 @@ class GosuslugiVksBot:
         Clicks the 'Скачать' link/button for 'req_preview' inside 'Документы' on the verified Gosuslugi order page,
         waits for the PDF to land in ~/Downloads, and renames it to:
             <Sicil>_<VerifiedGosuslugiNo>_<Ad Soyad>_<Donem>.pdf
-        Supports <a>, <button>, <span>, and DOM click fallbacks without blind viewport clicks.
+        Strictly excludes 'Скачать всё' (and any child <span>Скачать</span> inside 'Скачать всё')
+        and uses Playwright native locator click + exact req_preview row DOM click.
         """
         downloads_dir = Path.home() / "Downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -3484,14 +3484,15 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Wait up to 6s via non-blocking JS for 'req_preview' or 'Скачать' to appear
-        for _ in range(12):
+        # Wait up to 8s specifically for 'req_preview' (NOT 'Скачать', which prematurely matches 'Скачать всё')
+        for _ in range(16):
             try:
-                if self.page.evaluate("() => { const t = (document.body && document.body.innerText) || ''; return t.includes('req_preview') || t.includes('Скачать'); }"):
+                if self.page.evaluate("() => { const t = (document.body && document.body.innerText) || ''; return t.includes('req_preview'); }"):
                     break
             except Exception:
                 pass
-            self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(450)
+        self.page.wait_for_timeout(400)
 
         downloaded_path: Optional[Path] = None
         click_time = time.time()
@@ -3499,57 +3500,120 @@ class GosuslugiVksBot:
         logger.info("Step 16.5: Clicking 'Скачать' for 'req_preview' PDF...")
 
         def trigger_download_click():
-            # Clean single DOM click on 'Скачать' inside 'req_preview' container (excluding header/footer/nav)
+            # Scroll 'req_preview' row into the center of the viewport first so it is never cut off at the bottom edge
             try:
-                clicked_dl = self.page.evaluate(
+                self.page.evaluate(
                     """() => {
-                        const all = Array.from(document.querySelectorAll('a, button, span, div'));
-                        const dlButtons = all.filter(el => {
-                            if (el.closest('header, footer, nav')) return false;
-                            const t = (el.innerText || el.textContent || '').trim();
-                            if (t !== 'Скачать') return false;
-                            const r = el.getBoundingClientRect();
-                            return r.width > 15 && r.height > 8 && r.height < 90;
-                        });
-                        // Prefer the one inside the same row/container as 'req_preview'
-                        for (const btn of dlButtons) {
-                            let p = btn.parentElement;
-                            for (let d = 0; d < 5 && p; d++) {
-                                const pt = (p.innerText || '');
-                                if (pt.includes('req_preview')) {
-                                    const target = btn.closest('a, button, [role="button"]') || btn;
-                                    target.click();
-                                    return true;
-                                }
-                                p = p.parentElement;
+                        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                        while (walker.nextNode()) {
+                            const n = walker.currentNode;
+                            if ((n.nodeValue || '').includes('req_preview') && n.parentElement) {
+                                n.parentElement.scrollIntoView({ block: 'center' });
+                                break;
                             }
                         }
-                        if (dlButtons.length > 0) {
-                            const target = dlButtons[0].closest('a, button, [role="button"]') || dlButtons[0];
-                            target.click();
-                            return true;
-                        }
-                        return false;
                     }"""
                 )
-                if clicked_dl:
-                    return True
+                self.page.wait_for_timeout(350)
             except Exception:
                 pass
 
-            # Fallback Playwright locator with strict :visible and short timeout
+            # Find the exact 'Скачать' button on the same horizontal row as 'req_preview' (strictly excluding 'Скачать всё')
             try:
-                dl_loc = self.page.locator(
-                    "lib-file:has-text('req_preview') a:visible, "
-                    "lib-file:has-text('req_preview') button:visible, "
-                    "a:has-text('Скачать'):not(:has-text('всё')):visible, "
-                    "button:has-text('Скачать'):not(:has-text('всё')):visible"
-                ).first
-                if dl_loc.count() > 0:
-                    dl_loc.click(timeout=2000)
+                target_box = self.page.evaluate(
+                    """() => {
+                        let reqY = null;
+                        let reqBottom = null;
+                        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                        while (walker.nextNode()) {
+                            const n = walker.currentNode;
+                            if ((n.nodeValue || '').includes('req_preview') && n.parentElement) {
+                                const rr = n.parentElement.getBoundingClientRect();
+                                if (rr.width > 5 && rr.height > 5) {
+                                    reqY = rr.top + rr.height / 2;
+                                    reqBottom = rr.bottom;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Also find 'Скачать всё' Y coordinate so we NEVER click anything at or above 'Скачать всё'
+                        let downloadAllY = null;
+                        const allEls = Array.from(document.querySelectorAll('a, button, span, div'));
+                        for (const el of allEls) {
+                            const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                            if (t === 'скачать всё' || t === 'скачать все') {
+                                const r = el.getBoundingClientRect();
+                                if (r.width > 15 && r.height > 8) {
+                                    downloadAllY = r.top + r.height / 2;
+                                    break;
+                                }
+                            }
+                        }
+
+                        const candidates = [];
+                        for (const el of allEls) {
+                            if (el.closest('header, footer, nav')) continue;
+                            const rawText = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+                            if (rawText !== 'Скачать') continue;
+
+                            const clickable = el.closest('a, button, [role="button"]') || el;
+                            const cText = (clickable.innerText || clickable.textContent || '').replace(/\\s+/g, ' ').trim();
+                            const pText = ((clickable.parentElement && clickable.parentElement.innerText) || '').replace(/\\s+/g, ' ').trim();
+                            if (cText !== 'Скачать' || /вс[её]/i.test(cText) || /^Скачать\\s+вс[её]$/i.test(pText)) {
+                                continue;
+                            }
+
+                            const r = clickable.getBoundingClientRect();
+                            if (r.width < 15 || r.height < 8 || r.height > 90) continue;
+                            const btnY = r.top + r.height / 2;
+
+                            // Never match 'Скачать всё' row
+                            if (downloadAllY !== null && Math.abs(btnY - downloadAllY) < 18) {
+                                continue;
+                            }
+
+                            const yDiff = (reqY !== null) ? Math.abs(btnY - reqY) : 999;
+                            candidates.push({
+                                clickable,
+                                el,
+                                x: Math.round(r.left + r.width / 2),
+                                y: Math.round(r.top + r.height / 2),
+                                yDiff,
+                                top: r.top
+                            });
+                        }
+
+                        let chosen = null;
+                        if (reqY !== null) {
+                            const rowMatches = candidates.filter(c => c.yDiff < 40).sort((a, b) => a.yDiff - b.yDiff);
+                            if (rowMatches.length > 0) {
+                                chosen = rowMatches[0];
+                            }
+                        }
+                        if (!chosen && candidates.length > 0) {
+                            candidates.sort((a, b) => a.top - b.top);
+                            chosen = candidates[0];
+                        }
+
+                        if (chosen) {
+                            return { x: chosen.x, y: chosen.y, yDiff: Math.round(chosen.yDiff) };
+                        }
+                        return null;
+                    }"""
+                )
+                if target_box and target_box.get("x") and target_box.get("y"):
+                    cx, cy = int(target_box["x"]), int(target_box["y"])
+                    logger.info(
+                        f"Step 16.5: Clicking 'Скачать' next to 'req_preview' at ({cx}, {cy}) [yDiff={target_box.get('yDiff')}px]..."
+                    )
+                    self.page.mouse.move(cx, cy)
+                    self.page.wait_for_timeout(80)
+                    self.page.mouse.click(cx, cy)
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Step 16.5 mouse click note: {e}")
+
             return False
 
         # Attempt Playwright download capture + native Chrome ~/Downloads fallback
