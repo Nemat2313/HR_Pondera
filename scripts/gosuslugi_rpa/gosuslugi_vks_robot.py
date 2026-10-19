@@ -3406,14 +3406,15 @@ class GosuslugiVksBot:
         downloads_dir = Path.home() / "Downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
 
-        # Snapshot existing PDFs in ~/Downloads before clicking download
+        # Snapshot existing files in ~/Downloads before clicking download (including extensionless UUID blob files)
         existing_pdfs = {}
         try:
-            for p in downloads_dir.glob("*.pdf"):
-                try:
-                    existing_pdfs[p.resolve()] = p.stat().st_mtime
-                except Exception:
-                    pass
+            for p in downloads_dir.iterdir():
+                if p.is_file():
+                    try:
+                        existing_pdfs[p.resolve()] = p.stat().st_mtime
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -3499,6 +3500,8 @@ class GosuslugiVksBot:
                 trigger_download_click()
             dl = download_info.value
             suggested_name = dl.suggested_filename or f"{gosuslugi_order_no or 'req_preview'}.pdf"
+            if not suggested_name.lower().endswith(".pdf"):
+                suggested_name += ".pdf"
             temp_target = downloads_dir / f"tmp_{os.getpid()}_{int(click_time)}_{suggested_name}"
             dl.save_as(str(temp_target))
             downloaded_path = temp_target
@@ -3508,8 +3511,9 @@ class GosuslugiVksBot:
 
         # Regex matching already-renamed Pondera PDFs so we never pick up an already-renamed PDF from another worker
         already_renamed_re = re.compile(r"^(?:\d+_)?\d{8,14}_.+_20\d{2}-[1-4]\.pdf$", re.IGNORECASE)
+        uuid_blob_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\s*\(\d+\))?$", re.IGNORECASE)
 
-        # If Chrome handled the download natively, poll ~/Downloads for the newly created/updated .pdf file
+        # If Chrome handled the download natively, poll ~/Downloads for the newly created/updated .pdf or extensionless UUID PDF blob file
         if not downloaded_path or not downloaded_path.exists():
             for wait_idx in range(30):
                 self.page.wait_for_timeout(500)
@@ -3525,13 +3529,29 @@ class GosuslugiVksBot:
                     continue
 
                 candidates = []
-                for p in downloads_dir.glob("*.pdf"):
+                for p in downloads_dir.iterdir():
                     try:
+                        if not p.is_file():
+                            continue
+                        sfx = p.suffix.lower()
+                        if sfx in (".crdownload", ".tmp", ".part", ".zip", ".exe", ".msi", ".xlsx", ".xls", ".docx", ".png", ".jpg"):
+                            continue
                         if already_renamed_re.match(p.name):
                             continue
                         resolved = p.resolve()
-                        mtime = p.stat().st_mtime
-                        if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 2.0):
+                        st = p.stat()
+                        mtime = st.st_mtime
+                        if st.st_size < 1000:
+                            continue
+                        is_new = (resolved not in existing_pdfs) or (mtime > existing_pdfs[resolved]) or (mtime >= (click_time - 2.5))
+                        if not is_new:
+                            continue
+                        # Accept .pdf files, UUID blob files (e.g. '0fda22c2-c020-4ff4-8911-7dd9df06bcc8'), or any file starting with '%PDF'
+                        is_pdf_file = (sfx == ".pdf") or bool(uuid_blob_re.match(p.name))
+                        if not is_pdf_file and sfx == "":
+                            with open(p, "rb") as fh:
+                                is_pdf_file = b"%PDF" in fh.read(16)
+                        if is_pdf_file:
                             candidates.append((mtime, p))
                     except Exception:
                         pass

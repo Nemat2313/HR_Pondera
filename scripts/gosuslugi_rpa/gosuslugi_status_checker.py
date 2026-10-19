@@ -582,11 +582,12 @@ def download_missing_pdf_for_order(
     expand_history_and_inspect_order_page(page, feed_id)
 
     existing_pdfs = {}
-    for p in downloads_dir.glob("*.pdf"):
-        try:
-            existing_pdfs[p.resolve()] = p.stat().st_mtime
-        except Exception:
-            pass
+    for p in downloads_dir.iterdir():
+        if p.is_file():
+            try:
+                existing_pdfs[p.resolve()] = p.stat().st_mtime
+            except Exception:
+                pass
 
     click_time = time.time()
 
@@ -636,6 +637,7 @@ def download_missing_pdf_for_order(
         pass
 
     already_renamed_re = re.compile(r"^(?:\d+_)?\d{8,14}_.+_20\d{2}-[1-4]\.pdf$", re.IGNORECASE)
+    uuid_blob_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\s*\(\d+\))?$", re.IGNORECASE)
     if not downloaded_path or not downloaded_path.exists():
         for wait_idx in range(20):
             page.wait_for_timeout(500)
@@ -645,13 +647,28 @@ def download_missing_pdf_for_order(
             if active_cr:
                 continue
             cands = []
-            for p in downloads_dir.glob("*.pdf"):
+            for p in downloads_dir.iterdir():
                 try:
+                    if not p.is_file():
+                        continue
+                    sfx = p.suffix.lower()
+                    if sfx in (".crdownload", ".tmp", ".part", ".zip", ".exe", ".msi", ".xlsx", ".xls", ".docx", ".png", ".jpg"):
+                        continue
                     if already_renamed_re.match(p.name):
                         continue
                     resolved = p.resolve()
-                    mtime = p.stat().st_mtime
-                    if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 2.0):
+                    st = p.stat()
+                    mtime = st.st_mtime
+                    if st.st_size < 1000:
+                        continue
+                    is_new = (resolved not in existing_pdfs) or (mtime > existing_pdfs[resolved]) or (mtime >= (click_time - 2.5))
+                    if not is_new:
+                        continue
+                    is_pdf_file = (sfx == ".pdf") or bool(uuid_blob_re.match(p.name))
+                    if not is_pdf_file and sfx == "":
+                        with open(p, "rb") as fh:
+                            is_pdf_file = b"%PDF" in fh.read(16)
+                    if is_pdf_file:
                         cands.append((mtime, p))
                 except Exception:
                     pass
