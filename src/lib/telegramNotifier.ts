@@ -281,16 +281,32 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
       }
     }
   } else {
-    // First-time baseline: count rows submitted/updated in the last 15 minutes
-    const cutoffIso = new Date(Date.now() - 15 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    // First-time baseline: count rows submitted/checked in the last 15 minutes (in Moscow time)
+    const mskCutoff = new Date(Date.now() - 15 * 60 * 1000);
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts: Record<string, string> = {};
+    for (const p of fmt.formatToParts(mskCutoff)) {
+      if (p.type !== 'literal') parts[p.type] = p.value;
+    }
+    const cutoffMsk = `${parts.year}-${parts.month}-${parts.day} ${parts.hour === '24' ? '00' : parts.hour}:${parts.minute}:${parts.second}`;
+
     const recentRows = db
       .prepare(
         `SELECT application_no, gosuslugi_status, pdf_filename
          FROM gosuslugi_submissions
          WHERE LOWER(notification_type) = 'vks_salary'
-           AND (submitted_at >= ? OR updated_at >= ?)`
+           AND (submitted_at >= ? OR checked_at >= ?)`
       )
-      .all(cutoffIso, cutoffIso) as Array<{
+      .all(cutoffMsk, cutoffMsk) as Array<{
       application_no: string;
       gosuslugi_status: string;
       pdf_filename: string;
