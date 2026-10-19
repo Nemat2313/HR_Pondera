@@ -52,3 +52,7 @@ scripts/gosuslugi_rpa/*.png
 Thumbs.db
 .vscode/
 .idea/
+
+# Central Gosuslugi PDF storage
+data/gosuslugi_pdfs/
+

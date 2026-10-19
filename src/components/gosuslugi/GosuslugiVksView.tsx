@@ -829,6 +829,7 @@ export default function GosuslugiVksView() {
   const [isCheckingStatuses, setIsCheckingStatuses] = useState(false);
   const [savedSubmissions, setSavedSubmissions] = useState<Record<string, GosuslugiSubmissionEntry>>({});
   const syncedAppsRef = useRef<Set<string>>(new Set());
+  const uploadedPdfsRef = useRef<Set<string>>(new Set());
 
   // Mail.ru IMAP Background Status Checker State
   const [showMailRuModal, setShowMailRuModal] = useState(false);
@@ -912,7 +913,8 @@ export default function GosuslugiVksView() {
     }
   };
 
-  // Load saved Gosuslugi application numbers and Mail.ru config from Pondera HR DB
+  // Load saved Gosuslugi application numbers and Mail.ru config from Pondera HR DB,
+  // and poll every 15 seconds so multiple computers see newly submitted applications in real time
   useEffect(() => {
     refreshSavedSubmissionsFromDb();
     fetch('/api/gosuslugi/mail-sync')
@@ -932,6 +934,11 @@ export default function GosuslugiVksView() {
         }
       })
       .catch(() => {});
+
+    const multiPcSyncTimer = setInterval(() => {
+      refreshSavedSubmissionsFromDb();
+    }, 15000);
+    return () => clearInterval(multiPcSyncTimer);
   }, []);
 
   const handleSyncMailRu = async (silent = false) => {
@@ -1141,6 +1148,31 @@ export default function GosuslugiVksView() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ records: unsynced }),
                   }).catch(() => {});
+                }
+
+                // Also sync any downloaded PDF receipts to central server storage so other PCs can download them
+                for (const s of subValues) {
+                  if (s.pdf_filename && !uploadedPdfsRef.current.has(s.pdf_filename)) {
+                    uploadedPdfsRef.current.add(s.pdf_filename);
+                    fetch(`${url}/pdf-base64?file=${encodeURIComponent(s.pdf_filename)}`)
+                      .then((r) => (r.ok ? r.json() : null))
+                      .then((pdfJson) => {
+                        if (pdfJson?.success && pdfJson.pdf_base64) {
+                          return fetch('/api/gosuslugi/pdf', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              filename: pdfJson.filename || s.pdf_filename,
+                              pdf_base64: pdfJson.pdf_base64,
+                              application_no: s.application_no || '',
+                              sicil_no: s.sicil_no || '',
+                            }),
+                          });
+                        }
+                        return null;
+                      })
+                      .catch(() => {});
+                  }
                 }
               }
 
@@ -3383,9 +3415,24 @@ export default function GosuslugiVksView() {
                               </div>
                             )}
                             {w.pdfFilename && (
-                              <div className="text-[9.5px] text-slate-400 truncate max-w-[220px]">
-                                PDF: {w.pdfFilename}
-                              </div>
+                              <a
+                                href={`/api/gosuslugi/pdf?file=${encodeURIComponent(
+                                  w.pdfFilename
+                                )}&appNo=${encodeURIComponent(
+                                  w.applicationNo || ''
+                                )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[9.5px] font-sans font-bold text-teal-600 dark:text-teal-400 hover:underline truncate max-w-[220px]"
+                                title={
+                                  lang === 'ru'
+                                    ? `Скачать PDF с сервера: ${w.pdfFilename}`
+                                    : `PDF'i sunucudan indir: ${w.pdfFilename}`
+                                }
+                              >
+                                <Download className="w-2.5 h-2.5 shrink-0" />
+                                <span className="truncate">PDF: {w.pdfFilename}</span>
+                              </a>
                             )}
                           </div>
                         ) : w.status === 'error' ? (
