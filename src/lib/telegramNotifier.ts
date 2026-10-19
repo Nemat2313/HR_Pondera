@@ -86,6 +86,59 @@ function setSystemInfoValue(db: any, key: string, value: string) {
   `).run(key, value);
 }
 
+function ensureOutboxTable(db: any) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS telegram_outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_type TEXT NOT NULL DEFAULT 'vks',
+      html_text TEXT NOT NULL,
+      created_at_ms INTEGER NOT NULL,
+      claimed_at_ms INTEGER NOT NULL DEFAULT 0,
+      delivered INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+}
+
+export function enqueueTelegramOutbox(db: any, reportType: string, htmlText: string) {
+  ensureOutboxTable(db);
+  db.prepare(`
+    INSERT INTO telegram_outbox (report_type, html_text, created_at_ms, claimed_at_ms, delivered)
+    VALUES (?, ?, ?, 0, 0)
+  `).run(reportType, htmlText, Date.now());
+}
+
+export function claimPendingOutboxMessages(db: any): Array<{ id: number; report_type: string; html_text: string }> {
+  ensureOutboxTable(db);
+  const nowMs = Date.now();
+  const staleClaimCutoff = nowMs - 45 * 1000;
+  const rows = db
+    .prepare(
+      `SELECT id, report_type, html_text
+       FROM telegram_outbox
+       WHERE delivered = 0 AND claimed_at_ms < ?
+       ORDER BY id ASC
+       LIMIT 5`
+    )
+    .all(staleClaimCutoff) as Array<{ id: number; report_type: string; html_text: string }>;
+
+  if (rows.length > 0) {
+    const upd = db.prepare(`UPDATE telegram_outbox SET claimed_at_ms = ? WHERE id = ?`);
+    for (const r of rows) {
+      upd.run(nowMs, r.id);
+    }
+  }
+  return rows;
+}
+
+export function markOutboxDelivered(db: any, ids: number[]) {
+  if (!Array.isArray(ids) || ids.length === 0) return;
+  ensureOutboxTable(db);
+  const upd = db.prepare(`UPDATE telegram_outbox SET delivered = 1 WHERE id = ?`);
+  for (const id of ids) {
+    upd.run(Number(id));
+  }
+}
+
 interface VksSnapshotState {
   timestampMs: number;
   totalRecords: number;
@@ -286,25 +339,27 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     `🕒 <i>Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay}</i>`,
     ``,
     `⏱ <b>Son 15 Dakikadaki Hareketler:</b>`,
-    `• Gönderilen Bildirim: <b>+${deltaSent}</b>`,
-    `• Oluşan Hata (Ошибка): <b>+${deltaErrors}</b>`,
-    `• İndirilen / Eşleşen PDF: <b>+${deltaPdfs}</b>`,
+    `• ✅ Gönderilen Bildirim: <b>+${deltaSent}</b>`,
+    `• ❌ Oluşan Hata (Ошибка): <b>+${deltaErrors}</b>`,
+    `• 📄 İndirilen / Eşleşen PDF: <b>+${deltaPdfs}</b>`,
     ``,
     `📊 <b>Ortak Sunucu Genel Toplam (Tüm Bilgisayarlar):</b>`,
-    `• Toplam Başarılı Gönderim: <b>${current.totalSent}</b>`,
+    `• ✅ Toplam Başarılı Gönderim: <b>${current.totalSent}</b>`,
     `  ├ 📄 PDF İndirilen: <b>${current.totalPdf}</b>`,
     `  └ ⚡ PDF Bekleyen (Hızlı Gönderim): <b>${current.totalNoPdf}</b>`,
-    `• Toplam Hatalı Kayıt (Ошибка): <b>${current.totalErrors}</b>`,
-    `• <b>Genel Toplam İşlenen Kayıt: ${current.totalRecords}</b>`,
+    `• ⚠️ Toplam Hatalı Kayıt (Ошибка): <b>${current.totalErrors}</b>`,
+    `• 📌 <b>Genel Toplam İşlenen Kayıt: ${current.totalRecords}</b>`,
   ].join('\n');
 
+  setSystemInfoValue(db, 'telegram_vks_last_snapshot', JSON.stringify(current));
   const tgRes = await sendTelegramMessage(msg);
-  if (tgRes.ok) {
-    setSystemInfoValue(db, 'telegram_vks_last_snapshot', JSON.stringify(current));
+  if (!tgRes.ok) {
+    enqueueTelegramOutbox(db, 'vks', msg);
   }
 
   return {
     sent: tgRes.ok,
+    queued: !tgRes.ok,
     reason: tgRes.error,
     deltaSent,
     deltaErrors,
@@ -652,9 +707,10 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
     ...topRegions,
   ].join('\n');
 
+  setSystemInfoValue(db, 'telegram_compliance_last_sent_date', msk.dateIso);
   const tgRes = await sendTelegramMessage(msg);
-  if (tgRes.ok) {
-    setSystemInfoValue(db, 'telegram_compliance_last_sent_date', msk.dateIso);
+  if (!tgRes.ok) {
+    enqueueTelegramOutbox(db, 'compliance', msg);
   }
   return { sent: tgRes.ok, reason: tgRes.error };
 }

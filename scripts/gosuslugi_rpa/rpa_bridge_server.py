@@ -765,6 +765,72 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
         pass
 
 
+def start_telegram_outbox_relay_thread():
+    """
+    Polls central backend /api/telegram/cron every 60 seconds so the backend computes
+    the 15-min VKS report and 09:15 MSK Evrak Süreleri report. If the Russian VPS
+    direct connection to api.telegram.org was blocked by Roskomnadzor, delivers the
+    queued UTF-8 message from this machine and acknowledges delivery to the server.
+    """
+    def _worker():
+        import urllib.request
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        cron_url = "https://hr.pondera.network/api/telegram/cron"
+        while True:
+            try:
+                req = urllib.request.Request(
+                    cron_url,
+                    headers={"User-Agent": "Pondera-RPA-Agent/2.6"},
+                )
+                with urllib.request.urlopen(req, timeout=12, context=ctx) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        pending = data.get("pendingOutbox") or []
+                        cfg = data.get("telegramConfig") or {}
+                        token = cfg.get("token")
+                        chat_id = cfg.get("chatId")
+                        if pending and token and chat_id:
+                            delivered_ids = []
+                            for item in pending:
+                                try:
+                                    tg_payload = json.dumps({
+                                        "chat_id": chat_id,
+                                        "text": item.get("text", ""),
+                                        "parse_mode": "HTML",
+                                        "disable_web_page_preview": True,
+                                    }, ensure_ascii=True).encode("ascii")
+                                    tg_req = urllib.request.Request(
+                                        f"https://api.telegram.org/bot{token}/sendMessage",
+                                        data=tg_payload,
+                                        headers={"Content-Type": "application/json; charset=utf-8"},
+                                        method="POST",
+                                    )
+                                    with urllib.request.urlopen(tg_req, timeout=12, context=ctx) as tg_resp:
+                                        tg_res = json.loads(tg_resp.read().decode("utf-8"))
+                                        if tg_res.get("ok"):
+                                            delivered_ids.append(item.get("id"))
+                                except Exception:
+                                    pass
+                            if delivered_ids:
+                                ack_payload = json.dumps({"deliveredIds": delivered_ids}).encode("utf-8")
+                                ack_req = urllib.request.Request(
+                                    cron_url,
+                                    data=ack_payload,
+                                    headers={"Content-Type": "application/json; charset=utf-8"},
+                                    method="POST",
+                                )
+                                urllib.request.urlopen(ack_req, timeout=10, context=ctx).read()
+            except Exception:
+                pass
+            time.sleep(60)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+
 def main():
     # Prevent Windows from entering Sleep Mode, Hibernate, or turning off display/network
     prevent_windows_sleep()
@@ -772,6 +838,8 @@ def main():
     free_port_if_occupied(PORT)
     # Automatically sync latest Python robot scripts from https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip
     auto_update_scripts_from_server()
+    # Start background Telegram report relay thread (polls backend every 60s)
+    start_telegram_outbox_relay_thread()
     # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts
     for d in scan_downloads_pdfs():
         RPAState.upsert_submission(d)
@@ -781,6 +849,7 @@ def main():
     print(f"  Pondera HR RPA Bridge Server v2.6 running on http://127.0.0.1:{PORT}")
     print(f"  Chrome Debugging Port: {CHROME_CDP_PORT}")
     print(f"  Sleep Mode Protection: ACTIVE (Never Sleep / Always Awake)")
+    print(f"  Telegram Central Sync: ACTIVE (15m VKS & 09:15 MSK Reports)")
     print(f"  Tracked Gosuslugi Applications: {len(RPAState.submissions)}")
     print("=====================================================")
     try:

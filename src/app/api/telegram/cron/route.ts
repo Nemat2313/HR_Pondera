@@ -4,6 +4,9 @@ import {
   checkAndSendVks15MinReport,
   sendDailyCompliance915Report,
   getMoscowTimeParts,
+  claimPendingOutboxMessages,
+  markOutboxDelivered,
+  getTelegramConfig,
 } from '@/lib/telegramNotifier';
 
 export const runtime = 'nodejs';
@@ -27,22 +30,41 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const testMode = (searchParams.get('test') || '').toLowerCase();
+    const db = getDb();
 
     if (testMode === 'vks') {
       const vksRes = await checkAndSendVks15MinReport(true);
-      return NextResponse.json({ success: true, mode: 'test_vks', vksRes });
+      return NextResponse.json({
+        success: true,
+        mode: 'test_vks',
+        vksRes,
+        pendingOutbox: claimPendingOutboxMessages(db),
+        telegramConfig: getTelegramConfig(),
+      });
     }
     if (testMode === 'compliance') {
       const compRes = await sendDailyCompliance915Report(true);
-      return NextResponse.json({ success: true, mode: 'test_compliance', compRes });
+      return NextResponse.json({
+        success: true,
+        mode: 'test_compliance',
+        compRes,
+        pendingOutbox: claimPendingOutboxMessages(db),
+        telegramConfig: getTelegramConfig(),
+      });
     }
     if (testMode === 'both') {
       const vksRes = await checkAndSendVks15MinReport(true);
       const compRes = await sendDailyCompliance915Report(true);
-      return NextResponse.json({ success: true, mode: 'test_both', vksRes, compRes });
+      return NextResponse.json({
+        success: true,
+        mode: 'test_both',
+        vksRes,
+        compRes,
+        pendingOutbox: claimPendingOutboxMessages(db),
+        telegramConfig: getTelegramConfig(),
+      });
     }
 
-    const db = getDb();
     const nowMs = Date.now();
     const msk = getMoscowTimeParts();
 
@@ -60,15 +82,39 @@ export async function GET(request: Request) {
     // 2. Check Daily 09:15 Moscow Time Document Expiry Report
     const complianceResult = await sendDailyCompliance915Report(false);
 
+    // 3. Return any queued outbox messages (in case Russian VPS direct TCP to api.telegram.org was dropped)
+    const pendingOutbox = claimPendingOutboxMessages(db);
+
     return NextResponse.json({
       success: true,
       moscowTime: `${msk.dateDisplay} ${msk.timeDisplay}`,
       vksResult,
       complianceResult,
+      pendingOutbox,
+      telegramConfig: pendingOutbox.length > 0 ? getTelegramConfig() : undefined,
     });
   } catch (err: any) {
     return NextResponse.json(
       { success: false, message: err?.message || 'Telegram cron error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const deliveredIds: number[] = Array.isArray(body?.deliveredIds)
+      ? body.deliveredIds.map((x: any) => Number(x)).filter((n: number) => !isNaN(n))
+      : [];
+    if (deliveredIds.length > 0) {
+      const db = getDb();
+      markOutboxDelivered(db, deliveredIds);
+    }
+    return NextResponse.json({ success: true, deliveredCount: deliveredIds.length });
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, message: err?.message || 'Telegram outbox update error' },
       { status: 500 }
     );
   }

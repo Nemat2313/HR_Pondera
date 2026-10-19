@@ -73,6 +73,54 @@ export default function Topbar({
         }
       })
       .catch(() => {});
+
+    const checkTelegramCron = async () => {
+      try {
+        const res = await fetch('/api/telegram/cron', { cache: 'no-store' });
+        const data = await res.json();
+        if (
+          data?.success &&
+          Array.isArray(data.pendingOutbox) &&
+          data.pendingOutbox.length > 0 &&
+          data.telegramConfig?.token &&
+          data.telegramConfig?.chatId
+        ) {
+          const deliveredIds: number[] = [];
+          for (const item of data.pendingOutbox) {
+            try {
+              const tgRes = await fetch(
+                `https://api.telegram.org/bot${data.telegramConfig.token}/sendMessage`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                  body: JSON.stringify({
+                    chat_id: data.telegramConfig.chatId,
+                    text: item.text,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true,
+                  }),
+                }
+              );
+              const tgJson = await tgRes.json();
+              if (tgJson?.ok) {
+                deliveredIds.push(item.id);
+              }
+            } catch {}
+          }
+          if (deliveredIds.length > 0) {
+            await fetch('/api/telegram/cron', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deliveredIds }),
+            });
+          }
+        }
+      } catch {}
+    };
+
+    checkTelegramCron();
+    const timer = setInterval(checkTelegramCron, 60000);
+    return () => clearInterval(timer);
   }, []);
 
   // Close menus on outside click
