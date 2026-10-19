@@ -107,7 +107,9 @@ export function enqueueTelegramOutbox(db: any, reportType: string, htmlText: str
   `).run(reportType, htmlText, Date.now());
 }
 
-export function claimPendingOutboxMessages(db: any): Array<{ id: number; report_type: string; html_text: string }> {
+export function claimPendingOutboxMessages(
+  db: any
+): Array<{ id: number; report_type: string; html_text: string; text: string }> {
   ensureOutboxTable(db);
   const nowMs = Date.now();
   const staleClaimCutoff = nowMs - 45 * 1000;
@@ -127,7 +129,7 @@ export function claimPendingOutboxMessages(db: any): Array<{ id: number; report_
       upd.run(nowMs, r.id);
     }
   }
-  return rows;
+  return rows.map((r) => ({ ...r, text: r.html_text }));
 }
 
 export function markOutboxDelivered(db: any, ids: number[]) {

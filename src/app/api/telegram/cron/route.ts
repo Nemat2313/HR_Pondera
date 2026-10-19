@@ -84,8 +84,10 @@ export async function GET(request: Request) {
     // 2. Check Daily 09:15 Moscow Time Document Expiry Report
     const complianceResult = await sendDailyCompliance915Report(false);
 
-    // 3. Return any queued outbox messages (in case Russian VPS direct TCP to api.telegram.org was dropped)
-    const pendingOutbox = claimPendingOutboxMessages(db);
+    // 3. Return any queued outbox messages ONLY to relay clients (browser Topbar / RPA Agent), not local curl
+    const ua = (request.headers.get('user-agent') || '').toLowerCase();
+    const isLocalCurl = ua.startsWith('curl/');
+    const pendingOutbox = isLocalCurl ? [] : claimPendingOutboxMessages(db);
 
     return NextResponse.json({
       success: true,
