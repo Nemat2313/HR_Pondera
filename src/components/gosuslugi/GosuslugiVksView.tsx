@@ -784,6 +784,39 @@ export function validateVksWorkerRecord(
   };
 }
 
+function normalizeSentGosuslugiStatus(rawStatus?: string): string {
+  const s = String(rawStatus || '').trim();
+  if (!s) return '';
+  // If a Step 16 post-submission PDF error occurred after Step 15 ('Уведомление отправлено'),
+  // the notification WAS sent to Gosuslugi — only the PDF receipt was not downloaded yet.
+  if (/GosuslugiVksBot|Step 16|PDF не скачан/i.test(s)) {
+    return 'Отправлено (PDF не скачан)';
+  }
+  return s;
+}
+
+function isWorkerAlreadySentToGosuslugi(w: {
+  status?: string;
+  applicationNo?: string;
+  gosuslugiStatus?: string;
+  pdfFilename?: string;
+}): boolean {
+  const normStatus = normalizeSentGosuslugiStatus(w.gosuslugiStatus);
+  if (w.status === 'success') return true;
+  if (w.applicationNo && String(w.applicationNo).trim() !== '') return true;
+  if (w.pdfFilename && String(w.pdfFilename).trim() !== '') return true;
+  if (
+    normStatus &&
+    /отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн|обработк|PDF не скачан/i.test(
+      normStatus
+    ) &&
+    !/^ошибк/i.test(normStatus)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export default function GosuslugiVksView() {
   const { user } = useAuth();
   const { lang } = useLanguage();
@@ -880,7 +913,11 @@ export default function GosuslugiVksView() {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         const bySicil: Record<string, GosuslugiSubmissionEntry> = {};
-        for (const row of json.data as GosuslugiSubmissionEntry[]) {
+        for (const rawRow of json.data as GosuslugiSubmissionEntry[]) {
+          const row = {
+            ...rawRow,
+            gosuslugi_status: normalizeSentGosuslugiStatus(rawRow.gosuslugi_status),
+          };
           if (row.sicil_no) {
             bySicil[String(row.sicil_no)] = row;
           }
@@ -898,12 +935,29 @@ export default function GosuslugiVksView() {
             const matchedSub =
               subByApp || (doesSubMatchWorker(subByCode, w) ? subByCode : undefined);
             if (!matchedSub) return w;
+            const nextAppNo = w.applicationNo || matchedSub.application_no;
+            const nextGosStatus = normalizeSentGosuslugiStatus(
+              matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено'
+            );
+            const nextPdf = w.pdfFilename || matchedSub.pdf_filename;
+            const alreadySent = isWorkerAlreadySentToGosuslugi({
+              status: w.status,
+              applicationNo: nextAppNo,
+              gosuslugiStatus: nextGosStatus,
+              pdfFilename: nextPdf,
+            });
             return {
               ...w,
-              applicationNo: w.applicationNo || matchedSub.application_no,
-              gosuslugiStatus: matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено',
-              pdfFilename: w.pdfFilename || matchedSub.pdf_filename,
-              status: matchedSub.application_no ? 'success' : w.status,
+              applicationNo: nextAppNo,
+              gosuslugiStatus: nextGosStatus,
+              pdfFilename: nextPdf,
+              status: alreadySent
+                ? 'success'
+                : /^ошибк/i.test(nextGosStatus)
+                ? 'error'
+                : w.status,
+              // Uncheck already-sent workers so their Zayavka is not accidentally re-submitted!
+              selected: alreadySent ? false : w.selected,
             };
           })
         );
@@ -1078,7 +1132,7 @@ export default function GosuslugiVksView() {
   }, [workers, lang]);
 
   // Apply initial validation when loading rows from Excel or DB:
-  // Valid rows -> selected: true; Invalid rows -> selected: false (blocked until fixed)
+  // Valid unsent rows -> selected: true; Already-sent rows -> selected: false; Invalid rows -> selected: false
   const applyInitialValidationSelection = (list: GosuslugiVksWorkerRecord[]) => {
     let validCnt = 0;
     let invalidCnt = 0;
@@ -1088,20 +1142,37 @@ export default function GosuslugiVksView() {
         (codeKey ? savedSubmissions[codeKey] : undefined) ||
         (w.applicationNo ? savedSubmissions[`app:${w.applicationNo}`] : undefined);
       const savedSub = doesSubMatchWorker(candidateSub, w) ? candidateSub : undefined;
+      const nextAppNo = w.applicationNo || savedSub?.application_no;
+      const nextGosStatus = normalizeSentGosuslugiStatus(
+        w.gosuslugiStatus || savedSub?.gosuslugi_status || (savedSub ? 'Отправлено' : '')
+      );
+      const nextPdf = w.pdfFilename || savedSub?.pdf_filename;
+      const alreadySent = isWorkerAlreadySentToGosuslugi({
+        status: w.status,
+        applicationNo: nextAppNo,
+        gosuslugiStatus: nextGosStatus,
+        pdfFilename: nextPdf,
+      });
+
       const enriched: GosuslugiVksWorkerRecord = savedSub
         ? {
             ...w,
-            applicationNo: w.applicationNo || savedSub.application_no,
-            gosuslugiStatus: w.gosuslugiStatus || savedSub.gosuslugi_status || 'Отправлено',
-            pdfFilename: w.pdfFilename || savedSub.pdf_filename,
-            status: savedSub.application_no ? 'success' : w.status,
+            applicationNo: nextAppNo,
+            gosuslugiStatus: nextGosStatus || 'Отправлено',
+            pdfFilename: nextPdf,
+            status: alreadySent
+              ? 'success'
+              : /^ошибк/i.test(nextGosStatus)
+              ? 'error'
+              : w.status,
           }
         : w;
 
       const v = validateVksWorkerRecord(enriched, lang === 'ru' ? 'ru' : 'tr');
       if (v.isValid) {
         validCnt++;
-        return { ...enriched, selected: true };
+        // Never pre-select a row whose notification was already sent to Gosuslugi!
+        return { ...enriched, selected: !alreadySent };
       } else {
         invalidCnt++;
         return { ...enriched, selected: false };
@@ -1125,10 +1196,14 @@ export default function GosuslugiVksView() {
 
               // Sync any newly registered applications or updated statuses from RPA bridge to Pondera DB
               if (data.submissions && Object.keys(data.submissions).length > 0) {
-                const subValues = Object.values(data.submissions);
+                const subValues = Object.values(data.submissions).map((s) => ({
+                  ...s,
+                  gosuslugi_status: normalizeSentGosuslugiStatus(s.gosuslugi_status),
+                }));
                 const unsynced = subValues.filter((s) => {
-                  if (!s.application_no) return false;
-                  const sig = `${s.application_no}:${s.gosuslugi_status || ''}`;
+                  const keyId = s.application_no || s.sicil_no || '';
+                  if (!keyId) return false;
+                  const sig = `${keyId}:${s.gosuslugi_status || ''}:${s.pdf_filename || ''}`;
                   if (syncedAppsRef.current.has(sig)) return false;
                   syncedAppsRef.current.add(sig);
                   return true;
@@ -1190,16 +1265,26 @@ export default function GosuslugiVksView() {
                     );
                     if (matchedSub) {
                       const nextAppNo = matchedSub.application_no || w.applicationNo;
-                      const nextGosStatus =
-                        matchedSub.gosuslugi_status || w.gosuslugiStatus || (isErrored ? '' : 'Отправлено');
+                      const nextGosStatus = normalizeSentGosuslugiStatus(
+                        matchedSub.gosuslugi_status ||
+                          w.gosuslugiStatus ||
+                          (isErrored ? '' : 'Отправлено')
+                      );
                       const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
+                      const alreadySent = isWorkerAlreadySentToGosuslugi({
+                        applicationNo: nextAppNo,
+                        gosuslugiStatus: nextGosStatus,
+                        pdfFilename: nextPdf,
+                      });
                       const isSubErr =
-                        isErrored ||
-                        (!nextAppNo && /^ошибк/i.test(String(matchedSub.gosuslugi_status || '').trim()));
+                        !alreadySent &&
+                        (isErrored ||
+                          (!nextAppNo && /^ошибк/i.test(String(nextGosStatus || '').trim())));
                       if (
                         nextAppNo !== w.applicationNo ||
                         nextGosStatus !== w.gosuslugiStatus ||
-                        nextPdf !== w.pdfFilename
+                        nextPdf !== w.pdfFilename ||
+                        (alreadySent && w.selected)
                       ) {
                         nextW = {
                           ...nextW,
@@ -1207,16 +1292,26 @@ export default function GosuslugiVksView() {
                           gosuslugiStatus: nextGosStatus,
                           pdfFilename: nextPdf,
                           status: isSubErr ? 'error' : 'success',
+                          // Automatically uncheck checkbox once notification has been sent!
+                          selected: alreadySent ? false : nextW.selected,
                         };
                       }
                     }
                   }
 
-                  if (isErrored) {
-                    return nextW.status === 'error' ? nextW : { ...nextW, status: 'error' };
+                  const isNowSent = isWorkerAlreadySentToGosuslugi(nextW);
+                  if (isNowSent) {
+                    return nextW.status === 'success' && !nextW.selected
+                      ? nextW
+                      : { ...nextW, status: 'success', selected: false };
                   }
                   if (data.completed_codes && codeKey && data.completed_codes.includes(codeKey)) {
-                    return nextW.status === 'success' ? nextW : { ...nextW, status: 'success' };
+                    return nextW.status === 'success' && !nextW.selected
+                      ? nextW
+                      : { ...nextW, status: 'success', selected: false };
+                  }
+                  if (isErrored) {
+                    return nextW.status === 'error' ? nextW : { ...nextW, status: 'error' };
                   }
                   const isCurrent =
                     data.running &&
@@ -1618,9 +1713,10 @@ export default function GosuslugiVksView() {
           postalCode,
         };
         const v = validateVksWorkerRecord(updated, lang === 'ru' ? 'ru' : 'tr');
+        const alreadySent = isWorkerAlreadySentToGosuslugi(updated);
         return {
           ...updated,
-          selected: v.isValid ? w.selected || true : false,
+          selected: v.isValid && !alreadySent ? w.selected || true : false,
         };
       })
     );
@@ -1654,9 +1750,10 @@ export default function GosuslugiVksView() {
           }
         }
         const nowValid = validateVksWorkerRecord(updated, lang === 'ru' ? 'ru' : 'tr').isValid;
+        const alreadySent = isWorkerAlreadySentToGosuslugi(updated);
         return {
           ...updated,
-          selected: !nowValid ? false : !wasValid && nowValid ? true : updated.selected,
+          selected: !nowValid || alreadySent ? false : !wasValid && nowValid ? true : updated.selected,
         };
       })
     );
@@ -1730,16 +1827,19 @@ export default function GosuslugiVksView() {
     );
   };
 
-  // Toggle select all — ONLY toggles rows that pass validation!
+  // Toggle select all — ONLY toggles rows that pass validation AND have NOT been sent yet!
   const handleToggleSelectAll = () => {
-    const validRows = workers.filter((w) => validationMap[w.id]?.isValid);
-    const allValidSelected = validRows.length > 0 && validRows.every((w) => w.selected);
+    const unsentValidRows = workers.filter(
+      (w) => validationMap[w.id]?.isValid && !isWorkerAlreadySentToGosuslugi(w)
+    );
+    const allUnsentSelected =
+      unsentValidRows.length > 0 && unsentValidRows.every((w) => w.selected);
     setWorkers((prev) =>
       prev.map((w) => {
-        if (!validationMap[w.id]?.isValid) {
+        if (!validationMap[w.id]?.isValid || isWorkerAlreadySentToGosuslugi(w)) {
           return { ...w, selected: false };
         }
-        return { ...w, selected: !allValidSelected };
+        return { ...w, selected: !allUnsentSelected };
       })
     );
   };
@@ -3258,13 +3358,18 @@ export default function GosuslugiVksView() {
                   <th className="py-2.5 px-2.5 w-9 text-center">
                     <input
                       type="checkbox"
-                      checked={validCount > 0 && validWorkers.every((w) => w.selected)}
+                      checked={
+                        validWorkers.some((w) => !isWorkerAlreadySentToGosuslugi(w)) &&
+                        validWorkers
+                          .filter((w) => !isWorkerAlreadySentToGosuslugi(w))
+                          .every((w) => w.selected)
+                      }
                       onChange={handleToggleSelectAll}
                       className="rounded border-slate-300 dark:border-slate-600 accent-emerald-600 cursor-pointer"
                       title={
                         lang === 'ru'
-                          ? 'Выбрать все строки без ошибок'
-                          : 'Hatasız tüm satırları seç/kaldır'
+                          ? 'Выбрать все неотправленные строки без ошибок'
+                          : 'Henüz gönderilmemiş hatasız tüm satırları seç/kaldır'
                       }
                     />
                   </th>
@@ -3313,7 +3418,7 @@ export default function GosuslugiVksView() {
                           ? 'bg-teal-50/90 dark:bg-teal-950/50 border-l-4 border-l-emerald-500 font-semibold'
                           : !isRowValid
                           ? 'bg-rose-50/60 dark:bg-rose-950/25 border-l-4 border-l-rose-500'
-                          : w.status === 'success'
+                          : w.status === 'success' || isWorkerAlreadySentToGosuslugi(w)
                           ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
                           : w.status === 'error'
                           ? 'bg-rose-50/50 dark:bg-rose-950/20'
@@ -3383,13 +3488,28 @@ export default function GosuslugiVksView() {
                               ))}
                             </ul>
                           </div>
-                        ) : w.status === 'success' || w.applicationNo ? (
+                        ) : w.status === 'success' || w.applicationNo || isWorkerAlreadySentToGosuslugi(w) ? (
                           <div className="space-y-0.5 leading-tight">
                             {w.gosuslugiStatus &&
-                            /отказан|ошибк|возврат|не оказан/i.test(w.gosuslugiStatus) ? (
+                            /отказан|возврат|не оказан/i.test(w.gosuslugiStatus) ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap font-sans">
                                 <AlertCircle className="w-3 h-3 shrink-0" />
                                 {w.gosuslugiStatus}
+                              </span>
+                            ) : !w.pdfFilename ||
+                              (w.gosuslugiStatus && /PDF не скачан/i.test(w.gosuslugiStatus)) ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-sky-100 dark:bg-sky-500/20 border border-sky-300 dark:border-sky-500/40 text-sky-800 dark:text-sky-300 whitespace-nowrap font-sans"
+                                title={
+                                  lang === 'ru'
+                                    ? 'Заявление отправлено в Госуслуги, но PDF-квитанция ещё не скачана. Нажмите «3. Проверить статусы ГУ», чтобы скачать PDF.'
+                                    : "Bildirim Gosuslugi'ye gönderildi ancak PDF henüz alınmadı. PDF'i indirmek için «3. Başvuru Durumlarını Sorgula» butonunu kullanabilirsiniz."
+                                }
+                              >
+                                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                {lang === 'ru'
+                                  ? 'Отправлено (PDF не скачан)'
+                                  : 'Gönderildi (PDF Alınamadı)'}
                               </span>
                             ) : w.gosuslugiStatus &&
                               /промежуточн|обработк|зарегистрирован/i.test(w.gosuslugiStatus) ? (

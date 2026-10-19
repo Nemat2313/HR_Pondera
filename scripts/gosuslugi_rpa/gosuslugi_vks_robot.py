@@ -1769,7 +1769,17 @@ class GosuslugiVksBot:
         gosuslugi_order_no = self.complete_mvd_and_submit_flow()
 
         # Step 16: Personal Cabinet & Receipt PDF Download + Rename (<Sicil>_<GosuslugiNo>_<Ad Soyad>_<Donem>.pdf)
-        self.execute_step16_cabinet_and_download(row, gosuslugi_order_no)
+        # Note: Because Step 15 ('Уведомление отправлено') already succeeded, any Step 16 PDF issue must NEVER mark the worker as 'Ошибка'!
+        try:
+            self.execute_step16_cabinet_and_download(row, gosuslugi_order_no)
+        except Exception as step16_err:
+            logger.warning(f"Step 16 (PDF download) warning after successful submission for {full_name}: {step16_err}")
+            self.register_application_submission(
+                row,
+                gosuslugi_order_no or "ОТПРАВЛЕНО",
+                pdf_filename="",
+                status_override="Отправлено (PDF не скачан)",
+            )
 
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to count success
         logger.info(f"SUCCESS: Notification submitted for {full_name}!")
@@ -2591,15 +2601,17 @@ class GosuslugiVksBot:
         sig = [tok for tok in tokens if len(tok) >= 2]
         return sig if sig else tokens
 
+    sanitize_cyrillic_value = staticmethod(sanitize_cyrillic_value)
+
     def does_citizen_match_worker(self, citizen_text: str, row: Dict[str, Any], page_body_text: str = "") -> bool:
         """
         Verifies that the 'Гражданин' field on the Gosuslugi order page/card matches the employee in `row`.
         Handles cases where Фамилия or Отчество is 'Нет' (e.g. 'Нет АДЖАД Нет' -> significant token ['аджад']),
         and also normalizes Latin homoglyphs via sanitize_cyrillic_value so Excel/Gosuslugi Cyrillic names always match.
         """
-        raw_last = self.sanitize_cyrillic_value(str(row.get("Фамилия", "")).strip())
-        raw_first = self.sanitize_cyrillic_value(str(row.get("Имя", "")).strip())
-        raw_mid = self.sanitize_cyrillic_value(str(row.get("Отчество", "")).strip())
+        raw_last = sanitize_cyrillic_value(str(row.get("Фамилия", "")).strip())
+        raw_first = sanitize_cyrillic_value(str(row.get("Имя", "")).strip())
+        raw_mid = sanitize_cyrillic_value(str(row.get("Отчество", "")).strip())
 
         primary_tokens = self._normalize_ru_tokens(f"{raw_last} {raw_first}")
         if not primary_tokens:
@@ -2609,7 +2621,7 @@ class GosuslugiVksBot:
         if not primary_tokens:
             return False
 
-        citizen_norm_text = self.sanitize_cyrillic_value(citizen_text or "")
+        citizen_norm_text = sanitize_cyrillic_value(citizen_text or "")
         citizen_tokens = self._normalize_ru_tokens(citizen_norm_text)
 
         # Fallback: if citizen_tokens is empty (e.g. DOM extracted only 'Нет'), inspect the 'Гражданин' block in page_body_text
@@ -2620,7 +2632,7 @@ class GosuslugiVksBot:
                 re.IGNORECASE,
             )
             if m_block:
-                citizen_tokens = self._normalize_ru_tokens(self.sanitize_cyrillic_value(m_block.group(1)))
+                citizen_tokens = self._normalize_ru_tokens(sanitize_cyrillic_value(m_block.group(1)))
 
         if citizen_tokens:
             citizen_joined = " ".join(citizen_tokens)
@@ -2637,7 +2649,7 @@ class GosuslugiVksBot:
         haystack = re.sub(
             r"\s+",
             " ",
-            self.sanitize_cyrillic_value(f"{citizen_text} {page_body_text}").lower().replace("ё", "е"),
+            sanitize_cyrillic_value(f"{citizen_text} {page_body_text}").lower().replace("ё", "е"),
         ).strip()
         if full_with_net and len(full_with_net) >= 3 and full_with_net in haystack:
             return True
@@ -3359,12 +3371,18 @@ class GosuslugiVksBot:
             self.page.wait_for_timeout(3000)
 
         if not verified_order_no:
-            err_msg = (
-                f"Step 16 Error: В личном кабинете Госуслуг не найдено зарегистрированное заявление для гражданина "
-                f"'{clean_worker_name}' (Код: {sicil}). Чужие заявления были отфильтрованы."
+            warn_msg = (
+                f"Step 16 Warning: В личном кабинете Госуслуг пока не отобразилось заявление для гражданина "
+                f"'{clean_worker_name}' (Код: {sicil}). Статус сохранён как 'Отправлено (PDF не скачан)'."
             )
-            logger.error(err_msg)
-            raise RuntimeError(err_msg)
+            logger.warning(warn_msg)
+            self.register_application_submission(
+                row,
+                expected_order_no or "ОТПРАВЛЕНО",
+                pdf_filename="",
+                status_override="Отправлено (PDF не скачан)",
+            )
+            return
 
         # 16.4 Ensure 'Показать историю' is expanded before clicking 'Скачать'
         self.expand_order_history_on_page()
@@ -3606,8 +3624,12 @@ class GosuslugiVksBot:
 
         if not downloaded_path or not downloaded_path.exists():
             logger.warning("Step 16: PDF download was triggered, but the new file was not detected in ~/Downloads.")
-            if gosuslugi_order_no:
-                self.register_application_submission(row, gosuslugi_order_no, "")
+            self.register_application_submission(
+                row,
+                gosuslugi_order_no or "ОТПРАВЛЕНО",
+                pdf_filename="",
+                status_override="Отправлено (PDF не скачан)",
+            )
             return None
 
         # Always prioritize the verified Gosuslugi order number from the page; never let a UUID filename overwrite it!
@@ -3640,7 +3662,13 @@ class GosuslugiVksBot:
             self.register_application_submission(row, final_gosuslugi_no, downloaded_path.name)
             return str(downloaded_path)
 
-    def register_application_submission(self, row: Dict[str, Any], application_no: str, pdf_filename: str = ""):
+    def register_application_submission(
+        self,
+        row: Dict[str, Any],
+        application_no: str,
+        pdf_filename: str = "",
+        status_override: str = "",
+    ):
         """
         Records the verified Gosuslugi Application Number (№ Заявления) and PDF filename for EBA upload & status tracking:
         1) Emits structured 'APPLICATION_REGISTERED: {...}' log line for rpa_bridge_server.py
@@ -3651,8 +3679,8 @@ class GosuslugiVksBot:
         if not app_no:
             return
         sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
-        if self.is_order_already_linked_to_another_worker(app_no, sicil):
-            logger.error(
+        if app_no.isdigit() and self.is_order_already_linked_to_another_worker(app_no, sicil):
+            logger.warning(
                 f"Prevented duplicate linking: Application № {app_no} is already linked to another employee!"
             )
             return
@@ -3661,6 +3689,11 @@ class GosuslugiVksBot:
         citizenship = str(row.get("ТекущееГражданство", "")).strip()
         period_code = self.compute_vks_period_code(row)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        effective_status = (
+            status_override
+            if status_override
+            else ("Заявление зарегистрировано" if pdf_filename else "Отправлено (PDF не скачан)")
+        )
 
         entry = {
             "sicil": sicil,
@@ -3669,8 +3702,8 @@ class GosuslugiVksBot:
             "citizenship": citizenship,
             "notification_type": "vks_salary",
             "period_code": period_code,
-            "application_no": app_no,
-            "gosuslugi_status": "Заявление зарегистрировано",
+            "application_no": "" if app_no == "ОТПРАВЛЕНО" else app_no,
+            "gosuslugi_status": effective_status,
             "pdf_filename": pdf_filename,
             "submitted_at": now_str,
         }

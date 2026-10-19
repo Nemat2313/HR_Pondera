@@ -13,7 +13,7 @@ function ensureTable(db: any) {
       citizenship TEXT,
       notification_type TEXT NOT NULL DEFAULT 'vks_salary',
       period_code TEXT DEFAULT '',
-      application_no TEXT NOT NULL,
+      application_no TEXT NOT NULL DEFAULT '',
       gosuslugi_status TEXT NOT NULL DEFAULT 'Отправлено',
       status_detail TEXT DEFAULT '',
       pdf_filename TEXT DEFAULT '',
@@ -21,6 +21,9 @@ function ensureTable(db: any) {
       checked_at TEXT DEFAULT '',
       UNIQUE(sicil_no, notification_type, period_code)
     );
+    UPDATE gosuslugi_submissions
+    SET gosuslugi_status = 'Отправлено (PDF не скачан)'
+    WHERE gosuslugi_status LIKE '%GosuslugiVksBot%' OR gosuslugi_status LIKE '%Step 16%';
   `);
 }
 
@@ -121,13 +124,20 @@ export async function POST(request: Request) {
     for (const item of items) {
       const sicil = String(item.sicil_no || item.sicil || item.code || '').trim();
       const appNo = String(item.application_no || item.applicationNo || '').trim();
-      if (!sicil || !appNo) continue;
+      const rawStatus = String(item.gosuslugi_status || item.gosuslugiStatus || 'Отправлено').trim();
+      const normalizedStatus = /GosuslugiVksBot|Step 16/i.test(rawStatus)
+        ? 'Отправлено (PDF не скачан)'
+        : rawStatus;
+
+      if (!sicil && !appNo) continue;
 
       // Prevent linking the same Gosuslugi application_no to two different workers across multiple computers
-      const existingOwner = checkCollisionStmt.get(appNo, sicil) as { sicil_no: string; worker_name: string } | undefined;
-      if (existingOwner) {
-        skippedCollisions++;
-        continue;
+      if (appNo && sicil) {
+        const existingOwner = checkCollisionStmt.get(appNo, sicil) as { sicil_no: string; worker_name: string } | undefined;
+        if (existingOwner) {
+          skippedCollisions++;
+          continue;
+        }
       }
 
       stmt.run(
@@ -137,7 +147,7 @@ export async function POST(request: Request) {
         String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase(),
         String(item.period_code || item.periodCode || '').trim(),
         appNo,
-        String(item.gosuslugi_status || item.gosuslugiStatus || 'Отправлено').trim(),
+        normalizedStatus,
         String(item.status_detail || item.statusDetail || '').trim(),
         String(item.pdf_filename || item.pdfFilename || '').trim(),
         String(item.submitted_at || item.submittedAt || nowStr).trim(),

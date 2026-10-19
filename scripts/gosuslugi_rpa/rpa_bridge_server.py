@@ -34,7 +34,16 @@ def load_saved_applications():
             with open(APPLICATIONS_LEDGER, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list):
+                    changed = False
+                    for it in data:
+                        if isinstance(it, dict):
+                            st = str(it.get("gosuslugi_status") or "")
+                            if "GosuslugiVksBot" in st or "Step 16" in st:
+                                it["gosuslugi_status"] = "Отправлено (PDF не скачан)"
+                                changed = True
                     items = data
+                    if changed:
+                        save_applications_ledger(items)
         except Exception:
             pass
     return items
@@ -428,9 +437,12 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                     RPAState.manual_message = None
                     RPAState.success += 1
                     RPAState.processed += 1
-                    if RPAState.active_worker_code and RPAState.active_worker_code not in RPAState.completed_codes:
-                        RPAState.completed_codes.append(RPAState.active_worker_code)
-                elif "Error processing" in clean_line or ("[ERROR]" in clean_line and "FATAL_STOP:" not in clean_line):
+                    if RPAState.active_worker_code:
+                        if RPAState.active_worker_code in RPAState.error_codes:
+                            RPAState.error_codes.remove(RPAState.active_worker_code)
+                        if RPAState.active_worker_code not in RPAState.completed_codes:
+                            RPAState.completed_codes.append(RPAState.active_worker_code)
+                elif "Error processing" in clean_line or "WORKER_ERROR:" in clean_line:
                     RPAState.waiting_for_manual = False
                     RPAState.manual_message = None
                     if RPAState.active_worker_code:
