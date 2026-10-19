@@ -119,7 +119,7 @@ export default function Topbar({
     };
 
     checkTelegramCron();
-    const timer = setInterval(checkTelegramCron, 60000);
+    const timer = setInterval(checkTelegramCron, 30000);
     return () => clearInterval(timer);
   }, []);
 

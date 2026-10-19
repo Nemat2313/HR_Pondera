@@ -68,13 +68,15 @@ export async function GET(request: Request) {
     const nowMs = Date.now();
     const msk = getMoscowTimeParts();
 
-    // 1. Check 15-minute VKS Notification Report
+    // 1. Check 15-minute VKS Notification Report strictly at :00 (60), :15, :30, :45 of each hour
     let vksResult: any = { skipped: true };
-    const lastVksCheckMs = Number(getSystemVal(db, 'telegram_vks_last_check_ms') || '0');
-    const isQuarterHour = msk.minute % 15 === 0;
-    const elapsedSinceCheck = nowMs - lastVksCheckMs;
+    const quarterMin = Math.floor(msk.minute / 15) * 15; // 0, 15, 30, 45
+    const currentQuarterSlot = `${msk.dateIso}_${String(msk.hour).padStart(2, '0')}:${String(quarterMin).padStart(2, '0')}`;
+    const lastQuarterSlot = getSystemVal(db, 'telegram_vks_last_quarter_slot') || '';
+    const isAtQuarterMark = msk.minute % 15 === 0 || msk.minute % 15 === 1;
 
-    if ((isQuarterHour && elapsedSinceCheck >= 65 * 1000) || elapsedSinceCheck >= 15 * 60 * 1000) {
+    if (isAtQuarterMark && lastQuarterSlot !== currentQuarterSlot) {
+      setSystemVal(db, 'telegram_vks_last_quarter_slot', currentQuarterSlot);
       setSystemVal(db, 'telegram_vks_last_check_ms', String(nowMs));
       vksResult = await checkAndSendVks15MinReport(false);
     }

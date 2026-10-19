@@ -825,7 +825,7 @@ def start_telegram_outbox_relay_thread():
                                 urllib.request.urlopen(ack_req, timeout=10, context=ctx).read()
             except Exception:
                 pass
-            time.sleep(60)
+            time.sleep(15)
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
