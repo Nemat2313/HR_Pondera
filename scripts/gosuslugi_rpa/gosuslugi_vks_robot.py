@@ -131,14 +131,76 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
+    def is_on_login_page(self) -> bool:
+        """
+        Detects if Gosuslugi logged out and redirected the browser to the ESIA login page
+        (e.g. https://esia.gosuslugi.ru/login/ with 'Телефон / Эл. почта / СНИЛС', 'Пароль', 'Войти').
+        """
+        try:
+            cur_url = (self.page.url or "").lower()
+            if "esia.gosuslugi.ru/login" in cur_url or "esia.gosuslugi.ru/idp" in cur_url:
+                return True
+            login_inputs = self.page.locator(
+                "input#login:visible, input#password:visible, input[name='login']:visible, input[type='password']:visible"
+            )
+            if login_inputs.count() > 0:
+                return True
+            body_text = self.page.locator("body").inner_text(timeout=1200)
+            if "Телефон / Эл. почта / СНИЛС" in body_text and "Войти" in body_text:
+                return True
+        except Exception:
+            pass
+        return False
+
+    def wait_if_logged_out(self) -> bool:
+        """
+        If Gosuslugi session expired / logged out (esia.gosuslugi.ru/login), pauses the robot and waits
+        up to 15 minutes until the user logs back in, then resumes automatically.
+        Returns True if a logout was detected and recovered.
+        """
+        if not self.is_on_login_page():
+            return False
+
+        logger.warning(
+            "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (esia.gosuslugi.ru/login). "
+            "Пожалуйста, войдите в аккаунт Госуслуг в окне Chrome — робот ждёт и автоматически продолжит работу после входа!"
+        )
+        try:
+            self.page.bring_to_front()
+        except Exception:
+            pass
+
+        # Wait up to 15 minutes (450 * 2s) for the user to complete login (including SMS/2FA/org selection)
+        for wait_tick in range(450):
+            self.page.wait_for_timeout(2000)
+            try:
+                cur_url = (self.page.url or "").lower()
+                still_logging_in = (
+                    self.is_on_login_page()
+                    or "esia.gosuslugi.ru" in cur_url
+                )
+                if not still_logging_in and "gosuslugi.ru" in cur_url:
+                    logger.info("LOGIN_RESTORED: Вход в Госуслуги выполнен! Робот продолжает работу через 2 секунды...")
+                    self.page.wait_for_timeout(2000)
+                    return True
+            except Exception:
+                pass
+            if wait_tick > 0 and wait_tick % 15 == 0:
+                logger.info("Ожидание входа пользователя в Госуслуги (esia.gosuslugi.ru/login)...")
+
+        return False
+
     def check_and_handle_error_modal(self) -> bool:
-        """Equivalent to PAD GetError subflow: Click 'Попробовать ещё раз' or MVD warning continue."""
+        """Equivalent to PAD GetError subflow: Pause if logged out, click 'Попробовать ещё раз' or MVD warning continue."""
         handled = False
+        if self.wait_if_logged_out():
+            handled = True
+
         try:
             retry_btn = self.page.locator("button:has-text('Попробовать ещё раз'), span:has-text('Попробовать ещё раз')")
             if retry_btn.count() > 0 and retry_btn.first.is_visible():
                 logger.warning("Detected Gosuslugi retry modal ('Попробовать ещё раз'). Clicking retry...")
-                retry_btn.first.click()
+                retry_btn.first.click(timeout=2500)
                 self.page.wait_for_timeout(2000)
                 handled = True
         except Exception:
@@ -156,7 +218,7 @@ class GosuslugiVksBot:
                     "button:has-text('Продолжить'), button:has-text('Все равно продолжить'), button:has-text('Продолжить без проверки')"
                 ).first
                 if cont_btn.count() > 0 and cont_btn.is_visible():
-                    cont_btn.click()
+                    cont_btn.click(timeout=2500)
                     self.page.wait_for_timeout(2000)
                     handled = True
         except Exception:
@@ -170,29 +232,35 @@ class GosuslugiVksBot:
         if not val:
             return False
         loc = self.page.locator(selector).first
-        if loc.count() == 0:
+        try:
+            if loc.count() == 0 or not loc.is_visible():
+                return False
+        except Exception:
             return False
         try:
-            loc.scroll_into_view_if_needed(timeout=3000)
+            loc.scroll_into_view_if_needed(timeout=1500)
         except Exception:
             pass
-        loc.click()
-        self.page.wait_for_timeout(150)
+        try:
+            loc.click(timeout=2500)
+        except Exception:
+            return False
+        self.page.wait_for_timeout(120)
         self.page.keyboard.press("Control+A")
         self.page.keyboard.press("Backspace")
-        self.page.wait_for_timeout(100)
+        self.page.wait_for_timeout(80)
         self.page.keyboard.type(val, delay=delay)
-        self.page.wait_for_timeout(250)
+        self.page.wait_for_timeout(200)
         self.page.keyboard.press("Tab")
-        self.page.wait_for_timeout(250)
+        self.page.wait_for_timeout(180)
         return True
 
     def fill_citizenship_strict(self, citizenship: str) -> bool:
         """
-        Reliably fills 'Гражданство' (#dic13_ctz) on Step 6 using real keystrokes (`press_sequentially`)
-        so Gosuslugi's <lib-lookup> filters the country list, then clicks the exact matching option
-        inside `#lookup-list-wrap` and verifies `.displayed.lookup-item` matches `citizenship`
-        (preventing accidental selection of the first unfiltered item 'Абхазия').
+        Reliably fills 'Гражданство' (#dic13_ctz) on Step 6 without any unnecessary waiting:
+        1) Types the country name (e.g. 'ИНДИЯ')
+        2) Immediately clicks the matching dropdown option ('Индия') using Playwright locator + DOM JS/Mouse fallback
+        3) Verifies selection and returns in ~0.8s.
         """
         ctz_val = str(citizenship or "Турция").strip()
         ctz_lower = ctz_val.lower()
@@ -200,13 +268,12 @@ class GosuslugiVksBot:
         for attempt in range(1, 4):
             try:
                 # 1) Check if `.displayed.lookup-item` already shows the right country
-                displayed = self.page.locator("lib-lookup .displayed.lookup-item").first
-                if displayed.count() > 0 and displayed.is_visible():
-                    cur_selected = displayed.inner_text().strip()
+                displayed = self.page.locator("lib-lookup .displayed.lookup-item:visible, .displayed.lookup-item:visible").first
+                if displayed.count() > 0:
+                    cur_selected = displayed.inner_text(timeout=1000).strip()
                     if cur_selected and ctz_lower in cur_selected.lower():
                         logger.info(f"Step 6: Гражданство already verified as '{cur_selected}'.")
                         return True
-                    # Wrong country selected (e.g. 'Абхазия') -> click 'button.search-clear' (X)
                     logger.warning(
                         f"Step 6: Гражданство shows '{cur_selected}' instead of '{ctz_val}' -> clearing..."
                     )
@@ -214,75 +281,123 @@ class GosuslugiVksBot:
                 clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
                 if clr_btn.count() > 0 and clr_btn.is_visible():
                     try:
-                        clr_btn.click(timeout=2000)
+                        clr_btn.click(timeout=1500)
                     except Exception:
                         clr_btn.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(300)
+                    self.page.wait_for_timeout(200)
 
                 ctz_inp = self.page.locator(
-                    "#dic13_ctz, input[id*='ctz'], lib-lookup input.search-input"
+                    "#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible"
                 ).first
                 if ctz_inp.count() == 0:
                     return False
 
                 try:
-                    ctz_inp.scroll_into_view_if_needed(timeout=2000)
+                    ctz_inp.scroll_into_view_if_needed(timeout=1500)
                 except Exception:
                     pass
 
-                # 2) Focus #dic13_ctz, clear any text, and type character-by-character so Angular filters the list!
-                ctz_inp.click()
-                self.page.wait_for_timeout(150)
+                # 2) Focus #dic13_ctz, clear any text, and type character-by-character so Angular filters the list
+                ctz_inp.click(timeout=2000)
+                self.page.wait_for_timeout(100)
                 self.page.keyboard.press("Control+A")
                 self.page.keyboard.press("Backspace")
-                self.page.wait_for_timeout(200)
-                ctz_inp.press_sequentially(ctz_val, delay=65)
-                self.page.wait_for_timeout(900)
+                self.page.wait_for_timeout(120)
+                ctz_inp.press_sequentially(ctz_val, delay=45)
 
-                # 3) Find the exact matching option inside `#lookup-list-wrap .lookup-item` (never pick unfiltered index 0!)
+                # 3) Poll up to 2.5s (10 * 250ms) and click the matching country option immediately once it appears
                 options = self.page.locator(
                     "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
-                    "div[role='listbox'] .lookup-item:not(.nothing-found):visible"
+                    "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
+                    "lib-lookup .lookup-item:not(.nothing-found):visible, "
+                    ".lookup-item:not(.nothing-found):visible, "
+                    "[role='option']:visible"
                 )
-                matched_opt = None
-                opt_count = options.count()
-                # Prefer exact case-insensitive match first, then substring match
-                for idx in range(opt_count):
-                    cand = options.nth(idx)
-                    txt = cand.inner_text().strip()
-                    if txt.lower() == ctz_lower:
-                        matched_opt = cand
-                        break
-                if matched_opt is None:
+                clicked_country = False
+                for _ in range(10):
+                    self.page.wait_for_timeout(250)
+                    opt_count = options.count()
+                    matched_opt = None
                     for idx in range(opt_count):
                         cand = options.nth(idx)
-                        txt = cand.inner_text().strip()
-                        if ctz_lower in txt.lower():
+                        try:
+                            txt = cand.inner_text(timeout=800).strip()
+                        except Exception:
+                            continue
+                        if txt.lower() == ctz_lower:
                             matched_opt = cand
                             break
+                    if matched_opt is None:
+                        for idx in range(opt_count):
+                            cand = options.nth(idx)
+                            try:
+                                txt = cand.inner_text(timeout=800).strip()
+                            except Exception:
+                                continue
+                            if ctz_lower in txt.lower():
+                                matched_opt = cand
+                                break
 
-                if matched_opt is not None:
-                    opt_text = matched_opt.inner_text().strip()
-                    logger.info(f"Step 6: Selecting Гражданство option '{opt_text}' (attempt {attempt})...")
+                    if matched_opt is not None:
+                        try:
+                            opt_text = matched_opt.inner_text(timeout=800).strip()
+                            logger.info(f"Step 6: Selecting Гражданство option '{opt_text}'...")
+                            matched_opt.click(timeout=1500)
+                        except Exception:
+                            try:
+                                matched_opt.evaluate("el => el.click()")
+                            except Exception:
+                                pass
+                        clicked_country = True
+                        self.page.wait_for_timeout(350)
+                        break
+
+                    # Fast DOM fallback for dropdown item (e.g. 'Индия' right below 'ИНДИЯ' input)
                     try:
-                        matched_opt.click(timeout=2500)
+                        dom_clicked = self.page.evaluate(
+                            """(targetCountry) => {
+                                const want = targetCountry.trim().toLowerCase();
+                                const candidates = Array.from(document.querySelectorAll('.lookup-item, [role="option"], li, div, span'));
+                                for (const el of candidates) {
+                                    if (el.tagName === 'INPUT' || el.querySelector('input')) continue;
+                                    const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                                    if (txt === want) {
+                                        const r = el.getBoundingClientRect();
+                                        if (r.width > 20 && r.height >= 14 && r.height <= 80) {
+                                            const clickable = el.closest('.lookup-item, [role="option"], li') || el;
+                                            clickable.click();
+                                            clickable.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                            clickable.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                            clickable.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                                        }
+                                    }
+                                }
+                                return null;
+                            }""",
+                            ctz_val,
+                        )
+                        if isinstance(dom_clicked, dict) and dom_clicked.get("x") and dom_clicked.get("y"):
+                            self.page.mouse.click(float(dom_clicked["x"]), float(dom_clicked["y"]))
+                            clicked_country = True
+                            self.page.wait_for_timeout(350)
+                            break
                     except Exception:
-                        matched_opt.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(550)
+                        pass
 
-                # 4) Verify `.displayed.lookup-item` now contains the requested country
-                displayed_after = self.page.locator("lib-lookup .displayed.lookup-item").first
-                if displayed_after.count() > 0 and displayed_after.is_visible():
-                    sel_after = displayed_after.inner_text().strip()
+                # 4) Verify selection (either .displayed.lookup-item or input value with closed dropdown)
+                displayed_after = self.page.locator("lib-lookup .displayed.lookup-item:visible, .displayed.lookup-item:visible").first
+                if displayed_after.count() > 0:
+                    sel_after = displayed_after.inner_text(timeout=1000).strip()
                     if ctz_lower in sel_after.lower():
                         logger.info(f"Step 6: Confirmed Гражданство = '{sel_after}'.")
                         return True
-                    logger.warning(
-                        f"Step 6: Expected '{ctz_val}' in Гражданство, but got '{sel_after}' on attempt {attempt}."
-                    )
+                elif clicked_country:
+                    logger.info(f"Step 6: Selected Гражданство = '{ctz_val}'.")
+                    return True
             except Exception as e:
                 logger.debug(f"fill_citizenship_strict attempt {attempt} note: {e}")
-                self.page.wait_for_timeout(400)
+                self.page.wait_for_timeout(300)
 
         return False
 
@@ -945,6 +1060,16 @@ class GosuslugiVksBot:
             # Never retry when the Gosuslugi account lacks authority ('У вас недостаточно полномочий для отправки уведомлений')
             raise
         except Exception as ex:
+            # If Gosuslugi logged out mid-step (redirected to esia.gosuslugi.ru/login), wait for login and retry this worker!
+            if self.wait_if_logged_out():
+                logger.info(f"Повторный запуск уведомления для {full_name} (Код: {code}) после восстановления входа в Госуслуги...")
+                try:
+                    return self._execute_vks_notification_attempt(
+                        row, full_name, code, last_name, first_name, middle_name, form_attempt=1
+                    )
+                except Exception as retry_ex:
+                    self.register_worker_error(row, str(retry_ex))
+                    raise
             self.register_worker_error(row, str(ex))
             raise
 
@@ -1232,17 +1357,18 @@ class GosuslugiVksBot:
         # Citizenship selection (Гражданство -> #dic13_ctz + .lookup-item click)
         self.fill_citizenship_strict(citizenship)
 
-        # Place of Birth (si13_pob)
-        pob_val = str(row.get("МестоРождения", "")).strip() or citizenship
-        self.type_masked_input("#si13_pob, input[name*='pob']", pob_val, delay=25)
+        # Place of Birth (si13_pob) — only if visible on this form screen
+        if self.page.locator("#si13_pob:visible, input[name*='pob']:visible").count() > 0:
+            pob_val = str(row.get("МестоРождения", "")).strip() or citizenship
+            self.type_masked_input("#si13_pob:visible, input[name*='pob']:visible", pob_val, delay=25)
 
         # Gender ('Мужской' / 'Женский')
         gender = str(row.get("Пол", "Мужской")).strip()
         gender_label = "Женский" if gender.lower().startswith("ж") or gender.lower().startswith("k") else "Мужской"
-        gender_span = self.page.locator(f"label.radio:has-text('{gender_label}'), span:has-text('{gender_label}'), label:has-text('{gender_label}')").first
+        gender_span = self.page.locator(f"label.radio:has-text('{gender_label}'):visible, span:has-text('{gender_label}'):visible, label:has-text('{gender_label}'):visible").first
         if gender_span.count() > 0 and gender_span.is_visible():
-            gender_span.click()
-        self.page.wait_for_timeout(600)
+            gender_span.click(timeout=2000)
+        self.page.wait_for_timeout(250)
 
         self.click_continue_strict("Шаг 6: Личные данные ВКС", 2000)
 
@@ -1839,7 +1965,7 @@ class GosuslugiVksBot:
                     # Type 'МОСКВЕ' so the dropdown immediately filters to the exact Moscow MVD division
                     by_hand_inp.press_sequentially("МОСКВЕ", delay=80)
 
-                logger.info("Step 12: Waiting up to 4.5s for MVD dropdown option ('МОСКВЕ')...")
+                logger.info("Step 12: Waiting up to 10.5s for MVD dropdown option ('МОСКВЕ')...")
                 options_selector = (
                     "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
                     "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
@@ -1850,7 +1976,7 @@ class GosuslugiVksBot:
                 options = self.page.locator(options_selector)
                 clicked_option = False
 
-                for _ in range(15):  # 15 * 300ms = 4.5 seconds max wait
+                for _ in range(35):  # 35 * 300ms = 10.5 seconds max wait (breaks immediately when list appears)
                     self.page.wait_for_timeout(300)
 
                     # Strategy 1: Standard Playwright locator match

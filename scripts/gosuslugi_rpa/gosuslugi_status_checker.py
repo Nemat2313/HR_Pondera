@@ -730,6 +730,26 @@ def main():
             except Exception as e:
                 logger.warning(f"Navigation to lk.gosuslugi.ru/orders note: {e}")
 
+        # If Gosuslugi redirected to login (esia.gosuslugi.ru/login), wait until user logs in
+        if "esia.gosuslugi.ru" in (page.url or "").lower():
+            logger.warning(
+                "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (esia.gosuslugi.ru/login). "
+                "Пожалуйста, войдите в Госуслуги в окне Chrome — проверка статусов автоматически продолжится после входа!"
+            )
+            for _ in range(450):
+                page.wait_for_timeout(2000)
+                cur_u = (page.url or "").lower()
+                if "esia.gosuslugi.ru" not in cur_u and "gosuslugi.ru" in cur_u:
+                    logger.info("LOGIN_RESTORED: Вход в Госуслуги выполнен! Продолжаем проверку статусов...")
+                    page.wait_for_timeout(2000)
+                    if "lk.gosuslugi.ru/orders" not in cur_u:
+                        try:
+                            page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=45000)
+                            page.wait_for_timeout(2000)
+                        except Exception:
+                            pass
+                    break
+
         # TIER 1: Bulk fetch orders directly via Gosuslugi JSON API (no search box typing needed!)
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=args.max_pages)
 
