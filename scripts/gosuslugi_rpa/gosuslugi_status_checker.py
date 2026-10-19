@@ -770,7 +770,18 @@ def sync_updates_to_pondera_api(updates: List[Dict[str, Any]]):
         pass
 
 
+def prevent_windows_sleep():
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000002 | 0x00000040)
+    except Exception:
+        pass
+
+
 def main():
+    prevent_windows_sleep()
     parser = argparse.ArgumentParser(description="Pondera HR Gosuslugi Status Checker (lk.gosuslugi.ru/orders)")
     parser.add_argument("--json", default="", help="Path to JSON queue of applications/workers to check")
     parser.add_argument("--cdp-port", type=int, default=9222, help="Chrome Remote Debugging Port")

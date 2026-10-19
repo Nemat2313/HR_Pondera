@@ -27,6 +27,63 @@ MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
 
 
+def prevent_windows_sleep():
+    """
+    Prevents Windows from entering Sleep Mode, Hibernate, or turning off the screen/network
+    while the RPA Bridge or Playwright robot is active.
+    1) Calls Win32 SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_AWAYMODE_REQUIRED)
+    2) Sets powercfg standby/monitor/hibernate timeouts to 0 (Never) for AC and DC power
+    3) Starts a background heartbeat thread that refreshes SetThreadExecutionState every 30s
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        # ES_CONTINUOUS (0x80000000) | ES_SYSTEM_REQUIRED (0x01) | ES_DISPLAY_REQUIRED (0x02) | ES_AWAYMODE_REQUIRED (0x40)
+        flags = 0x80000000 | 0x00000001 | 0x00000002 | 0x00000040
+        ctypes.windll.kernel32.SetThreadExecutionState(flags)
+
+        def _keep_awake_loop():
+            while True:
+                try:
+                    ctypes.windll.kernel32.SetThreadExecutionState(flags)
+                except Exception:
+                    pass
+                time.sleep(30)
+
+        threading.Thread(target=_keep_awake_loop, daemon=True).start()
+    except Exception:
+        pass
+
+    try:
+        for cmd_arg in (
+            "standby-timeout-ac 0",
+            "standby-timeout-dc 0",
+            "monitor-timeout-ac 0",
+            "monitor-timeout-dc 0",
+            "hibernate-timeout-ac 0",
+            "hibernate-timeout-dc 0",
+        ):
+            subprocess.run(
+                f"powercfg /change {cmd_arg}",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except Exception:
+        pass
+
+
+def is_browser_closed_error_text(st: str) -> bool:
+    s = str(st or "").lower()
+    return (
+        "target page, context or browser has been closed" in s
+        or "browser has been closed" in s
+        or "context or browser has been closed" in s
+        or "targetclosederror" in s
+    )
+
+
 def load_saved_applications():
     items = []
     if os.path.exists(APPLICATIONS_LEDGER):
@@ -35,13 +92,19 @@ def load_saved_applications():
                 data = json.load(f)
                 if isinstance(data, list):
                     changed = False
+                    cleaned_list = []
                     for it in data:
                         if isinstance(it, dict):
                             st = str(it.get("gosuslugi_status") or "")
+                            app_no = str(it.get("application_no") or "").strip()
+                            if not app_no and is_browser_closed_error_text(st):
+                                changed = True
+                                continue
                             if "GosuslugiVksBot" in st or "Step 16" in st:
                                 it["gosuslugi_status"] = "Отправлено (PDF не скачан)"
                                 changed = True
-                    items = data
+                            cleaned_list.append(it)
+                    items = cleaned_list
                     if changed:
                         save_applications_ledger(items)
         except Exception:
@@ -182,6 +245,9 @@ class RPAState:
             return
         app_no = str(entry.get("application_no") or "").strip()
         sicil = str(entry.get("sicil") or entry.get("sicil_no") or "").strip()
+        st = str(entry.get("gosuslugi_status") or "").strip()
+        if not app_no and is_browser_closed_error_text(st):
+            return
         if not app_no and not sicil:
             return
         # Guard against multi-computer / cross-worker application_no collision
@@ -321,6 +387,7 @@ def auto_update_scripts_from_server():
                             "gosuslugi_dismissal_robot.py",
                             "gosuslugi_status_checker.py",
                             "rpa_bridge_server.py",
+                            "START_PONDERA_RPA_BRIDGE.bat",
                         ):
                             new_data = zf.read(member)
                             target_path = os.path.join(CURRENT_DIR, base_name)
@@ -446,7 +513,7 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                             RPAState.error_codes.remove(RPAState.active_worker_code)
                         if RPAState.active_worker_code not in RPAState.completed_codes:
                             RPAState.completed_codes.append(RPAState.active_worker_code)
-                elif "Error processing" in clean_line or "WORKER_ERROR:" in clean_line:
+                elif ("Error processing" in clean_line or "WORKER_ERROR:" in clean_line) and not is_browser_closed_error_text(clean_line):
                     RPAState.waiting_for_manual = False
                     RPAState.manual_message = None
                     if RPAState.active_worker_code:
@@ -671,6 +738,8 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    # Prevent Windows from entering Sleep Mode, Hibernate, or turning off display/network
+    prevent_windows_sleep()
     # Automatically free port 8088 if an older RPA Bridge instance is still running in the background
     free_port_if_occupied(PORT)
     # Automatically sync latest Python robot scripts from https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip
@@ -681,8 +750,9 @@ def main():
 
     server = HTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
     print("=====================================================")
-    print(f"  Pondera HR RPA Bridge Server v2.5 running on http://127.0.0.1:{PORT}")
+    print(f"  Pondera HR RPA Bridge Server v2.6 running on http://127.0.0.1:{PORT}")
     print(f"  Chrome Debugging Port: {CHROME_CDP_PORT}")
+    print(f"  Sleep Mode Protection: ACTIVE (Never Sleep / Always Awake)")
     print(f"  Tracked Gosuslugi Applications: {len(RPAState.submissions)}")
     print("=====================================================")
     try:

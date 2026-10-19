@@ -24,6 +24,13 @@ function ensureTable(db: any) {
     UPDATE gosuslugi_submissions
     SET gosuslugi_status = 'Отправлено (PDF не скачан)'
     WHERE gosuslugi_status LIKE '%GosuslugiVksBot%' OR gosuslugi_status LIKE '%Step 16%';
+    DELETE FROM gosuslugi_submissions
+    WHERE application_no = ''
+      AND (
+        gosuslugi_status LIKE '%Target page, context or browser has been closed%'
+        OR gosuslugi_status LIKE '%Browser has been closed%'
+        OR gosuslugi_status LIKE '%Context or browser has been closed%'
+      );
   `);
 }
 
@@ -125,6 +132,9 @@ export async function POST(request: Request) {
       const sicil = String(item.sicil_no || item.sicil || item.code || '').trim();
       const appNo = String(item.application_no || item.applicationNo || '').trim();
       const rawStatus = String(item.gosuslugi_status || item.gosuslugiStatus || 'Отправлено').trim();
+      if (!appNo && /Target page, context or browser has been closed|Browser has been closed|Context or browser has been closed/i.test(rawStatus)) {
+        continue;
+      }
       const normalizedStatus = /GosuslugiVksBot|Step 16/i.test(rawStatus)
         ? 'Отправлено (PDF не скачан)'
         : rawStatus;

@@ -788,6 +788,9 @@ export function validateVksWorkerRecord(
 function normalizeSentGosuslugiStatus(rawStatus?: string): string {
   const s = String(rawStatus || '').trim();
   if (!s) return '';
+  if (/Target page, context or browser has been closed|Browser has been closed|Context or browser has been closed/i.test(s)) {
+    return '';
+  }
   // If a Step 16 post-submission PDF error occurred after Step 15 ('Уведомление отправлено'),
   // the notification WAS sent to Gosuslugi — only the PDF receipt was not downloaded yet.
   if (/GosuslugiVksBot|Step 16|PDF не скачан/i.test(s)) {

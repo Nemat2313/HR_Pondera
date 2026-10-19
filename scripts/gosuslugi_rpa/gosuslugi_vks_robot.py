@@ -76,6 +76,52 @@ class InsufficientPermissionsError(Exception):
     pass
 
 
+def prevent_windows_sleep():
+    """
+    Prevents Windows from entering Sleep Mode, Hibernate, or turning off the screen/network
+    while the VKS RPA robot is active.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        # ES_CONTINUOUS (0x80000000) | ES_SYSTEM_REQUIRED (0x01) | ES_DISPLAY_REQUIRED (0x02) | ES_AWAYMODE_REQUIRED (0x40)
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000002 | 0x00000040)
+    except Exception:
+        pass
+    try:
+        import subprocess
+        for cmd_arg in (
+            "standby-timeout-ac 0",
+            "standby-timeout-dc 0",
+            "monitor-timeout-ac 0",
+            "monitor-timeout-dc 0",
+            "hibernate-timeout-ac 0",
+            "hibernate-timeout-dc 0",
+        ):
+            subprocess.run(
+                f"powercfg /change {cmd_arg}",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except Exception:
+        pass
+
+
+def is_browser_closed_error(err: Any) -> bool:
+    """Returns True if the exception or error string was caused by the Chrome tab/context/browser disconnecting or closing."""
+    s = str(err or "").lower()
+    return (
+        "target page, context or browser has been closed" in s
+        or "browser has been closed" in s
+        or "context or browser has been closed" in s
+        or "targetclosederror" in s
+        or "connection closed" in s
+        or "session closed" in s
+    )
+
+
 class GosuslugiVksBot:
     def __init__(self, page: Page, config: Dict[str, Any] = None):
         self.page = page
@@ -83,6 +129,12 @@ class GosuslugiVksBot:
         self.current_row: Dict[str, Any] = {}
         self.allow_full_restart: bool = True
         self.current_form_order_id: str = ""
+        self.cdp = None
+        self.attach_page(page)
+
+    def attach_page(self, page: Page):
+        """Attaches or re-attaches the bot to a live Playwright Page (used on initial start and after CDP reconnection)."""
+        self.page = page
         self.cdp = None
         try:
             self.page.on("response", self._on_gosuslugi_network_response)
@@ -1300,6 +1352,9 @@ class GosuslugiVksBot:
             # Never retry when the Gosuslugi account lacks authority ('У вас недостаточно полномочий для отправки уведомлений')
             raise
         except Exception as ex:
+            # Never mark the worker as errored if the Chrome tab/browser closed or PC slept — let main() reconnect & retry!
+            if is_browser_closed_error(ex):
+                raise
             # If Gosuslugi logged out mid-step (redirected to esia.gosuslugi.ru/login), wait for login and retry this worker!
             if self.wait_if_logged_out():
                 logger.info(f"Повторный запуск уведомления для {full_name} (Код: {code}) после восстановления входа в Госуслуги...")
@@ -1308,6 +1363,8 @@ class GosuslugiVksBot:
                         row, full_name, code, last_name, first_name, middle_name, form_attempt=1
                     )
                 except Exception as retry_ex:
+                    if is_browser_closed_error(retry_ex):
+                        raise
                     self.register_worker_error(row, str(retry_ex))
                     raise
             self.register_worker_error(row, str(ex))
@@ -4015,7 +4072,7 @@ class GosuslugiVksBot:
         Records a worker-level error so the system remembers why this worker's notification failed
         and displays it in the Pondera HR table while the robot immediately moves to the next worker.
         """
-        if not row:
+        if not row or is_browser_closed_error(error_reason):
             return
         sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
         worker_name = self.build_clean_worker_name(row)
@@ -4115,7 +4172,74 @@ def mark_row_completed(file_path: str, row_idx: int, success: bool, note: str = 
         logger.warning(f"Could not update Excel status for row {row_idx}: {e}")
 
 
+def connect_or_launch_chrome_page(p, cdp_port: int):
+    """Connects to Chrome on http://localhost:<cdp_port> (launching Chrome if needed) and returns (browser, context, page)."""
+    try:
+        browser = p.chromium.connect_over_cdp(f"http://localhost:{cdp_port}")
+        context = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = None
+        if context.pages:
+            for p_item in context.pages:
+                try:
+                    if not p_item.is_closed() and "gosuslugi.ru" in (p_item.url or "") and "chrome-error" not in (p_item.url or ""):
+                        page = p_item
+                        break
+                except Exception:
+                    pass
+            if not page:
+                for p_item in context.pages:
+                    try:
+                        if not p_item.is_closed():
+                            page = p_item
+                            break
+                    except Exception:
+                        pass
+        if not page:
+            page = context.new_page()
+            try:
+                page.goto(DEFAULT_CONFIG["FORM_URL"], wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+        logger.info(f"Successfully connected to Chrome! Active Tab URL: {page.url}")
+        return browser, context, page
+    except Exception:
+        logger.info(f"Chrome remote debugging not detected on port {cdp_port}. Launching Chrome automatically...")
+        chrome_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        ]
+        chrome_exe = next((cp for cp in chrome_paths if os.path.exists(cp)), "chrome.exe")
+        user_data = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data RPA")
+        import subprocess
+        subprocess.Popen([
+            chrome_exe,
+            f"--remote-debugging-port={cdp_port}",
+            f"--user-data-dir={user_data}",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-features=CalculateNativeWindowOcclusion,IntensiveWakeUpThrottling",
+            DEFAULT_CONFIG["FORM_URL"],
+        ])
+        time.sleep(3.5)
+        browser = p.chromium.connect_over_cdp(f"http://localhost:{cdp_port}")
+        context = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = context.pages[0] if context.pages else context.new_page()
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+        logger.info(f"Successfully launched Chrome and connected! Active Tab URL: {page.url}")
+        return browser, context, page
+
+
 def main():
+    prevent_windows_sleep()
     parser = argparse.ArgumentParser(description="Pondera HR Gosuslugi VKS Notification RPA Bot")
     parser.add_argument("--excel", default=DEFAULT_CONFIG["DEFAULT_EXCEL_PATH"], help="Path to GosUsluga_ ЗП.xlsx")
     parser.add_argument("--sheet", default="Sheet1", help="Sheet name to process")
@@ -4162,55 +4286,34 @@ def main():
     with sync_playwright() as p:
         logger.info(f"Connecting to Chrome on http://localhost:{args.cdp_port}...")
         try:
-            browser = p.chromium.connect_over_cdp(f"http://localhost:{args.cdp_port}")
-            context = browser.contexts[0] if browser.contexts else browser.new_context()
-            page = None
-            if context.pages:
-                for p_item in context.pages:
-                    if "gosuslugi.ru" in p_item.url and "chrome-error" not in p_item.url:
-                        page = p_item
-                        break
-                if not page:
-                    page = context.pages[0]
-            else:
-                page = context.new_page()
-
-            page.bring_to_front()
-            logger.info(f"Successfully connected to Chrome! Active Tab URL: {page.url}")
-        except Exception:
-            logger.info(f"Chrome remote debugging not detected on port {args.cdp_port}. Launching Chrome automatically...")
-            chrome_paths = [
-                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-            ]
-            chrome_exe = next((cp for cp in chrome_paths if os.path.exists(cp)), "chrome.exe")
-            user_data = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data RPA")
-            import subprocess
-            subprocess.Popen([
-                chrome_exe,
-                f"--remote-debugging-port={args.cdp_port}",
-                f"--user-data-dir={user_data}",
-                DEFAULT_CONFIG["FORM_URL"]
-            ])
-            time.sleep(3)
-            try:
-                browser = p.chromium.connect_over_cdp(f"http://localhost:{args.cdp_port}")
-                context = browser.contexts[0] if browser.contexts else browser.new_context()
-                page = context.pages[0] if context.pages else context.new_page()
-                page.bring_to_front()
-                logger.info(f"Successfully launched Chrome and connected! Active Tab URL: {page.url}")
-            except Exception as ex2:
-                logger.error(f"Could not connect to Chrome on port {args.cdp_port}: {ex2}")
-                return
+            browser, context, page = connect_or_launch_chrome_page(p, args.cdp_port)
+        except Exception as ex2:
+            logger.error(f"Could not connect to Chrome on port {args.cdp_port}: {ex2}")
+            return
 
         bot = GosuslugiVksBot(page, custom_cfg)
         success_count = 0
         fail_count = 0
 
         for idx, record in enumerate(records):
+            prevent_windows_sleep()
             logger.info(f"\n--- Processing Record {idx+1}/{len(records)} ---")
             row_idx = record.get("_row_idx")
+
+            # Ensure the browser tab is still open before starting this worker
+            try:
+                if bot.page.is_closed():
+                    logger.warning("Вкладка Chrome была закрыта — автоматическое переподключение перед обработкой сотрудника...")
+                    browser, context, page = connect_or_launch_chrome_page(p, args.cdp_port)
+                    bot.attach_page(page)
+            except Exception:
+                try:
+                    browser, context, page = connect_or_launch_chrome_page(p, args.cdp_port)
+                    bot.attach_page(page)
+                except Exception as recon_err:
+                    logger.error(f"FATAL_STOP: Не удалось переподключиться к Chrome (порт {args.cdp_port}): {recon_err}. Робот остановлен.")
+                    break
+
             try:
                 ok = bot.fill_vks_notification(record)
                 if ok:
@@ -4233,6 +4336,44 @@ def main():
                 logger.error("=== ОСТАНОВКА РОБОТА: В текущем аккаунте Госуслуг недостаточно полномочий для отправки уведомлений ===")
                 break
             except Exception as ex:
+                if is_browser_closed_error(ex):
+                    logger.warning(
+                        f"Соединение с вкладкой Chrome прервалось во время обработки {record.get('Фамилия')} ({ex}). "
+                        f"Переподключаемся к Chrome и повторяем попытку для этого же сотрудника..."
+                    )
+                    reconnected_ok = False
+                    for recon_try in range(1, 4):
+                        time.sleep(2.5)
+                        try:
+                            browser, context, page = connect_or_launch_chrome_page(p, args.cdp_port)
+                            bot.attach_page(page)
+                            reconnected_ok = True
+                            break
+                        except Exception as r_err:
+                            logger.warning(f"Попытка переподключения к Chrome {recon_try}/3 не удалась: {r_err}")
+                    if not reconnected_ok:
+                        logger.error(
+                            "FATAL_STOP: Окно Chrome было закрыто и не удалось переподключиться после 3 попыток. "
+                            "Остановка пакета без пометки остальных сотрудников ошибкой!"
+                        )
+                        break
+                    # Retry the same worker once after reconnecting to Chrome
+                    try:
+                        ok = bot.fill_vks_notification(record)
+                        if ok:
+                            success_count += 1
+                            if args.excel and row_idx is not None and os.path.exists(args.excel):
+                                mark_row_completed(args.excel, row_idx, True)
+                        else:
+                            fail_count += 1
+                    except Exception as retry_after_recon_ex:
+                        if is_browser_closed_error(retry_after_recon_ex):
+                            logger.error("FATAL_STOP: Соединение с Chrome снова прервалось. Остановка робота.")
+                            break
+                        fail_count += 1
+                        logger.error(f"Error processing {record.get('Фамилия')}: {retry_after_recon_ex}")
+                    continue
+
                 fail_count += 1
                 logger.error(f"Error processing {record.get('Фамилия')}: {ex}")
                 if args.excel and row_idx is not None and os.path.exists(args.excel):

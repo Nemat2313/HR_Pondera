@@ -750,7 +750,18 @@ def mark_row_completed(file_path: str, row_idx: int, success: bool, note: str = 
         logger.warning(f"Could not update Excel status for row {row_idx}: {e}")
 
 
+def prevent_windows_sleep():
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000002 | 0x00000040)
+    except Exception:
+        pass
+
+
 def main():
+    prevent_windows_sleep()
     parser = argparse.ArgumentParser(description="Pondera HR & Powerise Gosuslugi Dismissal RPA Bot")
     parser.add_argument("--excel", default=DEFAULT_CONFIG["DEFAULT_EXCEL_PATH"], help="Path to GosUsluga_ увольнения.xlsx")
     parser.add_argument("--sheet", default="Sheet1", help="Sheet name to process (e.g. Sheet1, Лист2)")
