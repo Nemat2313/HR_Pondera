@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output (CRITICAL: prevents indexing 25,000 files!)
+.next/
+out/
+build/
+dist/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Raw and compressed databases (never push employee personal data to GitHub)
+pondera_hr.db
+pondera_hr.db.gz
+hr_pondera.db
+pondera.db
+*.db
+*.db.gz
+*.db-journal
+*.db-wal
+
+# Excel raw source files
+*.xlsx
+*.xls
+
+# Logs & temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+scratch/
+
+# Environment files
+.env
+.env*.local
+
+# RPA runtime & local preview files (never push personal data)
+excel_preview.json
+dataset_summary.json
+field_analysis.json
+scripts/gosuslugi_rpa/active_vks_queue.json
+scripts/gosuslugi_rpa/active_vks_config.json
+scripts/gosuslugi_rpa/gosuslugi_applications.json
+scripts/gosuslugi_rpa/*.png
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

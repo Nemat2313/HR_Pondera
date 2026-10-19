@@ -1,0 +1,198 @@
+1: Sıra No
+2: Sicil No
+3: RHI Id
+4: Saren No
+5: Genel Durumu
+6: Güncel Durumu
+7: Region
+8: Proje Adı
+9: Çalışma Lokasyon Durumu
+10: Kategori
+11: Firma
+12: Departman
+13: Uyruk
+14: Adı
+15: Soyadı
+16: Baba Adı
+17: Ad Soyad
+18: Soyadı (Kiril)
+19: Adı (Kiril)
+20: Baba Adı (Kiril)
+21: Tam Adı (Kiril)
+22: Görevi
+23: RHI Görevi
+24: Sorumlu Kişi
+25: Grup Şefi
+26: Endirekt / Direkt
+27: RHI Endirekt / Direkt
+28: İşe Giriş Tarihi
+29: Şantiye Giriş Tarihi
+30: Çıkış Tarihi
+31: Çıkış Sebebi
+32: Gündüz / Gece Durumu
+33: Propusk No
+34: Propusk Başvuru Tarihi
+35: Propusk AlınışTarihi
+36: Propusk Bitiş Tarihi
+37: Propusk Origin
+38: HSE Eğitime Giriş Tarihi
+39: HSE Eğitim Tarihi
+40: HSE Notu
+41: Cinsiyet
+42: Doğum Tarihi
+43: Pasaport Seri No
+44: Pasaport No
+45: Pasaport Düzenleme Tarihi
+46: Pasaport Geçerlilik Tarihi
+47: Pasaportu Veren Makam (Kiril)
+48: Pasaport Yenileme Başvuru Tarihi
+49: Pasaport Yenileme Alis Tarihi
+50: KodPozdravleniya
+51: TC Kimlik No
+52: Pasaport Tercüme Gönderim Tarihi
+53: Pasaport Tercüme Geliş Tarihi
+54: Doğum Yeri
+55: Yaşadığı Adres
+56: Migrasyon Seri No
+57: Migrasyon No
+58: Sınır Kapısı
+59: Migrasyon Giriş Tarihi
+60: Registrasyon Doldurma Tarihi
+61: Registrasyon Dosyalama Tarihi
+62: Registrasyon Alış Tarihi
+63: Registrasyon Bitiş Tarihi
+64: Registrasyon Çıkış Tarihi
+65: Registrasyon Firması
+66: Registrasyon Adresi (Kiril)
+67: Önceki Registrasyon Adresi (Kiril)
+68: CNILS No
+69: INN No
+70: INN Başvuru Tarihi
+71: INN Alış Tarihi
+72: Vize Seri No
+73: Vize No
+74: Vize Alış Tarihi
+75: Vize Başlangıç Tarihi
+76: Vize Bitiş Tarihi
+77: Vize Türü
+78: Vize Çeşidi
+79: Vize Firması
+80: Uzatım Vize Başvuru Tarihi
+81: Patent Başvuru Tarihi
+82: Patent Alış Tarihi
+83: Çalışma Kart Seri No
+84: Çalışma Kart No
+85: Çalışma Kart Alış Tarihi
+86: Çalışma Kart Başlangıç Tarihi
+87: Çalışma Kart Bitiş Tarihi
+88: Patent Form Seri No
+89: Patent Form No
+90: Çalışma Kart Türü
+91: Çalışma Kart Bölgesi
+92: Çalışma Kartı Veren Makam
+93: Çalışma Kart Görevi
+94: Çalışma Kart Firması
+95: Patent Ödeme Tarihi
+96: Patent Çeki Bitiş Tarihi
+97: Patent Çeki Başlangıç Tarihi
+98: Daktiloskopiya Başvuru Tarihi
+99: Daktiloskopiya Alış Tarihi
+100: Daktiloskopiya Başlangıç Tarihi
+101: Daktiloskopiya Seri No
+102: Daktiloskopiya Form Seri No
+103: Daktiloskopiya Veren Makam
+104: NFS den Bildirimin Alındığı Tarih
+105: Başvurunun NFS e Gönderilme Tarihi
+106: İş Sözleşmesi Numarası
+107: İş Sözleşmesi İmza Tarihi
+108: İş Sözleşmesi Giriş Tarihi
+109: Ek İş Sözleşmesi Tarihi
+110: İşe Giriş Emri No
+111: Resmi Maaş
+112: Resmi Maaş Yazılı
+113: TD Sözleşme UFMS Veriliş Tarihi
+114: Resmi Çıkış Tarihi
+115: Resmi Çıkış Sebebi
+116: Dop Sog No
+117: Resmi Çıkış Emri No
+118: Resmi Çıkış Bildirgesi
+119: İşe Giriş Bildirgesi
+120: Resmi Şubesi
+121: Resmi Firma
+122: Resmi Görevi
+123: Eski Resmi Görevi
+124: Transfer Tarihi
+125: Personelin Transfer Olduğu TOP
+126: Sağlıktan Geçtiği Tarih
+127: Sağlık Rapor Tarihi
+128: Sağlık Rapor Sonucu
+129: Sağlık 29n Giriş Tarihi
+130: Sağlık 29n Rapor Alış Tarihi
+131: Sağlık 29n Sonucu
+132: Psikoloji Testi Geçtiği Tarih
+133: Psikoloji Testi Alındığı Tarih
+134: Kan Test Tarihi
+135: Narkoloji Idrar Test Tarihi
+136: Narkoloji
+137: Röntgen Tarihi
+138: Sağlık Açıklama
+139: Dil Sınavı Geçtiği Tarih
+140: Dil Sertifikası Geliş Tarihi
+141: Dil Sertifikası Referans No
+142: Dil Sertifikası Başlangıç Tarihi
+143: Dil Sertifikası Bitiş Tarihi
+144: Dil Sertifikası Barkod No
+145: DMS Seri No
+146: DMS Kart  No
+147: DMS Başlangıç Tarihi
+148: DMS Bitiş Tarihi
+149: DMS Veriliş Tarihi
+150: DMS Başvuru Tarihi
+151: DMS Veren Firma
+152: Karantina Giriş Tarihi
+153: PCR Test1 Tarih
+154: PCR Test2 Tarih
+155: Karantina Çıkış Tarihi
+156: Karantina Yeri
+157: Kontakt Durumu
+158: Revirde Express Test Sonucu
+159: Antikor Test Sonucu
+160: PCR Test2 Sonucu
+161: PCR Test1 Sonucu
+162: Antikor Test Tarihi
+163: Revirde Express Test Tarihi
+164: Kontakt Durumu Süre Artışı
+165: Karantina Açıklama
+166: Tahmini Çıkış Tarihi
+167: Karantina Uzama Süresi
+168: Kamp No
+169: Oda No
+170: Personel Puan
+171: İzine Gidiş Tarihi
+172: İzin Dönüş Tarihi
+173: Telefon No (Memleketindeki)
+174: e-Mail
+175: Telefon No
+176: Genel Notlar
+177: Mevcut Bulunduğu Yer
+178: Uçuş Kalkış Noktası
+179: Uçuş Kalkış Saati
+180: Uçuş Varış Noktası
+181: Uçuş Varış Saati
+182: Uçuş Türü
+183: Passport Location
+184: Vize ID
+185: Hindistan TIN No
+186: Telefon No (Yakını)
+187: Memleket Adresi
+188: Aşıdan Geçtiği Tarih
+189: Aşı Rapor Tarihi
+190: RENCONS ID
+191: Propusk Başvuru Tarihi FSB
+192: Propusk Alınış Tarihi FSB
+193: Propusk Bitiş Tarihi FSB
+194: Daktiloskopiya Yenileme Tarihi
+195: Daktiloskopiya Bitis Tarihi
+196: Gosusluga Başvuru Tarihi
+197: Biometri Başvuru Tarihi
+198: Sibur KPP
