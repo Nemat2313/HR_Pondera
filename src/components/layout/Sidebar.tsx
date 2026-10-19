@@ -18,6 +18,7 @@ import {
   Briefcase,
   FileCheck2,
   Bot,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -96,6 +97,13 @@ export default function Sidebar({
       icon: Bot,
       badge: t('badge_rpa'),
       badgeColor: 'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
+    },
+    {
+      id: 'gosuslugi_analytics',
+      label: lang === 'ru' ? 'ВКС Статистика' : 'VKS İstatistik & Analiz',
+      icon: Activity,
+      badge: lang === 'ru' ? 'Live' : 'Canlı',
+      badgeColor: 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/50 dark:border-rose-700/50',
     },
     {
       id: 'sites',

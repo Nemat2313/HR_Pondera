@@ -12,6 +12,7 @@ import DatabaseManagementView from '@/components/database/DatabaseManagementView
 import UserManagementView from '@/components/admin/UserManagementView';
 import ComplianceAnalyticsView from '@/components/compliance/ComplianceAnalyticsView';
 import GosuslugiVksView from '@/components/gosuslugi/GosuslugiVksView';
+import GosuslugiAnalyticsView from '@/components/gosuslugi/GosuslugiAnalyticsView';
 import ExcelUploadModal from '@/components/modals/ExcelUploadModal';
 import LoginModal from '@/components/auth/LoginModal';
 import { StatsData } from '@/types';
@@ -219,6 +220,8 @@ export default function Home() {
         )}
 
         {activeTab === 'gosuslugi' && <GosuslugiVksView />}
+
+        {activeTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
 
         {activeTab === 'compliance' && (
           <ComplianceAnalyticsView onNavigateToPersonnel={handleNavigateToPersonnel} />
