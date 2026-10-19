@@ -38,6 +38,7 @@ import {
   RefreshCw,
   Mail,
   ExternalLink,
+  Zap,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -1957,7 +1958,11 @@ export default function GosuslugiVksView() {
     );
   };
 
-  const handleStartRobot = async (limit: number = 0, singleWorker?: GosuslugiVksWorkerRecord) => {
+  const handleStartRobot = async (
+    limit: number = 0,
+    singleWorker?: GosuslugiVksWorkerRecord,
+    skipPdfDownload: boolean = false
+  ) => {
     // Check validation if singleWorker is clicked
     if (singleWorker) {
       const singleVal = validationMap[singleWorker.id];
@@ -2019,6 +2024,7 @@ export default function GosuslugiVksView() {
           PERIOD_START: periodStart,
           PERIOD_END: periodEnd,
           PERIOD_CODE: periodCode,
+          SKIP_STEP16_PDF: skipPdfDownload,
         },
       };
 
@@ -2031,7 +2037,11 @@ export default function GosuslugiVksView() {
       if (res.ok) {
         showNotice(
           'success',
-          lang === 'ru'
+          skipPdfDownload
+            ? lang === 'ru'
+              ? `Запущена быстрая отправка без PDF (${recordsToSend.length} чел.)! № заявления фиксируется сразу, PDF можно скачать позже.`
+              : `PDF'siz Hızlı Gönderim (${recordsToSend.length} kişi) başlatıldı! Başvuru No formdan/mailden alınır, PDF sonradan indirilebilir.`
+            : lang === 'ru'
             ? `Запущена отправка уведомлений ВКС (${recordsToSend.length} чел.) в Госуслуги!`
             : `Gosuslugi VKS bildirimi (${recordsToSend.length} kişi) başlatıldı!`
         );
@@ -3227,7 +3237,7 @@ export default function GosuslugiVksView() {
               </button>
 
               <button
-                onClick={() => handleStartRobot(0)}
+                onClick={() => handleStartRobot(0, undefined, false)}
                 disabled={isStartingRobot || selectedValidCount === 0}
                 className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 cursor-pointer disabled:opacity-40 transition"
               >
@@ -3236,6 +3246,24 @@ export default function GosuslugiVksView() {
                   {lang === 'ru'
                     ? `2. Отправить в Госуслуги (${selectedValidCount})`
                     : `2. Seçilenleri Gosuslugi'ye Gönder (${selectedValidCount})`}
+                </span>
+              </button>
+
+              <button
+                onClick={() => handleStartRobot(0, undefined, true)}
+                disabled={isStartingRobot || selectedValidCount === 0}
+                title={
+                  lang === 'ru'
+                    ? 'Быстрая отправка уведомлений без ожидания скачивания PDF: сразу после «Отправить» (Шаг 15) робот сохраняет № заявления и переходит к следующему сотруднику. PDF можно скачать позже кнопкой 3.'
+                    : 'PDF beklemeksizin hızlı gönderim: «Отправить» (Adım 15) sonrası PDF indirmeden doğrudan sıradaki kişiye geçer. Başvuru No formdan/mailden alınır, PDF sonradan 3. butonla indirilir.'
+                }
+                className="h-9 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm shadow-amber-500/20 cursor-pointer disabled:opacity-40 transition"
+              >
+                <Zap className="w-3.5 h-3.5 fill-white" />
+                <span>
+                  {lang === 'ru'
+                    ? `Быстрая отправка без PDF (${selectedValidCount})`
+                    : `PDF siz Hızlı Gönderim (${selectedValidCount})`}
                 </span>
               </button>
 

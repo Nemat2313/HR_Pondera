@@ -332,11 +332,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Now update matching rows in gosuslugi_submissions by application_no (respecting status progression priority)
+    // Now update matching rows in gosuslugi_submissions by application_no (or by submitted_at timestamp if application_no is 'ОТПРАВЛЕНО' / empty)
     const findSubStmt = db.prepare(`
       SELECT id, gosuslugi_status
       FROM gosuslugi_submissions
       WHERE application_no = ?
+    `);
+    const findUnlinkedSubsStmt = db.prepare(`
+      SELECT id, sicil_no, worker_name, gosuslugi_status, submitted_at
+      FROM gosuslugi_submissions
+      WHERE application_no = '' OR application_no = 'ОТПРАВЛЕНО'
     `);
     const updateSubStmt = db.prepare(`
       UPDATE gosuslugi_submissions
@@ -345,22 +350,90 @@ export async function POST(request: Request) {
           checked_at = ?
       WHERE id = ?
     `);
+    const linkAndUpdateSubStmt = db.prepare(`
+      UPDATE gosuslugi_submissions
+      SET application_no = ?,
+          gosuslugi_status = ?,
+          status_detail = ?,
+          checked_at = ?
+      WHERE id = ?
+    `);
+
+    const parseFlexibleDateMs = (raw: string): number | null => {
+      const s = String(raw || '').trim();
+      if (!s) return null;
+      // Format 1: DD.MM.YYYY HH:MM (from Gosuslugi email)
+      const mRu = s.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+      if (mRu) {
+        return Date.UTC(
+          Number(mRu[3]),
+          Number(mRu[2]) - 1,
+          Number(mRu[1]),
+          Number(mRu[4]),
+          Number(mRu[5]),
+          0
+        );
+      }
+      // Format 2: YYYY-MM-DD HH:MM:SS (from submitted_at)
+      const mIso = s.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+      if (mIso) {
+        return Date.UTC(
+          Number(mIso[1]),
+          Number(mIso[2]) - 1,
+          Number(mIso[3]),
+          Number(mIso[4]),
+          Number(mIso[5]),
+          Number(mIso[6] || 0)
+        );
+      }
+      return null;
+    };
 
     let updatedSubmissions = 0;
     for (const item of latestByApp) {
       const appNo = String(item?.application_no || '').trim();
       const newStatus = String(item?.gosuslugi_status || '').trim();
       const newDetail = String(item?.status_detail || '').trim();
+      const emailDateStr = String(item?.email_date || '').trim();
       if (!appNo || !newStatus) continue;
 
       const matchingSubs = findSubStmt.all(appNo) as Array<{ id: number; gosuslugi_status: string }>;
-      for (const sub of matchingSubs) {
-        const curPrio = getStatusPriority(sub.gosuslugi_status);
-        const newPrio = getStatusPriority(newStatus);
-        if (newPrio >= curPrio) {
-          const r = updateSubStmt.run(newStatus, newDetail, nowStr, sub.id);
-          if (r.changes > 0) {
-            updatedSubmissions += r.changes;
+      if (matchingSubs.length > 0) {
+        for (const sub of matchingSubs) {
+          const curPrio = getStatusPriority(sub.gosuslugi_status);
+          const newPrio = getStatusPriority(newStatus);
+          if (newPrio >= curPrio) {
+            const r = updateSubStmt.run(newStatus, newDetail, nowStr, sub.id);
+            if (r.changes > 0) {
+              updatedSubmissions += r.changes;
+            }
+          }
+        }
+      } else if (emailDateStr) {
+        // Fallback: Match fast-submitted rows ('ОТПРАВЛЕНО' / '') by submission timestamp (±4 minutes)
+        const emailMs = parseFlexibleDateMs(emailDateStr);
+        if (emailMs !== null) {
+          const unlinkedRows = findUnlinkedSubsStmt.all() as Array<{
+            id: number;
+            sicil_no: string;
+            worker_name: string;
+            gosuslugi_status: string;
+            submitted_at: string;
+          }>;
+          let bestCandidate: { id: number; diffMin: number } | null = null;
+          for (const uRow of unlinkedRows) {
+            const subMs = parseFlexibleDateMs(uRow.submitted_at);
+            if (subMs === null) continue;
+            const diffMin = Math.abs(emailMs - subMs) / 60000;
+            if (diffMin <= 4.0 && (!bestCandidate || diffMin < bestCandidate.diffMin)) {
+              bestCandidate = { id: uRow.id, diffMin };
+            }
+          }
+          if (bestCandidate) {
+            const r = linkAndUpdateSubStmt.run(appNo, newStatus, newDetail, nowStr, bestCandidate.id);
+            if (r.changes > 0) {
+              updatedSubmissions += r.changes;
+            }
           }
         }
       }

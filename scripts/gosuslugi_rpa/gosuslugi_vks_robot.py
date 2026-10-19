@@ -82,6 +82,51 @@ class GosuslugiVksBot:
         self.cfg = {**DEFAULT_CONFIG, **(config or {})}
         self.current_row: Dict[str, Any] = {}
         self.allow_full_restart: bool = True
+        self.current_form_order_id: str = ""
+        try:
+            self.page.on("response", self._on_gosuslugi_network_response)
+        except Exception:
+            pass
+
+    def _on_gosuslugi_network_response(self, response):
+        """
+        Passively captures the active 10-digit Gosuslugi application number (orderId, e.g. '8285253583')
+        directly from Gosuslugi's /600585/1/form scenario/order API responses during Steps 2-15.
+        """
+        try:
+            url = (response.url or "").lower()
+            if "gosuslugi.ru" not in url or "drafts" in url:
+                return
+            cur_sicil = str((self.current_row or {}).get("Sicil") or (self.current_row or {}).get("Код") or "").strip()
+
+            # 1) Check URL path/query for 10-digit orderId (excluding 16-digit feed IDs starting with 20000)
+            m_url = re.search(r"(?:order|orders|orderid)[=/]([789]\d{9})(?:\D|$)", url, re.IGNORECASE)
+            if m_url:
+                cand_no = m_url.group(1)
+                if not self.is_order_already_linked_to_another_worker(cand_no, cur_sicil):
+                    if self.current_form_order_id != cand_no:
+                        self.current_form_order_id = cand_no
+                        logger.info(f"Form Network Sniffer: Captured active Zayavka № {cand_no} from URL!")
+                    return
+
+            # 2) Check JSON payload for scenario/order endpoints
+            if any(k in url for k in ("scenario", "600585", "order", "gusmev", "nextstep", "submit", "send")):
+                ctype = (response.headers.get("content-type") or "").lower()
+                if "json" in ctype:
+                    body_txt = response.text()
+                    if body_txt and len(body_txt) < 300000:
+                        m_json = re.search(
+                            r'"(?:orderId|order_id|orderNumber|extId)"\s*:\s*"?([789]\d{9})"?',
+                            body_txt,
+                        )
+                        if m_json:
+                            cand_no = m_json.group(1)
+                            if not self.is_order_already_linked_to_another_worker(cand_no, cur_sicil):
+                                if self.current_form_order_id != cand_no:
+                                    self.current_form_order_id = cand_no
+                                    logger.info(f"Form Network Sniffer: Captured active Zayavka № {cand_no} from form JSON!")
+        except Exception:
+            pass
 
     def check_and_stop_if_insufficient_permissions(self):
         """
@@ -1237,6 +1282,7 @@ class GosuslugiVksBot:
         middle_name: str,
         form_attempt: int = 1,
     ) -> bool:
+        self.current_form_order_id = ""
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to highlight the active row in UI
         logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
 
@@ -1767,6 +1813,35 @@ class GosuslugiVksBot:
 
         # Steps 12 -> 13 -> 14 -> 15: Resilient State-Machine Loop through MVD Division, Consents, and Final 'Отправить'
         gosuslugi_order_no = self.complete_mvd_and_submit_flow()
+
+        # Check if Fast Mode ('PDF'siz Hızlı Gönderim' / SKIP_STEP16_PDF) is enabled
+        skip_step16_pdf = bool(self.cfg.get("SKIP_STEP16_PDF"))
+        if skip_step16_pdf:
+            if not gosuslugi_order_no:
+                # Fast in-memory check (0.3s, zero page navigation) via /api/lk/v1/feeds/ right after submission
+                try:
+                    api_match, _, url_map = self.find_worker_order_via_feeds_api(row)
+                    if api_match and api_match.get("application_no"):
+                        gosuslugi_order_no = str(api_match["application_no"]).strip()
+                    elif url_map:
+                        # Take the newest unlinked VKS order number from feeds API
+                        newest_no = next(iter(url_map.values()), "")
+                        if newest_no:
+                            gosuslugi_order_no = newest_no
+                except Exception:
+                    pass
+            logger.info(
+                f"Step 16 (Быстрая отправка без PDF): Заявление отправлено (№ {gosuslugi_order_no or 'ОТПРАВЛЕНО'}). "
+                f"Скачивание PDF отложено — сразу переходим к следующему сотруднику!"
+            )
+            self.register_application_submission(
+                row,
+                gosuslugi_order_no or "ОТПРАВЛЕНО",
+                pdf_filename="",
+                status_override="Отправлено (PDF не скачан)",
+            )
+            logger.info(f"SUCCESS: Notification submitted for {full_name}!")
+            return True
 
         # Step 16: Personal Cabinet & Receipt PDF Download + Rename (<Sicil>_<GosuslugiNo>_<Ad Soyad>_<Donem>.pdf)
         # Note: Because Step 15 ('Уведомление отправлено') already succeeded, any Step 16 PDF issue must NEVER mark the worker as 'Ошибка'!
@@ -3398,7 +3473,7 @@ class GosuslugiVksBot:
     def extract_gosuslugi_order_number(self) -> str:
         """
         Extracts the Gosuslugi application number (e.g. '8265228795' from '№ 8265228795' under
-        'Уведомления о трудовой деятельности иностранцев').
+        'Уведомления о трудовой деятельности иностранцев', or from the active form's network/storage state).
         Prioritizes page text ('№ <digits>') and never returns the internal 16-digit feed ID from '/order/20000...'.
         """
         try:
@@ -3411,6 +3486,32 @@ class GosuslugiVksBot:
                 return m2.group(1)
         except Exception:
             pass
+
+        if self.current_form_order_id:
+            return self.current_form_order_id
+
+        try:
+            perf_no = self.page.evaluate(
+                r"""() => {
+                    try {
+                        const entries = performance.getEntriesByType('resource') || [];
+                        for (let i = entries.length - 1; i >= 0; i--) {
+                            const u = entries[i].name || '';
+                            if (u.includes('drafts')) continue;
+                            const m = u.match(/(?:order|orders|orderId)[=/]([789]\d{9})(?:\D|$)/i);
+                            if (m) return m[1];
+                        }
+                    } catch (e) {}
+                    return '';
+                }"""
+            )
+            if perf_no:
+                cur_sicil = str((self.current_row or {}).get("Sicil") or (self.current_row or {}).get("Код") or "").strip()
+                if not self.is_order_already_linked_to_another_worker(perf_no, cur_sicil):
+                    return str(perf_no).strip()
+        except Exception:
+            pass
+
         return ""
 
     def build_clean_worker_name(self, row: Dict[str, Any]) -> str:
