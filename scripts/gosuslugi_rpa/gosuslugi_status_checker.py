@@ -317,16 +317,17 @@ def query_single_order_by_no(page: Page, app_no: str) -> Optional[Dict[str, Any]
 
 def normalize_name_for_match(name: str) -> str:
     """Normalizes Russian full name for case-insensitive matching against 'Гражданин: ...'."""
-    cleaned = re.sub(r"\b(нет|no|none|-)\b", " ", (name or "").lower(), flags=re.IGNORECASE)
-    cleaned = re.sub(r"[^а-яёa-z0-9\s]", " ", cleaned)
-    return " ".join(cleaned.split())
+    cleaned = re.sub(r"[^а-яёa-z0-9\s]", " ", (name or "").lower())
+    stop_words = {"нет", "не", "заполнено", "отсутствует", "no", "none", "null"}
+    tokens = [t for t in cleaned.split() if t and t not in stop_words]
+    return " ".join(tokens)
 
 
 def does_citizen_match_worker_name(citizen_text: str, worker_name: str) -> bool:
     """
     Strictly verifies that all meaningful name tokens of `worker_name`
     appear inside `citizen_text` ('Гражданин: ...').
-    Prevents matching 'Куммари Прасад' to 'АБУЛЛАЕВ РАШИД'.
+    Supports single-token names when Фамилия/Отчество are 'Нет' (e.g. 'Нет АДЖАД Нет').
     """
     norm_c = normalize_name_for_match(citizen_text)
     norm_w = normalize_name_for_match(worker_name)

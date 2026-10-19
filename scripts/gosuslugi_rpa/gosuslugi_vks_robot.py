@@ -2177,40 +2177,63 @@ class GosuslugiVksBot:
     @staticmethod
     def _normalize_ru_tokens(text: str) -> List[str]:
         """Normalizes Russian/Latin name string into significant lowercase tokens (ignoring 'нет', '-', etc.)."""
-        skip = {"нет", "не", "заполнено", "не заполнено", "-", "none", "null", "no", ""}
+        skip = {
+            "нет", "не", "заполнено", "не заполнено", "отсутствует", "б/н", "бн",
+            "-", "—", "none", "null", "no", "nan", ""
+        }
         cleaned = (text or "").lower().replace("ё", "е")
         cleaned = re.sub(r"[^а-яa-z0-9\s]", " ", cleaned)
-        return [tok for tok in cleaned.split() if len(tok) >= 2 and tok not in skip]
+        tokens = [tok for tok in cleaned.split() if tok not in skip]
+        sig = [tok for tok in tokens if len(tok) >= 2]
+        return sig if sig else tokens
 
-    def does_citizen_match_worker(self, citizen_text: str, row: Dict[str, Any]) -> bool:
+    def does_citizen_match_worker(self, citizen_text: str, row: Dict[str, Any], page_body_text: str = "") -> bool:
         """
-        Strictly verifies that the 'Гражданин' field on the Gosuslugi order page/card matches
-        the employee in `row`. Prevents mixing up applications across workers or multiple computers!
-        Example:
-        - Worker: АБУЛЛАЕВ РАШИД НЕТ -> required tokens ['абуллаев', 'рашид']
-        - Gosuslugi 'Гражданин': 'Куммари Прасад' -> tokens ['куммари', 'прасад'] -> returns False!
-        - Gosuslugi 'Гражданин': 'Абуллаев Рашид' -> tokens ['абуллаев', 'рашид'] -> returns True!
+        Verifies that the 'Гражданин' field on the Gosuslugi order page/card matches the employee in `row`.
+        Handles cases where Фамилия or Отчество is 'Нет' (e.g. 'Нет АДЖАД Нет' -> significant token ['аджад']).
         """
+        # Build required significant tokens from Фамилия, Имя, Отчество (excluding 'Нет')
+        raw_last = str(row.get("Фамилия", "")).strip()
+        raw_first = str(row.get("Имя", "")).strip()
+        raw_mid = str(row.get("Отчество", "")).strip()
+
+        primary_tokens = self._normalize_ru_tokens(f"{raw_last} {raw_first}")
+        if not primary_tokens:
+            primary_tokens = self._normalize_ru_tokens(f"{raw_last} {raw_first} {raw_mid}")
+        if not primary_tokens:
+            primary_tokens = self._normalize_ru_tokens(self.build_clean_worker_name(row))
+        if not primary_tokens:
+            return False
+
         citizen_tokens = self._normalize_ru_tokens(citizen_text)
-        if not citizen_tokens:
-            return False
 
-        # Build primary required tokens from Фамилия + Имя (excluding 'Нет')
-        primary_parts = [
-            str(row.get("Фамилия", "")).strip(),
-            str(row.get("Имя", "")).strip(),
-        ]
-        required_tokens = self._normalize_ru_tokens(" ".join(primary_parts))
-        if not required_tokens:
-            required_tokens = self._normalize_ru_tokens(self.build_clean_worker_name(row))
-        if not required_tokens:
-            return False
+        # Fallback: if citizen_tokens is empty (e.g. DOM extracted only 'Нет'), inspect the 'Гражданин' block in page_body_text
+        if not citizen_tokens and page_body_text:
+            m_block = re.search(
+                r"Гражданин\s*:?\s*([\s\S]{1,120}?)(?:Документы|История|Показать историю|Скачать|Адрес|Статус|Инициатор|$)",
+                page_body_text,
+                re.IGNORECASE,
+            )
+            if m_block:
+                citizen_tokens = self._normalize_ru_tokens(m_block.group(1))
 
-        citizen_joined = " ".join(citizen_tokens)
-        for req_tok in required_tokens:
-            if req_tok not in citizen_tokens and req_tok not in citizen_joined:
-                return False
-        return True
+        if citizen_tokens:
+            citizen_joined = " ".join(citizen_tokens)
+            # Match if all primary worker tokens (e.g. ['аджад']) are in citizen_tokens
+            if all(req_tok in citizen_tokens or req_tok in citizen_joined for req_tok in primary_tokens):
+                return True
+            # Or if citizen_tokens has all significant tokens and they are a subset of the worker's full name tokens
+            all_worker_tokens = self._normalize_ru_tokens(f"{raw_last} {raw_first} {raw_mid}")
+            if all_worker_tokens and all(ct in all_worker_tokens for ct in citizen_tokens):
+                return True
+
+        # Direct full-string fallback (including 'Нет', e.g. 'нет аджад нет')
+        full_with_net = re.sub(r"\s+", " ", f"{raw_last} {raw_first} {raw_mid}".lower().replace("ё", "е")).strip()
+        haystack = re.sub(r"\s+", " ", f"{citizen_text} {page_body_text}".lower().replace("ё", "е")).strip()
+        if full_with_net and len(full_with_net) >= 3 and full_with_net in haystack:
+            return True
+
+        return False
 
     def is_order_already_linked_to_another_worker(self, app_no: str, current_sicil: str) -> bool:
         """
@@ -2239,25 +2262,27 @@ class GosuslugiVksBot:
         """
         Inspects the currently open Gosuslugi order details page (https://lk.gosuslugi.ru/order/<feed_id>)
         and extracts:
-        - order_no: e.g. '8274168553'
-        - service_title: e.g. 'Уведомления о трудовой деятельности иностранцев' or 'Уведомления о прибытии и убытии иностранцев'
-        - citizen_name: value displayed under 'Гражданин' (e.g. 'Куммари Прасад' in Image 1)
+        - order_no: e.g. '8281910041'
+        - service_title: e.g. 'Уведомления о трудовой деятельности иностранцев'
+        - citizen_name: value displayed under 'Гражданин' (e.g. 'Нет АДЖАД Нет'), joining multi-line spans so 'Нет' never truncates the real name!
+        - body_text: full visible text of the page for fallback verification
         """
-        # Wait up to 6 seconds for 'Гражданин' or '№' to appear on the order details page
         for _ in range(12):
             try:
                 body_now = self.page.locator("body").inner_text(timeout=1500)
-                if "Гражданин" in body_now or "Заявление" in body_now:
+                if "Гражданин" in body_now or "Заявление" in body_now or "req_preview" in body_now:
                     break
             except Exception:
                 pass
             self.page.wait_for_timeout(500)
 
-        info = {"order_no": "", "service_title": "", "citizen_name": ""}
+        info = {"order_no": "", "service_title": "", "citizen_name": "", "body_text": ""}
         try:
             dom_extracted = self.page.evaluate(
                 """() => {
                     const res = { order_no: "", service_title: "", citizen_name: "" };
+                    const stopWords = /^(документы|история|показать историю|скачать|адрес|статус|сведения|отправитель|инициатор)$/i;
+
                     // 1. Heading / Service title
                     const headings = Array.from(document.querySelectorAll('h1, h2, h3, .order-title, .title-h3'));
                     for (const h of headings) {
@@ -2267,24 +2292,46 @@ class GosuslugiVksBot:
                             break;
                         }
                     }
-                    // 2. Find 'Гражданин' label and read the value right next to / below it
+
+                    // 2. Find 'Гражданин' label and read the complete value next to / below it (joining multi-span/multi-line FIO like 'Нет АДЖАД Нет')
                     const allEls = Array.from(document.querySelectorAll('div, span, p, dt, td, label'));
                     for (const el of allEls) {
                         const txt = (el.innerText || "").trim();
                         if (txt === "Гражданин" || txt === "Гражданин:" || txt === "Иностранный гражданин") {
-                            const next = el.nextElementSibling;
-                            if (next && (next.innerText || "").trim()) {
-                                res.citizen_name = (next.innerText || "").trim().split("\\n")[0].trim();
-                                break;
-                            }
-                            if (el.parentElement) {
-                                const pLines = (el.parentElement.innerText || "").split("\\n").map(s => s.trim()).filter(Boolean);
-                                const gIdx = pLines.findIndex(l => l.startsWith("Гражданин"));
-                                if (gIdx !== -1 && pLines[gIdx + 1]) {
-                                    res.citizen_name = pLines[gIdx + 1];
-                                    break;
+                            let cur = el;
+                            for (let depth = 0; depth < 4 && cur; depth++) {
+                                const next = cur.nextElementSibling;
+                                if (next && (next.innerText || "").trim()) {
+                                    const lines = (next.innerText || "")
+                                        .split("\\n")
+                                        .map(s => s.trim())
+                                        .filter(s => s && !stopWords.test(s));
+                                    if (lines.length > 0) {
+                                        res.citizen_name = lines.join(" ").replace(/\\s+/g, " ").trim();
+                                        break;
+                                    }
                                 }
+                                if (cur.parentElement) {
+                                    const pLines = (cur.parentElement.innerText || "")
+                                        .split("\\n")
+                                        .map(s => s.trim())
+                                        .filter(Boolean);
+                                    const gIdx = pLines.findIndex(l => /^Гражданин\\s*:?$/i.test(l) || l.startsWith("Гражданин"));
+                                    if (gIdx !== -1 && pLines.length > gIdx + 1) {
+                                        const collected = [];
+                                        for (let k = gIdx + 1; k < Math.min(pLines.length, gIdx + 4); k++) {
+                                            if (stopWords.test(pLines[k])) break;
+                                            collected.push(pLines[k]);
+                                        }
+                                        if (collected.length > 0) {
+                                            res.citizen_name = collected.join(" ").replace(/\\s+/g, " ").trim();
+                                            break;
+                                        }
+                                    }
+                                }
+                                cur = cur.parentElement;
                             }
+                            if (res.citizen_name) break;
                         }
                     }
                     return res;
@@ -2298,14 +2345,23 @@ class GosuslugiVksBot:
 
         try:
             body_text = self.page.locator("body").inner_text(timeout=3000)
-            if not info["citizen_name"]:
-                m_cit = re.search(r"Гражданин\s*:?\s*(?:\r?\n)+\s*([^\r\n]+)", body_text, re.IGNORECASE)
-                if not m_cit:
-                    m_cit = re.search(r"Гражданин\s*:\s*([^\r\n]+)", body_text, re.IGNORECASE)
-                if m_cit:
-                    cand_cit = m_cit.group(1).strip()
-                    if cand_cit.lower() not in ("адрес", "статус", "документы"):
-                        info["citizen_name"] = cand_cit
+            info["body_text"] = body_text
+            # If citizen_name is empty or only captured 'Нет' (1 word when full name has more lines), parse from body_text
+            if not self._normalize_ru_tokens(info["citizen_name"]):
+                m_cit_block = re.search(
+                    r"Гражданин\s*:?\s*(?:\r?\n|\s)+([^\r\n]+(?:\r?\n[^\r\n]+){0,2})",
+                    body_text,
+                    re.IGNORECASE,
+                )
+                if m_cit_block:
+                    raw_lines = [ln.strip() for ln in m_cit_block.group(1).splitlines() if ln.strip()]
+                    filtered_lines = []
+                    for ln in raw_lines:
+                        if re.match(r"^(документы|история|показать историю|скачать|адрес|статус|сведения|действия)", ln, re.IGNORECASE):
+                            break
+                        filtered_lines.append(ln)
+                    if filtered_lines:
+                        info["citizen_name"] = " ".join(filtered_lines).strip()
 
             if not info["service_title"]:
                 m_srv = re.search(r"(Уведомлени[ея]\s+о\s+[^\r\n№]+)", body_text, re.IGNORECASE)
@@ -2326,8 +2382,7 @@ class GosuslugiVksBot:
     def find_worker_order_via_feeds_api(self, row: Dict[str, Any], expected_order_no: str = "") -> Optional[Dict[str, str]]:
         """
         Queries Gosuslugi's internal /api/lk/v1/feeds/ JSON API directly inside the browser session
-        to find the exact order belonging to `row` (matching 'Гражданин' and 'Уведомления о трудовой деятельности иностранцев').
-        Safe when multiple computers submit simultaneously on the same Gosuslugi account!
+        to find the exact order belonging to `row` (matching 'Гражданин' or `expected_order_no`).
         """
         sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
         feed_url = (
@@ -2395,18 +2450,20 @@ class GosuslugiVksBot:
                         except Exception:
                             pass
 
-            if citizen_name:
-                if self.does_citizen_match_worker(citizen_name, row):
-                    item_info = {
-                        "feed_id": feed_id,
-                        "application_no": ext_id,
-                        "citizen_name": citizen_name,
-                        "service_title": sub_title,
-                    }
-                    # Exact match on both Step 15 order number AND Citizen Name -> return immediately!
-                    if expected_order_no and ext_id == expected_order_no:
-                        return item_info
-                    candidates.append(item_info)
+            item_info = {
+                "feed_id": feed_id,
+                "application_no": ext_id,
+                "citizen_name": citizen_name,
+                "service_title": sub_title,
+            }
+
+            # If Step 15 gave us the exact order number and either citizen_name matches or snippet isn't populated yet -> return immediately!
+            if expected_order_no and ext_id == expected_order_no:
+                if not citizen_name or self.does_citizen_match_worker(citizen_name, row):
+                    return item_info
+
+            if citizen_name and self.does_citizen_match_worker(citizen_name, row):
+                candidates.append(item_info)
 
         if candidates:
             return candidates[0]
@@ -2417,10 +2474,9 @@ class GosuslugiVksBot:
         Executes Step 16 after 'Уведомление отправлено' with strict multi-computer & citizen verification:
         1) Verifies no 'У вас недостаточно полномочий' error is on screen
         2) Clicks 'В личный кабинет' or navigates to https://lk.gosuslugi.ru/orders
-        3) Finds the exact order where 'Гражданин' matches `row` (and service is 'Уведомления о трудовой деятельности иностранцев',
-           NEVER 'Уведомления о прибытии и убытии иностранцев' or another worker like 'Куммари Прасад'!)
-        4) Verifies 'Гражданин' on the opened https://lk.gosuslugi.ru/order/... page before capturing '№ Заявления' and downloading 'req_preview' PDF
-        5) Renames the PDF to <Sicil>_<VerifiedGosuslugiNo>_<WorkerName>_<Period>.pdf and registers the submission
+        3) Finds the exact order where 'Гражданин' matches `row` (including names with 'Нет' like 'Нет АДЖАД Нет')
+        4) Downloads 'req_preview' PDF (whether 'Скачать' is an <a>, <button>, or <span>) and renames it to
+           <Sicil>_<VerifiedGosuslugiNo>_<WorkerName>_<Period>.pdf
         """
         self.check_and_stop_if_insufficient_permissions()
         clean_worker_name = self.build_clean_worker_name(row)
@@ -2453,9 +2509,23 @@ class GosuslugiVksBot:
         verified_order_no = ""
         checked_urls = set()
 
+        # Check if we are ALREADY on an '/order/...' details page right now
+        if "lk.gosuslugi.ru/order/" in (self.page.url or ""):
+            page_info = self.inspect_open_order_page()
+            if (
+                "прибытии" not in page_info["service_title"].lower()
+                and "убытии" not in page_info["service_title"].lower()
+                and self.does_citizen_match_worker(page_info["citizen_name"], row, page_info.get("body_text", ""))
+                and not self.is_order_already_linked_to_another_worker(page_info["order_no"], sicil)
+            ):
+                verified_order_no = page_info["order_no"] or expected_order_no
+
         # Up to 3 search passes (allowing Gosuslugi a few seconds to index the newly submitted notification)
         for search_pass in range(1, 4):
-            # Pass Strategy A: Query Gosuslugi's /api/lk/v1/feeds/ JSON API for exact Citizen Name match
+            if verified_order_no:
+                break
+
+            # Pass Strategy A: Query Gosuslugi's /api/lk/v1/feeds/ JSON API for Citizen Name or expected_order_no match
             api_match = self.find_worker_order_via_feeds_api(row, expected_order_no)
             if api_match and api_match.get("feed_id"):
                 target_order_url = f"https://lk.gosuslugi.ru/order/{api_match['feed_id']}"
@@ -2472,10 +2542,15 @@ class GosuslugiVksBot:
                 logger.info(
                     f"Step 16.3: Order Page Check -> № {page_info['order_no']} | Услуга: '{page_info['service_title']}' | Гражданин: '{page_info['citizen_name']}'"
                 )
+                is_citizen_ok = self.does_citizen_match_worker(
+                    page_info["citizen_name"] or api_match["citizen_name"],
+                    row,
+                    page_info.get("body_text", ""),
+                ) or (expected_order_no and page_info["order_no"] == expected_order_no)
                 if (
                     "прибытии" not in page_info["service_title"].lower()
                     and "убытии" not in page_info["service_title"].lower()
-                    and self.does_citizen_match_worker(page_info["citizen_name"] or api_match["citizen_name"], row)
+                    and is_citizen_ok
                     and not self.is_order_already_linked_to_another_worker(page_info["order_no"] or api_match["application_no"], sicil)
                 ):
                     verified_order_no = page_info["order_no"] or api_match["application_no"]
@@ -2484,7 +2559,7 @@ class GosuslugiVksBot:
                     )
                     break
 
-            # Pass Strategy B: Inspect https://lk.gosuslugi.ru/orders list and check recent order cards by Citizen Name
+            # Pass Strategy B: Inspect https://lk.gosuslugi.ru/orders list and check recent order cards
             orders_list_url = "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
             if "lk.gosuslugi.ru/orders" not in (self.page.url or ""):
                 logger.info(f"Step 16.2 (Pass {search_pass}/3): Navigating to Заявления (lk.gosuslugi.ru/orders)...")
@@ -2494,8 +2569,6 @@ class GosuslugiVksBot:
                 except Exception as e:
                     logger.warning(f"Orders page navigation note: {e}")
 
-            # Collect candidate '/order/...' hrefs from the orders list:
-            # First prioritize cards whose text already contains our worker's name tokens, then recent labor notification cards
             worker_tokens = self._normalize_ru_tokens(clean_worker_name)
             candidate_hrefs: List[str] = []
             try:
@@ -2513,7 +2586,17 @@ class GosuslugiVksBot:
                     }"""
                 )
                 if isinstance(raw_cards, list):
-                    # Pass 1: Cards explicitly mentioning the worker's name on the card
+                    # Pass 0: Card explicitly containing expected_order_no from Step 15
+                    if expected_order_no:
+                        for c in raw_cards:
+                            c_text = str(c.get("text") or "")
+                            c_href = str(c.get("href") or "").strip()
+                            if c_href and expected_order_no in c_text:
+                                full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
+                                if full_u not in candidate_hrefs:
+                                    candidate_hrefs.append(full_u)
+
+                    # Pass 1: Cards explicitly mentioning the worker's significant name tokens (e.g. 'аджад')
                     for c in raw_cards:
                         c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
                         c_href = str(c.get("href") or "").strip()
@@ -2524,15 +2607,14 @@ class GosuslugiVksBot:
                             if full_u not in candidate_hrefs:
                                 candidate_hrefs.append(full_u)
 
-                    # Pass 2: Top 4 recent labor activity orders that haven't been checked yet (in case card snippet didn't render name)
+                    # Pass 2: Top 4 recent labor activity orders that haven't been checked yet
                     for c in raw_cards[:6]:
                         c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
                         c_href = str(c.get("href") or "").strip()
                         if not c_href or "прибытии" in c_text_low or "убытии" in c_text_low or "черновик" in c_text_low:
                             continue
-                        # If the card explicitly shows 'Гражданин:' for someone else, skip it immediately without even opening!
-                        m_card_cit = re.search(r"гражданин\s*:\s*([^\n\r]+)", c_text_low)
-                        if m_card_cit and not self.does_citizen_match_worker(m_card_cit.group(1), row):
+                        m_card_cit = re.search(r"гражданин\s*:?\s*([^\n\r]+)", c_text_low)
+                        if m_card_cit and not self.does_citizen_match_worker(m_card_cit.group(1), row, c_text_low):
                             logger.info(
                                 f"Step 16.2: Skipping card in list because Гражданин '{m_card_cit.group(1).strip()}' != '{clean_worker_name}'"
                             )
@@ -2556,6 +2638,7 @@ class GosuslugiVksBot:
                 p_no = page_info["order_no"]
                 p_srv = page_info["service_title"]
                 p_cit = page_info["citizen_name"]
+                p_body = page_info.get("body_text", "")
 
                 logger.info(
                     f"Step 16.3: Order Page Check -> № {p_no or '?'} | Услуга: '{p_srv}' | Гражданин: '{p_cit}'"
@@ -2567,7 +2650,10 @@ class GosuslugiVksBot:
                     )
                     continue
 
-                if not self.does_citizen_match_worker(p_cit, row):
+                is_match = self.does_citizen_match_worker(p_cit, row, p_body) or (
+                    expected_order_no and p_no == expected_order_no
+                )
+                if not is_match:
                     logger.warning(
                         f"Step 16 MISMATCH: В заявлении № {p_no} указан Гражданин '{p_cit}', а робот ищет '{clean_worker_name}'! "
                         f"Чужое заявление пропускается..."
@@ -2580,7 +2666,7 @@ class GosuslugiVksBot:
                     )
                     continue
 
-                verified_order_no = p_no
+                verified_order_no = p_no or expected_order_no
                 logger.info(
                     f"Step 16.3 VERIFIED: Найдено верное заявление № {verified_order_no} для Гражданина '{p_cit}' (Код: {sicil})!"
                 )
@@ -2602,16 +2688,16 @@ class GosuslugiVksBot:
             logger.error(err_msg)
             raise RuntimeError(err_msg)
 
-        # 16.4 Click 'Показать историю' if 'req_preview' is not already expanded on the verified order screen
-        req_preview_loc = self.page.locator("div:has-text('req_preview'):visible, span:has-text('req_preview'):visible")
-        if req_preview_loc.count() == 0:
+        # 16.4 Click 'Показать историю' if 'req_preview' is not already visible on the verified order screen
+        req_preview_loc = self.page.locator("text='req_preview'")
+        if req_preview_loc.count() == 0 or not req_preview_loc.first.is_visible():
             show_history = self.page.locator(
                 "a:has-text('Показать историю'):visible, "
                 "button:has-text('Показать историю'):visible, "
                 "span:has-text('Показать историю'):visible"
             ).first
             try:
-                show_history.wait_for(state="visible", timeout=10000)
+                show_history.wait_for(state="visible", timeout=6000)
             except Exception:
                 pass
             if show_history.count() > 0 and show_history.is_visible():
@@ -2624,7 +2710,7 @@ class GosuslugiVksBot:
                     show_history.click(timeout=5000)
                 except Exception:
                     show_history.evaluate("el => (el.closest('a, button') || el).click()")
-                self.page.wait_for_timeout(2500)
+                self.page.wait_for_timeout(2000)
 
         # 16.5 Click 'Скачать' next to 'req_preview' under 'Документы' and rename the PDF
         saved_pdf_path = self.download_and_rename_receipt_pdf(row, verified_order_no)
@@ -2652,14 +2738,17 @@ class GosuslugiVksBot:
     def build_clean_worker_name(self, row: Dict[str, Any]) -> str:
         """
         Builds clean employee full name for PDF filename, stripping placeholder values like 'Нет'.
-        Example: Фамилия='Нет', Имя='АБДУЛ РАШИД', Отчество='НЕТ' -> 'АБДУЛ РАШИД'
+        Example: Фамилия='Нет', Имя='АДЖАД', Отчество='Нет' -> 'АДЖАД'
         """
-        skip_tokens = {"нет", "не заполнено", "-", "none", "null", ""}
+        skip_tokens = {"нет", "не заполнено", "отсутствует", "-", "none", "null", "no", ""}
         parts = []
         for key in ("Фамилия", "Имя", "Отчество"):
             val = str(row.get(key, "")).strip()
             if val and val.lower() not in skip_tokens:
-                parts.append(val)
+                # Also strip standalone 'нет' tokens inside a multi-word field
+                words = [w for w in val.split() if w.lower() not in skip_tokens]
+                if words:
+                    parts.append(" ".join(words))
         clean_name = " ".join(parts).strip()
         if not clean_name:
             clean_name = str(row.get("Имя", row.get("Фамилия", "Сотрудник"))).strip()
@@ -2696,9 +2785,10 @@ class GosuslugiVksBot:
 
     def download_and_rename_receipt_pdf(self, row: Dict[str, Any], gosuslugi_order_no: str = "") -> Optional[str]:
         """
-        Clicks the 'Скачать' link for 'req_preview' inside 'Документы' on the verified Gosuslugi order page,
+        Clicks the 'Скачать' link/button for 'req_preview' inside 'Документы' on the verified Gosuslugi order page,
         waits for the PDF to land in ~/Downloads, and renames it to:
             <Sicil>_<VerifiedGosuslugiNo>_<Ad Soyad>_<Donem>.pdf
+        Supports <a>, <button>, <span>, and DOM coordinate click fallbacks.
         """
         downloads_dir = Path.home() / "Downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -2714,52 +2804,109 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Wait briefly for 'req_preview' to be visible in the expanded history
+        # Wait briefly for 'req_preview' or 'Документы' to be visible
         try:
             self.page.locator("text='req_preview'").first.wait_for(state="visible", timeout=8000)
         except Exception:
             pass
 
-        # Locate the specific 'Скачать' button for 'req_preview' (not 'pd_Agreement' and not 'Скачать всё')
+        # Locate the specific 'Скачать' control for 'req_preview' (supporting <a>, <button>, <span>, etc., excluding 'Скачать всё')
         download_selectors = [
             "lib-file:has-text('req_preview') a:has-text('Скачать')",
+            "lib-file:has-text('req_preview') button:has-text('Скачать')",
+            "lib-file:has-text('req_preview') span:has-text('Скачать')",
             "lib-file:has-text('req_preview') a",
-            "a[aria-label*='req_preview']",
-            "a[title*='req_preview']",
+            "lib-file:has-text('req_preview') button",
+            "a[aria-label*='req_preview'], button[aria-label*='req_preview']",
+            "a[title*='req_preview'], button[title*='req_preview']",
             "div.history-status.open lk-files lib-file a",
-            "lk-files lib-file:has-text('PDF') a",
-            "lk-files a:has-text('Скачать'):not(:has-text('всё'))",
+            "lk-files lib-file:has-text('PDF') a, lk-files lib-file:has-text('PDF') button",
+            "lk-files a:has-text('Скачать'):not(:has-text('всё')), lk-files button:has-text('Скачать'):not(:has-text('всё'))",
             "a:has-text('Скачать'):not(:has-text('всё'))",
+            "button:has-text('Скачать'):not(:has-text('всё'))",
+            "span:has-text('Скачать'):not(:has-text('всё'))",
         ]
         download_link = None
         for sel in download_selectors:
-            loc = self.page.locator(sel).first
-            if loc.count() > 0 and loc.is_visible():
-                download_link = loc
+            loc = self.page.locator(sel)
+            if loc.count() > 0:
+                for idx in range(loc.count()):
+                    cand = loc.nth(idx)
+                    try:
+                        if cand.is_visible() and "всё" not in (cand.inner_text() or "").lower():
+                            download_link = cand
+                            break
+                    except Exception:
+                        continue
+            if download_link is not None:
                 break
-
-        if not download_link:
-            logger.warning("Step 16: Could not find visible 'Скачать' PDF link for 'req_preview' in order history.")
-            if gosuslugi_order_no:
-                self.register_application_submission(row, gosuslugi_order_no, "")
-            return None
-
-        try:
-            download_link.scroll_into_view_if_needed(timeout=3000)
-        except Exception:
-            pass
 
         downloaded_path: Optional[Path] = None
         click_time = time.time()
 
         logger.info("Step 16.5: Clicking 'Скачать' for 'req_preview' PDF...")
+
+        def trigger_download_click():
+            if download_link is not None:
+                try:
+                    download_link.scroll_into_view_if_needed(timeout=2500)
+                except Exception:
+                    pass
+                try:
+                    download_link.click(timeout=3500)
+                    return True
+                except Exception:
+                    try:
+                        download_link.evaluate("el => (el.closest('a, button') || el).click()")
+                        return True
+                    except Exception:
+                        pass
+
+            # Deep DOM JavaScript + Mouse Coordinate fallback: find 'req_preview' row and click its 'Скачать' button/link
+            try:
+                box = self.page.evaluate(
+                    """() => {
+                        const all = Array.from(document.querySelectorAll('a, button, span, div'));
+                        // Find all visible elements whose exact text is 'Скачать' (not 'Скачать всё')
+                        const dlButtons = all.filter(el => {
+                            const t = (el.innerText || '').trim();
+                            if (t !== 'Скачать') return false;
+                            const r = el.getBoundingClientRect();
+                            return r.width > 20 && r.height > 10 && r.height < 80;
+                        });
+                        // Prefer the one inside the same container as 'req_preview'
+                        for (const btn of dlButtons) {
+                            let p = btn.parentElement;
+                            for (let d = 0; d < 5 && p; d++) {
+                                if ((p.innerText || '').includes('req_preview')) {
+                                    const target = btn.closest('a, button') || btn;
+                                    target.click();
+                                    const r = target.getBoundingClientRect();
+                                    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                                }
+                                p = p.parentElement;
+                            }
+                        }
+                        if (dlButtons.length > 0) {
+                            const target = dlButtons[0].closest('a, button') || dlButtons[0];
+                            target.click();
+                            const r = target.getBoundingClientRect();
+                            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                        }
+                        return null;
+                    }"""
+                )
+                if box:
+                    self.page.mouse.click(float(box["x"]), float(box["y"]))
+                    return True
+            except Exception:
+                pass
+            return False
+
         # Attempt Playwright download capture + native Chrome ~/Downloads fallback
         try:
             with self.page.expect_download(timeout=6000) as download_info:
-                try:
-                    download_link.click(timeout=4000)
-                except Exception:
-                    download_link.evaluate("el => el.click()")
+                trigger_download_click()
             dl = download_info.value
             suggested_name = dl.suggested_filename or f"{gosuslugi_order_no or 'req_preview'}.pdf"
             temp_target = downloads_dir / f"tmp_{os.getpid()}_{int(click_time)}_{suggested_name}"
@@ -2774,8 +2921,12 @@ class GosuslugiVksBot:
 
         # If Chrome handled the download natively, poll ~/Downloads for the newly created/updated .pdf file
         if not downloaded_path or not downloaded_path.exists():
-            for _ in range(30):
+            for wait_idx in range(30):
                 self.page.wait_for_timeout(500)
+                # If nothing started downloading after 4 seconds, re-trigger DOM click once
+                if wait_idx == 8:
+                    trigger_download_click()
+
                 active_crdownloads = [
                     p for p in downloads_dir.glob("*.crdownload")
                     if (time.time() - p.stat().st_mtime) < 30
@@ -2790,7 +2941,7 @@ class GosuslugiVksBot:
                             continue
                         resolved = p.resolve()
                         mtime = p.stat().st_mtime
-                        if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 1.5):
+                        if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 2.0):
                             candidates.append((mtime, p))
                     except Exception:
                         pass

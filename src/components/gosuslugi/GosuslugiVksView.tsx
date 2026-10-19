@@ -90,17 +90,18 @@ function doesSubMatchWorker(
   if (wCode && sCode && wCode !== sCode) {
     return false;
   }
-  const sName = String(sub.worker_name || '')
+  const stopWords = new Set(['нет', 'не', 'заполнено', 'отсутствует', 'no', 'none', 'null', '-']);
+  const sTokens = String(sub.worker_name || '')
     .toLowerCase()
-    .replace(/\b(нет|no|none|-)\b/gi, ' ')
     .replace(/[^а-яёa-z0-9\s]/gi, ' ')
-    .trim();
+    .split(/\s+/)
+    .filter((tok) => tok.length >= 2 && !stopWords.has(tok));
+  const sName = sTokens.join(' ');
   if (sName) {
-    const wTokens = [w.lastName, w.firstName]
+    const wTokens = [w.lastName, w.firstName, w.patronymic]
       .map((p) => String(p || '').toLowerCase().trim())
-      .filter((p) => p && p !== 'нет' && p !== 'no' && p !== '-')
-      .flatMap((p) => p.split(/\s+/))
-      .filter((tok) => tok.length >= 2);
+      .flatMap((p) => p.replace(/[^а-яёa-z0-9\s]/gi, ' ').split(/\s+/))
+      .filter((tok) => tok.length >= 2 && !stopWords.has(tok));
     if (wTokens.length > 0 && !wTokens.every((tok) => sName.includes(tok))) {
       return false;
     }
