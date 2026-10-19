@@ -887,12 +887,13 @@ def main():
                 )
 
         if records:
-            # For recent labor orders (top 12) whose feed snippet did NOT include 'citizen_name'
+            # For recent labor orders whose feed snippet did NOT include 'citizen_name'
             # (because 'Гражданин' is inside 'Показать историю' on /order/<feed_id>), inspect them once on demand
             inspected_feed_ids = set()
 
             for idx, rec in enumerate(records):
-                app_no = str(rec.get("application_no") or "").strip()
+                raw_app_no = str(rec.get("application_no") or "").strip()
+                app_no = raw_app_no if raw_app_no.isdigit() else ""
                 sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
                 worker_name = str(rec.get("worker_name") or "").strip()
 
@@ -935,10 +936,10 @@ def main():
                             )
                             break
 
-                # 2.5) If still not matched, inspect top recent labor orders that had empty 'citizen_name' in the API snippet
+                # 2.5) If still not matched, inspect recent labor orders (up to 80) that had empty 'citizen_name' in the API snippet
                 # by opening /order/<feed_id> and clicking 'Показать историю'
                 if not matched_order and worker_name:
-                    for cand in labor_orders_list[:12]:
+                    for cand in labor_orders_list[:80]:
                         cand_no = cand["application_no"]
                         cand_feed_id = cand.get("feed_id", "")
                         owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
@@ -960,8 +961,8 @@ def main():
                             )
                             break
 
-                # 3) Tier 2 Fallback: Query single application_no via ?q=<app_no> or UI search box
-                if not matched_order and app_no:
+                # 3) Tier 2 Fallback: Query single numeric application_no via ?q=<app_no> or UI search box
+                if not matched_order and app_no and app_no.isdigit():
                     logger.info(f"  -> № {app_no} not in recent bulk feed, querying directly...")
                     candidate = query_single_order_by_no(page, app_no)
                     if candidate:
