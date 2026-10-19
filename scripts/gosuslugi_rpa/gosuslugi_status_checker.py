@@ -341,17 +341,26 @@ def does_citizen_match_worker_name(citizen_text: str, worker_name: str) -> bool:
 
 def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
     """
-    Excludes non-labor services such as 'Уведомления о прибытии и убытии иностранцев'
-    and excludes unsent drafts ('черновик').
+    Excludes non-labor services such as 'Уведомления о прибытии и убытии иностранцев',
+    Work Permits ('Разрешение на работу ИГ'), and unsent drafts ('черновик').
     """
     if not ord_item:
         return False
-    srv = str(ord_item.get("service_title") or "").lower()
-    raw_t = str(ord_item.get("raw_title") or "").lower()
+    srv = str(ord_item.get("service_title") or "").lower().replace("ё", "е")
+    raw_t = str(ord_item.get("raw_title") or "").lower().replace("ё", "е")
     raw_s = str(ord_item.get("raw_status") or "").lower()
-    if "прибытии и убытии" in srv or "прибытии и убытии" in raw_t:
+    combined = f"{srv} {raw_t}"
+    excluded = (
+        "прибытии",
+        "убытии",
+        "разрешение на работу",
+        "выдан документ разрешение",
+        "получение разрешения",
+        "черновик",
+    )
+    if any(bad in combined for bad in excluded) or "draft" in raw_s:
         return False
-    if "черновик" in raw_t or "draft" in raw_s:
+    if srv and "трудовой деятельности" not in srv:
         return False
     return True
 
@@ -390,14 +399,43 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
             pass
         page.wait_for_timeout(400)
 
-    # Click 'Показать историю' if present
+    # Click 'Показать историю' if present (pure CSS locator + get_by_text + DOM click)
+    clicked_h = False
+    try:
+        sh_loc = page.locator(
+            "a:has-text('Показать историю'):visible, "
+            "button:has-text('Показать историю'):visible, "
+            "span:has-text('Показать историю'):visible, "
+            "div:has-text('Показать историю'):visible"
+        ).first
+        if sh_loc.count() > 0 and sh_loc.is_visible():
+            try:
+                sh_loc.scroll_into_view_if_needed(timeout=1500)
+            except Exception:
+                pass
+            sh_loc.click(timeout=3000)
+            clicked_h = True
+    except Exception:
+        pass
+
+    if not clicked_h:
+        try:
+            by_txt = page.get_by_text("Показать историю", exact=False).first
+            if by_txt.count() > 0 and by_txt.is_visible():
+                box = by_txt.bounding_box()
+                if box and box["width"] > 0 and box["height"] > 0:
+                    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                    clicked_h = True
+        except Exception:
+            pass
+
     try:
         js_clicked = page.evaluate(
-            """() => {
+            r"""() => {
                 const els = Array.from(document.querySelectorAll('a, button, span, div, p'));
                 for (const el of els) {
                     const t = (el.innerText || el.textContent || '').trim();
-                    if (/^показать\\s+(всю\\s+)?историю$/i.test(t)) {
+                    if (/^показать\s+(всю\s+)?историю$/i.test(t)) {
                         const rect = el.getBoundingClientRect();
                         if (rect.width > 0 && rect.height > 0) {
                             el.scrollIntoView({ block: 'center' });
@@ -412,9 +450,12 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
             }"""
         )
         if js_clicked:
-            page.wait_for_timeout(1600)
+            clicked_h = True
     except Exception:
         pass
+
+    if clicked_h:
+        page.wait_for_timeout(1600)
 
     # Also expand any inner collapsed 'Зарегистрировано на портале' block
     try:

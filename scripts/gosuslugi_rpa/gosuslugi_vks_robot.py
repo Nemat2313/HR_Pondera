@@ -705,6 +705,177 @@ class GosuslugiVksBot:
 
         return True
 
+    def sanitize_cyrillic_field(
+        self, text: Any, fallback: str = "", allow_digits_punct: bool = True
+    ) -> str:
+        """
+        Ensures fields that Gosuslugi requires in Russian ('Фамилия', 'Имя', 'Отчество',
+        'Место рождения', 'Кем выдан паспорт') contain ONLY valid Cyrillic characters.
+        1) Automatically translates common Latin geographical/passport terms (e.g. 'KUSHINAGAR, UTTAR PRADESH' -> 'КУШИНАГАР, УТТАР ПРАДЕШ')
+        2) Phonetically transliterates any remaining Latin/Turkish characters into Russian Cyrillic
+        3) Strips any forbidden symbols outside Gosuslugi's whitelist and limits length to 99 chars.
+        """
+        s = str(text or "").strip()
+        if not s:
+            return fallback
+
+        # Common multi-word & single-word Latin place/authority dictionary
+        word_map = [
+            ("UTTAR PRADESH", "УТТАР ПРАДЕШ"),
+            ("WEST BENGAL", "ЗАПАДНАЯ БЕНГАЛИЯ"),
+            ("ANDHRA PRADESH", "АНДХРА-ПРАДЕШ"),
+            ("MADHYA PRADESH", "МАДХЬЯ-ПРАДЕШ"),
+            ("HIMACHAL PRADESH", "ХИМАЧАЛ-ПРАДЕШ"),
+            ("ARUNACHAL PRADESH", "АРУНАЧАЛ-ПРАДЕШ"),
+            ("TAMIL NADU", "ТАМИЛНАД"),
+            ("NEW DELHI", "НЬЮ-ДЕЛИ"),
+            ("JAMMU AND KASHMIR", "ДЖАММУ И КАШМИР"),
+            ("KUSHINAGAR", "КУШИНАГАР"),
+            ("BIHAR", "БИХАР"),
+            ("PATNA", "ПАТНА"),
+            ("LUCKNOW", "ЛАКХНАУ"),
+            ("GORAKHPUR", "ГОРАКХПУР"),
+            ("DEORIA", "ДЕОРИЯ"),
+            ("SIWAN", "СИВАН"),
+            ("GOPALGANJ", "ГОПАЛГАНДЖ"),
+            ("CHAPRA", "ЧАПРА"),
+            ("MUZAFFARPUR", "МУЗАФФАРПУР"),
+            ("DARBHANGA", "ДАРБХАНГА"),
+            ("MOTIHARI", "МОТИХАРИ"),
+            ("BETTIAH", "БЕТТИЯ"),
+            ("AZAMGARH", "АЗАМГАРХ"),
+            ("JAUNPUR", "ДЖАУНПУР"),
+            ("GHAZIPUR", "ГАЗИПУР"),
+            ("BALLIA", "БАЛЛИЯ"),
+            ("VARANASI", "ВАРАНАСИ"),
+            ("ALLAHABAD", "АЛЛАХАБАД"),
+            ("PRAYAGRAJ", "ПРАЯГРАДЖ"),
+            ("KANPUR", "КАНПУР"),
+            ("AGRA", "АГРА"),
+            ("MEERUT", "МИРУТ"),
+            ("BAREILLY", "БАРЕЙЛИ"),
+            ("MORADABAD", "МОРАДАБАД"),
+            ("ALIGARH", "АЛИГАРХ"),
+            ("SAHARANPUR", "САХАРАНПУР"),
+            ("FAIZABAD", "ФАЙЗАБАД"),
+            ("AYODHYA", "АЙОДХЬЯ"),
+            ("BASTI", "БАСТИ"),
+            ("GONDA", "ГОНДА"),
+            ("BAHRAICH", "БАХРАЙЧ"),
+            ("SULTANPUR", "СУЛТАНПУР"),
+            ("MIRZAPUR", "МИРЗАПУР"),
+            ("SONBHADRA", "СОНБХАДРА"),
+            ("BHADOHI", "БХАДОХИ"),
+            ("CHANDAULI", "ЧАНДАУЛИ"),
+            ("MAU", "МАУ"),
+            ("KOLKATA", "КОЛКАТА"),
+            ("CALCUTTA", "КАЛЬКУТТА"),
+            ("MUMBAI", "МУМБАИ"),
+            ("DELHI", "ДЕЛИ"),
+            ("CHENNAI", "ЧЕННАИ"),
+            ("HYDERABAD", "ХАЙДАРАБАД"),
+            ("BENGALURU", "БЕНГАЛУРУ"),
+            ("BANGALORE", "БАНГАЛОР"),
+            ("AHMEDABAD", "АХМАДАБАД"),
+            ("JAIPUR", "ДЖАЙПУР"),
+            ("SURAT", "СУРАТ"),
+            ("PUNE", "ПУНА"),
+            ("PUNJAB", "ПЕНДЖАБ"),
+            ("HARYANA", "ХАРЬЯНА"),
+            ("RAJASTHAN", "РАДЖАСТХАН"),
+            ("GUJARAT", "ГУДЖАРАТ"),
+            ("MAHARASHTRA", "МАХАРАШТРА"),
+            ("KARNATAKA", "КАРНАТАКА"),
+            ("KERALA", "КЕРАЛА"),
+            ("TELANGANA", "ТЕЛАНГАНА"),
+            ("ODISHA", "ОДИША"),
+            ("ASSAM", "АССАМ"),
+            ("JHARKHAND", "ДЖАРКХАНД"),
+            ("RANCHI", "РАНЧИ"),
+            ("JAMSHEDPUR", "ДЖАМШЕДПУР"),
+            ("DHANBAD", "ДХАНБАД"),
+            ("BOKARO", "БОКАРО"),
+            ("HAZARIBAGH", "ХАЗАРИБАГХ"),
+            ("GIRIDIH", "ГИРИДИХ"),
+            ("DEOGHAR", "ДЕОГХАР"),
+            ("CHHATTISGARH", "ЧХАТТИСГАРХ"),
+            ("UTTARAKHAND", "УТТАРАКХАНД"),
+            ("INDIA", "ИНДИЯ"),
+            ("TURKEY", "ТУРЦИЯ"),
+            ("TÜRKIYE", "ТУРЦИЯ"),
+            ("TURKIYE", "ТУРЦИЯ"),
+            ("ISTANBUL", "СТАМБУЛ"),
+            ("ANKARA", "АНКАРА"),
+            ("IZMIR", "ИЗМИР"),
+            ("ANTALYA", "АНТАЛЬЯ"),
+            ("BURSA", "БУРСА"),
+            ("ADANA", "АДАНА"),
+            ("KONYA", "КОНЬЯ"),
+            ("GAZIANTEP", "ГАЗИАНТЕП"),
+            ("MERSIN", "МЕРСИН"),
+            ("KAYSERI", "КАЙСЕРИ"),
+            ("SAMSUN", "САМСУН"),
+            ("TRABZON", "ТРАБЗОН"),
+            ("HATAY", "ХАТАЙ"),
+        ]
+        for lat_w, cyr_w in word_map:
+            s = re.sub(rf"\b{re.escape(lat_w)}\b", cyr_w, s, flags=re.IGNORECASE)
+
+        # If any Latin/Turkish letters remain, phonetically transliterate digraphs then single characters
+        if re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]", s):
+            digraphs = [
+                ("SHCH", "Щ"), ("shch", "щ"), ("Shch", "Щ"),
+                ("SH", "Ш"), ("sh", "ш"), ("Sh", "Ш"),
+                ("CH", "Ч"), ("ch", "ч"), ("Ch", "Ч"),
+                ("KH", "Х"), ("kh", "х"), ("Kh", "Х"),
+                ("TH", "Т"), ("th", "т"), ("Th", "Т"),
+                ("DH", "Д"), ("dh", "д"), ("Dh", "Д"),
+                ("BH", "БХ"), ("bh", "бх"), ("Bh", "Бх"),
+                ("GH", "ГХ"), ("gh", "гх"), ("Gh", "Гх"),
+                ("PH", "Ф"), ("ph", "ф"), ("Ph", "Ф"),
+                ("ZH", "Ж"), ("zh", "ж"), ("Zh", "Ж"),
+                ("YA", "Я"), ("ya", "я"), ("Ya", "Я"),
+                ("YU", "Ю"), ("yu", "ю"), ("Yu", "Ю"),
+                ("YE", "Е"), ("ye", "е"), ("Ye", "Е"),
+                ("YO", "Ё"), ("yo", "ё"), ("Yo", "Ё"),
+                ("TS", "Ц"), ("ts", "ц"), ("Ts", "Ц"),
+                ("CK", "К"), ("ck", "к"), ("Ck", "К"),
+            ]
+            for dg_lat, dg_cyr in digraphs:
+                s = s.replace(dg_lat, dg_cyr)
+
+            char_map = {
+                "A": "А", "B": "Б", "V": "В", "G": "Г", "D": "Д", "E": "Е", "Z": "З",
+                "I": "И", "J": "ДЖ", "K": "К", "L": "Л", "M": "М", "N": "Н", "O": "О",
+                "P": "П", "R": "Р", "S": "С", "T": "Т", "U": "У", "F": "Ф", "H": "Х",
+                "C": "К", "W": "В", "Q": "К", "X": "КС", "Y": "Й",
+                "Ç": "Ч", "Ğ": "Г", "İ": "И", "Ö": "О", "Ş": "Ш", "Ü": "У",
+                "a": "а", "b": "б", "v": "в", "g": "г", "d": "д", "e": "е", "z": "з",
+                "i": "и", "j": "дж", "k": "к", "l": "л", "m": "м", "n": "н", "o": "о",
+                "p": "п", "r": "р", "s": "с", "t": "т", "u": "у", "f": "ф", "h": "х",
+                "c": "к", "w": "в", "q": "к", "x": "кс", "y": "й",
+                "ç": "ч", "ğ": "г", "ı": "ы", "ö": "о", "ş": "ш", "ü": "у",
+            }
+            s = "".join(char_map.get(ch, ch) for ch in s)
+
+        # Replace slashes/parens with commas/spaces before whitelist stripping
+        s = re.sub(r"[/\\|()\[\]{};:]+", ", " if allow_digits_punct else " ", s)
+
+        if allow_digits_punct:
+            # Gosuslugi rule for Место рождения / Кем выдан: кириллица, пробел, дефис, запятые, точки, цифры, до 99 символов
+            s = re.sub(r"[^А-Яа-яЁё0-9\s\-\,\.]", "", s)
+            s = re.sub(r"\s*,\s*", ", ", s)
+            s = re.sub(r"(,\s*){2,}", ", ", s).strip(" ,.-")
+        else:
+            # Gosuslugi rule for Фамилия / Имя / Отчество: кириллица, пробел, дефис
+            s = re.sub(r"[^А-Яа-яЁё\s\-]", "", s).strip(" -")
+
+        s = re.sub(r"\s+", " ", s).strip()
+        if len(s) > 99:
+            s = s[:99].rstrip(" ,.-")
+
+        return s if s else fallback
+
     def has_red_validation_errors(self) -> List[str]:
         """Checks if Gosuslugi displays red inline validation errors or invalid inputs on the current screen."""
         errors = []
@@ -718,6 +889,7 @@ class GosuslugiVksBot:
             "Проверьте правильность",
             "Укажите корректн",
             "Укажите копейки",
+            "может содержать символы кириллицы",
         ]
         for phrase in error_phrases:
             try:
@@ -747,7 +919,7 @@ class GosuslugiVksBot:
         return errors
 
     def is_input_empty_or_invalid(self, selector: str) -> bool:
-        """Returns True if the visible input matching `selector` is empty or has class `invalid`."""
+        """Returns True if the visible input matching `selector` is empty, has class `invalid`, or contains Latin chars."""
         try:
             loc = self.page.locator(selector).first
             if loc.count() == 0 or not loc.is_visible():
@@ -761,8 +933,8 @@ class GosuslugiVksBot:
     def auto_repair_current_step(self, step_name: str) -> bool:
         """
         Inspects the current screen when 'Продолжить' is disabled or red validation errors
-        ('Обязательно для заполнения', etc.) appear, and automatically re-fills/selects
-        any missing or invalid fields.
+        ('Обязательно для заполнения', 'может содержать символы кириллицы', etc.) appear, and
+        automatically re-fills/selects any missing or invalid fields.
         """
         row = self.current_row or {}
         if not row:
@@ -784,27 +956,27 @@ class GosuslugiVksBot:
 
             # 2) Step 6: Personal Details (Фамилия, Имя, Отчество, Дата рождения, Гражданство, Место рождения, Пол)
             if self.page.locator("#si13_lastNameRu:visible, #si13_firstNameRu:visible, #dic13_ctz:visible").count() > 0 or "Шаг 6" in step_name:
-                last_name = str(row.get("Фамилия", "")).strip() or "Нет"
-                first_name = str(row.get("Имя", "")).strip()
-                middle_name = str(row.get("Отчество", "")).strip() or "НЕТ"
+                citizenship = self.sanitize_cyrillic_field(row.get("ТекущееГражданство", "Турция"), fallback="Турция", allow_digits_punct=False)
+                last_name = self.sanitize_cyrillic_field(row.get("Фамилия", ""), fallback="Нет", allow_digits_punct=False)
+                first_name = self.sanitize_cyrillic_field(row.get("Имя", ""), fallback="Нет", allow_digits_punct=False)
+                middle_name = self.sanitize_cyrillic_field(row.get("Отчество", ""), fallback="НЕТ", allow_digits_punct=False)
                 bdate_str = str(row.get("ДатаРождения", "")).strip()
-                citizenship = str(row.get("ТекущееГражданство", "Турция")).strip()
-                pob_val = str(row.get("МестоРождения", "")).strip() or citizenship
+                pob_val = self.sanitize_cyrillic_field(row.get("МестоРождения", ""), fallback=citizenship, allow_digits_punct=True)
                 gender = str(row.get("Пол", "Мужской")).strip()
                 gender_label = "Женский" if gender.lower().startswith("ж") or gender.lower().startswith("k") else "Мужской"
 
                 if self.is_input_empty_or_invalid("#si13_lastNameRu, input[name*='lastNameRu']"):
-                    logger.info("Auto-repair Step 6: Re-filling Фамилия...")
+                    logger.info(f"Auto-repair Step 6: Re-filling Фамилия ('{last_name}')...")
                     self.type_masked_input("#si13_lastNameRu, input[name*='lastNameRu']", last_name, delay=30)
                     repaired = True
 
                 if self.is_input_empty_or_invalid("#si13_firstNameRu, input[name*='firstNameRu']"):
-                    logger.info("Auto-repair Step 6: Re-filling Имя...")
+                    logger.info(f"Auto-repair Step 6: Re-filling Имя ('{first_name}')...")
                     self.type_masked_input("#si13_firstNameRu, input[name*='firstNameRu']", first_name, delay=30)
                     repaired = True
 
                 if self.is_input_empty_or_invalid("#si13_secondNameRu, input[name*='secondNameRu']"):
-                    logger.info("Auto-repair Step 6: Re-filling Отчество...")
+                    logger.info(f"Auto-repair Step 6: Re-filling Отчество ('{middle_name}')...")
                     self.type_masked_input("#si13_secondNameRu, input[name*='secondNameRu']", middle_name, delay=30)
                     repaired = True
 
@@ -820,9 +992,12 @@ class GosuslugiVksBot:
                     self.fill_citizenship_strict(citizenship)
                     repaired = True
 
-                if self.is_input_empty_or_invalid("#si13_pob, input[name*='pob']"):
-                    logger.info("Auto-repair Step 6: Re-filling Место рождения...")
-                    self.type_masked_input("#si13_pob, input[name*='pob']", pob_val, delay=30)
+                red_str = " ".join(self.has_red_validation_errors()).lower()
+                if self.is_input_empty_or_invalid("#si13_pob, input[name*='pob']") or "место рождения" in red_str or "кириллиц" in red_str:
+                    # If pob_val still fails, fallback to clean Cyrillic citizenship (e.g. 'Индия')
+                    repair_pob = pob_val if ("место рождения" not in red_str) else citizenship
+                    logger.info(f"Auto-repair Step 6: Re-filling Место рождения in Cyrillic ('{repair_pob}')...")
+                    self.type_masked_input("#si13_pob:visible, input[name*='pob']:visible", repair_pob, delay=25)
                     repaired = True
 
                 gender_span = self.page.locator(
@@ -845,8 +1020,10 @@ class GosuslugiVksBot:
                 if self.is_input_empty_or_invalid("input[name='di14_issue']:visible"):
                     self.type_masked_input("input[name='di14_issue'], input[placeholder*='__.__.____']", str(row.get("ДатаВыдачи", "")).strip(), delay=35)
                     repaired = True
-                if self.is_input_empty_or_invalid("#si14_issuedBy_125:visible, input[id*='issuedBy']:visible"):
-                    self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", str(row.get("ПаспортКемВыдан", "")).strip(), delay=25)
+                red_str_7 = " ".join(self.has_red_validation_errors()).lower()
+                if self.is_input_empty_or_invalid("#si14_issuedBy_125:visible, input[id*='issuedBy']:visible") or "кириллиц" in red_str_7:
+                    clean_issued_by = self.sanitize_cyrillic_field(row.get("ПаспортКемВыдан", ""), fallback="МВД", allow_digits_punct=True)
+                    self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", clean_issued_by, delay=25)
                     repaired = True
 
             # 4) Step 9: Work Permit (РНР) Details
@@ -1340,15 +1517,22 @@ class GosuslugiVksBot:
         logger.info(f"Step 6: Filling VKS Specialist Personal Info for {full_name}...")
         self.check_and_handle_error_modal()
 
+        citizenship = self.sanitize_cyrillic_field(
+            row.get("ТекущееГражданство", "Турция"), fallback="Турция", allow_digits_punct=False
+        )
+        clean_last_name = self.sanitize_cyrillic_field(last_name, fallback="Нет", allow_digits_punct=False)
+        clean_first_name = self.sanitize_cyrillic_field(first_name, fallback="Нет", allow_digits_punct=False)
+        clean_middle_name = self.sanitize_cyrillic_field(
+            middle_name if middle_name else "НЕТ", fallback="НЕТ", allow_digits_punct=False
+        )
+
         last_name_input = self.page.locator("#si13_lastNameRu, input[name*='lastNameRu']").first
         last_name_input.wait_for(state="visible", timeout=25000)
-        self.type_masked_input("#si13_lastNameRu, input[name*='lastNameRu']", last_name, delay=25)
-
-        citizenship = str(row.get("ТекущееГражданство", "Турция")).strip()
+        self.type_masked_input("#si13_lastNameRu, input[name*='lastNameRu']", clean_last_name, delay=25)
 
         # First Name & Middle Name
-        self.type_masked_input("#si13_firstNameRu, input[name*='firstNameRu']", first_name, delay=25)
-        self.type_masked_input("#si13_secondNameRu, input[name*='secondNameRu']", middle_name if middle_name else "НЕТ", delay=25)
+        self.type_masked_input("#si13_firstNameRu, input[name*='firstNameRu']", clean_first_name, delay=25)
+        self.type_masked_input("#si13_secondNameRu, input[name*='secondNameRu']", clean_middle_name, delay=25)
 
         # Birth Date (di13_birth / __.__.____)
         bdate_str = str(row.get("ДатаРождения", "")).strip()
@@ -1357,9 +1541,12 @@ class GosuslugiVksBot:
         # Citizenship selection (Гражданство -> #dic13_ctz + .lookup-item click)
         self.fill_citizenship_strict(citizenship)
 
-        # Place of Birth (si13_pob) — only if visible on this form screen
+        # Place of Birth (si13_pob) — only if visible on this form screen, sanitized to valid Russian Cyrillic!
         if self.page.locator("#si13_pob:visible, input[name*='pob']:visible").count() > 0:
-            pob_val = str(row.get("МестоРождения", "")).strip() or citizenship
+            raw_pob = str(row.get("МестоРождения", "")).strip() or citizenship
+            pob_val = self.sanitize_cyrillic_field(raw_pob, fallback=citizenship, allow_digits_punct=True)
+            if raw_pob != pob_val:
+                logger.info(f"Step 6: Авто-транслитерация Место рождения: '{raw_pob}' -> '{pob_val}'")
             self.type_masked_input("#si13_pob:visible, input[name*='pob']:visible", pob_val, delay=25)
 
         # Gender ('Мужской' / 'Женский')
@@ -1383,7 +1570,11 @@ class GosuslugiVksBot:
             self.type_masked_input("#series, input[name*='series']", p_series_val, delay=30)
         self.type_masked_input("#number, input[name*='number']", str(row.get("НомерПаспорта", "")).strip(), delay=30)
         self.type_masked_input("input[name='di14_issue'], input[placeholder*='__.__.____']", str(row.get("ДатаВыдачи", "")).strip(), delay=35)
-        self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", str(row.get("ПаспортКемВыдан", "")).strip(), delay=25)
+        raw_issued_by = str(row.get("ПаспортКемВыдан", "")).strip()
+        clean_issued_by = self.sanitize_cyrillic_field(raw_issued_by, fallback="МВД", allow_digits_punct=True)
+        if raw_issued_by and raw_issued_by != clean_issued_by:
+            logger.info(f"Step 7: Авто-транслитерация Кем выдан паспорт: '{raw_issued_by}' -> '{clean_issued_by}'")
+        self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", clean_issued_by, delay=25)
         self.page.wait_for_timeout(600)
 
         self.click_continue_strict("Шаг 7: Паспортные данные", 2000)
@@ -2384,6 +2575,25 @@ class GosuslugiVksBot:
             pass
         return False
 
+    def is_valid_labor_activity_service(self, text: str) -> bool:
+        """
+        Returns True ONLY if the service/card text belongs to 'Уведомления о трудовой деятельности иностранцев'
+        and is NOT a Work Permit ('Разрешение на работу ИГ'), migration arrival/departure ('прибытии и убытии'),
+        or unsent draft ('черновик').
+        """
+        t = str(text or "").lower().replace("ё", "е")
+        excluded = (
+            "прибытии",
+            "убытии",
+            "разрешение на работу",
+            "выдан документ разрешение",
+            "получение разрешения",
+            "черновик",
+        )
+        if any(bad in t for bad in excluded):
+            return False
+        return True
+
     def expand_order_history_on_page(self):
         """
         Expands 'Показать историю' (and any collapsed 'Зарегистрировано на портале' history item)
@@ -2406,19 +2616,22 @@ class GosuslugiVksBot:
                 pass
             self.page.wait_for_timeout(500)
 
-        # 2) Click 'Показать историю' if present on the page
-        for attempt in range(2):
+        # 2) Click 'Показать историю' using pure CSS locator (yesterday's working selector) + get_by_text + physical mouse click + DOM click
+        for attempt in range(3):
             clicked_history = False
+
+            # Strategy 2A: Pure CSS selector (never mix CSS with text=/.../ in one string!)
             show_history = self.page.locator(
-                "button:has-text('Показать историю'):visible, "
                 "a:has-text('Показать историю'):visible, "
+                "button:has-text('Показать историю'):visible, "
                 "span:has-text('Показать историю'):visible, "
-                "div.history-toggle:visible, "
-                "text=/Показать\\s+(всю\\s+)?историю/i"
+                "div:has-text('Показать историю'):visible"
             ).first
             try:
                 if show_history.count() > 0 and show_history.is_visible():
-                    logger.info("Step 16: Clicking 'Показать историю' on order page to reveal 'Гражданин' & 'req_preview'...")
+                    logger.info(
+                        f"Step 16: Clicking 'Показать историю' (attempt {attempt + 1}) to reveal 'Гражданин' & 'req_preview'..."
+                    )
                     try:
                         show_history.scroll_into_view_if_needed(timeout=2000)
                     except Exception:
@@ -2427,32 +2640,65 @@ class GosuslugiVksBot:
                         show_history.click(timeout=3500)
                         clicked_history = True
                     except Exception:
-                        pass
+                        try:
+                            show_history.click(force=True, timeout=2500)
+                            clicked_history = True
+                        except Exception:
+                            pass
             except Exception:
                 pass
 
-            # Also trigger via DOM JavaScript in case Angular wraps 'Показать историю' in custom elements
+            # Strategy 2B: Playwright get_by_text('Показать историю') + physical mouse coordinate click
+            if not clicked_history:
+                try:
+                    by_txt = self.page.get_by_text("Показать историю", exact=False).first
+                    if by_txt.count() > 0 and by_txt.is_visible():
+                        logger.info(f"Step 16: Clicking 'Показать историю' via get_by_text (attempt {attempt + 1})...")
+                        try:
+                            by_txt.scroll_into_view_if_needed(timeout=2000)
+                        except Exception:
+                            pass
+                        box = by_txt.bounding_box()
+                        if box and box["width"] > 0 and box["height"] > 0:
+                            self.page.mouse.click(
+                                box["x"] + box["width"] / 2,
+                                box["y"] + box["height"] / 2,
+                            )
+                            clicked_history = True
+                        else:
+                            by_txt.click(force=True, timeout=2500)
+                            clicked_history = True
+                except Exception:
+                    pass
+
+            # Strategy 2C: DOM JavaScript fallback + bounding-box mouse click
             try:
-                js_clicked = self.page.evaluate(
-                    """() => {
+                js_coords = self.page.evaluate(
+                    r"""() => {
                         const els = Array.from(document.querySelectorAll('a, button, span, div, p'));
                         for (const el of els) {
                             const t = (el.innerText || el.textContent || '').trim();
-                            if (/^показать\\s+(всю\\s+)?историю$/i.test(t)) {
-                                const rect = el.getBoundingClientRect();
+                            if (/^показать\s+(всю\s+)?историю$/i.test(t)) {
+                                el.scrollIntoView({ block: 'center' });
+                                const target = el.closest('button, a, [role="button"], .link, .history-toggle') || el;
+                                const rect = target.getBoundingClientRect();
+                                target.click();
+                                target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                                 if (rect.width > 0 && rect.height > 0) {
-                                    el.scrollIntoView({ block: 'center' });
-                                    const target = el.closest('button, a, [role="button"], .link, .history-toggle') || el;
-                                    target.click();
-                                    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                                    return true;
+                                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
                                 }
+                                return { x: 0, y: 0 };
                             }
                         }
-                        return false;
+                        return null;
                     }"""
                 )
-                if js_clicked:
+                if js_coords:
+                    if not clicked_history and js_coords.get("x", 0) > 0 and js_coords.get("y", 0) > 0:
+                        try:
+                            self.page.mouse.click(js_coords["x"], js_coords["y"])
+                        except Exception:
+                            pass
                     clicked_history = True
             except Exception:
                 pass
@@ -2465,16 +2711,14 @@ class GosuslugiVksBot:
                 body_check = self.page.locator("body").inner_text(timeout=1500)
                 if "req_preview" not in body_check or "Гражданин" not in body_check:
                     expanded_inner = self.page.evaluate(
-                        """() => {
+                        r"""() => {
                             let clicked = false;
-                            // Click any closed .history-status blocks
                             const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
                             for (const st of closedStatuses) {
                                 const header = st.querySelector('.history-header, .status-title, h3, h4, span, div') || st;
                                 header.click();
                                 clicked = true;
                             }
-                            // Also click 'Зарегистрировано на портале' if present and req_preview is not visible
                             const allNodes = Array.from(document.querySelectorAll('span, div, p, a, button'));
                             for (const n of allNodes) {
                                 const txt = (n.innerText || '').trim();
@@ -2493,10 +2737,10 @@ class GosuslugiVksBot:
             except Exception:
                 pass
 
-            # Break early once both Гражданин and req_preview (or Гражданин) are visible in the DOM
+            # Break early once Гражданин or req_preview is visible or 'Показать историю' is no longer shown
             try:
                 body_after = self.page.locator("body").inner_text(timeout=1500)
-                if "Гражданин" in body_after and ("req_preview" in body_after or "Показать историю" not in body_after):
+                if ("Гражданин" in body_after and "req_preview" in body_after) or "Показать историю" not in body_after:
                     break
             except Exception:
                 pass
@@ -2515,16 +2759,21 @@ class GosuslugiVksBot:
         info = {"order_no": "", "service_title": "", "citizen_name": "", "body_text": ""}
         try:
             dom_extracted = self.page.evaluate(
-                """() => {
+                r"""() => {
                     const res = { order_no: "", service_title: "", citizen_name: "" };
                     const stopWords = /^(документы|история|показать историю|скрыть историю|скачать|скачать всё|адрес|статус|сведения|отправитель|инициатор)$/i;
 
                     // 1. Heading / Service title
-                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, .order-title, .title-h3'));
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, .order-title, .title-h3, .sub-title, p, span'));
                     for (const h of headings) {
                         const t = (h.innerText || "").trim();
-                        if (t.includes("Уведомлени") || t.includes("Заявлени")) {
-                            res.service_title = t.split("\\n")[0].trim();
+                        if (
+                            t.includes("Уведомления о трудовой деятельности") ||
+                            t.includes("Уведомления о прибытии") ||
+                            t.includes("Разрешение на работу ИГ") ||
+                            t.includes("Выдан документ Разрешение на работу")
+                        ) {
+                            res.service_title = t.split("\n")[0].trim();
                             break;
                         }
                     }
@@ -2539,20 +2788,20 @@ class GosuslugiVksBot:
                                 const next = cur.nextElementSibling;
                                 if (next && (next.innerText || "").trim()) {
                                     const lines = (next.innerText || "")
-                                        .split("\\n")
+                                        .split("\n")
                                         .map(s => s.trim())
                                         .filter(s => s && !stopWords.test(s));
                                     if (lines.length > 0) {
-                                        res.citizen_name = lines.join(" ").replace(/\\s+/g, " ").trim();
+                                        res.citizen_name = lines.join(" ").replace(/\s+/g, " ").trim();
                                         break;
                                     }
                                 }
                                 if (cur.parentElement) {
                                     const pLines = (cur.parentElement.innerText || "")
-                                        .split("\\n")
+                                        .split("\n")
                                         .map(s => s.trim())
                                         .filter(Boolean);
-                                    const gIdx = pLines.findIndex(l => /^Гражданин\\s*:?$/i.test(l) || l.startsWith("Гражданин"));
+                                    const gIdx = pLines.findIndex(l => /^Гражданин\s*:?$/i.test(l) || l.startsWith("Гражданин"));
                                     if (gIdx !== -1 && pLines.length > gIdx + 1) {
                                         const collected = [];
                                         for (let k = gIdx + 1; k < Math.min(pLines.length, gIdx + 4); k++) {
@@ -2560,7 +2809,7 @@ class GosuslugiVksBot:
                                             collected.push(pLines[k]);
                                         }
                                         if (collected.length > 0) {
-                                            res.citizen_name = collected.join(" ").replace(/\\s+/g, " ").trim();
+                                            res.citizen_name = collected.join(" ").replace(/\s+/g, " ").trim();
                                             break;
                                         }
                                     }
@@ -2600,7 +2849,11 @@ class GosuslugiVksBot:
                         info["citizen_name"] = " ".join(filtered_lines).strip()
 
             if not info["service_title"]:
-                m_srv = re.search(r"(Уведомлени[ея]\s+о\s+[^\r\n№]+)", body_text, re.IGNORECASE)
+                m_srv = re.search(
+                    r"(Уведомлени[ея]\s+о\s+[^\r\n№]+|Выдан документ Разрешение на работу[^\r\n№]*|Разрешение на работу ИГ[^\r\n№]*)",
+                    body_text,
+                    re.IGNORECASE,
+                )
                 if m_srv:
                     info["service_title"] = m_srv.group(1).strip()
 
@@ -2620,28 +2873,36 @@ class GosuslugiVksBot:
     ) -> Tuple[Optional[Dict[str, str]], List[str]]:
         """
         Queries Gosuslugi's internal /api/lk/v1/feeds/ JSON API directly inside the browser session.
-        Returns:
-          (direct_match_or_None, recent_unverified_order_urls)
-        Even when Gosuslugi's feed snippet does NOT include 'Гражданин' (because 'Гражданин' is inside
-        'Показать историю' on the order detail page), `recent_unverified_order_urls` provides the exact
-        `https://lk.gosuslugi.ru/order/<feed_id>` URLs of the newest labor notifications so the robot can
-        open them, click 'Показать историю', and verify 'Гражданин'!
+        Strictly filters ONLY 'Уведомления о трудовой деятельности иностранцев' (never 'Разрешение на работу ИГ'
+        or 'Уведомления о прибытии и убытии').
         """
         sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
-        feed_url = (
-            "https://www.gosuslugi.ru/api/lk/v1/feeds/"
+        query_suffix = (
             "?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
             "&pageSize=25&status=&startDate=&lastFeedId=&lastFeedDate=&q="
         )
         try:
             raw_items = self.page.evaluate(
-                """async (url) => {
-                    const resp = await fetch(url, { credentials: "include", headers: { "Accept": "application/json" } });
-                    if (!resp.ok) return [];
-                    const data = await resp.json();
-                    return Array.isArray(data.items) ? data.items : [];
+                """async (suffix) => {
+                    const urls = [
+                        `/api/lk/v1/feeds/${suffix}`,
+                        `https://www.gosuslugi.ru/api/lk/v1/feeds/${suffix}`,
+                        `https://lk.gosuslugi.ru/api/lk/v1/feeds/${suffix}`
+                    ];
+                    for (const url of urls) {
+                        try {
+                            const resp = await fetch(url, { credentials: "include", headers: { "Accept": "application/json" } });
+                            if (resp.ok) {
+                                const data = await resp.json();
+                                if (data && Array.isArray(data.items) && data.items.length > 0) {
+                                    return data.items;
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                    return [];
                 }""",
-                feed_url,
+                query_suffix,
             )
         except Exception as e:
             logger.debug(f"Feeds API lookup note: {e}")
@@ -2664,12 +2925,11 @@ class GosuslugiVksBot:
             if not ext_id or not ext_id.isdigit() or not feed_id:
                 continue
 
-            # Exclude 'Уведомления о прибытии и убытии иностранцев' (migration registration, not labor/VKS)
-            if "прибытии" in sub_title.lower() or "убытии" in sub_title.lower():
+            combined_title = f"{sub_title} {raw_title}".lower()
+            # Strictly exclude 'Разрешение на работу ИГ', 'Уведомления о прибытии и убытии', and 'Черновик'
+            if not self.is_valid_labor_activity_service(combined_title):
                 continue
-
-            # Exclude drafts
-            if "черновик" in raw_title.lower():
+            if sub_title and "трудовой деятельности" not in sub_title.lower():
                 continue
 
             # Exclude orders already linked to another worker
@@ -2712,7 +2972,7 @@ class GosuslugiVksBot:
             else:
                 # Snippet didn't include 'Гражданин' (because 'Гражданин' is inside 'Показать историю' on /order/<feed_id>)
                 order_url = f"https://lk.gosuslugi.ru/order/{feed_id}"
-                if order_url not in recent_unverified_urls and len(recent_unverified_urls) < 5:
+                if order_url not in recent_unverified_urls and len(recent_unverified_urls) < 3:
                     recent_unverified_urls.append(order_url)
 
         if candidates:
@@ -2724,7 +2984,8 @@ class GosuslugiVksBot:
         Executes Step 16 after 'Уведомление отправлено' with strict multi-computer & citizen verification:
         1) Verifies no 'У вас недостаточно полномочий' error is on screen
         2) Clicks 'В личный кабинет' or navigates to https://lk.gosuslugi.ru/orders
-        3) Opens the order page, clicks 'Показать историю' FIRST so 'Гражданин' and 'req_preview' are visible,
+        3) Opens ONLY 'Уведомления о трудовой деятельности иностранцев' orders (never 'Разрешение на работу ИГ'),
+           clicks 'Показать историю' FIRST so 'Гражданин' and 'req_preview' are visible,
            and verifies 'Гражданин' matches `row` (including names with 'Нет' like 'Нет АДЖАД Нет' or 'Аалм Мехтаб Нет')
         4) Downloads 'req_preview' PDF and renames it to <Sicil>_<VerifiedGosuslugiNo>_<WorkerName>_<Period>.pdf
         """
@@ -2763,8 +3024,7 @@ class GosuslugiVksBot:
         if "lk.gosuslugi.ru/order/" in (self.page.url or ""):
             page_info = self.inspect_open_order_page()
             if (
-                "прибытии" not in page_info["service_title"].lower()
-                and "убытии" not in page_info["service_title"].lower()
+                self.is_valid_labor_activity_service(page_info["service_title"] + " " + page_info.get("body_text", "")[:400])
                 and self.does_citizen_match_worker(page_info["citizen_name"], row, page_info.get("body_text", ""))
                 and not self.is_order_already_linked_to_another_worker(page_info["order_no"], sicil)
             ):
@@ -2799,8 +3059,7 @@ class GosuslugiVksBot:
                     page_info.get("body_text", ""),
                 ) or (expected_order_no and page_info["order_no"] == expected_order_no)
                 if (
-                    "прибытии" not in page_info["service_title"].lower()
-                    and "убытии" not in page_info["service_title"].lower()
+                    self.is_valid_labor_activity_service(page_info["service_title"])
                     and is_citizen_ok
                     and not self.is_order_already_linked_to_another_worker(page_info["order_no"] or api_match["application_no"], sicil)
                 ):
@@ -2810,7 +3069,7 @@ class GosuslugiVksBot:
                     )
                     break
 
-            # Pass Strategy B: Inspect recent candidate orders (starting with newest unverified orders from /api/lk/v1/feeds/ + DOM cards on /orders)
+            # Pass Strategy B: Inspect recent candidate orders (starting with newest labor notifications from /api/lk/v1/feeds/ + DOM cards on /orders)
             candidate_hrefs: List[str] = [u for u in api_unverified_urls if u not in checked_urls]
 
             orders_list_url = "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
@@ -2825,14 +3084,26 @@ class GosuslugiVksBot:
             worker_tokens = self._normalize_ru_tokens(clean_worker_name)
             try:
                 raw_cards = self.page.evaluate(
-                    """() => {
+                    r"""() => {
                         const results = [];
                         const links = Array.from(document.querySelectorAll("a[href*='/order/']"));
                         for (const a of links) {
                             const href = a.getAttribute("href") || "";
-                            const card = a.closest("div.feed-item, lib-feed-item, .order-item") || a;
+                            if (!href) continue;
+                            // Walk up DOM up to 6 levels while this container only holds this single order link
+                            // so we capture the entire order card text (service subtitle + Гражданин snippet)!
+                            let card = a;
+                            for (let depth = 0; depth < 6 && card.parentElement; depth++) {
+                                const parent = card.parentElement;
+                                const orderLinksInParent = parent.querySelectorAll("a[href*='/order/']");
+                                if (orderLinksInParent.length === 1) {
+                                    card = parent;
+                                } else {
+                                    break;
+                                }
+                            }
                             const text = (card.innerText || "").trim();
-                            if (href) results.push({ href, text });
+                            results.push({ href, text });
                         }
                         return results;
                     }"""
@@ -2848,22 +3119,25 @@ class GosuslugiVksBot:
                                 if full_u not in candidate_hrefs:
                                     candidate_hrefs.insert(0, full_u)
 
-                    # Pass 1: Cards explicitly mentioning the worker's significant name tokens (e.g. 'аджад')
+                    # Pass 1: Cards explicitly mentioning the worker's significant name tokens (e.g. 'аджад') AND valid labor activity service
                     for c in raw_cards:
                         c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
                         c_href = str(c.get("href") or "").strip()
-                        if not c_href or "прибытии" in c_text_low or "убытии" in c_text_low or "черновик" in c_text_low:
+                        if not c_href or not self.is_valid_labor_activity_service(c_text_low):
                             continue
                         if worker_tokens and all(tok in c_text_low for tok in worker_tokens):
                             full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
                             if full_u not in candidate_hrefs:
                                 candidate_hrefs.insert(0, full_u)
 
-                    # Pass 2: Top 4 recent labor activity orders that haven't been checked yet
-                    for c in raw_cards[:6]:
+                    # Pass 2: Recent 'Уведомления о трудовой деятельности иностранцев' cards that haven't been checked yet
+                    for c in raw_cards[:8]:
                         c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
                         c_href = str(c.get("href") or "").strip()
-                        if not c_href or "прибытии" in c_text_low or "убытии" in c_text_low or "черновик" in c_text_low:
+                        if not c_href or not self.is_valid_labor_activity_service(c_text_low):
+                            continue
+                        # If the card text has service info, require 'трудовой деятельности' so we never open 'Разрешение на работу ИГ'!
+                        if ("мвд" in c_text_low or "уведомлени" in c_text_low or "выдан" in c_text_low) and "трудовой деятельности" not in c_text_low:
                             continue
                         m_card_cit = re.search(r"гражданин\s*:?\s*([^\n\r]+)", c_text_low)
                         if m_card_cit and not self.does_citizen_match_worker(m_card_cit.group(1), row, c_text_low):
@@ -2877,7 +3151,7 @@ class GosuslugiVksBot:
             except Exception:
                 pass
 
-            for cand_url in candidate_hrefs[:4]:
+            for cand_url in candidate_hrefs[:3]:
                 checked_urls.add(cand_url)
                 logger.info(f"Step 16.2: Opening candidate order {cand_url} (will expand 'Показать историю' to verify 'Гражданин')...")
                 try:
@@ -2896,9 +3170,9 @@ class GosuslugiVksBot:
                     f"Step 16.3: Order Page Check -> № {p_no or '?'} | Услуга: '{p_srv}' | Гражданин: '{p_cit}'"
                 )
 
-                if "прибытии" in p_srv.lower() or "убытии" in p_srv.lower():
+                if not self.is_valid_labor_activity_service(p_srv + " " + p_body[:400]):
                     logger.warning(
-                        f"Step 16 MISMATCH: Заявление № {p_no} относится к услуге '{p_srv}' (Гражданин: '{p_cit}'), а не к ВКС! Пропускаем..."
+                        f"Step 16 MISMATCH: Заявление № {p_no} относится к другой услуге ('{p_srv}'), а не к ВКС! Пропускаем..."
                     )
                     continue
 

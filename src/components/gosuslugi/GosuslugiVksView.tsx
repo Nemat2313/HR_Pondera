@@ -153,7 +153,175 @@ const CITIZENSHIP_MAP_RU: Record<string, string> = {
   BANGLADES: 'Бангладеш',
   PAKISTAN: 'Пакистан',
   RUSYA: 'Россия',
+  INDIA: 'Индия',
+  TURKEY: 'Турция',
 };
+
+const LATIN_TO_CYRILLIC_PLACES: Array<[RegExp, string]> = [
+  [/\bUTTAR\s+PRADESH\b/gi, 'УТТАР ПРАДЕШ'],
+  [/\bWEST\s+BENGAL\b/gi, 'ЗАПАДНАЯ БЕНГАЛИЯ'],
+  [/\bANDHRA\s+PRADESH\b/gi, 'АНДХРА-ПРАДЕШ'],
+  [/\bMADHYA\s+PRADESH\b/gi, 'МАДХЬЯ-ПРАДЕШ'],
+  [/\bHIMACHAL\s+PRADESH\b/gi, 'ХИМАЧАЛ-ПРАДЕШ'],
+  [/\bARUNACHAL\s+PRADESH\b/gi, 'АРУНАЧАЛ-ПРАДЕШ'],
+  [/\bTAMIL\s+NADU\b/gi, 'ТАМИЛНАД'],
+  [/\bNEW\s+DELHI\b/gi, 'НЬЮ-ДЕЛИ'],
+  [/\bJAMMU\s+AND\s+KASHMIR\b/gi, 'ДЖАММУ И КАШМИР'],
+  [/\bKUSHINAGAR\b/gi, 'КУШИНАГАР'],
+  [/\bBIHAR\b/gi, 'БИХАР'],
+  [/\bPATNA\b/gi, 'ПАТНА'],
+  [/\bLUCKNOW\b/gi, 'ЛАКХНАУ'],
+  [/\bGORAKHPUR\b/gi, 'ГОРАКХПУР'],
+  [/\bDEORIA\b/gi, 'ДЕОРИЯ'],
+  [/\bSIWAN\b/gi, 'СИВАН'],
+  [/\bGOPALGANJ\b/gi, 'ГОПАЛГАНДЖ'],
+  [/\bCHAPRA\b/gi, 'ЧАПРА'],
+  [/\bMUZAFFARPUR\b/gi, 'МУЗАФФАРПУР'],
+  [/\bDARBHANGA\b/gi, 'ДАРБХАНГА'],
+  [/\bMOTIHARI\b/gi, 'МОТИХАРИ'],
+  [/\bBETTIAH\b/gi, 'БЕТТИЯ'],
+  [/\bAZAMGARH\b/gi, 'АЗАМГАРХ'],
+  [/\bJAUNPUR\b/gi, 'ДЖАУНПУР'],
+  [/\bGHAZIPUR\b/gi, 'ГАЗИПУР'],
+  [/\bBALLIA\b/gi, 'БАЛЛИЯ'],
+  [/\bVARANASI\b/gi, 'ВАРАНАСИ'],
+  [/\bALLAHABAD\b/gi, 'АЛЛАХАБАД'],
+  [/\bPRAYAGRAJ\b/gi, 'ПРАЯГРАДЖ'],
+  [/\bKANPUR\b/gi, 'КАНПУР'],
+  [/\bAGRA\b/gi, 'АГРА'],
+  [/\bMEERUT\b/gi, 'МИРУТ'],
+  [/\bBAREILLY\b/gi, 'БАРЕЙЛИ'],
+  [/\bMORADABAD\b/gi, 'МОРАДАБАД'],
+  [/\bALIGARH\b/gi, 'АЛИГАРХ'],
+  [/\bSAHARANPUR\b/gi, 'САХАРАНПУР'],
+  [/\bFAIZABAD\b/gi, 'ФАЙЗАБАД'],
+  [/\bAYODHYA\b/gi, 'АЙОДХЬЯ'],
+  [/\bBASTI\b/gi, 'БАСТИ'],
+  [/\bGONDA\b/gi, 'ГОНДА'],
+  [/\bBAHRAICH\b/gi, 'БАХРАЙЧ'],
+  [/\bSULTANPUR\b/gi, 'СУЛТАНПУР'],
+  [/\bKOLKATA\b/gi, 'КОЛКАТА'],
+  [/\bCALCUTTA\b/gi, 'КАЛЬКУТТА'],
+  [/\bMUMBAI\b/gi, 'МУМБАИ'],
+  [/\bDELHI\b/gi, 'ДЕЛИ'],
+  [/\bCHENNAI\b/gi, 'ЧЕННАИ'],
+  [/\bHYDERABAD\b/gi, 'ХАЙДАРАБАД'],
+  [/\bBENGALURU\b/gi, 'БЕНГАЛУРУ'],
+  [/\bBANGALORE\b/gi, 'БАНГАЛОР'],
+  [/\bAHMEDABAD\b/gi, 'АХМАДАБАД'],
+  [/\bJAIPUR\b/gi, 'ДЖАЙПУР'],
+  [/\bSURAT\b/gi, 'СУРАТ'],
+  [/\bPUNE\b/gi, 'ПУНА'],
+  [/\bPUNJAB\b/gi, 'ПЕНДЖАБ'],
+  [/\bHARYANA\b/gi, 'ХАРЬЯНА'],
+  [/\bRAJASTHAN\b/gi, 'РАДЖАСТХАН'],
+  [/\bGUJARAT\b/gi, 'ГУДЖАРАТ'],
+  [/\bMAHARASHTRA\b/gi, 'МАХАРАШТРА'],
+  [/\bKARNATAKA\b/gi, 'КАРНАТАКА'],
+  [/\bKERALA\b/gi, 'КЕРАЛА'],
+  [/\bTELANGANA\b/gi, 'ТЕЛАНГАНА'],
+  [/\bODISHA\b/gi, 'ОДИША'],
+  [/\bASSAM\b/gi, 'АССАМ'],
+  [/\bJHARKHAND\b/gi, 'ДЖАРКХАНД'],
+  [/\bRANCHI\b/gi, 'РАНЧИ'],
+  [/\bJAMSHEDPUR\b/gi, 'ДЖАМШЕДПУР'],
+  [/\bDHANBAD\b/gi, 'ДХАНБАД'],
+  [/\bBOKARO\b/gi, 'БОКАРО'],
+  [/\bHAZARIBAGH\b/gi, 'ХАЗАРИБАГХ'],
+  [/\bGIRIDIH\b/gi, 'ГИРИДИХ'],
+  [/\bDEOGHAR\b/gi, 'ДЕОГХАР'],
+  [/\bCHHATTISGARH\b/gi, 'ЧХАТТИСГАРХ'],
+  [/\bUTTARAKHAND\b/gi, 'УТТАРАКХАНД'],
+  [/\bINDIA\b/gi, 'ИНДИЯ'],
+  [/\bTURKEY\b/gi, 'ТУРЦИЯ'],
+  [/\bISTANBUL\b/gi, 'СТАМБУЛ'],
+  [/\bANKARA\b/gi, 'АНКАРА'],
+  [/\bIZMIR\b/gi, 'ИЗМИР'],
+  [/\bANTALYA\b/gi, 'АНТАЛЬЯ'],
+  [/\bBURSA\b/gi, 'БУРСА'],
+  [/\bADANA\b/gi, 'АДАНА'],
+  [/\bKONYA\b/gi, 'КОНЬЯ'],
+  [/\bGAZIANTEP\b/gi, 'ГАЗИАНТЕП'],
+  [/\bMERSIN\b/gi, 'МЕРСИН'],
+  [/\bKAYSERI\b/gi, 'КАЙСЕРИ'],
+  [/\bSAMSUN\b/gi, 'САМСУН'],
+  [/\bTRABZON\b/gi, 'ТРАБЗОН'],
+  [/\bHATAY\b/gi, 'ХАТАЙ'],
+];
+
+/**
+ * Automatically converts Latin/Turkish characters to Russian Cyrillic and strips characters
+ * forbidden by Gosuslugi's Step 6 / Step 7 validators:
+ * - 'Место рождения может содержать символы кириллицы, пробел, дефис, запятые, точки, цифры, до 99 символов'
+ */
+export function sanitizeCyrillicGosuslugiText(
+  raw: string | undefined | null,
+  fallback = '',
+  allowDigitsPunct = true
+): string {
+  let s = String(raw || '').trim();
+  if (!s) return fallback;
+
+  for (const [rx, rep] of LATIN_TO_CYRILLIC_PLACES) {
+    s = s.replace(rx, rep);
+  }
+
+  if (/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(s)) {
+    const digraphs: Array<[RegExp, string]> = [
+      [/SHCH/gi, 'Щ'],
+      [/SH/gi, 'Ш'],
+      [/CH/gi, 'Ч'],
+      [/KH/gi, 'Х'],
+      [/TH/gi, 'Т'],
+      [/DH/gi, 'Д'],
+      [/BH/gi, 'БХ'],
+      [/GH/gi, 'ГХ'],
+      [/PH/gi, 'Ф'],
+      [/ZH/gi, 'Ж'],
+      [/YA/gi, 'Я'],
+      [/YU/gi, 'Ю'],
+      [/YE/gi, 'Е'],
+      [/YO/gi, 'Ё'],
+      [/TS/gi, 'Ц'],
+      [/CK/gi, 'К'],
+    ];
+    for (const [rx, rep] of digraphs) {
+      s = s.replace(rx, rep);
+    }
+
+    const charMap: Record<string, string> = {
+      A: 'А', B: 'Б', V: 'В', G: 'Г', D: 'Д', E: 'Е', Z: 'З',
+      I: 'И', J: 'ДЖ', K: 'К', L: 'Л', M: 'М', N: 'Н', O: 'О',
+      P: 'П', R: 'Р', S: 'С', T: 'Т', U: 'У', F: 'Ф', H: 'Х',
+      C: 'К', W: 'В', Q: 'К', X: 'КС', Y: 'Й',
+      Ç: 'Ч', Ğ: 'Г', İ: 'И', Ö: 'О', Ş: 'Ш', Ü: 'У',
+      a: 'а', b: 'б', v: 'в', g: 'г', d: 'д', e: 'е', z: 'з',
+      i: 'и', j: 'дж', k: 'к', l: 'л', m: 'м', n: 'н', o: 'о',
+      p: 'п', r: 'р', s: 'с', t: 'т', u: 'у', f: 'ф', h: 'х',
+      c: 'к', w: 'в', q: 'к', x: 'кс', y: 'й',
+      ç: 'ч', ğ: 'г', ı: 'ы', ö: 'о', ş: 'ш', ü: 'у',
+    };
+    s = s
+      .split('')
+      .map((ch) => charMap[ch] ?? ch)
+      .join('');
+  }
+
+  s = s.replace(/[/\\|()[\]{};:]+/g, allowDigitsPunct ? ', ' : ' ');
+
+  if (allowDigitsPunct) {
+    s = s.replace(/[^А-Яа-яЁё0-9\s\-,.]/g, '');
+    s = s.replace(/\s*,\s*/g, ', ').replace(/(,\s*){2,}/g, ', ').replace(/^[\s,.-]+|[\s,.-]+$/g, '');
+  } else {
+    s = s.replace(/[^А-Яа-яЁё\s\-]/g, '').replace(/^[\s-]+|[\s-]+$/g, '');
+  }
+
+  s = s.replace(/\s+/g, ' ').trim();
+  if (s.length > 99) {
+    s = s.slice(0, 99).replace(/[\s,.-]+$/g, '');
+  }
+  return s || fallback;
+}
 
 // Strict DD.MM.YYYY calendar parser & validator
 function parseStrictDateRu(val: string | undefined | null): {
@@ -368,9 +536,11 @@ export function validateVksWorkerRecord(
     issues.push({ field, ru, tr });
   };
 
-  // 1. Name (Фамилия / Имя)
+  // 1. Name (Фамилия / Имя / Отчество — Gosuslugi requires Russian Cyrillic)
   if (!w.firstName || !w.firstName.trim()) {
     addIssue('name', 'Не указано Имя', 'Ad (Имя) alanı boş');
+  } else if (/[A-Za-z]/.test(w.firstName)) {
+    addIssue('name', 'Имя должно быть на кириллице', 'Ad (Имя) Rusça Kiril harfleriyle olmalı');
   }
   if (!w.lastName || !w.lastName.trim()) {
     addIssue(
@@ -378,14 +548,22 @@ export function validateVksWorkerRecord(
       'Не указана Фамилия (если нет — укажите «Нет»)',
       'Soyadı (Фамилия) boş (yoksa «Нет» yazın)'
     );
+  } else if (/[A-Za-z]/.test(w.lastName)) {
+    addIssue('name', 'Фамилия должна быть на кириллице', 'Soyadı (Фамилия) Rusça Kiril harfleriyle olmalı');
   }
 
-  // 2. Citizenship & Birthplace
+  // 2. Citizenship & Birthplace (Место рождения может содержать только кириллицу, пробел, дефис, запятые, точки, цифры, до 99 символов)
   if (!w.citizenship || !w.citizenship.trim()) {
     addIssue('citizenship', 'Не указано гражданство', 'Uyruk (Гражданство) eksik');
   }
   if (!w.placeOfBirth || !w.placeOfBirth.trim()) {
     addIssue('citizenship', 'Не указано место рождения', 'Doğum yeri (Место рождения) eksik');
+  } else if (/[A-Za-z]/.test(w.placeOfBirth)) {
+    addIssue(
+      'citizenship',
+      `Место рождения содержит латиницу (${w.placeOfBirth}) — требуется кириллица`,
+      `Doğum yeri Latin harfi içeriyor (${w.placeOfBirth}) — Kiril olmalı`
+    );
   }
 
   // 3. Birth Date
@@ -416,6 +594,12 @@ export function validateVksWorkerRecord(
   }
   if (!w.passportIssuedBy || !w.passportIssuedBy.trim()) {
     addIssue('passport', 'Не указано, кем выдан паспорт', 'Pasaportu veren makam eksik');
+  } else if (/[A-Za-z]/.test(w.passportIssuedBy)) {
+    addIssue(
+      'passport',
+      `Поле «Кем выдан паспорт» содержит латиницу (${w.passportIssuedBy})`,
+      `Pasaportu veren makam Latin harfi içeriyor (${w.passportIssuedBy})`
+    );
   }
   const pIssue = parseStrictDateRu(w.passportIssueDate);
   if (pIssue.empty) {
@@ -1149,23 +1333,25 @@ export default function GosuslugiVksView() {
           const computedSum = sumMonthlySalaries(m1, m2, m3);
           const finalTotal = computedSum || rawTotalCell;
 
+          const mappedCit = CITIZENSHIP_MAP_RU[citVal.toUpperCase()] || sanitizeCyrillicGosuslugiText(citVal, 'Турция', false);
+
           rawMapped.push({
             id: `excel-vks-${idx}`,
             selected: true,
             status: 'pending',
             sicil: sicilVal,
             code: codeVal,
-            lastName: lName,
-            firstName: fName,
-            middleName: getVal(r, idxMiddleName) || 'НЕТ',
+            lastName: sanitizeCyrillicGosuslugiText(lName, 'Нет', false),
+            firstName: sanitizeCyrillicGosuslugiText(fName, '', false),
+            middleName: sanitizeCyrillicGosuslugiText(getVal(r, idxMiddleName) || 'НЕТ', 'НЕТ', false),
             birthDate: formatDateRu(r[idxBirthDate]),
             gender: getVal(r, idxGender) || 'Мужской',
-            citizenship: CITIZENSHIP_MAP_RU[citVal.toUpperCase()] || citVal,
-            placeOfBirth: getVal(r, idxPlaceOfBirth) || citVal,
+            citizenship: mappedCit,
+            placeOfBirth: sanitizeCyrillicGosuslugiText(getVal(r, idxPlaceOfBirth) || mappedCit, mappedCit, true),
             passportSeries: getVal(r, idxPassSeries),
             passportNumber: getVal(r, idxPassNumber),
             passportIssueDate: formatDateRu(r[idxPassIssueDate]),
-            passportIssuedBy: getVal(r, idxPassIssuedBy),
+            passportIssuedBy: sanitizeCyrillicGosuslugiText(getVal(r, idxPassIssuedBy), 'МВД', true),
             inn: getVal(r, idxInn),
             rnrSeries: getVal(r, idxRnrSeries),
             rnrNumber: getVal(r, idxRnrNumber),
@@ -1405,20 +1591,21 @@ export default function GosuslugiVksView() {
   const buildPayloadRecords = (list: GosuslugiVksWorkerRecord[]) =>
     list.map((w) => {
       const monthlyPeriods = buildWorkerMonthlyPeriods(w, periodStart, periodEnd);
+      const cleanCit = sanitizeCyrillicGosuslugiText(w.citizenship, 'Турция', false);
       return {
         Sicil: w.sicil,
         Код: w.code || w.sicil,
-        Фамилия: w.lastName,
-        Имя: w.firstName,
-        Отчество: w.middleName,
+        Фамилия: sanitizeCyrillicGosuslugiText(w.lastName, 'Нет', false),
+        Имя: sanitizeCyrillicGosuslugiText(w.firstName, 'Нет', false),
+        Отчество: sanitizeCyrillicGosuslugiText(w.middleName || 'НЕТ', 'НЕТ', false),
         ДатаРождения: w.birthDate,
         Пол: w.gender,
-        ТекущееГражданство: w.citizenship,
-        МестоРождения: w.placeOfBirth || w.citizenship,
+        ТекущееГражданство: cleanCit,
+        МестоРождения: sanitizeCyrillicGosuslugiText(w.placeOfBirth || cleanCit, cleanCit, true),
         СерияПаспорта: w.passportSeries,
         НомерПаспорта: w.passportNumber,
         ДатаВыдачи: w.passportIssueDate,
-        ПаспортКемВыдан: w.passportIssuedBy,
+        ПаспортКемВыдан: sanitizeCyrillicGosuslugiText(w.passportIssuedBy, 'МВД', true),
         ИНН: w.inn,
         Серия: w.rnrSeries,
         Номер: w.rnrNumber,
