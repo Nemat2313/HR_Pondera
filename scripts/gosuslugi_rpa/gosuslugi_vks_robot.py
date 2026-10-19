@@ -20,7 +20,7 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import openpyxl
 from openpyxl.styles import PatternFill
 
@@ -2601,17 +2601,18 @@ class GosuslugiVksBot:
         sig = [tok for tok in tokens if len(tok) >= 2]
         return sig if sig else tokens
 
-    sanitize_cyrillic_value = staticmethod(sanitize_cyrillic_value)
+    def sanitize_cyrillic_value(self, text: Any, fallback: str = "") -> str:
+        return self.sanitize_cyrillic_field(text, fallback=fallback)
 
     def does_citizen_match_worker(self, citizen_text: str, row: Dict[str, Any], page_body_text: str = "") -> bool:
         """
         Verifies that the 'Гражданин' field on the Gosuslugi order page/card matches the employee in `row`.
         Handles cases where Фамилия or Отчество is 'Нет' (e.g. 'Нет АДЖАД Нет' -> significant token ['аджад']),
-        and also normalizes Latin homoglyphs via sanitize_cyrillic_value so Excel/Gosuslugi Cyrillic names always match.
+        and also normalizes Latin homoglyphs via sanitize_cyrillic_field so Excel/Gosuslugi Cyrillic names always match.
         """
-        raw_last = sanitize_cyrillic_value(str(row.get("Фамилия", "")).strip())
-        raw_first = sanitize_cyrillic_value(str(row.get("Имя", "")).strip())
-        raw_mid = sanitize_cyrillic_value(str(row.get("Отчество", "")).strip())
+        raw_last = self.sanitize_cyrillic_field(str(row.get("Фамилия", "")).strip())
+        raw_first = self.sanitize_cyrillic_field(str(row.get("Имя", "")).strip())
+        raw_mid = self.sanitize_cyrillic_field(str(row.get("Отчество", "")).strip())
 
         primary_tokens = self._normalize_ru_tokens(f"{raw_last} {raw_first}")
         if not primary_tokens:
@@ -2621,7 +2622,7 @@ class GosuslugiVksBot:
         if not primary_tokens:
             return False
 
-        citizen_norm_text = sanitize_cyrillic_value(citizen_text or "")
+        citizen_norm_text = self.sanitize_cyrillic_field(citizen_text or "")
         citizen_tokens = self._normalize_ru_tokens(citizen_norm_text)
 
         # Fallback: if citizen_tokens is empty (e.g. DOM extracted only 'Нет'), inspect the 'Гражданин' block in page_body_text
@@ -2632,7 +2633,7 @@ class GosuslugiVksBot:
                 re.IGNORECASE,
             )
             if m_block:
-                citizen_tokens = self._normalize_ru_tokens(sanitize_cyrillic_value(m_block.group(1)))
+                citizen_tokens = self._normalize_ru_tokens(self.sanitize_cyrillic_field(m_block.group(1)))
 
         if citizen_tokens:
             citizen_joined = " ".join(citizen_tokens)
@@ -2649,7 +2650,7 @@ class GosuslugiVksBot:
         haystack = re.sub(
             r"\s+",
             " ",
-            sanitize_cyrillic_value(f"{citizen_text} {page_body_text}").lower().replace("ё", "е"),
+            self.sanitize_cyrillic_field(f"{citizen_text} {page_body_text}").lower().replace("ё", "е"),
         ).strip()
         if full_with_net and len(full_with_net) >= 3 and full_with_net in haystack:
             return True
