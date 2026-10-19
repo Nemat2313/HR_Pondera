@@ -2049,240 +2049,263 @@ class GosuslugiVksBot:
         if not target_dept or "ТЮМЕН" in target_dept.upper():
             target_dept = "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ"
 
+        # Inspect current Step 12 state via instant non-blocking JS (never hangs on Playwright locators)
+        state = {}
+        try:
+            state = self.page.evaluate(
+                """() => {
+                    const vis = (el) => {
+                        if (!el) return false;
+                        const r = el.getBoundingClientRect();
+                        if (r.width <= 5 || r.height <= 5) return false;
+                        const st = window.getComputedStyle(el);
+                        return st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity || '1') > 0.05;
+                    };
+                    const dic18 = document.querySelector('input#dic18');
+                    const byHand = document.querySelector('input#dic18_byHand, lib-lookup input.search-input');
+                    const izmBtn = Array.from(document.querySelectorAll("lib-button[data-button-type='skipstep'] button, button"))
+                        .find(b => vis(b) && (b.innerText || '').trim().includes('Изменить'));
+                    const h1 = Array.from(document.querySelectorAll('h1, h2, h3'))
+                        .find(h => vis(h) && (h.innerText || '').includes('подразделение МВД'));
+                    return {
+                        hasReadonly: vis(dic18),
+                        readonlyVal: dic18 ? (dic18.value || '').trim() : '',
+                        hasIzmenit: !!izmBtn,
+                        hasByHand: vis(byHand),
+                        hasMvdHeading: !!h1
+                    };
+                }"""
+            ) or {}
+        except Exception:
+            state = {}
+
         # Case A: Pre-selected MVD screen ('Подразделение МВД, куда отправится уведомление') with #dic18 & 'Изменить' button
-        dic18_readonly = self.page.locator("input#dic18:visible").first
-        izmenit_btn = self.page.locator(
-            "lib-button[data-button-type='skipstep'] button:visible, "
-            "button:has-text('Изменить'):visible"
-        ).first
-
-        if dic18_readonly.count() > 0 or izmenit_btn.count() > 0:
-            cur_dept = ""
-            if dic18_readonly.count() > 0:
-                try:
-                    cur_dept = dic18_readonly.input_value().strip()
-                except Exception:
-                    pass
-
+        if state.get("hasReadonly") or state.get("hasIzmenit"):
+            cur_dept = str(state.get("readonlyVal") or "").strip()
             if "МОСКВ" not in cur_dept.upper():
                 logger.info(
                     f"Step 12: Pre-selected MVD is '{cur_dept or 'non-Moscow'}' -> clicking 'Изменить' to select '{target_dept}'..."
                 )
-                if izmenit_btn.count() > 0 and izmenit_btn.is_visible():
+                try:
+                    izm_box = self.page.evaluate(
+                        """() => {
+                            const btns = Array.from(document.querySelectorAll("lib-button[data-button-type='skipstep'] button, button"));
+                            for (const b of btns) {
+                                const r = b.getBoundingClientRect();
+                                if (r.width > 20 && r.height > 10 && (b.innerText || '').trim().includes('Изменить')) {
+                                    b.click();
+                                    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                                }
+                            }
+                            return null;
+                        }"""
+                    )
+                    if izm_box:
+                        self.page.mouse.click(float(izm_box["x"]), float(izm_box["y"]))
+                except Exception:
+                    pass
+                # Wait up to 3s for #dic18_byHand to appear
+                for _ in range(12):
+                    self.page.wait_for_timeout(250)
                     try:
-                        izmenit_btn.click(timeout=3000)
-                    except Exception:
-                        izmenit_btn.evaluate("el => (el.closest('button') || el).click()")
-                    try:
-                        self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first.wait_for(
-                            state="visible", timeout=3000
-                        )
+                        if self.page.evaluate("() => { const el = document.querySelector('input#dic18_byHand, lib-lookup input.search-input'); return !!(el && el.getBoundingClientRect().width > 20); }"):
+                            break
                     except Exception:
                         pass
-                    self.page.wait_for_timeout(1200)
+                self.page.wait_for_timeout(600)
+                state["hasByHand"] = True
             else:
                 logger.info(f"Step 12: MVD department already set to '{cur_dept}' -> clicking 'Продолжить'...")
-                cont_btn = self.page.locator(
-                    "lib-button[data-button-type='nextstep'] button:visible, "
-                    "button:has-text('Продолжить'):visible"
-                ).last
-                if cont_btn.count() > 0 and cont_btn.is_enabled():
-                    cont_btn.click(timeout=3000)
-                    self.page.wait_for_timeout(1500)
-                    return True
+                self._click_step12_continue_js()
+                self.page.wait_for_timeout(1500)
+                return True
 
         # Case B: Manual MVD lookup screen ('Выберите подразделение МВД, куда отправится уведомление') with #dic18_byHand
-        by_hand_inp = self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first
-        mvd_heading = self.page.locator("h1:has-text('Выберите подразделение МВД'):visible")
-        if (by_hand_inp.count() > 0 and by_hand_inp.is_visible()) or mvd_heading.count() > 0:
+        if state.get("hasByHand") or state.get("hasMvdHeading"):
             for mvd_try in range(1, 4):
-                cont_btn = self.page.locator(
-                    "lib-button[data-button-type='nextstep'] button:visible, "
-                    "button:has-text('Продолжить'):visible"
-                ).last
+                # First check if 'Продолжить' is already active (e.g. already selected)
+                if self._is_step12_continue_ready_js():
+                    logger.info("Step 12: MVD department is selected and 'Продолжить' is active -> clicking 'Продолжить'...")
+                    self._click_step12_continue_js()
+                    self.page.wait_for_timeout(1500)
+                    self.check_and_stop_if_insufficient_permissions()
+                    return True
 
-                displayed_mvd = self.page.locator("lib-lookup .displayed.lookup-item").first
-                cur_disp_txt = (
-                    displayed_mvd.inner_text().strip().upper()
-                    if (displayed_mvd.count() > 0 and displayed_mvd.is_visible())
-                    else ""
-                )
-
-                cont_ready = (
-                    cont_btn.count() > 0
-                    and cont_btn.is_enabled()
-                    and (cont_btn.get_attribute("disabled") is None)
-                    and ("disabled" not in (cont_btn.get_attribute("class") or ""))
-                )
-
-                if cont_ready and "МОСКВ" in cur_disp_txt:
-                    break
-
-                by_hand_inp = self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first
                 logger.info(
                     f"Step 12 (Attempt {mvd_try}/3): Typing 'МОСКВЕ' in #dic18_byHand to select '{target_dept}'..."
                 )
-                clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
-                if clr_btn.count() > 0 and clr_btn.is_visible():
-                    try:
-                        clr_btn.click(timeout=2000)
-                    except Exception:
-                        clr_btn.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(300)
+                # Focus and clear #dic18_byHand via JS + mouse click
+                try:
+                    inp_coords = self.page.evaluate(
+                        """() => {
+                            const clr = document.querySelector('lib-lookup button.search-clear, button.search-clear');
+                            if (clr && clr.getBoundingClientRect().width > 5) {
+                                clr.click();
+                            }
+                            const inp = document.querySelector('input#dic18_byHand, lib-lookup input.search-input');
+                            if (!inp) return null;
+                            const r = inp.getBoundingClientRect();
+                            if (r.width <= 10) return null;
+                            inp.focus();
+                            inp.click();
+                            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                        }"""
+                    )
+                    if inp_coords:
+                        self.page.mouse.click(float(inp_coords["x"]), float(inp_coords["y"]))
+                        self.page.wait_for_timeout(350)
+                        self.page.keyboard.press("Control+A")
+                        self.page.keyboard.press("Backspace")
+                        self.page.wait_for_timeout(200)
+                        self.page.keyboard.type("МОСКВЕ", delay=85)
+                except Exception as e:
+                    logger.warning(f"Step 12 input typing note: {e}")
 
-                if by_hand_inp.count() > 0:
-                    by_hand_inp.click()
-                    # Wait 450ms after focusing #dic18_byHand so Angular's lib-lookup finishes loading its dictionary
-                    self.page.wait_for_timeout(450)
-                    self.page.keyboard.press("Control+A")
-                    self.page.keyboard.press("Backspace")
+                logger.info("Step 12: Waiting for MVD dropdown option ('МОСКВЕ') and selecting it...")
+
+                # Poll every 250ms using ONLY non-blocking page.evaluate (zero Playwright locator timeouts!)
+                for tick in range(32):  # 32 * 250ms = 8s max per attempt
                     self.page.wait_for_timeout(250)
-                    # Type 'МОСКВЕ' so the dropdown immediately filters to the exact Moscow MVD division
-                    by_hand_inp.press_sequentially("МОСКВЕ", delay=95)
 
-                logger.info("Step 12: Waiting for MVD dropdown option ('МОСКВЕ')...")
-                options_selector = (
-                    "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
-                    "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
-                    "lib-lookup .lookup-item:not(.nothing-found):visible, "
-                    ".lookup-item:not(.nothing-found):visible, "
-                    "[role='option']:visible"
-                )
-                options = self.page.locator(options_selector)
-                clicked_option = False
+                    # 1. If 'Продолжить' is already enabled (either from our click or user manual selection), click it immediately!
+                    if self._is_step12_continue_ready_js():
+                        logger.info("Step 12: 'Продолжить' is active (blue) -> clicking 'Продолжить' immediately!")
+                        self._click_step12_continue_js()
+                        self.page.wait_for_timeout(1500)
+                        self.check_and_stop_if_insufficient_permissions()
+                        return True
 
-                for tick in range(35):  # 35 * 300ms = 10.5 seconds max wait (breaks immediately when list appears)
-                    self.page.wait_for_timeout(300)
-
-                    # Strategy 1: Standard Playwright locator match
-                    opt_count = options.count()
-                    if opt_count > 0:
-                        matched_mvd = None
-                        for idx in range(opt_count):
-                            cand = options.nth(idx)
-                            try:
-                                txt_up = cand.inner_text().strip().upper()
-                            except Exception:
-                                continue
-                            if ("ТРУДОВОЙ МИГРАЦИИ" in txt_up and "МОСКВ" in txt_up) or ("ГУ МВД РОССИИ ПО Г. МОСКВЕ" in txt_up):
-                                matched_mvd = cand
-                                break
-                        if matched_mvd is None:
-                            matched_mvd = options.first
-
-                        if matched_mvd is not None:
-                            try:
-                                opt_txt = matched_mvd.inner_text().strip()
-                                logger.info(f"Step 12: Clicking MVD lookup option: '{opt_txt}'...")
-                                matched_mvd.click(timeout=2500)
-                            except Exception:
-                                try:
-                                    matched_mvd.evaluate("el => el.click()")
-                                except Exception:
-                                    pass
-                            clicked_option = True
-                            self.page.wait_for_timeout(800)
-                            break
-
-                    # Strategy 2: Deep DOM JavaScript scan for any visible dropdown item containing 'ТРУДОВОЙ МИГРАЦИИ' or 'ПО Г. МОСКВЕ'
-                    dom_box = None
+                    # 2. Find visible MVD dropdown option in DOM via instant JS and click it
+                    dom_opt = None
                     try:
-                        dom_box = self.page.evaluate(
+                        dom_opt = self.page.evaluate(
                             """() => {
-                                const all = Array.from(document.querySelectorAll('div, li, span, p, a'));
+                                const inp = document.querySelector('input#dic18_byHand, lib-lookup input.search-input');
+                                const inpRect = inp ? inp.getBoundingClientRect() : null;
+
+                                // Candidate elements: lookup items, role=option, or any element below the search input containing the Moscow MVD text
+                                const all = Array.from(document.querySelectorAll(
+                                    '#lookup-list-wrap .lookup-item, lib-lookup .lookup-item, .lookup-item, [role="option"], #lookup-list-wrap li, #lookup-list-wrap div, lib-lookup li, lib-lookup div, div, li, span, p, a'
+                                ));
                                 let best = null;
-                                let bestArea = Infinity;
+                                let bestScore = Infinity;
+
                                 for (const el of all) {
-                                    if (el.closest('button') || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') continue;
-                                    const txt = (el.innerText || '').trim().toUpperCase();
-                                    if (!txt || txt.length > 220) continue;
-                                    if (
+                                    if (!el || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') continue;
+                                    if (el.querySelector && el.querySelector('input#dic18_byHand, input.search-input')) continue;
+                                    if (el.classList && (el.classList.contains('nothing-found') || el.classList.contains('displayed'))) continue;
+
+                                    const r = el.getBoundingClientRect();
+                                    if (r.width < 80 || r.height < 16 || r.height > 180) continue;
+                                    const st = window.getComputedStyle(el);
+                                    if (st.visibility === 'hidden' || st.display === 'none' || parseFloat(st.opacity || '1') < 0.05) continue;
+
+                                    // Normalize multi-line and highlighted span text ('РОССИИ ПО Г. <span>МОСКВЕ</span>')
+                                    const txt = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();
+                                    if (!txt || txt.length > 240 || txt === 'ПРОДОЛЖИТЬ' || txt === 'ИЗМЕНИТЬ' || txt === 'НАЗАД') continue;
+
+                                    const isMoscowMvd =
                                         (txt.includes('ТРУДОВОЙ МИГРАЦИИ') && txt.includes('МОСКВ')) ||
-                                        txt.includes('УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ')
-                                    ) {
-                                        const r = el.getBoundingClientRect();
-                                        if (r.width > 40 && r.height >= 14 && r.height <= 130) {
-                                            const area = r.width * r.height;
-                                            if (area < bestArea) {
-                                                bestArea = area;
-                                                best = { el, x: r.left + r.width / 2, y: r.top + r.height / 2, text: txt };
-                                            }
-                                        }
+                                        txt.includes('УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ') ||
+                                        (txt.includes('ОТДЕЛ') && txt.includes('МВД') && txt.includes('МОСКВ'));
+
+                                    if (!isMoscowMvd) continue;
+
+                                    // If input is visible, option must be below or near the input box
+                                    if (inpRect && inpRect.width > 20) {
+                                        if (r.top < inpRect.top - 10 || r.top > inpRect.bottom + 260) continue;
+                                    }
+
+                                    const isLookupItem = el.classList && el.classList.contains('lookup-item');
+                                    const area = r.width * r.height;
+                                    // Prefer .lookup-item directly, otherwise tightest container
+                                    const score = isLookupItem ? area * 0.1 : area;
+                                    if (score < bestScore) {
+                                        bestScore = score;
+                                        best = { el, r, txt };
                                     }
                                 }
+
                                 if (best) {
-                                    const target = best.el.closest('.lookup-item, [role="option"], li') || best.el;
-                                    target.click();
-                                    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                                    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                                    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                                    return { x: best.x, y: best.y, text: best.text };
+                                    const itemContainer = best.el.closest('.lookup-item, [role="option"], li') || best.el;
+                                    const targetRect = itemContainer.getBoundingClientRect();
+                                    const useRect = (targetRect.width > 60 && targetRect.height >= 16 && targetRect.height <= 180) ? targetRect : best.r;
+
+                                    for (const node of [best.el, itemContainer]) {
+                                        try {
+                                            node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
+                                            node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                            node.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
+                                            node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                            node.click();
+                                            node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                        } catch (e) {}
+                                    }
+
+                                    return {
+                                        x: useRect.left + useRect.width / 2,
+                                        y: useRect.top + useRect.height / 2,
+                                        text: best.txt
+                                    };
                                 }
                                 return null;
                             }"""
                         )
                     except Exception:
-                        dom_box = None
+                        dom_opt = None
 
-                    if dom_box:
-                        logger.info(f"Step 12: Clicked MVD option via DOM scan: '{dom_box.get('text')}'...")
+                    if dom_opt and dom_opt.get("x") and dom_opt.get("y"):
+                        cx = float(dom_opt["x"])
+                        cy = float(dom_opt["y"])
+                        logger.info(f"Step 12: Clicking MVD dropdown option '{dom_opt.get('text')}' at ({int(cx)}, {int(cy)})...")
                         try:
-                            self.page.mouse.click(float(dom_box["x"]), float(dom_box["y"]))
+                            self.page.mouse.move(cx, cy)
+                            self.page.wait_for_timeout(50)
+                            self.page.mouse.down()
+                            self.page.wait_for_timeout(50)
+                            self.page.mouse.up()
                         except Exception:
                             pass
-                        clicked_option = True
-                        self.page.wait_for_timeout(800)
-                        break
+                        self.page.wait_for_timeout(450)
 
-                    # In-place fast nudge at 1.5s (tick==5) and 3.3s (tick==11): if Angular missed the initial input event while initializing,
-                    # press Backspace + 'Е' in-place (takes 100ms instead of waiting 10.5s and deleting the whole word!)
-                    if tick in (5, 11) and by_hand_inp.count() > 0:
+                        # Check if 'Продолжить' became active after clicking the option
+                        if self._is_step12_continue_ready_js():
+                            logger.info("Step 12: MVD option selected -> clicking 'Продолжить'...")
+                            self._click_step12_continue_js()
+                            self.page.wait_for_timeout(1500)
+                            self.check_and_stop_if_insufficient_permissions()
+                            return True
+
+                        # If dropdown is still open, also trigger ArrowDown + Enter on the input
                         try:
-                            by_hand_inp.click(timeout=1000)
+                            self.page.keyboard.press("ArrowDown")
+                            self.page.wait_for_timeout(150)
+                            self.page.keyboard.press("Enter")
+                            self.page.wait_for_timeout(450)
+                        except Exception:
+                            pass
+
+                        if self._is_step12_continue_ready_js():
+                            logger.info("Step 12: MVD option selected via keyboard -> clicking 'Продолжить'...")
+                            self._click_step12_continue_js()
+                            self.page.wait_for_timeout(1500)
+                            self.check_and_stop_if_insufficient_permissions()
+                            return True
+
+                    # Fast in-place nudge at 1.5s (tick==6) and 3.25s (tick==13) ONLY if dropdown option hasn't appeared yet
+                    if tick in (6, 13) and not dom_opt:
+                        try:
                             self.page.keyboard.press("End")
                             self.page.keyboard.press("Backspace")
                             self.page.wait_for_timeout(80)
-                            by_hand_inp.press_sequentially("Е", delay=60)
+                            self.page.keyboard.type("Е", delay=50)
                         except Exception:
                             pass
 
-                # Strategy 3: Keyboard ArrowDown + Enter fallback if 'Продолжить' is still disabled
-                cont_btn = self.page.locator(
-                    "lib-button[data-button-type='nextstep'] button:visible, "
-                    "button:has-text('Продолжить'):visible"
-                ).last
-                is_cont_enabled = (
-                    cont_btn.count() > 0
-                    and cont_btn.is_enabled()
-                    and (cont_btn.get_attribute("disabled") is None)
-                    and ("disabled" not in (cont_btn.get_attribute("class") or ""))
-                )
-                if not is_cont_enabled:
-                    try:
-                        self.page.keyboard.press("ArrowDown")
-                        self.page.wait_for_timeout(200)
-                        self.page.keyboard.press("Enter")
-                        self.page.wait_for_timeout(700)
-                    except Exception:
-                        pass
-
-                # Check if 'Продолжить' is now enabled and click it
-                cont_btn = self.page.locator(
-                    "lib-button[data-button-type='nextstep'] button:visible, "
-                    "button:has-text('Продолжить'):visible"
-                ).last
-                if (
-                    cont_btn.count() > 0
-                    and cont_btn.is_enabled()
-                    and (cont_btn.get_attribute("disabled") is None)
-                    and ("disabled" not in (cont_btn.get_attribute("class") or ""))
-                ):
-                    logger.info("Step 12: MVD department selected -> clicking 'Продолжить'...")
-                    try:
-                        cont_btn.focus()
-                        cont_btn.click(timeout=3000)
-                    except Exception:
-                        cont_btn.evaluate("el => (el.closest('button') || el).click()")
+                # Final check at end of attempt
+                if self._is_step12_continue_ready_js():
+                    logger.info("Step 12: Clicking 'Продолжить'...")
+                    self._click_step12_continue_js()
                     self.page.wait_for_timeout(1500)
                     self.check_and_stop_if_insufficient_permissions()
                     return True
@@ -2293,6 +2316,74 @@ class GosuslugiVksBot:
             self.register_worker_error(self.current_row or {}, err_msg)
             raise RuntimeError(err_msg)
 
+        return False
+
+    def _is_step12_continue_ready_js(self) -> bool:
+        """Non-blocking JS check: returns True if the 'Продолжить' button on Step 12 is visible and enabled."""
+        try:
+            return bool(
+                self.page.evaluate(
+                    """() => {
+                        const btns = Array.from(document.querySelectorAll(
+                            "lib-button[data-button-type='nextstep'] button, button"
+                        ));
+                        let cont = null;
+                        for (const b of btns) {
+                            const txt = (b.innerText || b.textContent || '').trim();
+                            const r = b.getBoundingClientRect();
+                            if (txt.includes('Продолжить') && r.width > 30 && r.height > 15) {
+                                cont = b;
+                            }
+                        }
+                        if (!cont) return false;
+                        const libWrap = cont.closest('lib-button, epgu-cf-ui-button');
+                        const isDisabled =
+                            cont.disabled ||
+                            cont.getAttribute('disabled') !== null ||
+                            (cont.className || '').includes('disabled') ||
+                            (libWrap && ((libWrap.className || '').includes('disabled') || libWrap.getAttribute('disabled') !== null));
+                        if (isDisabled) return false;
+
+                        // Also check if .displayed.lookup-item is visible OR if the button is genuinely enabled
+                        return true;
+                    }"""
+                )
+            )
+        except Exception:
+            return False
+
+    def _click_step12_continue_js(self) -> bool:
+        """Non-blocking JS + physical mouse click on the active 'Продолжить' button."""
+        try:
+            coords = self.page.evaluate(
+                """() => {
+                    const btns = Array.from(document.querySelectorAll(
+                        "lib-button[data-button-type='nextstep'] button, button"
+                    ));
+                    let cont = null;
+                    for (const b of btns) {
+                        const txt = (b.innerText || b.textContent || '').trim();
+                        const r = b.getBoundingClientRect();
+                        if (txt.includes('Продолжить') && r.width > 30 && r.height > 15) {
+                            cont = b;
+                        }
+                    }
+                    if (!cont) return null;
+                    cont.scrollIntoView({ block: 'center' });
+                    const r = cont.getBoundingClientRect();
+                    cont.focus();
+                    cont.click();
+                    cont.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                    cont.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                    cont.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                }"""
+            )
+            if coords and coords.get("x") and coords.get("y"):
+                self.page.mouse.click(float(coords["x"]), float(coords["y"]))
+                return True
+        except Exception:
+            pass
         return False
 
     def complete_mvd_and_submit_flow(self) -> str:
@@ -3326,42 +3417,14 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Wait briefly for 'req_preview' or 'Документы' to be visible
-        try:
-            self.page.locator("text='req_preview'").first.wait_for(state="visible", timeout=8000)
-        except Exception:
-            pass
-
-        # Locate the specific 'Скачать' control for 'req_preview' (supporting <a>, <button>, <span>, etc., excluding 'Скачать всё')
-        download_selectors = [
-            "lib-file:has-text('req_preview') a:has-text('Скачать')",
-            "lib-file:has-text('req_preview') button:has-text('Скачать')",
-            "lib-file:has-text('req_preview') span:has-text('Скачать')",
-            "lib-file:has-text('req_preview') a",
-            "lib-file:has-text('req_preview') button",
-            "a[aria-label*='req_preview'], button[aria-label*='req_preview']",
-            "a[title*='req_preview'], button[title*='req_preview']",
-            "div.history-status.open lk-files lib-file a",
-            "lk-files lib-file:has-text('PDF') a, lk-files lib-file:has-text('PDF') button",
-            "lk-files a:has-text('Скачать'):not(:has-text('всё')), lk-files button:has-text('Скачать'):not(:has-text('всё'))",
-            "a:has-text('Скачать'):not(:has-text('всё'))",
-            "button:has-text('Скачать'):not(:has-text('всё'))",
-            "span:has-text('Скачать'):not(:has-text('всё'))",
-        ]
-        download_link = None
-        for sel in download_selectors:
-            loc = self.page.locator(sel)
-            if loc.count() > 0:
-                for idx in range(loc.count()):
-                    cand = loc.nth(idx)
-                    try:
-                        if cand.is_visible() and "всё" not in (cand.inner_text() or "").lower():
-                            download_link = cand
-                            break
-                    except Exception:
-                        continue
-            if download_link is not None:
-                break
+        # Wait up to 6s via non-blocking JS for 'req_preview' or 'Скачать' to appear
+        for _ in range(12):
+            try:
+                if self.page.evaluate("() => { const t = (document.body && document.body.innerText) || ''; return t.includes('req_preview') || t.includes('Скачать'); }"):
+                    break
+            except Exception:
+                pass
+            self.page.wait_for_timeout(400)
 
         downloaded_path: Optional[Path] = None
         click_time = time.time()
@@ -3369,57 +3432,62 @@ class GosuslugiVksBot:
         logger.info("Step 16.5: Clicking 'Скачать' for 'req_preview' PDF...")
 
         def trigger_download_click():
-            if download_link is not None:
-                try:
-                    download_link.scroll_into_view_if_needed(timeout=2500)
-                except Exception:
-                    pass
-                try:
-                    download_link.click(timeout=3500)
-                    return True
-                except Exception:
-                    try:
-                        download_link.evaluate("el => (el.closest('a, button') || el).click()")
-                        return True
-                    except Exception:
-                        pass
-
-            # Deep DOM JavaScript + Mouse Coordinate fallback: find 'req_preview' row and click its 'Скачать' button/link
+            # Instant DOM JavaScript + Mouse Coordinate click on 'Скачать' next to 'req_preview'
             try:
                 box = self.page.evaluate(
                     """() => {
                         const all = Array.from(document.querySelectorAll('a, button, span, div'));
-                        // Find all visible elements whose exact text is 'Скачать' (not 'Скачать всё')
                         const dlButtons = all.filter(el => {
-                            const t = (el.innerText || '').trim();
+                            const t = (el.innerText || el.textContent || '').trim();
                             if (t !== 'Скачать') return false;
                             const r = el.getBoundingClientRect();
-                            return r.width > 20 && r.height > 10 && r.height < 80;
+                            return r.width > 15 && r.height > 10 && r.height < 90;
                         });
-                        // Prefer the one inside the same container as 'req_preview'
+                        // Prefer the one inside the same container as 'req_preview' or 'PDF'
                         for (const btn of dlButtons) {
                             let p = btn.parentElement;
-                            for (let d = 0; d < 5 && p; d++) {
-                                if ((p.innerText || '').includes('req_preview')) {
-                                    const target = btn.closest('a, button') || btn;
-                                    target.click();
+                            for (let d = 0; d < 6 && p; d++) {
+                                const pt = (p.innerText || '');
+                                if (pt.includes('req_preview') || pt.includes('PDF')) {
+                                    const target = btn.closest('a, button, [role="button"]') || btn;
+                                    target.scrollIntoView({ block: 'center' });
                                     const r = target.getBoundingClientRect();
+                                    target.click();
+                                    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                                     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
                                 }
                                 p = p.parentElement;
                             }
                         }
                         if (dlButtons.length > 0) {
-                            const target = dlButtons[0].closest('a, button') || dlButtons[0];
-                            target.click();
+                            const target = dlButtons[0].closest('a, button, [role="button"]') || dlButtons[0];
+                            target.scrollIntoView({ block: 'center' });
                             const r = target.getBoundingClientRect();
+                            target.click();
+                            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                             return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
                         }
                         return null;
                     }"""
                 )
-                if box:
+                if box and box.get("x") and box.get("y"):
                     self.page.mouse.click(float(box["x"]), float(box["y"]))
+                    return True
+            except Exception:
+                pass
+
+            # Fallback Playwright locator with strict :visible and short timeout
+            try:
+                dl_loc = self.page.locator(
+                    "lib-file:has-text('req_preview') a:visible, "
+                    "lib-file:has-text('req_preview') button:visible, "
+                    "a:has-text('Скачать'):not(:has-text('всё')):visible, "
+                    "button:has-text('Скачать'):not(:has-text('всё')):visible"
+                ).first
+                if dl_loc.count() > 0:
+                    dl_loc.click(timeout=2000)
                     return True
             except Exception:
                 pass
