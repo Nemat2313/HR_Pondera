@@ -83,8 +83,49 @@ class GosuslugiVksBot:
         self.current_row: Dict[str, Any] = {}
         self.allow_full_restart: bool = True
         self.current_form_order_id: str = ""
+        self.cdp = None
         try:
             self.page.on("response", self._on_gosuslugi_network_response)
+        except Exception:
+            pass
+        try:
+            self.page.add_init_script(
+                """try {
+                    document.hasFocus = () => true;
+                    Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+                    Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+                } catch (e) {}"""
+            )
+        except Exception:
+            pass
+        self.enable_background_focus_emulation()
+
+    def enable_background_focus_emulation(self):
+        """
+        Enables Chrome CDP Focus Emulation & Active Web Lifecycle State so Gosuslugi Angular inputs
+        (Step 6 Гражданство, Step 10 Индекс, Step 12 Подразделение МВД #dic18_byHand) work 100%
+        even when Chrome is in the background behind Edge or another window.
+        """
+        try:
+            if self.cdp is None:
+                self.cdp = self.page.context.new_cdp_session(self.page)
+            self.cdp.send("Emulation.setFocusEmulationEnabled", {"enabled": True})
+            try:
+                self.cdp.send("Page.setWebLifecycleState", {"state": "active"})
+            except Exception:
+                pass
+        except Exception:
+            self.cdp = None
+        try:
+            self.page.evaluate(
+                """() => {
+                    try {
+                        document.hasFocus = () => true;
+                        Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+                        Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+                    } catch (e) {}
+                }"""
+            )
         except Exception:
             pass
 
@@ -1283,6 +1324,7 @@ class GosuslugiVksBot:
         form_attempt: int = 1,
     ) -> bool:
         self.current_form_order_id = ""
+        self.enable_background_focus_emulation()
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to highlight the active row in UI
         logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
 
@@ -2207,6 +2249,7 @@ class GosuslugiVksBot:
 
         # Case B: Manual MVD lookup screen ('Выберите подразделение МВД, куда отправится уведомление') with #dic18_byHand
         if state.get("hasByHand") or state.get("hasMvdHeading"):
+            self.enable_background_focus_emulation()
             for mvd_try in range(1, 4):
                 # First check if 'Продолжить' is already active (e.g. already selected)
                 if self._is_step12_continue_ready_js():
@@ -2219,7 +2262,8 @@ class GosuslugiVksBot:
                 logger.info(
                     f"Step 12 (Attempt {mvd_try}/3): Typing 'МОСКВЕ' in #dic18_byHand to select '{target_dept}'..."
                 )
-                # Focus and clear #dic18_byHand via JS + mouse click
+                self.enable_background_focus_emulation()
+                # Focus and clear #dic18_byHand via JS + mouse click + background-safe native input setter
                 try:
                     inp_coords = self.page.evaluate(
                         """() => {
@@ -2229,6 +2273,7 @@ class GosuslugiVksBot:
                             }
                             const inp = document.querySelector('input#dic18_byHand, lib-lookup input.search-input');
                             if (!inp) return null;
+                            inp.scrollIntoView({ block: 'center' });
                             const r = inp.getBoundingClientRect();
                             if (r.width <= 10) return null;
                             inp.focus();
@@ -2238,11 +2283,50 @@ class GosuslugiVksBot:
                     )
                     if inp_coords:
                         self.page.mouse.click(float(inp_coords["x"]), float(inp_coords["y"]))
-                        self.page.wait_for_timeout(350)
+                        self.page.wait_for_timeout(250)
                         self.page.keyboard.press("Control+A")
                         self.page.keyboard.press("Backspace")
-                        self.page.wait_for_timeout(200)
-                        self.page.keyboard.type("МОСКВЕ", delay=85)
+                        self.page.wait_for_timeout(150)
+                        self.page.keyboard.type("МОСКВЕ", delay=75)
+                        self.page.wait_for_timeout(150)
+
+                    # Background-window guarantee: If Chrome is behind Edge and OS keystrokes didn't populate #dic18_byHand
+                    # or didn't fire Angular's (input) listener, set value via native HTMLInputElement prototype setter & dispatch events!
+                    self.page.evaluate(
+                        """() => {
+                            const inp = document.querySelector('input#dic18_byHand, lib-lookup input.search-input');
+                            if (!inp) return;
+                            inp.focus();
+                            inp.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+                            inp.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+                            const cur = (inp.value || '').trim().toUpperCase();
+                            if (!cur.includes('МОСКВ')) {
+                                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                                const word = 'МОСКВЕ';
+                                let acc = '';
+                                for (const ch of word) {
+                                    acc += ch;
+                                    if (nativeSetter) nativeSetter.call(inp, acc);
+                                    else inp.value = acc;
+                                    inp.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true, cancelable: true }));
+                                    try {
+                                        inp.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: ch, inputType: 'insertText' }));
+                                    } catch (e) {
+                                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }
+                                    inp.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true, cancelable: true }));
+                                }
+                                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                            } else {
+                                try {
+                                    inp.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: 'Е', inputType: 'insertText' }));
+                                } catch (e) {
+                                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                                }
+                                inp.dispatchEvent(new KeyboardEvent('keyup', { key: 'Е', bubbles: true, cancelable: true }));
+                            }
+                        }"""
+                    )
                 except Exception as e:
                     logger.warning(f"Step 12 input typing note: {e}")
 
@@ -2380,10 +2464,28 @@ class GosuslugiVksBot:
                     # Fast in-place nudge at 1.5s (tick==6) and 3.25s (tick==13) ONLY if dropdown option hasn't appeared yet
                     if tick in (6, 13) and not dom_opt:
                         try:
+                            self.enable_background_focus_emulation()
                             self.page.keyboard.press("End")
                             self.page.keyboard.press("Backspace")
                             self.page.wait_for_timeout(80)
                             self.page.keyboard.type("Е", delay=50)
+                            self.page.evaluate(
+                                """() => {
+                                    const inp = document.querySelector('input#dic18_byHand, lib-lookup input.search-input');
+                                    if (!inp) return;
+                                    inp.focus();
+                                    inp.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+                                    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                                    if (nativeSetter) nativeSetter.call(inp, 'МОСКВЕ');
+                                    else inp.value = 'МОСКВЕ';
+                                    try {
+                                        inp.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: 'Е', inputType: 'insertText' }));
+                                    } catch (e) {
+                                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }
+                                    inp.dispatchEvent(new KeyboardEvent('keyup', { key: 'Е', bubbles: true, cancelable: true }));
+                                }"""
+                            )
                         except Exception:
                             pass
 

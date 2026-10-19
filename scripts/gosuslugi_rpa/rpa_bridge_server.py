@@ -275,6 +275,10 @@ def launch_chrome_debug():
         chrome_exe,
         f"--remote-debugging-port={CHROME_CDP_PORT}",
         f"--user-data-dir={user_data}",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-features=CalculateNativeWindowOcclusion,IntensiveWakeUpThrottling",
         "https://www.gosuslugi.ru/600585/1/form"
     ]
     try:
