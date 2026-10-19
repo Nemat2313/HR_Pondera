@@ -49,6 +49,30 @@ function ensureUsersTable(db: any) {
         checked_at TEXT DEFAULT '',
         UNIQUE(sicil_no, notification_type, period_code)
       );
+
+      CREATE TABLE IF NOT EXISTS gosuslugi_mail_config (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        imap_host TEXT NOT NULL DEFAULT 'imap.mail.ru',
+        imap_port INTEGER NOT NULL DEFAULT 993,
+        email TEXT NOT NULL DEFAULT '',
+        app_password TEXT NOT NULL DEFAULT '',
+        auto_sync_enabled INTEGER NOT NULL DEFAULT 1,
+        last_sync_at TEXT DEFAULT '',
+        last_sync_result TEXT DEFAULT ''
+      );
+
+      CREATE TABLE IF NOT EXISTS gosuslugi_mail_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        application_no TEXT NOT NULL,
+        service_title TEXT DEFAULT '',
+        gosuslugi_status TEXT NOT NULL,
+        status_detail TEXT DEFAULT '',
+        email_date TEXT DEFAULT '',
+        order_url TEXT DEFAULT '',
+        folder_name TEXT DEFAULT '',
+        synced_at TEXT NOT NULL,
+        UNIQUE(application_no, gosuslugi_status, email_date)
+      );
     `);
   } catch {
     // Ignore if database is opened in read-only filesystem

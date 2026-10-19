@@ -36,6 +36,8 @@ import {
   UserMinus,
   Clock,
   RefreshCw,
+  Mail,
+  ExternalLink,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -827,6 +829,32 @@ export default function GosuslugiVksView() {
   const [isCheckingStatuses, setIsCheckingStatuses] = useState(false);
   const [savedSubmissions, setSavedSubmissions] = useState<Record<string, GosuslugiSubmissionEntry>>({});
   const syncedAppsRef = useRef<Set<string>>(new Set());
+
+  // Mail.ru IMAP Background Status Checker State
+  const [showMailRuModal, setShowMailRuModal] = useState(false);
+  const [mailRuEmail, setMailRuEmail] = useState('');
+  const [mailRuPassword, setMailRuPassword] = useState('');
+  const [mailRuHasPassword, setMailRuHasPassword] = useState(false);
+  const [mailRuAutoSync, setMailRuAutoSync] = useState(true);
+  const [mailRuLastSyncAt, setMailRuLastSyncAt] = useState('');
+  const [mailRuLastResult, setMailRuLastResult] = useState('');
+  const [mailRuEvents, setMailRuEvents] = useState<
+    Array<{
+      id: number;
+      application_no: string;
+      service_title?: string;
+      gosuslugi_status: string;
+      status_detail?: string;
+      email_date?: string;
+      order_url?: string;
+      folder_name?: string;
+      synced_at?: string;
+      sicil_no?: string;
+      worker_name?: string;
+    }>
+  >([]);
+  const [isSyncingMailRu, setIsSyncingMailRu] = useState(false);
+
   const [toastMsg, setToastMsg] = useState<{
     type: 'success' | 'error' | 'info';
     text: string;
@@ -844,36 +872,175 @@ export default function GosuslugiVksView() {
     }, 5500);
   };
 
-  // Load saved Gosuslugi application numbers and statuses from Pondera HR DB
-  useEffect(() => {
-    let active = true;
-    const loadSavedSubmissions = async () => {
-      try {
-        const res = await fetch('/api/gosuslugi/submissions?type=VKS_SALARY');
-        if (!res.ok) return;
-        const json = await res.json();
-        if (active && json.success && Array.isArray(json.data)) {
-          const bySicil: Record<string, GosuslugiSubmissionEntry> = {};
-          for (const row of json.data as GosuslugiSubmissionEntry[]) {
-            if (row.sicil_no) {
-              bySicil[String(row.sicil_no)] = row;
-            }
-            if (row.application_no) {
-              bySicil[`app:${row.application_no}`] = row;
-              syncedAppsRef.current.add(`${row.application_no}:${row.gosuslugi_status || ''}`);
-            }
+  const refreshSavedSubmissionsFromDb = async () => {
+    try {
+      const res = await fetch('/api/gosuslugi/submissions?type=VKS_SALARY');
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const bySicil: Record<string, GosuslugiSubmissionEntry> = {};
+        for (const row of json.data as GosuslugiSubmissionEntry[]) {
+          if (row.sicil_no) {
+            bySicil[String(row.sicil_no)] = row;
           }
-          setSavedSubmissions(bySicil);
+          if (row.application_no) {
+            bySicil[`app:${row.application_no}`] = row;
+            syncedAppsRef.current.add(`${row.application_no}:${row.gosuslugi_status || ''}`);
+          }
         }
-      } catch {
-        // Silent fallback
+        setSavedSubmissions(bySicil);
+        setWorkers((prev) =>
+          prev.map((w) => {
+            const codeKey = w.code || w.sicil;
+            const subByApp = w.applicationNo ? bySicil[`app:${w.applicationNo}`] : undefined;
+            const subByCode = codeKey ? bySicil[codeKey] : undefined;
+            const matchedSub =
+              subByApp || (doesSubMatchWorker(subByCode, w) ? subByCode : undefined);
+            if (!matchedSub) return w;
+            return {
+              ...w,
+              applicationNo: w.applicationNo || matchedSub.application_no,
+              gosuslugiStatus: matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено',
+              pdfFilename: w.pdfFilename || matchedSub.pdf_filename,
+              status: matchedSub.application_no ? 'success' : w.status,
+            };
+          })
+        );
       }
-    };
-    loadSavedSubmissions();
-    return () => {
-      active = false;
-    };
+    } catch {
+      // Silent fallback
+    }
+  };
+
+  // Load saved Gosuslugi application numbers and Mail.ru config from Pondera HR DB
+  useEffect(() => {
+    refreshSavedSubmissionsFromDb();
+    fetch('/api/gosuslugi/mail-sync')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (json?.success) {
+          if (json.config) {
+            setMailRuEmail(json.config.email || '');
+            setMailRuHasPassword(Boolean(json.config.has_password));
+            setMailRuAutoSync(Boolean(json.config.auto_sync_enabled));
+            setMailRuLastSyncAt(json.config.last_sync_at || '');
+            setMailRuLastResult(json.config.last_sync_result || '');
+          }
+          if (Array.isArray(json.events)) {
+            setMailRuEvents(json.events);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleSyncMailRu = async (silent = false) => {
+    if (!mailRuEmail && !mailRuHasPassword) {
+      if (!silent) setShowMailRuModal(true);
+      return;
+    }
+    setIsSyncingMailRu(true);
+    try {
+      const res = await fetch('/api/gosuslugi/mail-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: mailRuEmail,
+          app_password: mailRuPassword || undefined,
+          auto_sync_enabled: mailRuAutoSync,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (mailRuPassword) {
+          setMailRuHasPassword(true);
+          setMailRuPassword('');
+        }
+        setMailRuLastSyncAt(json.lastSyncAt || '');
+        setMailRuLastResult(json.summary || '');
+        if (Array.isArray(json.events)) {
+          setMailRuEvents(json.events);
+        }
+        await refreshSavedSubmissionsFromDb();
+        if (!silent) {
+          showNotice(
+            'success',
+            lang === 'ru'
+              ? `Почта Mail.ru проверена (Входящие + Спам): найдено заявлений — ${json.uniqueApplications}, обновлено статусов — ${json.updatedSubmissions}!`
+              : `Mail.ru (Gelen Kutusu + Spam) kontrol edildi: ${json.uniqueApplications} başvuru bulundu, ${json.updatedSubmissions} kayıt güncellendi!`
+          );
+        }
+      } else if (!silent) {
+        showNotice('error', json.message || 'Mail.ru bağlantı hatası.');
+      }
+    } catch {
+      if (!silent) {
+        showNotice(
+          'error',
+          lang === 'ru'
+            ? 'Ошибка подключения к сервису синхронизации Mail.ru.'
+            : 'Mail.ru senkronizasyon servisine bağlanılamadı.'
+        );
+      }
+    } finally {
+      setIsSyncingMailRu(false);
+    }
+  };
+
+  // Automatic background Mail.ru check every 3 minutes when configured and enabled
+  useEffect(() => {
+    if (!mailRuHasPassword || !mailRuAutoSync) return;
+    const timer = setInterval(() => {
+      handleSyncMailRu(true);
+    }, 180000);
+    return () => clearInterval(timer);
+  }, [mailRuHasPassword, mailRuAutoSync, mailRuEmail]);
+
+  const handleLinkMailApplicationToWorker = async (
+    appNo: string,
+    gosStatus: string,
+    workerId: string
+  ) => {
+    const targetW = workers.find((w) => w.id === workerId);
+    if (!targetW || !appNo) return;
+    const fullWorkerName = [targetW.lastName, targetW.firstName, targetW.middleName]
+      .filter((p) => p && p.trim().toLowerCase() !== 'нет')
+      .join(' ')
+      .trim();
+    try {
+      await fetch('/api/gosuslugi/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          records: [
+            {
+              sicil_no: targetW.sicil || targetW.code,
+              worker_name: fullWorkerName || `${targetW.lastName} ${targetW.firstName}`.trim(),
+              citizenship: targetW.citizenship,
+              notification_type: 'vks_salary',
+              period_code: periodCode,
+              application_no: appNo,
+              gosuslugi_status: gosStatus || 'Заявление зарегистрировано',
+            },
+          ],
+        }),
+      });
+      await refreshSavedSubmissionsFromDb();
+      const syncRes = await fetch('/api/gosuslugi/mail-sync');
+      if (syncRes.ok) {
+        const sj = await syncRes.json();
+        if (Array.isArray(sj.events)) setMailRuEvents(sj.events);
+      }
+      showNotice(
+        'success',
+        lang === 'ru'
+          ? `Заявление № ${appNo} привязано к сотруднику ${fullWorkerName} (${targetW.sicil})!`
+          : `Başvuru № ${appNo}, ${fullWorkerName} (${targetW.sicil}) personeline bağlandı!`
+      );
+    } catch {
+      showNotice('error', 'Привязка не удалась.');
+    }
+  };
 
   // Format YYYY-MM-DD or Excel serial date to DD.MM.YYYY
   const formatDateRu = (val: any): string => {
@@ -2295,6 +2462,28 @@ export default function GosuslugiVksView() {
             </button>
 
             <button
+              onClick={() => setShowMailRuModal(true)}
+              className={`h-8 px-3 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition ${
+                mailRuHasPassword
+                  ? 'border-blue-300 dark:border-blue-500/50 bg-blue-50 dark:bg-blue-500/20 text-blue-800 dark:text-blue-300 hover:bg-blue-100'
+                  : 'border-indigo-200 dark:border-indigo-500/40 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-100'
+              }`}
+              title={
+                lang === 'ru'
+                  ? 'Автоматическая проверка статусов заявлений Госуслуг через почту Mail.ru (Входящие + Спам) без входа в Госуслуги'
+                  : 'Gosuslugi veya Mail açmadan arka planda Mail.ru (Gelen Kutusu + Spam) üzerinden otomatik başvuru durumu kontrolü'
+              }
+            >
+              <Mail className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>
+                {lang === 'ru' ? 'Почта Mail.ru (Авто-Статус)' : 'Mail.ru (Otomatik Statü)'}
+              </span>
+              {mailRuHasPassword && (
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              )}
+            </button>
+
+            <button
               onClick={() => setShowConfigPanel(!showConfigPanel)}
               className={`h-8 px-3 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
                 showConfigPanel
@@ -2937,6 +3126,34 @@ export default function GosuslugiVksView() {
                   {lang === 'ru'
                     ? '3. Проверить статусы ГУ (№ Заявл.)'
                     : '3. Başvuru Durumlarını Sorgula (№)'}
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (mailRuHasPassword) {
+                    handleSyncMailRu(false);
+                  } else {
+                    setShowMailRuModal(true);
+                  }
+                }}
+                disabled={isSyncingMailRu}
+                title={
+                  lang === 'ru'
+                    ? 'Проверить статусы заявлений в фоновом режиме через почту Mail.ru (Входящие + Спам) без открытия браузера и Госуслуг'
+                    : 'Tarayıcı veya Mail.ru açmadan arka planda Mail.ru (Gelen Kutusu + Spam) üzerinden tüm Zayavka statülerini otomatik kontrol et'
+                }
+                className="h-9 px-3.5 rounded-xl border border-blue-200 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-800 dark:text-blue-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+              >
+                {isSyncingMailRu ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+                ) : (
+                  <Mail className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                )}
+                <span>
+                  {lang === 'ru'
+                    ? '4. Почта Mail.ru (Авто-Статус)'
+                    : '4. Mail.ru (Arka Plan Statü)'}
                 </span>
               </button>
             </>
@@ -4237,6 +4454,309 @@ export default function GosuslugiVksView() {
           </button>
         </div>
       </div>
+
+      {/* MAIL.RU IMAP AUTO-STATUS MODAL */}
+      {showMailRuModal && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-[#111F38] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden my-8">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold">
+                    {lang === 'ru'
+                      ? 'Фоновая проверка статусов Госуслуг через Почту Mail.ru (IMAP)'
+                      : 'Mail.ru Üzerinden Arka Planda Otomatik Başvuru (Zayavka) Durum Kontrolü'}
+                  </h3>
+                  <p className="text-[11px] text-blue-100">
+                    {lang === 'ru'
+                      ? 'Автоматически проверяет папки «Входящие» и «Спам» по № заявления без входа в Госуслуги'
+                      : 'Tarayıcı veya Mail.ru açmadan «Входящие» (Gelen Kutusu) ve «Спам» (Spam) klasörlerini tarar'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMailRuModal(false)}
+                className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-bold cursor-pointer transition"
+              >
+                {lang === 'ru' ? 'Закрыть ✕' : 'Kapat ✕'}
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Info Alert on how to create Mail.ru App Password */}
+              <div className="p-3.5 rounded-xl bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/70 text-xs text-slate-700 dark:text-slate-200 space-y-1.5">
+                <div className="font-extrabold text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
+                  <Info className="w-4 h-4 shrink-0" />
+                  <span>
+                    {lang === 'ru'
+                      ? 'Как подключить почту Захид бея (Mail.ru) за 20 секунд:'
+                      : 'Zahid Bey’in Mail.ru Adresi 20 Saniyede Nasıl Bağlanır?'}
+                  </span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11.5px] text-slate-600 dark:text-slate-300">
+                  <li>
+                    {lang === 'ru'
+                      ? 'В почте Mail.ru откройте: Настройки (⚙️) → Все настройки → Безопасность → Пароли для внешних приложений.'
+                      : 'Mail.ru hesabında: Настройки (Ayarlar ⚙️) → Все настройки → Безопасность (Güvenlik) → Пароли для внешних приложений bölümüne girin.'}
+                  </li>
+                  <li>
+                    {lang === 'ru'
+                      ? 'Нажмите «Добавить», введите название (например, Pondera HR) и скопируйте сгенерированный 16-значный пароль.'
+                      : '«Добавить» (Ekle) butonuna basıp (örn. Pondera HR) oluşturulan 16 haneli uygulama şifresini kopyalayın.'}
+                  </li>
+                  <li>
+                    {lang === 'ru'
+                      ? 'Система автоматически читает письма от Госуслуг как во «Входящих», так и в папке «Спам», сопоставляя № заявления (например, № 8281910041) со списком сотрудников.'
+                      : 'Sistem hem «Входящие» (Gelen Kutusu) hem de «Спам» (Spam) klasöründeki Gosuslugi maillerini arka planda okur ve № 8281910041 gibi başvuru numaralarını personellerle otomatik eşleştirir.'}
+                  </li>
+                </ol>
+              </div>
+
+              {/* Credentials Form */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-900/70 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    {lang === 'ru' ? 'Адрес почты Mail.ru' : 'Mail.ru E-posta Adresi'}
+                  </label>
+                  <input
+                    type="email"
+                    value={mailRuEmail}
+                    onChange={(e) => setMailRuEmail(e.target.value)}
+                    placeholder="user@mail.ru"
+                    className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    {lang === 'ru'
+                      ? 'Пароль для внешнего приложения (IMAP)'
+                      : 'Uygulama Şifresi (Пароль внешнего прил.)'}
+                  </label>
+                  <input
+                    type="password"
+                    value={mailRuPassword}
+                    onChange={(e) => setMailRuPassword(e.target.value)}
+                    placeholder={
+                      mailRuHasPassword
+                        ? lang === 'ru'
+                          ? '•••••••• (сохранён в базе)'
+                          : '•••••••• (veritabanında kayıtlı)'
+                        : lang === 'ru'
+                        ? 'Введите 16-значный пароль приложения'
+                        : '16 haneli uygulama şifresini girin'
+                    }
+                    className="w-full h-9 px-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
+                  />
+                </div>
+
+                <div className="flex flex-col justify-end gap-2">
+                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={mailRuAutoSync}
+                      onChange={async (e) => {
+                        const nextVal = e.target.checked;
+                        setMailRuAutoSync(nextVal);
+                        await fetch('/api/gosuslugi/mail-sync', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            email: mailRuEmail,
+                            app_password: mailRuPassword || undefined,
+                            auto_sync_enabled: nextVal,
+                          }),
+                        }).catch(() => {});
+                      }}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>
+                      {lang === 'ru'
+                        ? 'Авто-проверка каждые 3 мин.'
+                        : 'Her 3 dk’da bir otomatik kontrol et'}
+                    </span>
+                  </label>
+
+                  <button
+                    onClick={() => handleSyncMailRu(false)}
+                    disabled={isSyncingMailRu}
+                    className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition shadow-xs"
+                  >
+                    {isSyncingMailRu ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    <span>
+                      {lang === 'ru'
+                        ? 'Сохранить и проверить почту сейчас'
+                        : 'Kaydet ve Şimdi Mailleri Kontrol Et'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Last sync summary */}
+              {(mailRuLastSyncAt || mailRuLastResult) && (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/50 text-xs">
+                  <span className="font-semibold text-emerald-800 dark:text-emerald-300">
+                    {mailRuLastResult}
+                  </span>
+                  {mailRuLastSyncAt && (
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                      {lang === 'ru' ? 'Последняя проверка:' : 'Son kontrol:'} {mailRuLastSyncAt}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Table of Gosuslugi Emails parsed from Mail.ru (INBOX + Spam) */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">
+                    {lang === 'ru'
+                      ? `Уведомления Госуслуг из почты Mail.ru (${mailRuEvents.length})`
+                      : `Mail.ru'дан Çekilen Gosuslugi Bildirimleri (${mailRuEvents.length})`}
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {lang === 'ru' ? 'Папки: Входящие + Спам' : 'Klasörler: Gelen Kutusu + Spam'}
+                  </span>
+                </div>
+
+                {mailRuEvents.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                    {lang === 'ru'
+                      ? 'Пока нет загруженных писем. Введите адрес Mail.ru и пароль приложения выше, затем нажмите «Сохранить и проверить почту сейчас».'
+                      : 'Henüz çekilen e-posta yok. Yukarıya Mail.ru adresini ve uygulama şifresini girip «Kaydet ve Şimdi Mailleri Kontrol Et» butonuna tıklayın.'}
+                  </div>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-slate-50 dark:bg-slate-950/60 text-[11px] text-slate-500 uppercase sticky top-0">
+                        <tr>
+                          <th className="py-2 px-3">№ Заявления</th>
+                          <th className="py-2 px-3">{lang === 'ru' ? 'Статус в письме' : 'Maildeki Statü'}</th>
+                          <th className="py-2 px-3">{lang === 'ru' ? 'Дата и время' : 'Tarih & Saat'}</th>
+                          <th className="py-2 px-3">{lang === 'ru' ? 'Папка' : 'Klasör'}</th>
+                          <th className="py-2 px-3">{lang === 'ru' ? 'Сотрудник (ВКС)' : 'Personel (VKS)'}</th>
+                          <th className="py-2 px-3 text-right">{lang === 'ru' ? 'Ссылка' : 'Bağlantı'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
+                        {mailRuEvents.map((ev) => {
+                          const stLow = (ev.gosuslugi_status || '').toLowerCase();
+                          const isPositive =
+                            stLow.includes('оказана') ||
+                            stLow.includes('зарегистрировано') ||
+                            stLow.includes('принято');
+                          const isNegative = stLow.includes('отказ') || stLow.includes('ошибка');
+                          return (
+                            <tr
+                              key={ev.id}
+                              className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40"
+                            >
+                              <td className="py-2 px-3 font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                                № {ev.application_no}
+                              </td>
+                              <td className="py-2 px-3">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                                    isNegative
+                                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300'
+                                      : isPositive
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
+                                      : 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300'
+                                  }`}
+                                >
+                                  {ev.gosuslugi_status}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                                {ev.email_date || ev.synced_at || '—'}
+                              </td>
+                              <td className="py-2 px-3">
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10.5px] font-semibold ${
+                                    ev.folder_name === 'Спам'
+                                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
+                                      : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                  }`}
+                                >
+                                  {ev.folder_name || 'Входящие'}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3">
+                                {ev.worker_name ? (
+                                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                                    {ev.worker_name}{' '}
+                                    {ev.sicil_no ? (
+                                      <span className="text-[10.5px] font-mono text-slate-500">
+                                        ({ev.sicil_no})
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                ) : workers.length > 0 ? (
+                                  <select
+                                    defaultValue=""
+                                    onChange={(e) => {
+                                      if (e.target.value) {
+                                        handleLinkMailApplicationToWorker(
+                                          ev.application_no,
+                                          ev.gosuslugi_status,
+                                          e.target.value
+                                        );
+                                      }
+                                    }}
+                                    className="h-7 px-2 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[11px] text-slate-700 dark:text-slate-300"
+                                  >
+                                    <option value="">
+                                      {lang === 'ru'
+                                        ? '+ Привязать к сотруднику...'
+                                        : '+ Personele bağla...'}
+                                    </option>
+                                    {workers.map((w) => (
+                                      <option key={w.id} value={w.id}>
+                                        {w.sicil} — {w.lastName} {w.firstName}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="text-slate-400 italic">
+                                    {lang === 'ru' ? 'Не привязано' : 'Eşleşmedi'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                {ev.order_url ? (
+                                  <a
+                                    href={ev.order_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                                  >
+                                    <span>{lang === 'ru' ? 'Открыть' : 'Aç'}</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
