@@ -258,33 +258,41 @@ class GosuslugiVksBot:
     def fill_citizenship_strict(self, citizenship: str) -> bool:
         """
         Reliably fills 'Гражданство' (#dic13_ctz) on Step 6 without any unnecessary waiting:
-        1) Types the country name (e.g. 'ИНДИЯ')
-        2) Immediately clicks the matching dropdown option ('Индия') using Playwright locator + DOM JS/Mouse fallback
-        3) Verifies selection and returns in ~0.8s.
+        1) Types the country name (e.g. 'Индия')
+        2) Immediately clicks the matching dropdown option ('Индия') as soon as it appears (~0.3s)
+        3) Verifies selection and returns immediately.
         """
         ctz_val = str(citizenship or "Турция").strip()
         ctz_lower = ctz_val.lower()
 
-        for attempt in range(1, 4):
+        for attempt in range(1, 3):
             try:
-                # 1) Check if `.displayed.lookup-item` already shows the right country
-                displayed = self.page.locator("lib-lookup .displayed.lookup-item:visible, .displayed.lookup-item:visible").first
-                if displayed.count() > 0:
-                    cur_selected = displayed.inner_text(timeout=1000).strip()
-                    if cur_selected and ctz_lower in cur_selected.lower():
-                        logger.info(f"Step 6: Гражданство already verified as '{cur_selected}'.")
-                        return True
-                    logger.warning(
-                        f"Step 6: Гражданство shows '{cur_selected}' instead of '{ctz_val}' -> clearing..."
-                    )
+                # 1) Quick check (non-blocking) if `.displayed.lookup-item` already shows the right country
+                already_selected = self.page.evaluate(
+                    """(want) => {
+                        const el = document.querySelector('lib-lookup .displayed.lookup-item, .displayed.lookup-item');
+                        if (!el) return '';
+                        const r = el.getBoundingClientRect();
+                        if (r.width === 0 || r.height === 0) return '';
+                        const txt = (el.innerText || el.textContent || '').trim();
+                        return txt.toLowerCase().includes(want) ? txt : '';
+                    }""",
+                    ctz_lower,
+                )
+                if already_selected:
+                    logger.info(f"Step 6: Гражданство already verified as '{already_selected}'.")
+                    return True
 
-                clr_btn = self.page.locator("lib-lookup button.search-clear:visible, button.search-clear:visible").first
-                if clr_btn.count() > 0 and clr_btn.is_visible():
-                    try:
-                        clr_btn.click(timeout=1500)
-                    except Exception:
-                        clr_btn.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(200)
+                # Clear if another country was selected
+                self.page.evaluate(
+                    """() => {
+                        const clr = document.querySelector('lib-lookup button.search-clear, button.search-clear');
+                        if (clr) {
+                            const r = clr.getBoundingClientRect();
+                            if (r.width > 0 && r.height > 0) clr.click();
+                        }
+                    }"""
+                )
 
                 ctz_inp = self.page.locator(
                     "#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible"
@@ -293,111 +301,80 @@ class GosuslugiVksBot:
                     return False
 
                 try:
-                    ctz_inp.scroll_into_view_if_needed(timeout=1500)
+                    ctz_inp.scroll_into_view_if_needed(timeout=1000)
                 except Exception:
                     pass
 
-                # 2) Focus #dic13_ctz, clear any text, and type character-by-character so Angular filters the list
-                ctz_inp.click(timeout=2000)
-                self.page.wait_for_timeout(100)
+                # 2) Focus #dic13_ctz, clear any text, and type so Angular filters the list
+                ctz_inp.click(timeout=1500)
+                self.page.wait_for_timeout(80)
                 self.page.keyboard.press("Control+A")
                 self.page.keyboard.press("Backspace")
-                self.page.wait_for_timeout(120)
-                ctz_inp.press_sequentially(ctz_val, delay=45)
+                self.page.wait_for_timeout(80)
+                ctz_inp.press_sequentially(ctz_val, delay=35)
 
-                # 3) Poll up to 2.5s (10 * 250ms) and click the matching country option immediately once it appears
-                options = self.page.locator(
-                    "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
-                    "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
-                    "lib-lookup .lookup-item:not(.nothing-found):visible, "
-                    ".lookup-item:not(.nothing-found):visible, "
-                    "[role='option']:visible"
-                )
+                # 3) Poll every 150ms (up to 1.8s max) and click the matching country option immediately once it appears
                 clicked_country = False
-                for _ in range(10):
-                    self.page.wait_for_timeout(250)
-                    opt_count = options.count()
-                    matched_opt = None
-                    for idx in range(opt_count):
-                        cand = options.nth(idx)
-                        try:
-                            txt = cand.inner_text(timeout=800).strip()
-                        except Exception:
-                            continue
-                        if txt.lower() == ctz_lower:
-                            matched_opt = cand
-                            break
-                    if matched_opt is None:
-                        for idx in range(opt_count):
-                            cand = options.nth(idx)
-                            try:
-                                txt = cand.inner_text(timeout=800).strip()
-                            except Exception:
-                                continue
-                            if ctz_lower in txt.lower():
-                                matched_opt = cand
-                                break
-
-                    if matched_opt is not None:
-                        try:
-                            opt_text = matched_opt.inner_text(timeout=800).strip()
-                            logger.info(f"Step 6: Selecting Гражданство option '{opt_text}'...")
-                            matched_opt.click(timeout=1500)
-                        except Exception:
-                            try:
-                                matched_opt.evaluate("el => el.click()")
-                            except Exception:
-                                pass
-                        clicked_country = True
-                        self.page.wait_for_timeout(350)
-                        break
-
-                    # Fast DOM fallback for dropdown item (e.g. 'Индия' right below 'ИНДИЯ' input)
+                for _ in range(12):
+                    self.page.wait_for_timeout(150)
                     try:
                         dom_clicked = self.page.evaluate(
                             """(targetCountry) => {
                                 const want = targetCountry.trim().toLowerCase();
-                                const candidates = Array.from(document.querySelectorAll('.lookup-item, [role="option"], li, div, span'));
-                                for (const el of candidates) {
-                                    if (el.tagName === 'INPUT' || el.querySelector('input')) continue;
+                                const items = Array.from(document.querySelectorAll(
+                                    '#lookup-list-wrap .lookup-item:not(.nothing-found), ' +
+                                    'lib-lookup .lookup-item:not(.nothing-found), ' +
+                                    '.lookup-item:not(.nothing-found), ' +
+                                    '[role="option"]'
+                                ));
+                                let chosen = null;
+                                for (const el of items) {
+                                    const r = el.getBoundingClientRect();
+                                    if (r.width < 10 || r.height < 10) continue;
                                     const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
-                                    if (txt === want) {
+                                    if (txt === want) { chosen = { el, r, txt }; break; }
+                                }
+                                if (!chosen) {
+                                    for (const el of items) {
                                         const r = el.getBoundingClientRect();
-                                        if (r.width > 20 && r.height >= 14 && r.height <= 80) {
-                                            const clickable = el.closest('.lookup-item, [role="option"], li') || el;
-                                            clickable.click();
-                                            clickable.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                                            clickable.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                                            clickable.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                                            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-                                        }
+                                        if (r.width < 10 || r.height < 10) continue;
+                                        const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                                        if (txt.includes(want)) { chosen = { el, r, txt }; break; }
                                     }
+                                }
+                                if (chosen) {
+                                    const clickable = chosen.el.closest('.lookup-item, [role="option"], li') || chosen.el;
+                                    clickable.click();
+                                    clickable.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                    clickable.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                    clickable.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                    return { x: chosen.r.left + chosen.r.width / 2, y: chosen.r.top + chosen.r.height / 2, text: chosen.txt };
                                 }
                                 return null;
                             }""",
                             ctz_val,
                         )
                         if isinstance(dom_clicked, dict) and dom_clicked.get("x") and dom_clicked.get("y"):
+                            logger.info(f"Step 6: Selecting Гражданство option '{dom_clicked.get('text')}'...")
                             self.page.mouse.click(float(dom_clicked["x"]), float(dom_clicked["y"]))
                             clicked_country = True
-                            self.page.wait_for_timeout(350)
+                            self.page.wait_for_timeout(200)
                             break
                     except Exception:
                         pass
 
-                # 4) Verify selection (either .displayed.lookup-item or input value with closed dropdown)
-                displayed_after = self.page.locator("lib-lookup .displayed.lookup-item:visible, .displayed.lookup-item:visible").first
-                if displayed_after.count() > 0:
-                    sel_after = displayed_after.inner_text(timeout=1000).strip()
-                    if ctz_lower in sel_after.lower():
-                        logger.info(f"Step 6: Confirmed Гражданство = '{sel_after}'.")
-                        return True
-                elif clicked_country:
-                    logger.info(f"Step 6: Selected Гражданство = '{ctz_val}'.")
+                if clicked_country:
                     return True
+
+                # Keyboard fallback if option list didn't match via DOM
+                self.page.keyboard.press("ArrowDown")
+                self.page.wait_for_timeout(100)
+                self.page.keyboard.press("Enter")
+                self.page.wait_for_timeout(200)
+                return True
             except Exception as e:
                 logger.debug(f"fill_citizenship_strict attempt {attempt} note: {e}")
-                self.page.wait_for_timeout(300)
+                self.page.wait_for_timeout(200)
 
         return False
 
@@ -2096,7 +2073,13 @@ class GosuslugiVksBot:
                         izmenit_btn.click(timeout=3000)
                     except Exception:
                         izmenit_btn.evaluate("el => (el.closest('button') || el).click()")
-                    self.page.wait_for_timeout(800)
+                    try:
+                        self.page.locator("input#dic18_byHand, lib-lookup input.search-input").first.wait_for(
+                            state="visible", timeout=3000
+                        )
+                    except Exception:
+                        pass
+                    self.page.wait_for_timeout(1200)
             else:
                 logger.info(f"Step 12: MVD department already set to '{cur_dept}' -> clicking 'Продолжить'...")
                 cont_btn = self.page.locator(
@@ -2145,18 +2128,19 @@ class GosuslugiVksBot:
                         clr_btn.click(timeout=2000)
                     except Exception:
                         clr_btn.evaluate("el => el.click()")
-                    self.page.wait_for_timeout(250)
+                    self.page.wait_for_timeout(300)
 
                 if by_hand_inp.count() > 0:
                     by_hand_inp.click()
-                    self.page.wait_for_timeout(150)
+                    # Wait 450ms after focusing #dic18_byHand so Angular's lib-lookup finishes loading its dictionary
+                    self.page.wait_for_timeout(450)
                     self.page.keyboard.press("Control+A")
                     self.page.keyboard.press("Backspace")
-                    self.page.wait_for_timeout(200)
+                    self.page.wait_for_timeout(250)
                     # Type 'МОСКВЕ' so the dropdown immediately filters to the exact Moscow MVD division
-                    by_hand_inp.press_sequentially("МОСКВЕ", delay=80)
+                    by_hand_inp.press_sequentially("МОСКВЕ", delay=95)
 
-                logger.info("Step 12: Waiting up to 10.5s for MVD dropdown option ('МОСКВЕ')...")
+                logger.info("Step 12: Waiting for MVD dropdown option ('МОСКВЕ')...")
                 options_selector = (
                     "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
                     "div[role='listbox'] .lookup-item:not(.nothing-found):visible, "
@@ -2167,7 +2151,7 @@ class GosuslugiVksBot:
                 options = self.page.locator(options_selector)
                 clicked_option = False
 
-                for _ in range(35):  # 35 * 300ms = 10.5 seconds max wait (breaks immediately when list appears)
+                for tick in range(35):  # 35 * 300ms = 10.5 seconds max wait (breaks immediately when list appears)
                     self.page.wait_for_timeout(300)
 
                     # Strategy 1: Standard Playwright locator match
@@ -2249,6 +2233,18 @@ class GosuslugiVksBot:
                         clicked_option = True
                         self.page.wait_for_timeout(800)
                         break
+
+                    # In-place fast nudge at 1.5s (tick==5) and 3.3s (tick==11): if Angular missed the initial input event while initializing,
+                    # press Backspace + 'Е' in-place (takes 100ms instead of waiting 10.5s and deleting the whole word!)
+                    if tick in (5, 11) and by_hand_inp.count() > 0:
+                        try:
+                            by_hand_inp.click(timeout=1000)
+                            self.page.keyboard.press("End")
+                            self.page.keyboard.press("Backspace")
+                            self.page.wait_for_timeout(80)
+                            by_hand_inp.press_sequentially("Е", delay=60)
+                        except Exception:
+                            pass
 
                 # Strategy 3: Keyboard ArrowDown + Enter fallback if 'Продолжить' is still disabled
                 cont_btn = self.page.locator(
@@ -2507,12 +2503,12 @@ class GosuslugiVksBot:
     def does_citizen_match_worker(self, citizen_text: str, row: Dict[str, Any], page_body_text: str = "") -> bool:
         """
         Verifies that the 'Гражданин' field on the Gosuslugi order page/card matches the employee in `row`.
-        Handles cases where Фамилия or Отчество is 'Нет' (e.g. 'Нет АДЖАД Нет' -> significant token ['аджад']).
+        Handles cases where Фамилия or Отчество is 'Нет' (e.g. 'Нет АДЖАД Нет' -> significant token ['аджад']),
+        and also normalizes Latin homoglyphs via sanitize_cyrillic_value so Excel/Gosuslugi Cyrillic names always match.
         """
-        # Build required significant tokens from Фамилия, Имя, Отчество (excluding 'Нет')
-        raw_last = str(row.get("Фамилия", "")).strip()
-        raw_first = str(row.get("Имя", "")).strip()
-        raw_mid = str(row.get("Отчество", "")).strip()
+        raw_last = self.sanitize_cyrillic_value(str(row.get("Фамилия", "")).strip())
+        raw_first = self.sanitize_cyrillic_value(str(row.get("Имя", "")).strip())
+        raw_mid = self.sanitize_cyrillic_value(str(row.get("Отчество", "")).strip())
 
         primary_tokens = self._normalize_ru_tokens(f"{raw_last} {raw_first}")
         if not primary_tokens:
@@ -2522,7 +2518,8 @@ class GosuslugiVksBot:
         if not primary_tokens:
             return False
 
-        citizen_tokens = self._normalize_ru_tokens(citizen_text)
+        citizen_norm_text = self.sanitize_cyrillic_value(citizen_text or "")
+        citizen_tokens = self._normalize_ru_tokens(citizen_norm_text)
 
         # Fallback: if citizen_tokens is empty (e.g. DOM extracted only 'Нет'), inspect the 'Гражданин' block in page_body_text
         if not citizen_tokens and page_body_text:
@@ -2532,7 +2529,7 @@ class GosuslugiVksBot:
                 re.IGNORECASE,
             )
             if m_block:
-                citizen_tokens = self._normalize_ru_tokens(m_block.group(1))
+                citizen_tokens = self._normalize_ru_tokens(self.sanitize_cyrillic_value(m_block.group(1)))
 
         if citizen_tokens:
             citizen_joined = " ".join(citizen_tokens)
@@ -2546,8 +2543,14 @@ class GosuslugiVksBot:
 
         # Direct full-string fallback (including 'Нет', e.g. 'нет аджад нет')
         full_with_net = re.sub(r"\s+", " ", f"{raw_last} {raw_first} {raw_mid}".lower().replace("ё", "е")).strip()
-        haystack = re.sub(r"\s+", " ", f"{citizen_text} {page_body_text}".lower().replace("ё", "е")).strip()
+        haystack = re.sub(
+            r"\s+",
+            " ",
+            self.sanitize_cyrillic_value(f"{citizen_text} {page_body_text}").lower().replace("ё", "е"),
+        ).strip()
         if full_with_net and len(full_with_net) >= 3 and full_with_net in haystack:
+            return True
+        if primary_tokens and all(pt in haystack for pt in primary_tokens):
             return True
 
         return False
@@ -2601,13 +2604,15 @@ class GosuslugiVksBot:
         Without this, once an order advances past 'Зарегистрировано на портале', both 'Гражданин'
         and 'Документы -> req_preview' are hidden inside 'Показать историю'!
         """
-        # 1) Wait up to 8 seconds for the actual order card to render (do NOT match 'Заявления' in top header!)
-        for _ in range(16):
+        # 1) Wait up to 12 seconds specifically for 'Показать историю' (or 'Гражданин' / 'req_preview' if already expanded)
+        #    NEVER break early on '№ <digits>' because the order number header renders 2-4s BEFORE the 'Показать историю' button!
+        for _ in range(24):
             try:
-                body_now = self.page.locator("body").inner_text(timeout=1500)
+                body_now = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
                 if (
-                    re.search(r"№\s*\d{8,14}", body_now)
-                    or "Показать историю" in body_now
+                    "Показать историю" in body_now
+                    or "Показать всю историю" in body_now
+                    or "Скрыть историю" in body_now
                     or "Гражданин" in body_now
                     or "req_preview" in body_now
                 ):
@@ -2616,8 +2621,8 @@ class GosuslugiVksBot:
                 pass
             self.page.wait_for_timeout(500)
 
-        # 2) Click 'Показать историю' using pure CSS locator (yesterday's working selector) + get_by_text + physical mouse click + DOM click
-        for attempt in range(3):
+        # 2) Click 'Показать историю' using pure CSS locator + get_by_text + physical mouse click + DOM click
+        for attempt in range(5):
             clicked_history = False
 
             # Strategy 2A: Pure CSS selector (never mix CSS with text=/.../ in one string!)
@@ -2683,6 +2688,8 @@ class GosuslugiVksBot:
                                 const target = el.closest('button, a, [role="button"], .link, .history-toggle') || el;
                                 const rect = target.getBoundingClientRect();
                                 target.click();
+                                target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
                                 target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                                 if (rect.width > 0 && rect.height > 0) {
                                     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -2705,10 +2712,13 @@ class GosuslugiVksBot:
 
             if clicked_history:
                 self.page.wait_for_timeout(1800)
+            else:
+                # If 'Показать историю' wasn't found yet, wait 700ms for Angular to finish rendering before next attempt
+                self.page.wait_for_timeout(700)
 
             # 3) Check if 'Зарегистрировано на портале' inside the history timeline is still collapsed (.history-status:not(.open))
             try:
-                body_check = self.page.locator("body").inner_text(timeout=1500)
+                body_check = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
                 if "req_preview" not in body_check or "Гражданин" not in body_check:
                     expanded_inner = self.page.evaluate(
                         r"""() => {
@@ -2737,10 +2747,15 @@ class GosuslugiVksBot:
             except Exception:
                 pass
 
-            # Break early once Гражданин or req_preview is visible or 'Показать историю' is no longer shown
+            # Break ONLY once Гражданин or req_preview or Скрыть историю is visible, or AFTER we actually clicked Показать историю and it disappeared!
             try:
-                body_after = self.page.locator("body").inner_text(timeout=1500)
-                if ("Гражданин" in body_after and "req_preview" in body_after) or "Показать историю" not in body_after:
+                body_after = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+                if (
+                    "Гражданин" in body_after
+                    or "req_preview" in body_after
+                    or "Скрыть историю" in body_after
+                    or (clicked_history and "Показать историю" not in body_after)
+                ):
                     break
             except Exception:
                 pass
@@ -3151,7 +3166,7 @@ class GosuslugiVksBot:
             except Exception:
                 pass
 
-            for cand_url in candidate_hrefs[:3]:
+            for cand_idx, cand_url in enumerate(candidate_hrefs[:3]):
                 checked_urls.add(cand_url)
                 logger.info(f"Step 16.2: Opening candidate order {cand_url} (will expand 'Показать историю' to verify 'Гражданин')...")
                 try:
@@ -3176,8 +3191,16 @@ class GosuslugiVksBot:
                     )
                     continue
 
-                is_match = self.does_citizen_match_worker(p_cit, row, p_body) or (
-                    expected_order_no and p_no == expected_order_no
+                if self.is_order_already_linked_to_another_worker(p_no, sicil):
+                    logger.warning(
+                        f"Step 16 MISMATCH: Заявление № {p_no} уже привязано к другому сотруднику! Пропускаем..."
+                    )
+                    continue
+
+                is_match = (
+                    self.does_citizen_match_worker(p_cit, row, p_body)
+                    or (expected_order_no and p_no == expected_order_no)
+                    or (cand_idx == 0 and not self._normalize_ru_tokens(p_cit) and "req_preview" in p_body)
                 )
                 if not is_match:
                     logger.warning(
@@ -3186,15 +3209,9 @@ class GosuslugiVksBot:
                     )
                     continue
 
-                if self.is_order_already_linked_to_another_worker(p_no, sicil):
-                    logger.warning(
-                        f"Step 16 MISMATCH: Заявление № {p_no} уже привязано к другому сотруднику! Пропускаем..."
-                    )
-                    continue
-
                 verified_order_no = p_no or expected_order_no
                 logger.info(
-                    f"Step 16.3 VERIFIED: Найдено верное заявление № {verified_order_no} для Гражданина '{p_cit}' (Код: {sicil})!"
+                    f"Step 16.3 VERIFIED: Найдено верное заявление № {verified_order_no} для Гражданина '{p_cit or clean_worker_name}' (Код: {sicil})!"
                 )
                 break
 

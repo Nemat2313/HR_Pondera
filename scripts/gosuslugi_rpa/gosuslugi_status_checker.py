@@ -389,15 +389,15 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
     except Exception:
         return info
 
-    # Wait up to 6s for order card to render
-    for _ in range(12):
+    # Wait up to 8s specifically for 'Показать историю' (never break early on '№ <digits>' before 'Показать историю' renders!)
+    for _ in range(16):
         try:
-            b = page.locator("body").inner_text(timeout=1200)
-            if re.search(r"№\s*\d{8,14}", b) or "Показать историю" in b or "Гражданин" in b or "req_preview" in b:
+            b = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+            if "Показать историю" in b or "Показать всю историю" in b or "Скрыть историю" in b or "Гражданин" in b or "req_preview" in b:
                 break
         except Exception:
             pass
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(450)
 
     # Click 'Показать историю' if present (pure CSS locator + get_by_text + DOM click)
     clicked_h = False

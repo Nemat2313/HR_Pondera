@@ -277,9 +277,61 @@ def launch_chrome_debug():
         return False
 
 
+def auto_update_scripts_from_server():
+    """
+    Automatically downloads the latest Pondera_Gosuslugi_Agent.zip from https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip
+    and updates local robot .py scripts so GitHub deployments immediately take effect on every client PC without manual zip re-extraction.
+    """
+    parent_folder = os.path.basename(os.path.dirname(CURRENT_DIR)).lower()
+    if parent_folder == "scripts":
+        return  # Skip inside git dev repo (scripts/gosuslugi_rpa)
+    import io
+    import zipfile
+    import urllib.request
+    import ssl
+
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        url = f"https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip?t={int(time.time())}"
+        req = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
+        with urllib.request.urlopen(req, timeout=12, context=ctx) as resp:
+            if resp.status == 200:
+                zip_bytes = resp.read()
+                with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                    updated_files = []
+                    for member in zf.namelist():
+                        base_name = os.path.basename(member)
+                        if base_name in (
+                            "gosuslugi_vks_robot.py",
+                            "gosuslugi_dismissal_robot.py",
+                            "gosuslugi_status_checker.py",
+                            "rpa_bridge_server.py",
+                        ):
+                            new_data = zf.read(member)
+                            target_path = os.path.join(CURRENT_DIR, base_name)
+                            old_data = b""
+                            if os.path.exists(target_path):
+                                try:
+                                    with open(target_path, "rb") as f_old:
+                                        old_data = f_old.read()
+                                except Exception:
+                                    pass
+                            if new_data and new_data != old_data:
+                                with open(target_path, "wb") as f_out:
+                                    f_out.write(new_data)
+                                updated_files.append(base_name)
+                    if updated_files:
+                        print(f"[RPA BRIDGE] Авто-обновление с сервера hr.pondera.network: обновлены {', '.join(updated_files)}")
+    except Exception as e:
+        print(f"[RPA BRIDGE] Проверка обновлений: {e}")
+
+
 def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", json_file: str = "", config_file: str = ""):
     RPAState.is_running = True
     RPAState.mode = mode
+    auto_update_scripts_from_server()
     RPAState.add_log(f"=== Запуск робота Playwright Gosuslugi (Режим: {mode.upper()}) ===")
 
     if mode == "dismissal":
@@ -605,13 +657,15 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
 def main():
     # Automatically free port 8088 if an older RPA Bridge instance is still running in the background
     free_port_if_occupied(PORT)
+    # Automatically sync latest Python robot scripts from https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip
+    auto_update_scripts_from_server()
     # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts
     for d in scan_downloads_pdfs():
         RPAState.upsert_submission(d)
 
     server = HTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
     print("=====================================================")
-    print(f"  Pondera HR RPA Bridge Server v2.4 running on http://127.0.0.1:{PORT}")
+    print(f"  Pondera HR RPA Bridge Server v2.5 running on http://127.0.0.1:{PORT}")
     print(f"  Chrome Debugging Port: {CHROME_CDP_PORT}")
     print(f"  Tracked Gosuslugi Applications: {len(RPAState.submissions)}")
     print("=====================================================")
