@@ -5,7 +5,7 @@ import { getMoscowTimeParts } from '@/lib/telegramNotifier';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export interface ErrorCategoryDef {
+interface ErrorCategoryDef {
   id: string;
   titleTr: string;
   titleRu: string;
@@ -14,7 +14,7 @@ export interface ErrorCategoryDef {
   severity: 'high' | 'medium' | 'low';
 }
 
-export const ERROR_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
+const ERROR_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
   mvd_step12: {
     id: 'mvd_step12',
     titleTr: 'Adım 12: МВД Birimi Seçimi Hatası',
@@ -81,7 +81,7 @@ export const ERROR_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
   },
 };
 
-export function classifyGosuslugiError(statusText: string, detailText = ''): ErrorCategoryDef {
+function classifyGosuslugiError(statusText: string, detailText = ''): ErrorCategoryDef {
   const combined = `${statusText || ''} ${detailText || ''}`;
   if (/Шаг 12|Подразделение МВД|подразделение МВД/i.test(combined)) {
     return ERROR_CATEGORY_DEFINITIONS.mvd_step12;
