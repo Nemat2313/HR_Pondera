@@ -98,7 +98,7 @@ function doesSubMatchWorker(
     .filter((tok) => tok.length >= 2 && !stopWords.has(tok));
   const sName = sTokens.join(' ');
   if (sName) {
-    const wTokens = [w.lastName, w.firstName, w.patronymic]
+    const wTokens = [w.lastName, w.firstName]
       .map((p) => String(p || '').toLowerCase().trim())
       .flatMap((p) => p.replace(/[^а-яёa-z0-9\s]/gi, ' ').split(/\s+/))
       .filter((tok) => tok.length >= 2 && !stopWords.has(tok));
