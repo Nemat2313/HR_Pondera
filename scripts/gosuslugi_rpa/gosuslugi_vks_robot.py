@@ -2703,13 +2703,15 @@ class GosuslugiVksBot:
 
     def expand_order_history_on_page(self):
         """
-        Expands 'Показать историю' (and any collapsed 'Зарегистрировано на портале' history item)
-        on https://lk.gosuslugi.ru/order/<feed_id> BEFORE reading 'Гражданин' or 'req_preview'.
-        Uses DOM Range on the exact text node 'Показать историю' (~130px wide on the left of the card)
-        so we never click the center of the 800px outer <div> row!
+        Expands 'Показать историю' on https://lk.gosuslugi.ru/order/<feed_id> so 'req_preview' and 'Скачать' become visible.
+        Never uses blind viewport mouse coordinates (which can hit 'Личный кабинет' in the footer or 'Профиль организации'
+        in the sticky header after scrolling) and never double-clicks 'Зарегистрировано на портале' when already open.
         """
-        # 1) Wait up to 10 seconds specifically for 'Показать историю' or 'req_preview'
-        for _ in range(20):
+        if "lk.gosuslugi.ru/order/" not in (self.page.url or ""):
+            return
+
+        # 1) Wait up to 8 seconds for the order page content ('Показать историю', 'Скрыть историю', or 'req_preview') to render
+        for _ in range(16):
             try:
                 body_now = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
                 if (
@@ -2723,34 +2725,61 @@ class GosuslugiVksBot:
                 pass
             self.page.wait_for_timeout(500)
 
-        # 2) Click the exact blue 'Показать историю' text on the left of the card
-        for attempt in range(5):
+        # If already expanded ('req_preview' or 'Скрыть историю' is visible), wait briefly for 'req_preview' and return
+        try:
+            body_init = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+            if "req_preview" in body_init:
+                return
+            if "Скрыть историю" in body_init and "Показать историю" not in body_init:
+                for _ in range(6):
+                    body_w = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+                    if "req_preview" in body_w or "Скачать" in body_w:
+                        return
+                    self.page.wait_for_timeout(400)
+                return
+        except Exception:
+            pass
+
+        # 2) Click 'Показать историю' cleanly once per attempt (without firing duplicate mouse clicks that hit footer/header links)
+        for attempt in range(3):
+            if "lk.gosuslugi.ru/order/" not in (self.page.url or ""):
+                return
             try:
                 body_before = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-                if "req_preview" in body_before:
+                if "req_preview" in body_before or ("Скрыть историю" in body_before and "Показать историю" not in body_before):
                     break
             except Exception:
                 pass
 
             clicked_history = False
 
-            # Strategy A: Exact Text-Node Range bounding box + JS click on innermost leaf element + physical mouse click
+            # Strategy A: Click the exact innermost DOM element for 'Показать историю' (strictly excluding header/footer/nav links)
             try:
-                js_target = self.page.evaluate(
+                clicked_in_js = self.page.evaluate(
                     r"""() => {
-                        // First find the innermost element or text node matching 'Показать историю'
+                        const isSafeOrderElement = (el) => {
+                            if (!el) return false;
+                            if (el.closest('header, footer, nav')) return false;
+                            const a = el.closest('a[href]');
+                            if (a) {
+                                const href = (a.getAttribute('href') || '').toLowerCase();
+                                if (href && !href.includes('/order/') && !href.startsWith('#') && !href.startsWith('javascript')) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        };
+
                         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-                        let matchedTextNode = null;
                         let matchedEl = null;
                         while (walker.nextNode()) {
                             const node = walker.currentNode;
                             const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
                             if (/^показать\s+(всю\s+)?историю$/i.test(txt)) {
                                 const parent = node.parentElement;
-                                if (parent) {
+                                if (parent && isSafeOrderElement(parent)) {
                                     const r = parent.getBoundingClientRect();
                                     if (r.width > 10 && r.height > 8) {
-                                        matchedTextNode = node;
                                         matchedEl = parent;
                                         break;
                                     }
@@ -2758,10 +2787,10 @@ class GosuslugiVksBot:
                             }
                         }
 
-                        // Fallback if text is split across child nodes: pick matching element with SMALLEST width/area
                         if (!matchedEl) {
                             const candidates = Array.from(document.querySelectorAll('a, button, span, p, div'))
                                 .filter(el => {
+                                    if (!isSafeOrderElement(el)) return false;
                                     const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
                                     if (!/^показать\s+(всю\s+)?историю$/i.test(t)) return false;
                                     const r = el.getBoundingClientRect();
@@ -2777,143 +2806,70 @@ class GosuslugiVksBot:
                             }
                         }
 
-                        if (!matchedEl) return null;
-
-                        matchedEl.scrollIntoView({ block: 'center' });
-
-                        // Measure the exact text range (the ~130px blue text on the left, NEVER the 800px full-width div!)
-                        let rect = matchedEl.getBoundingClientRect();
-                        if (matchedTextNode) {
-                            try {
-                                const range = document.createRange();
-                                range.selectNodeContents(matchedTextNode);
-                                const rr = range.getBoundingClientRect();
-                                if (rr.width > 15 && rr.height > 8) {
-                                    rect = rr;
-                                }
-                            } catch (e) {}
+                        if (!matchedEl) return false;
+                        const clickTarget = matchedEl.closest('button, [role="button"], .link, .history-toggle') || matchedEl;
+                        if ( isSafeOrderElement(clickTarget) ) {
+                            clickTarget.click();
+                            return true;
                         }
-
-                        // Click the innermost element and its clickable ancestors in JS
-                        const clickChain = [
-                            matchedEl,
-                            matchedEl.closest('a, button, [role="button"], .link, .history-toggle'),
-                            matchedEl.parentElement
-                        ].filter(Boolean);
-
-                        for (const node of clickChain) {
-                            try {
-                                node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
-                                node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                                node.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
-                                node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                                node.click();
-                                node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                            } catch (e) {}
-                        }
-
-                        // If rect is still wide (> 250px), click 60px from the left edge where the blue text sits
-                        const clickX = rect.width > 250 ? (rect.left + 65) : (rect.left + rect.width / 2);
-                        const clickY = rect.top + rect.height / 2;
-                        return { x: clickX, y: clickY, w: rect.width, h: rect.height };
+                        return false;
                     }"""
                 )
-                if js_target and js_target.get("x", 0) > 0 and js_target.get("y", 0) > 0:
-                    cx = float(js_target["x"])
-                    cy = float(js_target["y"])
-                    logger.info(
-                        f"Step 16: Clicking 'Показать историю' at ({int(cx)}, {int(cy)}) [w={int(js_target.get('w', 0))}px] (attempt {attempt + 1})..."
-                    )
-                    try:
-                        self.page.mouse.move(cx, cy)
-                        self.page.wait_for_timeout(50)
-                        self.page.mouse.down()
-                        self.page.wait_for_timeout(50)
-                        self.page.mouse.up()
-                    except Exception:
-                        pass
+                if clicked_in_js:
+                    logger.info(f"Step 16: Clicked 'Показать историю' via DOM (attempt {attempt + 1})...")
                     clicked_history = True
             except Exception:
                 pass
 
-            # Strategy B: Playwright get_by_text('.last') if still not clicked
+            # Strategy B: Playwright locator fallback if DOM click did not find it
             if not clicked_history:
                 try:
-                    by_txt = self.page.get_by_text("Показать историю", exact=False).last
-                    if by_txt.count() > 0:
-                        by_txt.click(timeout=2000)
+                    by_txt = self.page.get_by_text("Показать историю", exact=False).first
+                    if by_txt.count() > 0 and by_txt.is_visible():
+                        logger.info(f"Step 16: Clicking 'Показать историю' via Playwright locator (attempt {attempt + 1})...")
+                        by_txt.click(timeout=2500)
                         clicked_history = True
                 except Exception:
                     pass
 
-            if clicked_history:
-                self.page.wait_for_timeout(1500)
-            else:
-                self.page.wait_for_timeout(600)
+            # Wait up to 4 seconds for the expanded history ('req_preview' / 'Скачать' / 'Скрыть историю') to finish rendering
+            for _ in range(8):
+                self.page.wait_for_timeout(500)
+                try:
+                    body_after = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+                    if "req_preview" in body_after or "Скачать" in body_after:
+                        return
+                except Exception:
+                    pass
 
-            # 3) Check if 'Зарегистрировано на портале' inside the history timeline is still collapsed (.history-status:not(.open))
+            # If 'Скрыть историю' is now visible (meaning history IS open), only expand collapsed '.history-status:not(.open)' if 'req_preview' is still hidden
             try:
                 body_check = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-                if "req_preview" not in body_check:
-                    reg_coords = self.page.evaluate(
+                if "req_preview" not in body_check and "Скачать" not in body_check:
+                    self.page.evaluate(
                         r"""() => {
                             const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
                             for (const st of closedStatuses) {
-                                const header = st.querySelector('.history-header, .status-title, h3, h4, span, div') || st;
+                                if (st.closest('header, footer, nav')) continue;
+                                const header = st.querySelector('.history-header, .status-title') || st;
                                 header.click();
                             }
-                            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-                            while (walker.nextNode()) {
-                                const node = walker.currentNode;
-                                const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
-                                if (/^Зарегистрировано на портале$/i.test(txt) && node.parentElement) {
-                                    const el = node.parentElement;
-                                    el.scrollIntoView({ block: 'center' });
-                                    const clickable = el.closest('.history-status, button, a, [role="button"]') || el;
-                                    clickable.click();
-                                    const range = document.createRange();
-                                    range.selectNodeContents(node);
-                                    const r = range.getBoundingClientRect();
-                                    if (r.width > 10 && r.height > 8) {
-                                        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-                                    }
-                                }
-                            }
-                            return null;
                         }"""
                     )
-                    if reg_coords and reg_coords.get("x", 0) > 0 and reg_coords.get("y", 0) > 0:
-                        try:
-                            self.page.mouse.click(float(reg_coords["x"]), float(reg_coords["y"]))
-                        except Exception:
-                            pass
-                        self.page.wait_for_timeout(1200)
-            except Exception:
-                pass
-
-            # Break once req_preview or Скрыть историю is visible, or after Показать историю disappears
-            try:
-                body_after = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+                    self.page.wait_for_timeout(1000)
+                body_final = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
                 if (
-                    "req_preview" in body_after
-                    or "Скрыть историю" in body_after
-                    or (clicked_history and "Показать историю" not in body_after)
+                    "req_preview" in body_final
+                    or "Скачать" in body_final
+                    or "Скрыть историю" in body_final
+                    or (clicked_history and "Показать историю" not in body_final)
                 ):
                     break
             except Exception:
                 pass
 
-    def inspect_open_order_page(self) -> Dict[str, str]:
-        """
-        Inspects the currently open Gosuslugi order details page (https://lk.gosuslugi.ru/order/<feed_id>):
-        FIRST expands 'Показать историю' so 'Гражданин' and 'req_preview' are never hidden, then extracts:
-        - order_no: e.g. '8281910041'
-        - service_title: e.g. 'Уведомления о трудовой деятельности иностранцев'
-        - citizen_name: value displayed under 'Гражданин' (e.g. 'Нет АДЖАД Нет')
-        - body_text: full visible text of the page for fallback verification
-        """
-        self.expand_order_history_on_page()
-
+    def _extract_order_page_fields_once(self) -> Dict[str, str]:
+        """Helper that reads order_no, service_title, citizen_name, and body_text from the current /order/ DOM."""
         info = {"order_no": "", "service_title": "", "citizen_name": "", "body_text": ""}
         try:
             dom_extracted = self.page.evaluate(
@@ -2922,11 +2878,14 @@ class GosuslugiVksBot:
                     const stopWords = /^(документы|история|показать историю|скрыть историю|скачать|скачать всё|адрес|статус|сведения|отправитель|инициатор)$/i;
 
                     // 1. Heading / Service title
-                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, .order-title, .title-h3, .sub-title, p, span'));
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, .order-title, .title-h3, .sub-title, p, span, div'));
                     for (const h of headings) {
+                        if (h.closest('header, footer, nav')) continue;
                         const t = (h.innerText || "").trim();
+                        if (!t || t.length > 220) continue;
                         if (
                             t.includes("Уведомления о трудовой деятельности") ||
+                            t.includes("Уведомление о трудовой деятельности") ||
                             t.includes("Уведомления о прибытии") ||
                             t.includes("Разрешение на работу ИГ") ||
                             t.includes("Выдан документ Разрешение на работу")
@@ -2936,9 +2895,10 @@ class GosuslugiVksBot:
                         }
                     }
 
-                    // 2. Find 'Гражданин' label and read the complete value next to / below it (joining multi-span/multi-line FIO like 'Нет АДЖАД Нет')
+                    // 2. Find 'Гражданин' label and read the complete value next to / below it
                     const allEls = Array.from(document.querySelectorAll('div, span, p, dt, td, label'));
                     for (const el of allEls) {
+                        if (el.closest('header, footer, nav')) continue;
                         const txt = (el.innerText || "").trim();
                         if (txt === "Гражданин" || txt === "Гражданин:" || txt === "Иностранный гражданин") {
                             let cur = el;
@@ -2987,9 +2947,8 @@ class GosuslugiVksBot:
             pass
 
         try:
-            body_text = self.page.locator("body").inner_text(timeout=3000)
+            body_text = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
             info["body_text"] = body_text
-            # If citizen_name is empty or only captured 'Нет' (1 word when full name has more lines), parse from body_text
             if not self._normalize_ru_tokens(info["citizen_name"]):
                 m_cit_block = re.search(
                     r"Гражданин\s*:?\s*(?:\r?\n|\s)+([^\r\n]+(?:\r?\n[^\r\n]+){0,2})",
@@ -3026,13 +2985,42 @@ class GosuslugiVksBot:
 
         return info
 
+    def inspect_open_order_page(self) -> Dict[str, str]:
+        """
+        Inspects the currently open Gosuslugi order details page (https://lk.gosuslugi.ru/order/<feed_id>):
+        1) Waits for the Angular order view to render its header/number
+        2) Captures order_no and service_title BEFORE expanding history
+        3) Expands 'Показать историю' so 'Гражданин' and 'req_preview' become visible
+        4) Captures updated fields AFTER expanding history and merges them
+        """
+        for _ in range(12):
+            try:
+                bt = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+                if re.search(r"№\s*\d{8,14}", bt) or "Показать историю" in bt or "req_preview" in bt:
+                    break
+            except Exception:
+                pass
+            self.page.wait_for_timeout(500)
+
+        before_info = self._extract_order_page_fields_once()
+        self.expand_order_history_on_page()
+        after_info = self._extract_order_page_fields_once()
+
+        return {
+            "order_no": after_info["order_no"] or before_info["order_no"],
+            "service_title": after_info["service_title"] or before_info["service_title"],
+            "citizen_name": after_info["citizen_name"] or before_info["citizen_name"],
+            "body_text": after_info["body_text"] or before_info["body_text"],
+        }
+
     def find_worker_order_via_feeds_api(
         self, row: Dict[str, Any], expected_order_no: str = ""
-    ) -> Tuple[Optional[Dict[str, str]], List[str]]:
+    ) -> Tuple[Optional[Dict[str, str]], List[str], Dict[str, str]]:
         """
         Queries Gosuslugi's internal /api/lk/v1/feeds/ JSON API directly inside the browser session.
         Strictly filters ONLY 'Уведомления о трудовой деятельности иностранцев' (never 'Разрешение на работу ИГ'
         or 'Уведомления о прибытии и убытии').
+        Returns (matched_item_or_None, recent_unverified_urls, url_to_order_no_map).
         """
         sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
         query_suffix = (
@@ -3067,10 +3055,11 @@ class GosuslugiVksBot:
             raw_items = []
 
         if not isinstance(raw_items, list):
-            return None, []
+            return None, [], {}
 
         candidates = []
         recent_unverified_urls: List[str] = []
+        url_to_order_no: Dict[str, str] = {}
         for raw_it in raw_items:
             if not isinstance(raw_it, dict):
                 continue
@@ -3093,6 +3082,9 @@ class GosuslugiVksBot:
             # Exclude orders already linked to another worker
             if self.is_order_already_linked_to_another_worker(ext_id, sicil):
                 continue
+
+            order_url = f"https://lk.gosuslugi.ru/order/{feed_id}"
+            url_to_order_no[order_url] = ext_id
 
             citizen_name = ""
             snippets = data_obj.get("snippets") or []
@@ -3122,29 +3114,27 @@ class GosuslugiVksBot:
             # If Step 15 gave us the exact order number and either citizen_name matches or snippet isn't populated yet -> return immediately!
             if expected_order_no and ext_id == expected_order_no:
                 if not citizen_name or self.does_citizen_match_worker(citizen_name, row):
-                    return item_info, recent_unverified_urls
+                    return item_info, recent_unverified_urls, url_to_order_no
 
             if citizen_name:
                 if self.does_citizen_match_worker(citizen_name, row):
                     candidates.append(item_info)
             else:
-                # Snippet didn't include 'Гражданин' (because 'Гражданин' is inside 'Показать историю' on /order/<feed_id>)
-                order_url = f"https://lk.gosuslugi.ru/order/{feed_id}"
                 if order_url not in recent_unverified_urls and len(recent_unverified_urls) < 3:
                     recent_unverified_urls.append(order_url)
 
         if candidates:
-            return candidates[0], recent_unverified_urls
-        return None, recent_unverified_urls
+            return candidates[0], recent_unverified_urls, url_to_order_no
+        return None, recent_unverified_urls, url_to_order_no
 
     def execute_step16_cabinet_and_download(self, row: Dict[str, Any], gosuslugi_order_no: str = ""):
         """
         Executes Step 16 after 'Уведомление отправлено' with strict multi-computer & citizen verification:
         1) Verifies no 'У вас недостаточно полномочий' error is on screen
-        2) Clicks 'В личный кабинет' or navigates to https://lk.gosuslugi.ru/orders
+        2) Navigates directly to https://lk.gosuslugi.ru/orders (never to /org-profile/information)
         3) Opens ONLY 'Уведомления о трудовой деятельности иностранцев' orders (never 'Разрешение на работу ИГ'),
            clicks 'Показать историю' FIRST so 'Гражданин' and 'req_preview' are visible,
-           and verifies 'Гражданин' matches `row` (including names with 'Нет' like 'Нет АДЖАД Нет' or 'Аалм Мехтаб Нет')
+           and verifies 'Гражданин' matches `row`
         4) Downloads 'req_preview' PDF and renames it to <Sicil>_<VerifiedGosuslugiNo>_<WorkerName>_<Period>.pdf
         """
         self.check_and_stop_if_insufficient_permissions()
@@ -3156,27 +3146,21 @@ class GosuslugiVksBot:
             f"Step 16: Searching Personal Cabinet for verified Zayavka of Гражданин '{clean_worker_name}' (Код: {sicil})..."
         )
 
-        # 16.1 Click 'В личный кабинет' if currently on the 'Уведомление отправлено' confirmation screen
-        cabinet_btn = self.page.locator(
-            "button:has-text('В личный кабинет'):visible, "
-            "a:has-text('В личный кабинет'):visible, "
-            "span:has-text('В личный кабинет'):visible"
-        ).first
-        if "lk.gosuslugi.ru" not in (self.page.url or ""):
+        orders_list_url = "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
+
+        # 16.1 Navigate directly to Заявления (lk.gosuslugi.ru/orders) instead of clicking 'В личный кабинет'
+        # (because on Organization accounts 'В личный кабинет' redirects to /org-profile/information!)
+        if "lk.gosuslugi.ru/order/" not in (self.page.url or "") and "lk.gosuslugi.ru/orders" not in (self.page.url or ""):
+            logger.info("Step 16.1: Navigating directly to Заявления (lk.gosuslugi.ru/orders)...")
             try:
-                cabinet_btn.wait_for(state="visible", timeout=10000)
-            except Exception:
-                pass
-        if cabinet_btn.count() > 0 and cabinet_btn.is_visible():
-            logger.info("Step 16.1: Clicking 'В личный кабинет'...")
-            try:
-                cabinet_btn.click(timeout=5000)
-            except Exception:
-                cabinet_btn.evaluate("el => (el.closest('button, a') || el).click()")
-            self.page.wait_for_timeout(3000)
+                self.page.goto(orders_list_url, wait_until="domcontentloaded", timeout=35000)
+                self.page.wait_for_timeout(3000)
+            except Exception as e:
+                logger.warning(f"Step 16.1 navigation note: {e}")
 
         verified_order_no = ""
-        checked_urls = set()
+        rejected_urls = set()
+        url_to_order_no: Dict[str, str] = {}
 
         # Check if we are ALREADY on an '/order/...' details page right now
         if "lk.gosuslugi.ru/order/" in (self.page.url or ""):
@@ -3187,7 +3171,8 @@ class GosuslugiVksBot:
                 and (not has_cit or self.does_citizen_match_worker(page_info["citizen_name"], row, page_info.get("body_text", "")))
                 and not self.is_order_already_linked_to_another_worker(page_info["order_no"], sicil)
             ):
-                verified_order_no = page_info["order_no"] or expected_order_no
+                fallback_id = (self.page.url or "").rstrip("/").split("/order/")[-1].split("?")[0]
+                verified_order_no = page_info["order_no"] or expected_order_no or fallback_id
 
         # Up to 3 search passes (allowing Gosuslugi a few seconds to index the newly submitted notification)
         for search_pass in range(1, 4):
@@ -3195,10 +3180,10 @@ class GosuslugiVksBot:
                 break
 
             # Pass Strategy A: Query Gosuslugi's /api/lk/v1/feeds/ JSON API for Citizen Name or expected_order_no match
-            api_match, api_unverified_urls = self.find_worker_order_via_feeds_api(row, expected_order_no)
+            api_match, api_unverified_urls, api_url_map = self.find_worker_order_via_feeds_api(row, expected_order_no)
+            url_to_order_no.update(api_url_map)
             if api_match and api_match.get("feed_id"):
                 target_order_url = f"https://lk.gosuslugi.ru/order/{api_match['feed_id']}"
-                checked_urls.add(target_order_url)
                 logger.info(
                     f"Step 16.2 (API Match): Found order № {api_match['application_no']} for Гражданин '{api_match['citizen_name']}' -> opening {target_order_url}..."
                 )
@@ -3209,30 +3194,32 @@ class GosuslugiVksBot:
                     logger.warning(f"Step 16.2 navigation note: {e}")
 
                 page_info = self.inspect_open_order_page()
+                resolved_no = page_info["order_no"] or api_match["application_no"] or expected_order_no
                 logger.info(
-                    f"Step 16.3: Order Page Check -> № {page_info['order_no']} | Услуга: '{page_info['service_title']}' | Гражданин: '{page_info['citizen_name']}'"
+                    f"Step 16.3: Order Page Check -> № {resolved_no} | Услуга: '{page_info['service_title'] or api_match.get('service_title', '')}' | Гражданин: '{page_info['citizen_name']}'"
                 )
                 comb_cit = page_info["citizen_name"] or api_match["citizen_name"]
                 is_citizen_ok = (
                     not self._normalize_ru_tokens(comb_cit)
                     or self.does_citizen_match_worker(comb_cit, row, page_info.get("body_text", ""))
-                    or (expected_order_no and page_info["order_no"] == expected_order_no)
+                    or (expected_order_no and resolved_no == expected_order_no)
                 )
                 if (
-                    self.is_valid_labor_activity_service(page_info["service_title"])
+                    self.is_valid_labor_activity_service(page_info["service_title"] or api_match.get("service_title", ""))
                     and is_citizen_ok
-                    and not self.is_order_already_linked_to_another_worker(page_info["order_no"] or api_match["application_no"], sicil)
+                    and not self.is_order_already_linked_to_another_worker(resolved_no, sicil)
                 ):
-                    verified_order_no = page_info["order_no"] or api_match["application_no"]
+                    verified_order_no = resolved_no or str(api_match["feed_id"])
                     logger.info(
                         f"Step 16.3 VERIFIED: Заявление № {verified_order_no} принадлежит сотруднику '{clean_worker_name}' (Гражданин: '{comb_cit or clean_worker_name}')!"
                     )
                     break
+                else:
+                    rejected_urls.add(target_order_url)
 
             # Pass Strategy B: Inspect recent candidate orders (starting with newest labor notifications from /api/lk/v1/feeds/ + DOM cards on /orders)
-            candidate_hrefs: List[str] = [u for u in api_unverified_urls if u not in checked_urls]
+            candidate_hrefs: List[str] = [u for u in api_unverified_urls if u not in rejected_urls]
 
-            orders_list_url = "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
             if not candidate_hrefs and "lk.gosuslugi.ru/orders" not in (self.page.url or ""):
                 logger.info(f"Step 16.2 (Pass {search_pass}/3): Navigating to Заявления (lk.gosuslugi.ru/orders)...")
                 try:
@@ -3250,8 +3237,6 @@ class GosuslugiVksBot:
                         for (const a of links) {
                             const href = a.getAttribute("href") || "";
                             if (!href) continue;
-                            // Walk up DOM up to 6 levels while this container only holds this single order link
-                            // so we capture the entire order card text (service subtitle + Гражданин snippet)!
                             let card = a;
                             for (let depth = 0; depth < 6 && card.parentElement; depth++) {
                                 const parent = card.parentElement;
@@ -3269,6 +3254,16 @@ class GosuslugiVksBot:
                     }"""
                 )
                 if isinstance(raw_cards, list):
+                    for c in raw_cards:
+                        c_text = str(c.get("text") or "")
+                        c_href = str(c.get("href") or "").strip()
+                        if not c_href:
+                            continue
+                        full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
+                        m_card_no = re.search(r"№\s*(\d{8,14})", c_text)
+                        if m_card_no and full_u not in url_to_order_no:
+                            url_to_order_no[full_u] = m_card_no.group(1).strip()
+
                     # Pass 0: Card explicitly containing expected_order_no from Step 15
                     if expected_order_no:
                         for c in raw_cards:
@@ -3279,7 +3274,7 @@ class GosuslugiVksBot:
                                 if full_u not in candidate_hrefs:
                                     candidate_hrefs.insert(0, full_u)
 
-                    # Pass 1: Cards explicitly mentioning the worker's significant name tokens (e.g. 'аджад') AND valid labor activity service
+                    # Pass 1: Cards explicitly mentioning the worker's significant name tokens AND valid labor activity service
                     for c in raw_cards:
                         c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
                         c_href = str(c.get("href") or "").strip()
@@ -3290,13 +3285,12 @@ class GosuslugiVksBot:
                             if full_u not in candidate_hrefs:
                                 candidate_hrefs.insert(0, full_u)
 
-                    # Pass 2: Recent 'Уведомления о трудовой деятельности иностранцев' cards that haven't been checked yet
+                    # Pass 2: Recent 'Уведомления о трудовой деятельности иностранцев' cards that haven't been rejected
                     for c in raw_cards[:8]:
                         c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
                         c_href = str(c.get("href") or "").strip()
                         if not c_href or not self.is_valid_labor_activity_service(c_text_low):
                             continue
-                        # If the card text has service info, require 'трудовой деятельности' so we never open 'Разрешение на работу ИГ'!
                         if ("мвд" in c_text_low or "уведомлени" in c_text_low or "выдан" in c_text_low) and "трудовой деятельности" not in c_text_low:
                             continue
                         m_card_cit = re.search(r"гражданин\s*:?\s*([^\n\r]+)", c_text_low)
@@ -3306,13 +3300,12 @@ class GosuslugiVksBot:
                             )
                             continue
                         full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
-                        if full_u not in candidate_hrefs and full_u not in checked_urls:
+                        if full_u not in candidate_hrefs and full_u not in rejected_urls:
                             candidate_hrefs.append(full_u)
             except Exception:
                 pass
 
             for cand_idx, cand_url in enumerate(candidate_hrefs[:3]):
-                checked_urls.add(cand_url)
                 logger.info(f"Step 16.2: Opening candidate order {cand_url} (will expand 'Показать историю' to verify & download PDF)...")
                 try:
                     self.page.goto(cand_url, wait_until="domcontentloaded", timeout=30000)
@@ -3320,8 +3313,11 @@ class GosuslugiVksBot:
                 except Exception:
                     continue
 
+                if "lk.gosuslugi.ru/order/" not in (self.page.url or ""):
+                    continue
+
                 page_info = self.inspect_open_order_page()
-                p_no = page_info["order_no"]
+                p_no = page_info["order_no"] or url_to_order_no.get(cand_url, "")
                 p_srv = page_info["service_title"]
                 p_cit = page_info["citizen_name"]
                 p_body = page_info.get("body_text", "")
@@ -3330,20 +3326,25 @@ class GosuslugiVksBot:
                     f"Step 16.3: Order Page Check -> № {p_no or '?'} | Услуга: '{p_srv}' | Гражданин: '{p_cit or '(не указано в карточке ВКС)'}'"
                 )
 
+                # Guard against empty/non-loaded page or accidental navigation away from /order/
+                if "lk.gosuslugi.ru/order/" not in (self.page.url or ""):
+                    logger.warning(f"Step 16: Browser left /order/ page (now at {self.page.url}), re-opening {cand_url}...")
+                    continue
+
                 if not self.is_valid_labor_activity_service(p_srv + " " + p_body[:400]):
                     logger.warning(
                         f"Step 16 MISMATCH: Заявление № {p_no} относится к другой услуге ('{p_srv}'), а не к ВКС! Пропускаем..."
                     )
+                    rejected_urls.add(cand_url)
                     continue
 
-                if self.is_order_already_linked_to_another_worker(p_no, sicil):
+                if p_no and self.is_order_already_linked_to_another_worker(p_no, sicil):
                     logger.warning(
                         f"Step 16 MISMATCH: Заявление № {p_no} уже привязано к другому сотруднику! Пропускаем..."
                     )
+                    rejected_urls.add(cand_url)
                     continue
 
-                # Note: Gosuslugi VKS salary notifications ('Уведомления о трудовой деятельности иностранцев') do NOT display a 'Гражданин'
-                # field on the /order/<id> HTML page — so if p_cit is empty on the newest unlinked VKS order (cand_idx == 0), it IS our order!
                 has_explicit_cit = bool(self._normalize_ru_tokens(p_cit))
                 is_match = (
                     self.does_citizen_match_worker(p_cit, row, p_body)
@@ -3355,9 +3356,11 @@ class GosuslugiVksBot:
                         f"Step 16 MISMATCH: В заявлении № {p_no} указан Гражданин '{p_cit}', а робот ищет '{clean_worker_name}'! "
                         f"Чужое заявление пропускается..."
                     )
+                    rejected_urls.add(cand_url)
                     continue
 
-                verified_order_no = p_no or expected_order_no
+                fallback_feed_id = cand_url.rstrip("/").split("/order/")[-1].split("?")[0]
+                verified_order_no = p_no or expected_order_no or fallback_feed_id
                 logger.info(
                     f"Step 16.3 VERIFIED: Найдено верное заявление № {verified_order_no} для сотрудника '{p_cit or clean_worker_name}' (Код: {sicil})!"
                 )
@@ -3464,7 +3467,7 @@ class GosuslugiVksBot:
         Clicks the 'Скачать' link/button for 'req_preview' inside 'Документы' on the verified Gosuslugi order page,
         waits for the PDF to land in ~/Downloads, and renames it to:
             <Sicil>_<VerifiedGosuslugiNo>_<Ad Soyad>_<Donem>.pdf
-        Supports <a>, <button>, <span>, and DOM coordinate click fallbacks.
+        Supports <a>, <button>, <span>, and DOM click fallbacks without blind viewport clicks.
         """
         downloads_dir = Path.home() / "Downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -3496,48 +3499,40 @@ class GosuslugiVksBot:
         logger.info("Step 16.5: Clicking 'Скачать' for 'req_preview' PDF...")
 
         def trigger_download_click():
-            # Instant DOM JavaScript + Mouse Coordinate click on 'Скачать' next to 'req_preview'
+            # Clean single DOM click on 'Скачать' inside 'req_preview' container (excluding header/footer/nav)
             try:
-                box = self.page.evaluate(
+                clicked_dl = self.page.evaluate(
                     """() => {
                         const all = Array.from(document.querySelectorAll('a, button, span, div'));
                         const dlButtons = all.filter(el => {
+                            if (el.closest('header, footer, nav')) return false;
                             const t = (el.innerText || el.textContent || '').trim();
                             if (t !== 'Скачать') return false;
                             const r = el.getBoundingClientRect();
-                            return r.width > 15 && r.height > 10 && r.height < 90;
+                            return r.width > 15 && r.height > 8 && r.height < 90;
                         });
-                        // Prefer the one inside the same container as 'req_preview' or 'PDF'
+                        // Prefer the one inside the same row/container as 'req_preview'
                         for (const btn of dlButtons) {
                             let p = btn.parentElement;
-                            for (let d = 0; d < 6 && p; d++) {
+                            for (let d = 0; d < 5 && p; d++) {
                                 const pt = (p.innerText || '');
-                                if (pt.includes('req_preview') || pt.includes('PDF')) {
+                                if (pt.includes('req_preview')) {
                                     const target = btn.closest('a, button, [role="button"]') || btn;
-                                    target.scrollIntoView({ block: 'center' });
-                                    const r = target.getBoundingClientRect();
                                     target.click();
-                                    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                                    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                                    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                                    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                                    return true;
                                 }
                                 p = p.parentElement;
                             }
                         }
                         if (dlButtons.length > 0) {
                             const target = dlButtons[0].closest('a, button, [role="button"]') || dlButtons[0];
-                            target.scrollIntoView({ block: 'center' });
-                            const r = target.getBoundingClientRect();
                             target.click();
-                            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                            return true;
                         }
-                        return null;
+                        return false;
                     }"""
                 )
-                if box and box.get("x") and box.get("y"):
-                    self.page.mouse.click(float(box["x"]), float(box["y"]))
+                if clicked_dl:
                     return True
             except Exception:
                 pass

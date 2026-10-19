@@ -399,86 +399,79 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
             pass
         page.wait_for_timeout(450)
 
-    # Click the exact blue 'Показать историю' text on the left of the card via Text-Node Range bounding box
+    # Click the exact blue 'Показать историю' text cleanly via DOM without blind mouse coordinates
     clicked_h = False
     try:
-        js_target = page.evaluate(
-            r"""() => {
-                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-                let matchedTextNode = null;
-                let matchedEl = null;
-                while (walker.nextNode()) {
-                    const node = walker.currentNode;
-                    const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
-                    if (/^показать\s+(всю\s+)?историю$/i.test(txt) && node.parentElement) {
-                        const r = node.parentElement.getBoundingClientRect();
-                        if (r.width > 10 && r.height > 8) {
-                            matchedTextNode = node;
-                            matchedEl = node.parentElement;
-                            break;
+        clicked_h = bool(
+            page.evaluate(
+                r"""() => {
+                    const isSafeOrderElement = (el) => {
+                        if (!el) return false;
+                        if (el.closest('header, footer, nav')) return false;
+                        const a = el.closest('a[href]');
+                        if (a) {
+                            const href = (a.getAttribute('href') || '').toLowerCase();
+                            if (href && !href.includes('/order/') && !href.startsWith('#') && !href.startsWith('javascript')) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    };
+                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                    let matchedEl = null;
+                    while (walker.nextNode()) {
+                        const node = walker.currentNode;
+                        const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                        if (/^показать\s+(всю\s+)?историю$/i.test(txt) && node.parentElement && isSafeOrderElement(node.parentElement)) {
+                            const r = node.parentElement.getBoundingClientRect();
+                            if (r.width > 10 && r.height > 8) {
+                                matchedEl = node.parentElement;
+                                break;
+                            }
                         }
                     }
-                }
-                if (!matchedEl) return null;
-                matchedEl.scrollIntoView({ block: 'center' });
-                let rect = matchedEl.getBoundingClientRect();
-                if (matchedTextNode) {
-                    try {
-                        const range = document.createRange();
-                        range.selectNodeContents(matchedTextNode);
-                        const rr = range.getBoundingClientRect();
-                        if (rr.width > 15 && rr.height > 8) rect = rr;
-                    } catch (e) {}
-                }
-                for (const node of [matchedEl, matchedEl.closest('a, button, [role="button"], .link'), matchedEl.parentElement].filter(Boolean)) {
-                    try {
-                        node.click();
-                        node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                    } catch (e) {}
-                }
-                const clickX = rect.width > 250 ? (rect.left + 65) : (rect.left + rect.width / 2);
-                const clickY = rect.top + rect.height / 2;
-                return { x: clickX, y: clickY };
-            }"""
+                    if (!matchedEl) return false;
+                    const clickTarget = matchedEl.closest('button, [role="button"], .link, .history-toggle') || matchedEl;
+                    if (isSafeOrderElement(clickTarget)) {
+                        clickTarget.click();
+                        return true;
+                    }
+                    return false;
+                }"""
+            )
         )
-        if js_target and js_target.get("x", 0) > 0 and js_target.get("y", 0) > 0:
-            page.mouse.click(float(js_target["x"]), float(js_target["y"]))
-            clicked_h = True
     except Exception:
         pass
 
     if clicked_h:
-        page.wait_for_timeout(1600)
+        for _ in range(8):
+            page.wait_for_timeout(450)
+            try:
+                b_after = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+                if "req_preview" in b_after or "Скачать" in b_after:
+                    break
+            except Exception:
+                pass
 
-    # Also expand any inner collapsed 'Зарегистрировано на портале' block
+    # Only expand collapsed '.history-status:not(.open)' if 'req_preview' is still hidden
     try:
         body_check = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-        if "req_preview" not in body_check:
+        if "req_preview" not in body_check and "Скачать" not in body_check:
             expanded_inner = page.evaluate(
                 r"""() => {
                     let clicked = false;
                     const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
                     for (const st of closedStatuses) {
-                        const header = st.querySelector('.history-header, .status-title, h3, h4, span, div') || st;
+                        if (st.closest('header, footer, nav')) continue;
+                        const header = st.querySelector('.history-header, .status-title') || st;
                         header.click();
                         clicked = true;
-                    }
-                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-                    while (walker.nextNode()) {
-                        const node = walker.currentNode;
-                        const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
-                        if (/^Зарегистрировано на портале$/i.test(txt) && node.parentElement) {
-                            const clickable = node.parentElement.closest('.history-status, button, a, [role="button"]') || node.parentElement;
-                            clickable.click();
-                            clicked = true;
-                            break;
-                        }
                     }
                     return clicked;
                 }"""
             )
             if expanded_inner:
-                page.wait_for_timeout(1200)
+                page.wait_for_timeout(1000)
     except Exception:
         pass
 
@@ -587,33 +580,37 @@ def download_missing_pdf_for_order(
 
     def trigger_dl():
         try:
-            box = page.evaluate(
+            clicked = page.evaluate(
                 """() => {
-                    const fileBlocks = Array.from(document.querySelectorAll('lib-file, lk-files, div, li')).filter(
-                        el => (el.innerText || '').includes('req_preview') && (el.innerText || '').includes('Скачать')
-                    );
-                    fileBlocks.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
-                    const roots = fileBlocks.length > 0 ? fileBlocks : [document.body];
-                    for (const root of roots) {
-                        const els = Array.from(root.querySelectorAll('a, button, span, div'));
-                        for (const el of els) {
-                            const txt = (el.innerText || el.textContent || '').trim();
-                            if (/^скачать$/i.test(txt)) {
-                                const rect = el.getBoundingClientRect();
-                                if (rect.width > 2 && rect.height > 2) {
-                                    el.scrollIntoView({ block: 'center' });
-                                    const clickable = el.closest('a, button') || el;
-                                    clickable.click();
-                                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-                                }
+                    const all = Array.from(document.querySelectorAll('a, button, span, div'));
+                    const dlButtons = all.filter(el => {
+                        if (el.closest('header, footer, nav')) return false;
+                        const t = (el.innerText || el.textContent || '').trim();
+                        if (t !== 'Скачать') return false;
+                        const r = el.getBoundingClientRect();
+                        return r.width > 15 && r.height > 8 && r.height < 90;
+                    });
+                    for (const btn of dlButtons) {
+                        let p = btn.parentElement;
+                        for (let d = 0; d < 5 && p; d++) {
+                            const pt = (p.innerText || '');
+                            if (pt.includes('req_preview')) {
+                                const target = btn.closest('a, button, [role="button"]') || btn;
+                                target.click();
+                                return true;
                             }
+                            p = p.parentElement;
                         }
                     }
-                    return null;
+                    if (dlButtons.length > 0) {
+                        const target = dlButtons[0].closest('a, button, [role="button"]') || dlButtons[0];
+                        target.click();
+                        return true;
+                    }
+                    return false;
                 }"""
             )
-            if isinstance(box, dict) and box.get("x") and box.get("y"):
-                page.mouse.click(float(box["x"]), float(box["y"]))
+            if clicked:
                 return True
         except Exception:
             pass
