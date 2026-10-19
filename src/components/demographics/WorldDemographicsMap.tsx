@@ -300,17 +300,27 @@ export default function WorldDemographicsMap({
           </div>
         </div>
 
-        {/* Map Container: Brightened Modern Cartographic Canvas */}
-        <div className="relative w-full aspect-[16/9] min-h-[400px] max-h-[620px] mt-4 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-slate-900 select-none">
-          {/* Base Real Geopolitical Eurasia Map Image - Brightened & High Clarity */}
+        {/* Map Container: Adaptive Light Mode & Dark Mode Cartographic Canvas */}
+        <div className="relative w-full aspect-[16/9] min-h-[400px] max-h-[620px] mt-4 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-gradient-to-br from-[#e8f2fa] via-[#f2f8fd] to-[#dfeaf5] dark:from-[#0f172a] dark:via-[#111c33] dark:to-[#090f1d] select-none">
+          {/* Light Mode Geopolitical Eurasia Map Image */}
           <img
-            src="/images/eurasia_map.jpg"
-            alt="Eurasia Geopolitical Map"
-            className="w-full h-full object-cover object-center filter brightness-[1.38] contrast-[1.08] saturate-[1.12]"
+            src="/images/eurasia_map_light.jpg"
+            alt="Eurasia Geopolitical Map (Light)"
+            loading="eager"
+            fetchPriority="high"
+            className="w-full h-full object-cover object-center block dark:hidden"
+          />
+          {/* Dark Mode Geopolitical Eurasia Map Image */}
+          <img
+            src="/images/eurasia_map_dark.jpg"
+            alt="Eurasia Geopolitical Map (Dark)"
+            loading="eager"
+            fetchPriority="high"
+            className="w-full h-full object-cover object-center hidden dark:block"
           />
 
-          {/* Subtle Ambient Atmosphere Glow */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-sky-950/15 pointer-events-none" />
+          {/* Subtle Ambient Atmosphere Glow (Dark Mode only so Light Mode stays crisp & bright) */}
+          <div className="absolute inset-0 hidden dark:block bg-gradient-to-t from-slate-950/35 via-transparent to-sky-950/15 pointer-events-none" />
 
           {/* SVG LEADER LINES OVERLAY (Haritadaki merkez noktalardan rozetlere uzanan şık çizgiler) */}
           <svg
