@@ -84,10 +84,9 @@ export async function GET(request: Request) {
     // 2. Check Daily 09:15 Moscow Time Document Expiry Report
     const complianceResult = await sendDailyCompliance915Report(false);
 
-    // 3. Return any queued outbox messages ONLY to relay clients (browser Topbar / RPA Agent), not local curl
-    const ua = (request.headers.get('user-agent') || '').toLowerCase();
-    const isLocalCurl = ua.startsWith('curl/');
-    const pendingOutbox = isLocalCurl ? [] : claimPendingOutboxMessages(db);
+    // 3. Return queued outbox messages ONLY when ?relay=1 is passed by a verified relay client
+    const isRelay = searchParams.get('relay') === '1';
+    const pendingOutbox = isRelay ? claimPendingOutboxMessages(db) : [];
 
     return NextResponse.json({
       success: true,

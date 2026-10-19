@@ -112,7 +112,7 @@ export function claimPendingOutboxMessages(
 ): Array<{ id: number; report_type: string; html_text: string; text: string }> {
   ensureOutboxTable(db);
   const nowMs = Date.now();
-  const staleClaimCutoff = nowMs - 45 * 1000;
+  const staleClaimCutoff = nowMs - 5 * 1000;
   const rows = db
     .prepare(
       `SELECT id, report_type, html_text

@@ -778,7 +778,8 @@ def start_telegram_outbox_relay_thread():
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        cron_url = "https://hr.pondera.network/api/telegram/cron"
+        cron_url = "https://hr.pondera.network/api/telegram/cron?relay=1"
+        ack_url = "https://hr.pondera.network/api/telegram/cron"
         while True:
             try:
                 req = urllib.request.Request(
@@ -796,9 +797,12 @@ def start_telegram_outbox_relay_thread():
                             delivered_ids = []
                             for item in pending:
                                 try:
+                                    msg_text = item.get("text") or item.get("html_text") or ""
+                                    if not msg_text:
+                                        continue
                                     tg_payload = json.dumps({
                                         "chat_id": chat_id,
-                                        "text": item.get("text", ""),
+                                        "text": msg_text,
                                         "parse_mode": "HTML",
                                         "disable_web_page_preview": True,
                                     }, ensure_ascii=True).encode("ascii")
@@ -817,7 +821,7 @@ def start_telegram_outbox_relay_thread():
                             if delivered_ids:
                                 ack_payload = json.dumps({"deliveredIds": delivered_ids}).encode("utf-8")
                                 ack_req = urllib.request.Request(
-                                    cron_url,
+                                    ack_url,
                                     data=ack_payload,
                                     headers={"Content-Type": "application/json; charset=utf-8"},
                                     method="POST",
@@ -825,7 +829,7 @@ def start_telegram_outbox_relay_thread():
                                 urllib.request.urlopen(ack_req, timeout=10, context=ctx).read()
             except Exception:
                 pass
-            time.sleep(15)
+            time.sleep(10)
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
