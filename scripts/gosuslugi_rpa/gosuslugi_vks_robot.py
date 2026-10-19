@@ -2258,30 +2258,140 @@ class GosuslugiVksBot:
             pass
         return False
 
-    def inspect_open_order_page(self) -> Dict[str, str]:
+    def expand_order_history_on_page(self):
         """
-        Inspects the currently open Gosuslugi order details page (https://lk.gosuslugi.ru/order/<feed_id>)
-        and extracts:
-        - order_no: e.g. '8281910041'
-        - service_title: e.g. 'Уведомления о трудовой деятельности иностранцев'
-        - citizen_name: value displayed under 'Гражданин' (e.g. 'Нет АДЖАД Нет'), joining multi-line spans so 'Нет' never truncates the real name!
-        - body_text: full visible text of the page for fallback verification
+        Expands 'Показать историю' (and any collapsed 'Зарегистрировано на портале' history item)
+        on https://lk.gosuslugi.ru/order/<feed_id> BEFORE reading 'Гражданин' or 'req_preview'.
+        Without this, once an order advances past 'Зарегистрировано на портале', both 'Гражданин'
+        and 'Документы -> req_preview' are hidden inside 'Показать историю'!
         """
-        for _ in range(12):
+        # 1) Wait up to 8 seconds for the actual order card to render (do NOT match 'Заявления' in top header!)
+        for _ in range(16):
             try:
                 body_now = self.page.locator("body").inner_text(timeout=1500)
-                if "Гражданин" in body_now or "Заявление" in body_now or "req_preview" in body_now:
+                if (
+                    re.search(r"№\s*\d{8,14}", body_now)
+                    or "Показать историю" in body_now
+                    or "Гражданин" in body_now
+                    or "req_preview" in body_now
+                ):
                     break
             except Exception:
                 pass
             self.page.wait_for_timeout(500)
+
+        # 2) Click 'Показать историю' if present on the page
+        for attempt in range(2):
+            clicked_history = False
+            show_history = self.page.locator(
+                "button:has-text('Показать историю'):visible, "
+                "a:has-text('Показать историю'):visible, "
+                "span:has-text('Показать историю'):visible, "
+                "div.history-toggle:visible, "
+                "text=/Показать\\s+(всю\\s+)?историю/i"
+            ).first
+            try:
+                if show_history.count() > 0 and show_history.is_visible():
+                    logger.info("Step 16: Clicking 'Показать историю' on order page to reveal 'Гражданин' & 'req_preview'...")
+                    try:
+                        show_history.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
+                    try:
+                        show_history.click(timeout=3500)
+                        clicked_history = True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Also trigger via DOM JavaScript in case Angular wraps 'Показать историю' in custom elements
+            try:
+                js_clicked = self.page.evaluate(
+                    """() => {
+                        const els = Array.from(document.querySelectorAll('a, button, span, div, p'));
+                        for (const el of els) {
+                            const t = (el.innerText || el.textContent || '').trim();
+                            if (/^показать\\s+(всю\\s+)?историю$/i.test(t)) {
+                                const rect = el.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                    el.scrollIntoView({ block: 'center' });
+                                    const target = el.closest('button, a, [role="button"], .link, .history-toggle') || el;
+                                    target.click();
+                                    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    }"""
+                )
+                if js_clicked:
+                    clicked_history = True
+            except Exception:
+                pass
+
+            if clicked_history:
+                self.page.wait_for_timeout(1800)
+
+            # 3) Check if 'Зарегистрировано на портале' inside the history timeline is still collapsed (.history-status:not(.open))
+            try:
+                body_check = self.page.locator("body").inner_text(timeout=1500)
+                if "req_preview" not in body_check or "Гражданин" not in body_check:
+                    expanded_inner = self.page.evaluate(
+                        """() => {
+                            let clicked = false;
+                            // Click any closed .history-status blocks
+                            const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
+                            for (const st of closedStatuses) {
+                                const header = st.querySelector('.history-header, .status-title, h3, h4, span, div') || st;
+                                header.click();
+                                clicked = true;
+                            }
+                            // Also click 'Зарегистрировано на портале' if present and req_preview is not visible
+                            const allNodes = Array.from(document.querySelectorAll('span, div, p, a, button'));
+                            for (const n of allNodes) {
+                                const txt = (n.innerText || '').trim();
+                                if (/^Зарегистрировано на портале$/i.test(txt)) {
+                                    const clickable = n.closest('.history-status, button, a, [role="button"]') || n;
+                                    clickable.click();
+                                    clicked = true;
+                                    break;
+                                }
+                            }
+                            return clicked;
+                        }"""
+                    )
+                    if expanded_inner:
+                        self.page.wait_for_timeout(1200)
+            except Exception:
+                pass
+
+            # Break early once both Гражданин and req_preview (or Гражданин) are visible in the DOM
+            try:
+                body_after = self.page.locator("body").inner_text(timeout=1500)
+                if "Гражданин" in body_after and ("req_preview" in body_after or "Показать историю" not in body_after):
+                    break
+            except Exception:
+                pass
+
+    def inspect_open_order_page(self) -> Dict[str, str]:
+        """
+        Inspects the currently open Gosuslugi order details page (https://lk.gosuslugi.ru/order/<feed_id>):
+        FIRST expands 'Показать историю' so 'Гражданин' and 'req_preview' are never hidden, then extracts:
+        - order_no: e.g. '8281910041'
+        - service_title: e.g. 'Уведомления о трудовой деятельности иностранцев'
+        - citizen_name: value displayed under 'Гражданин' (e.g. 'Нет АДЖАД Нет')
+        - body_text: full visible text of the page for fallback verification
+        """
+        self.expand_order_history_on_page()
 
         info = {"order_no": "", "service_title": "", "citizen_name": "", "body_text": ""}
         try:
             dom_extracted = self.page.evaluate(
                 """() => {
                     const res = { order_no: "", service_title: "", citizen_name: "" };
-                    const stopWords = /^(документы|история|показать историю|скачать|адрес|статус|сведения|отправитель|инициатор)$/i;
+                    const stopWords = /^(документы|история|показать историю|скрыть историю|скачать|скачать всё|адрес|статус|сведения|отправитель|инициатор)$/i;
 
                     // 1. Heading / Service title
                     const headings = Array.from(document.querySelectorAll('h1, h2, h3, .order-title, .title-h3'));
@@ -2357,7 +2467,7 @@ class GosuslugiVksBot:
                     raw_lines = [ln.strip() for ln in m_cit_block.group(1).splitlines() if ln.strip()]
                     filtered_lines = []
                     for ln in raw_lines:
-                        if re.match(r"^(документы|история|показать историю|скачать|адрес|статус|сведения|действия)", ln, re.IGNORECASE):
+                        if re.match(r"^(документы|история|показать историю|скрыть историю|скачать|адрес|статус|сведения|действия)", ln, re.IGNORECASE):
                             break
                         filtered_lines.append(ln)
                     if filtered_lines:
@@ -2379,10 +2489,17 @@ class GosuslugiVksBot:
 
         return info
 
-    def find_worker_order_via_feeds_api(self, row: Dict[str, Any], expected_order_no: str = "") -> Optional[Dict[str, str]]:
+    def find_worker_order_via_feeds_api(
+        self, row: Dict[str, Any], expected_order_no: str = ""
+    ) -> Tuple[Optional[Dict[str, str]], List[str]]:
         """
-        Queries Gosuslugi's internal /api/lk/v1/feeds/ JSON API directly inside the browser session
-        to find the exact order belonging to `row` (matching 'Гражданин' or `expected_order_no`).
+        Queries Gosuslugi's internal /api/lk/v1/feeds/ JSON API directly inside the browser session.
+        Returns:
+          (direct_match_or_None, recent_unverified_order_urls)
+        Even when Gosuslugi's feed snippet does NOT include 'Гражданин' (because 'Гражданин' is inside
+        'Показать историю' on the order detail page), `recent_unverified_order_urls` provides the exact
+        `https://lk.gosuslugi.ru/order/<feed_id>` URLs of the newest labor notifications so the robot can
+        open them, click 'Показать историю', and verify 'Гражданин'!
         """
         sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
         feed_url = (
@@ -2405,9 +2522,10 @@ class GosuslugiVksBot:
             raw_items = []
 
         if not isinstance(raw_items, list):
-            return None
+            return None, []
 
         candidates = []
+        recent_unverified_urls: List[str] = []
         for raw_it in raw_items:
             if not isinstance(raw_it, dict):
                 continue
@@ -2417,7 +2535,7 @@ class GosuslugiVksBot:
             sub_title = str(raw_it.get("subTitle") or "").strip().strip("«»\"'")
             raw_title = str(raw_it.get("title") or "").strip()
 
-            if not ext_id or not ext_id.isdigit():
+            if not ext_id or not ext_id.isdigit() or not feed_id:
                 continue
 
             # Exclude 'Уведомления о прибытии и убытии иностранцев' (migration registration, not labor/VKS)
@@ -2460,23 +2578,29 @@ class GosuslugiVksBot:
             # If Step 15 gave us the exact order number and either citizen_name matches or snippet isn't populated yet -> return immediately!
             if expected_order_no and ext_id == expected_order_no:
                 if not citizen_name or self.does_citizen_match_worker(citizen_name, row):
-                    return item_info
+                    return item_info, recent_unverified_urls
 
-            if citizen_name and self.does_citizen_match_worker(citizen_name, row):
-                candidates.append(item_info)
+            if citizen_name:
+                if self.does_citizen_match_worker(citizen_name, row):
+                    candidates.append(item_info)
+            else:
+                # Snippet didn't include 'Гражданин' (because 'Гражданин' is inside 'Показать историю' on /order/<feed_id>)
+                order_url = f"https://lk.gosuslugi.ru/order/{feed_id}"
+                if order_url not in recent_unverified_urls and len(recent_unverified_urls) < 5:
+                    recent_unverified_urls.append(order_url)
 
         if candidates:
-            return candidates[0]
-        return None
+            return candidates[0], recent_unverified_urls
+        return None, recent_unverified_urls
 
     def execute_step16_cabinet_and_download(self, row: Dict[str, Any], gosuslugi_order_no: str = ""):
         """
         Executes Step 16 after 'Уведомление отправлено' with strict multi-computer & citizen verification:
         1) Verifies no 'У вас недостаточно полномочий' error is on screen
         2) Clicks 'В личный кабинет' or navigates to https://lk.gosuslugi.ru/orders
-        3) Finds the exact order where 'Гражданин' matches `row` (including names with 'Нет' like 'Нет АДЖАД Нет')
-        4) Downloads 'req_preview' PDF (whether 'Скачать' is an <a>, <button>, or <span>) and renames it to
-           <Sicil>_<VerifiedGosuslugiNo>_<WorkerName>_<Period>.pdf
+        3) Opens the order page, clicks 'Показать историю' FIRST so 'Гражданин' and 'req_preview' are visible,
+           and verifies 'Гражданин' matches `row` (including names with 'Нет' like 'Нет АДЖАД Нет' or 'Аалм Мехтаб Нет')
+        4) Downloads 'req_preview' PDF and renames it to <Sicil>_<VerifiedGosuslugiNo>_<WorkerName>_<Period>.pdf
         """
         self.check_and_stop_if_insufficient_permissions()
         clean_worker_name = self.build_clean_worker_name(row)
@@ -2526,15 +2650,16 @@ class GosuslugiVksBot:
                 break
 
             # Pass Strategy A: Query Gosuslugi's /api/lk/v1/feeds/ JSON API for Citizen Name or expected_order_no match
-            api_match = self.find_worker_order_via_feeds_api(row, expected_order_no)
+            api_match, api_unverified_urls = self.find_worker_order_via_feeds_api(row, expected_order_no)
             if api_match and api_match.get("feed_id"):
                 target_order_url = f"https://lk.gosuslugi.ru/order/{api_match['feed_id']}"
+                checked_urls.add(target_order_url)
                 logger.info(
                     f"Step 16.2 (API Match): Found order № {api_match['application_no']} for Гражданин '{api_match['citizen_name']}' -> opening {target_order_url}..."
                 )
                 try:
                     self.page.goto(target_order_url, wait_until="domcontentloaded", timeout=30000)
-                    self.page.wait_for_timeout(2500)
+                    self.page.wait_for_timeout(2000)
                 except Exception as e:
                     logger.warning(f"Step 16.2 navigation note: {e}")
 
@@ -2559,9 +2684,11 @@ class GosuslugiVksBot:
                     )
                     break
 
-            # Pass Strategy B: Inspect https://lk.gosuslugi.ru/orders list and check recent order cards
+            # Pass Strategy B: Inspect recent candidate orders (starting with newest unverified orders from /api/lk/v1/feeds/ + DOM cards on /orders)
+            candidate_hrefs: List[str] = [u for u in api_unverified_urls if u not in checked_urls]
+
             orders_list_url = "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
-            if "lk.gosuslugi.ru/orders" not in (self.page.url or ""):
+            if not candidate_hrefs and "lk.gosuslugi.ru/orders" not in (self.page.url or ""):
                 logger.info(f"Step 16.2 (Pass {search_pass}/3): Navigating to Заявления (lk.gosuslugi.ru/orders)...")
                 try:
                     self.page.goto(orders_list_url, wait_until="domcontentloaded", timeout=35000)
@@ -2570,7 +2697,6 @@ class GosuslugiVksBot:
                     logger.warning(f"Orders page navigation note: {e}")
 
             worker_tokens = self._normalize_ru_tokens(clean_worker_name)
-            candidate_hrefs: List[str] = []
             try:
                 raw_cards = self.page.evaluate(
                     """() => {
@@ -2594,7 +2720,7 @@ class GosuslugiVksBot:
                             if c_href and expected_order_no in c_text:
                                 full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
                                 if full_u not in candidate_hrefs:
-                                    candidate_hrefs.append(full_u)
+                                    candidate_hrefs.insert(0, full_u)
 
                     # Pass 1: Cards explicitly mentioning the worker's significant name tokens (e.g. 'аджад')
                     for c in raw_cards:
@@ -2605,7 +2731,7 @@ class GosuslugiVksBot:
                         if worker_tokens and all(tok in c_text_low for tok in worker_tokens):
                             full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
                             if full_u not in candidate_hrefs:
-                                candidate_hrefs.append(full_u)
+                                candidate_hrefs.insert(0, full_u)
 
                     # Pass 2: Top 4 recent labor activity orders that haven't been checked yet
                     for c in raw_cards[:6]:
@@ -2627,10 +2753,10 @@ class GosuslugiVksBot:
 
             for cand_url in candidate_hrefs[:4]:
                 checked_urls.add(cand_url)
-                logger.info(f"Step 16.2: Opening candidate order {cand_url} to verify 'Гражданин'...")
+                logger.info(f"Step 16.2: Opening candidate order {cand_url} (will expand 'Показать историю' to verify 'Гражданин')...")
                 try:
                     self.page.goto(cand_url, wait_until="domcontentloaded", timeout=30000)
-                    self.page.wait_for_timeout(2500)
+                    self.page.wait_for_timeout(2000)
                 except Exception:
                     continue
 
@@ -2688,29 +2814,8 @@ class GosuslugiVksBot:
             logger.error(err_msg)
             raise RuntimeError(err_msg)
 
-        # 16.4 Click 'Показать историю' if 'req_preview' is not already visible on the verified order screen
-        req_preview_loc = self.page.locator("text='req_preview'")
-        if req_preview_loc.count() == 0 or not req_preview_loc.first.is_visible():
-            show_history = self.page.locator(
-                "a:has-text('Показать историю'):visible, "
-                "button:has-text('Показать историю'):visible, "
-                "span:has-text('Показать историю'):visible"
-            ).first
-            try:
-                show_history.wait_for(state="visible", timeout=6000)
-            except Exception:
-                pass
-            if show_history.count() > 0 and show_history.is_visible():
-                logger.info("Step 16.4: Clicking 'Показать историю'...")
-                try:
-                    show_history.scroll_into_view_if_needed(timeout=3000)
-                except Exception:
-                    pass
-                try:
-                    show_history.click(timeout=5000)
-                except Exception:
-                    show_history.evaluate("el => (el.closest('a, button') || el).click()")
-                self.page.wait_for_timeout(2000)
+        # 16.4 Ensure 'Показать историю' is expanded before clicking 'Скачать'
+        self.expand_order_history_on_page()
 
         # 16.5 Click 'Скачать' next to 'req_preview' under 'Документы' and rename the PDF
         saved_pdf_path = self.download_and_rename_receipt_pdf(row, verified_order_no)

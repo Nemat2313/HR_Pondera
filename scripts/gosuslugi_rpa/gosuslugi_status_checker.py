@@ -356,6 +356,289 @@ def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
     return True
 
 
+def clean_worker_name_for_pdf(raw_name: str) -> str:
+    skip_tokens = {"нет", "не заполнено", "отсутствует", "-", "none", "null", "no", ""}
+    words = [w for w in str(raw_name or "").strip().split() if w.lower() not in skip_tokens]
+    cleaned = " ".join(words) if words else str(raw_name or "Сотрудник").strip()
+    cleaned = re.sub(r'[<>:"/\\|?*]+', " ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str, str]:
+    """
+    Opens https://lk.gosuslugi.ru/order/<feed_id>, clicks 'Показать историю' (and any collapsed
+    'Зарегистрировано на портале' block), and extracts 'citizen_name' and 'order_no'.
+    """
+    info = {"citizen_name": "", "order_no": ""}
+    if not feed_id:
+        return info
+    order_url = f"https://lk.gosuslugi.ru/order/{feed_id}"
+    try:
+        if order_url not in (page.url or ""):
+            page.goto(order_url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(1800)
+    except Exception:
+        return info
+
+    # Wait up to 6s for order card to render
+    for _ in range(12):
+        try:
+            b = page.locator("body").inner_text(timeout=1200)
+            if re.search(r"№\s*\d{8,14}", b) or "Показать историю" in b or "Гражданин" in b or "req_preview" in b:
+                break
+        except Exception:
+            pass
+        page.wait_for_timeout(400)
+
+    # Click 'Показать историю' if present
+    try:
+        js_clicked = page.evaluate(
+            """() => {
+                const els = Array.from(document.querySelectorAll('a, button, span, div, p'));
+                for (const el of els) {
+                    const t = (el.innerText || el.textContent || '').trim();
+                    if (/^показать\\s+(всю\\s+)?историю$/i.test(t)) {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            el.scrollIntoView({ block: 'center' });
+                            const target = el.closest('button, a, [role="button"], .link, .history-toggle') || el;
+                            target.click();
+                            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }"""
+        )
+        if js_clicked:
+            page.wait_for_timeout(1600)
+    except Exception:
+        pass
+
+    # Also expand any inner collapsed 'Зарегистрировано на портале' block
+    try:
+        body_check = page.locator("body").inner_text(timeout=1200)
+        if "req_preview" not in body_check or "Гражданин" not in body_check:
+            expanded_inner = page.evaluate(
+                """() => {
+                    let clicked = false;
+                    const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
+                    for (const st of closedStatuses) {
+                        const header = st.querySelector('.history-header, .status-title, h3, h4, span, div') || st;
+                        header.click();
+                        clicked = true;
+                    }
+                    const allNodes = Array.from(document.querySelectorAll('span, div, p, a, button'));
+                    for (const n of allNodes) {
+                        const txt = (n.innerText || '').trim();
+                        if (/^Зарегистрировано на портале$/i.test(txt)) {
+                            const clickable = n.closest('.history-status, button, a, [role="button"]') || n;
+                            clickable.click();
+                            clicked = true;
+                            break;
+                        }
+                    }
+                    return clicked;
+                }"""
+            )
+            if expanded_inner:
+                page.wait_for_timeout(1200)
+    except Exception:
+        pass
+
+    # Extract Гражданин
+    try:
+        cit = page.evaluate(
+            """() => {
+                const stopWords = /^(документы|история|показать историю|скрыть историю|скачать|скачать всё|адрес|статус|сведения|отправитель|инициатор)$/i;
+                const allEls = Array.from(document.querySelectorAll('div, span, p, dt, td, label'));
+                for (const el of allEls) {
+                    const txt = (el.innerText || "").trim();
+                    if (txt === "Гражданин" || txt === "Гражданин:" || txt === "Иностранный гражданин") {
+                        let cur = el;
+                        for (let depth = 0; depth < 4 && cur; depth++) {
+                            const next = cur.nextElementSibling;
+                            if (next && (next.innerText || "").trim()) {
+                                const lines = (next.innerText || "").split("\\n").map(s => s.trim()).filter(s => s && !stopWords.test(s));
+                                if (lines.length > 0) return lines.join(" ").replace(/\\s+/g, " ").trim();
+                            }
+                            if (cur.parentElement) {
+                                const pLines = (cur.parentElement.innerText || "").split("\\n").map(s => s.trim()).filter(Boolean);
+                                const gIdx = pLines.findIndex(l => /^Гражданин\\s*:?$/i.test(l) || l.startsWith("Гражданин"));
+                                if (gIdx !== -1 && pLines.length > gIdx + 1) {
+                                    const collected = [];
+                                    for (let k = gIdx + 1; k < Math.min(pLines.length, gIdx + 4); k++) {
+                                        if (stopWords.test(pLines[k])) break;
+                                        collected.push(pLines[k]);
+                                    }
+                                    if (collected.length > 0) return collected.join(" ").replace(/\\s+/g, " ").trim();
+                                }
+                            }
+                            cur = cur.parentElement;
+                        }
+                    }
+                }
+                return "";
+            }"""
+        )
+        if cit:
+            info["citizen_name"] = str(cit).strip()
+    except Exception:
+        pass
+
+    try:
+        b_txt = page.locator("body").inner_text(timeout=2000)
+        if not normalize_name_for_match(info["citizen_name"]):
+            m_cit = re.search(r"Гражданин\s*:?\s*(?:\r?\n|\s)+([^\r\n]+(?:\r?\n[^\r\n]+){0,2})", b_txt, re.IGNORECASE)
+            if m_cit:
+                lines = [ln.strip() for ln in m_cit.group(1).splitlines() if ln.strip()]
+                valid = []
+                for ln in lines:
+                    if re.match(r"^(документы|история|показать историю|скрыть историю|скачать|адрес|статус|сведения|действия)", ln, re.IGNORECASE):
+                        break
+                    valid.append(ln)
+                if valid:
+                    info["citizen_name"] = " ".join(valid).strip()
+        m_no = re.search(r"№\s*(\d{8,14})", b_txt)
+        if m_no:
+            info["order_no"] = m_no.group(1).strip()
+    except Exception:
+        pass
+
+    return info
+
+
+def download_missing_pdf_for_order(
+    page: Page,
+    feed_id: str,
+    app_no: str,
+    sicil: str,
+    worker_name: str,
+    period_code: str,
+) -> str:
+    """
+    Checks if a PDF for `app_no` already exists in ~/Downloads.
+    If not, opens https://lk.gosuslugi.ru/order/<feed_id>, expands 'Показать историю',
+    clicks 'Скачать' next to 'req_preview', and renames the file to:
+      <Sicil>_<AppNo>_<CleanWorkerName>_<Period>.pdf
+    """
+    downloads_dir = Path.home() / "Downloads"
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+    clean_no = str(app_no or "").strip()
+    if not clean_no:
+        return ""
+
+    # Check if already downloaded
+    for p in downloads_dir.glob("*.pdf"):
+        if clean_no in p.name and not p.name.startswith("tmp_"):
+            return p.name
+
+    if not feed_id:
+        return ""
+
+    logger.info(f"  -> Missing PDF for № {clean_no} ({worker_name}): opening order {feed_id} & clicking 'Показать историю' -> 'Скачать'...")
+    expand_history_and_inspect_order_page(page, feed_id)
+
+    existing_pdfs = {}
+    for p in downloads_dir.glob("*.pdf"):
+        try:
+            existing_pdfs[p.resolve()] = p.stat().st_mtime
+        except Exception:
+            pass
+
+    click_time = time.time()
+
+    def trigger_dl():
+        try:
+            box = page.evaluate(
+                """() => {
+                    const fileBlocks = Array.from(document.querySelectorAll('lib-file, lk-files, div, li')).filter(
+                        el => (el.innerText || '').includes('req_preview') && (el.innerText || '').includes('Скачать')
+                    );
+                    fileBlocks.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
+                    const roots = fileBlocks.length > 0 ? fileBlocks : [document.body];
+                    for (const root of roots) {
+                        const els = Array.from(root.querySelectorAll('a, button, span, div'));
+                        for (const el of els) {
+                            const txt = (el.innerText || el.textContent || '').trim();
+                            if (/^скачать$/i.test(txt)) {
+                                const rect = el.getBoundingClientRect();
+                                if (rect.width > 2 && rect.height > 2) {
+                                    el.scrollIntoView({ block: 'center' });
+                                    const clickable = el.closest('a, button') || el;
+                                    clickable.click();
+                                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                }"""
+            )
+            if isinstance(box, dict) and box.get("x") and box.get("y"):
+                page.mouse.click(float(box["x"]), float(box["y"]))
+                return True
+        except Exception:
+            pass
+        return False
+
+    downloaded_path: Optional[Path] = None
+    try:
+        with page.expect_download(timeout=5000) as dl_info:
+            trigger_dl()
+        dl = dl_info.value
+        temp_target = downloads_dir / f"tmp_{os.getpid()}_{int(click_time)}_{clean_no}.pdf"
+        dl.save_as(str(temp_target))
+        downloaded_path = temp_target
+    except Exception:
+        pass
+
+    already_renamed_re = re.compile(r"^(?:\d+_)?\d{8,14}_.+_20\d{2}-[1-4]\.pdf$", re.IGNORECASE)
+    if not downloaded_path or not downloaded_path.exists():
+        for wait_idx in range(20):
+            page.wait_for_timeout(500)
+            if wait_idx == 6:
+                trigger_dl()
+            active_cr = [p for p in downloads_dir.glob("*.crdownload") if (time.time() - p.stat().st_mtime) < 30]
+            if active_cr:
+                continue
+            cands = []
+            for p in downloads_dir.glob("*.pdf"):
+                try:
+                    if already_renamed_re.match(p.name):
+                        continue
+                    resolved = p.resolve()
+                    mtime = p.stat().st_mtime
+                    if resolved not in existing_pdfs or mtime > existing_pdfs[resolved] or mtime >= (click_time - 2.0):
+                        cands.append((mtime, p))
+                except Exception:
+                    pass
+            if cands:
+                cands.sort(key=lambda item: item[0], reverse=True)
+                downloaded_path = cands[0][1]
+                break
+
+    if not downloaded_path or not downloaded_path.exists():
+        return ""
+
+    clean_name = clean_worker_name_for_pdf(worker_name)
+    clean_sicil = re.sub(r'[<>:"/\\|?*]+', "", str(sicil or "").strip())
+    clean_period = str(period_code or "2026-1").strip() or "2026-1"
+    if not re.match(r"^20\d{2}-[1-4]$", clean_period):
+        clean_period = "2026-1"
+
+    new_filename = f"{clean_sicil}_{clean_no}_{clean_name}_{clean_period}.pdf" if clean_sicil else f"{clean_no}_{clean_name}_{clean_period}.pdf"
+    new_filepath = downloads_dir / new_filename
+    try:
+        if downloaded_path.resolve() != new_filepath.resolve():
+            os.replace(str(downloaded_path), str(new_filepath))
+        logger.info(f"  -> Downloaded & renamed missing PDF: {new_filename}")
+        return new_filename
+    except Exception:
+        return downloaded_path.name
+
+
 def sync_updates_to_pondera_api(updates: List[Dict[str, Any]]):
     """Pushes updated application statuses to Pondera HR Next.js API (/api/gosuslugi/submissions)."""
     if not updates:
@@ -471,6 +754,10 @@ def main():
                 )
 
         if records:
+            # For recent labor orders (top 12) whose feed snippet did NOT include 'citizen_name'
+            # (because 'Гражданин' is inside 'Показать историю' on /order/<feed_id>), inspect them once on demand
+            inspected_feed_ids = set()
+
             for idx, rec in enumerate(records):
                 app_no = str(rec.get("application_no") or "").strip()
                 sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
@@ -515,6 +802,31 @@ def main():
                             )
                             break
 
+                # 2.5) If still not matched, inspect top recent labor orders that had empty 'citizen_name' in the API snippet
+                # by opening /order/<feed_id> and clicking 'Показать историю'
+                if not matched_order and worker_name:
+                    for cand in labor_orders_list[:12]:
+                        cand_no = cand["application_no"]
+                        cand_feed_id = cand.get("feed_id", "")
+                        owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
+                        if owner_sicil and sicil and owner_sicil != sicil:
+                            continue
+                        if not cand.get("citizen_name") and cand_feed_id and cand_feed_id not in inspected_feed_ids:
+                            inspected_feed_ids.add(cand_feed_id)
+                            page_info = expand_history_and_inspect_order_page(page, cand_feed_id)
+                            if page_info.get("citizen_name"):
+                                cand["citizen_name"] = page_info["citizen_name"]
+                                logger.info(
+                                    f"  -> Expanded 'Показать историю' on № {cand_no}: Гражданин = '{cand['citizen_name']}'"
+                                )
+                        if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
+                            matched_order = cand
+                            app_no = cand_no
+                            logger.info(
+                                f"  -> Matched '{worker_name}' via 'Показать историю' ('{cand.get('citizen_name')}') -> № {app_no}: {matched_order['gosuslugi_status']}"
+                            )
+                            break
+
                 # 3) Tier 2 Fallback: Query single application_no via ?q=<app_no> or UI search box
                 if not matched_order and app_no:
                     logger.info(f"  -> № {app_no} not in recent bulk feed, querying directly...")
@@ -545,12 +857,26 @@ def main():
                     if sicil:
                         assigned_app_nos_to_sicil[final_app_no] = sicil
 
+                    # Automatically download and rename the receipt PDF if missing from ~/Downloads
+                    pdf_file = str(rec.get("pdf_filename") or "").strip()
+                    dl_pdf = download_missing_pdf_for_order(
+                        page=page,
+                        feed_id=str(matched_order.get("feed_id") or ""),
+                        app_no=final_app_no,
+                        sicil=sicil,
+                        worker_name=worker_name or matched_order.get("citizen_name") or "",
+                        period_code=str(rec.get("period_code") or "2026-1"),
+                    )
+                    if dl_pdf:
+                        pdf_file = dl_pdf
+
                     updated_entry = {
                         **rec,
                         "sicil": sicil,
                         "sicil_no": sicil,
                         "worker_name": worker_name or matched_order.get("citizen_name") or "",
                         "application_no": final_app_no,
+                        "pdf_filename": pdf_file,
                         "gosuslugi_status": matched_order["gosuslugi_status"],
                         "status_detail": matched_order.get("status_detail", ""),
                         "checked_at": now_str,
