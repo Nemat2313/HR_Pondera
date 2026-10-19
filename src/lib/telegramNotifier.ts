@@ -672,18 +672,35 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
 
   const complianceRate = totalDocsCount > 0 ? Math.round((totalValid / totalDocsCount) * 100) : 0;
 
-  const docLines = docDefinitions.map((d) => {
-    const st = docStats[d.id];
-    return `• <b>${st.label}</b> (${st.totalChecked}): 🔴${st.expiredCount} | 🟠${st.criticalCount} | 🟡${st.warningCount} | ⚪${st.missingCount} | 🟢${st.validCount}`;
-  });
+  const shortLabels: Record<string, string> = {
+    pasaport: 'Pasaport',
+    vize: 'Vize',
+    propusk: 'Propusk',
+    patent: 'Patent / İzin',
+    registrasyon: 'Registrasyon',
+    daktilo: 'Daktiloskopiya',
+    dms: 'Sağlık / DMS',
+    dil: 'Dil Sertifikası',
+  };
 
-  const topRegions = Object.values(regionBreakdown)
+  const hdr = `${'Evrak Türü'.padEnd(15)} ${'Top.'.padStart(5)} ${'Geçm'.padStart(5)} ${'Krit'.padStart(5)} ${'Uyar'.padStart(5)} ${'Eksik'.padStart(5)} ${'Geçer'.padStart(6)}`;
+  const sep = '-'.repeat(hdr.length);
+  const docTableRows = docDefinitions.map((d) => {
+    const st = docStats[d.id];
+    const name = (shortLabels[d.id] || st.label).slice(0, 15).padEnd(15);
+    return `${name} ${String(st.totalChecked).padStart(5)} ${String(st.expiredCount).padStart(5)} ${String(st.criticalCount).padStart(5)} ${String(st.warningCount).padStart(5)} ${String(st.missingCount).padStart(5)} ${String(st.validCount).padStart(6)}`;
+  });
+  const totalRow = `${'TOPLAM'.padEnd(15)} ${String(totalDocsCount).padStart(5)} ${String(totalExpired).padStart(5)} ${String(totalCritical).padStart(5)} ${String(totalWarning).padStart(5)} ${String(totalMissing).padStart(5)} ${String(totalValid).padStart(6)}`;
+
+  const regHdr = `${'Bölge'.padEnd(16)} ${'Kişi'.padStart(5)} ${'Geçmiş'.padStart(6)} ${'Kritik'.padStart(6)} ${'Eksik'.padStart(6)}`;
+  const regSep = '-'.repeat(regHdr.length);
+  const topRegionRows = Object.values(regionBreakdown)
     .sort((a, b) => b.expired + b.critical - (a.expired + a.critical))
     .slice(0, 6)
-    .map(
-      (reg) =>
-        `• <b>${reg.region}</b> (${reg.total} kişi): 🔴Geçmiş: ${reg.expired} | 🟠Kritik: ${reg.critical} | ⚪Eksik: ${reg.missing}`
-    );
+    .map((reg) => {
+      const rName = reg.region.slice(0, 16).padEnd(16);
+      return `${rName} ${String(reg.total).padStart(5)} ${String(reg.expired).padStart(6)} ${String(reg.critical).padStart(6)} ${String(reg.missing).padStart(6)}`;
+    });
 
   const msg = [
     `📋 <b>HR Pondera — Günlük Evrak Süreleri İstatistik Raporu</b>`,
@@ -700,11 +717,11 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
     `⚪ Eksik Evrak (Missing): <b>${totalMissing}</b>`,
     `🟢 Geçerli (Valid): <b>${totalValid}</b>`,
     ``,
-    `📂 <b>Evrak Türüne Göre Dağılım</b> <i>(🔴Geçmiş | 🟠Kritik | 🟡Uyarı | ⚪Eksik | 🟢Geçerli)</i>:`,
-    ...docLines,
+    `📂 <b>Evrak Türüne Göre Dağılım (Tablo):</b>`,
+    `<pre>${[hdr, sep, ...docTableRows, sep, totalRow].join('\n')}</pre>`,
     ``,
     `🏗 <b>Bölge Bazlı Özet (İlk 6 Bölge):</b>`,
-    ...topRegions,
+    `<pre>${[regHdr, regSep, ...topRegionRows].join('\n')}</pre>`,
   ].join('\n');
 
   setSystemInfoValue(db, 'telegram_compliance_last_sent_date', msk.dateIso);
