@@ -2692,19 +2692,17 @@ class GosuslugiVksBot:
         """
         Expands 'Показать историю' (and any collapsed 'Зарегистрировано на портале' history item)
         on https://lk.gosuslugi.ru/order/<feed_id> BEFORE reading 'Гражданин' or 'req_preview'.
-        Without this, once an order advances past 'Зарегистрировано на портале', both 'Гражданин'
-        and 'Документы -> req_preview' are hidden inside 'Показать историю'!
+        Uses DOM Range on the exact text node 'Показать историю' (~130px wide on the left of the card)
+        so we never click the center of the 800px outer <div> row!
         """
-        # 1) Wait up to 12 seconds specifically for 'Показать историю' (or 'Гражданин' / 'req_preview' if already expanded)
-        #    NEVER break early on '№ <digits>' because the order number header renders 2-4s BEFORE the 'Показать историю' button!
-        for _ in range(24):
+        # 1) Wait up to 10 seconds specifically for 'Показать историю' or 'req_preview'
+        for _ in range(20):
             try:
                 body_now = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
                 if (
                     "Показать историю" in body_now
                     or "Показать всю историю" in body_now
                     or "Скрыть историю" in body_now
-                    or "Гражданин" in body_now
                     or "req_preview" in body_now
                 ):
                     break
@@ -2712,138 +2710,179 @@ class GosuslugiVksBot:
                 pass
             self.page.wait_for_timeout(500)
 
-        # 2) Click 'Показать историю' using pure CSS locator + get_by_text + physical mouse click + DOM click
+        # 2) Click the exact blue 'Показать историю' text on the left of the card
         for attempt in range(5):
-            clicked_history = False
-
-            # Strategy 2A: Pure CSS selector (never mix CSS with text=/.../ in one string!)
-            show_history = self.page.locator(
-                "a:has-text('Показать историю'):visible, "
-                "button:has-text('Показать историю'):visible, "
-                "span:has-text('Показать историю'):visible, "
-                "div:has-text('Показать историю'):visible"
-            ).first
             try:
-                if show_history.count() > 0 and show_history.is_visible():
-                    logger.info(
-                        f"Step 16: Clicking 'Показать историю' (attempt {attempt + 1}) to reveal 'Гражданин' & 'req_preview'..."
-                    )
-                    try:
-                        show_history.scroll_into_view_if_needed(timeout=2000)
-                    except Exception:
-                        pass
-                    try:
-                        show_history.click(timeout=3500)
-                        clicked_history = True
-                    except Exception:
-                        try:
-                            show_history.click(force=True, timeout=2500)
-                            clicked_history = True
-                        except Exception:
-                            pass
+                body_before = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+                if "req_preview" in body_before:
+                    break
             except Exception:
                 pass
 
-            # Strategy 2B: Playwright get_by_text('Показать историю') + physical mouse coordinate click
-            if not clicked_history:
-                try:
-                    by_txt = self.page.get_by_text("Показать историю", exact=False).first
-                    if by_txt.count() > 0 and by_txt.is_visible():
-                        logger.info(f"Step 16: Clicking 'Показать историю' via get_by_text (attempt {attempt + 1})...")
-                        try:
-                            by_txt.scroll_into_view_if_needed(timeout=2000)
-                        except Exception:
-                            pass
-                        box = by_txt.bounding_box()
-                        if box and box["width"] > 0 and box["height"] > 0:
-                            self.page.mouse.click(
-                                box["x"] + box["width"] / 2,
-                                box["y"] + box["height"] / 2,
-                            )
-                            clicked_history = True
-                        else:
-                            by_txt.click(force=True, timeout=2500)
-                            clicked_history = True
-                except Exception:
-                    pass
+            clicked_history = False
 
-            # Strategy 2C: DOM JavaScript fallback + bounding-box mouse click
+            # Strategy A: Exact Text-Node Range bounding box + JS click on innermost leaf element + physical mouse click
             try:
-                js_coords = self.page.evaluate(
+                js_target = self.page.evaluate(
                     r"""() => {
-                        const els = Array.from(document.querySelectorAll('a, button, span, div, p'));
-                        for (const el of els) {
-                            const t = (el.innerText || el.textContent || '').trim();
-                            if (/^показать\s+(всю\s+)?историю$/i.test(t)) {
-                                el.scrollIntoView({ block: 'center' });
-                                const target = el.closest('button, a, [role="button"], .link, .history-toggle') || el;
-                                const rect = target.getBoundingClientRect();
-                                target.click();
-                                target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                                target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                                target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                                if (rect.width > 0 && rect.height > 0) {
-                                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                        // First find the innermost element or text node matching 'Показать историю'
+                        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                        let matchedTextNode = null;
+                        let matchedEl = null;
+                        while (walker.nextNode()) {
+                            const node = walker.currentNode;
+                            const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                            if (/^показать\s+(всю\s+)?историю$/i.test(txt)) {
+                                const parent = node.parentElement;
+                                if (parent) {
+                                    const r = parent.getBoundingClientRect();
+                                    if (r.width > 10 && r.height > 8) {
+                                        matchedTextNode = node;
+                                        matchedEl = parent;
+                                        break;
+                                    }
                                 }
-                                return { x: 0, y: 0 };
                             }
                         }
-                        return null;
+
+                        // Fallback if text is split across child nodes: pick matching element with SMALLEST width/area
+                        if (!matchedEl) {
+                            const candidates = Array.from(document.querySelectorAll('a, button, span, p, div'))
+                                .filter(el => {
+                                    const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+                                    if (!/^показать\s+(всю\s+)?историю$/i.test(t)) return false;
+                                    const r = el.getBoundingClientRect();
+                                    return r.width > 20 && r.height > 8 && r.height < 100;
+                                })
+                                .sort((a, b) => {
+                                    const ra = a.getBoundingClientRect();
+                                    const rb = b.getBoundingClientRect();
+                                    return (ra.width * ra.height) - (rb.width * rb.height);
+                                });
+                            if (candidates.length > 0) {
+                                matchedEl = candidates[0];
+                            }
+                        }
+
+                        if (!matchedEl) return null;
+
+                        matchedEl.scrollIntoView({ block: 'center' });
+
+                        // Measure the exact text range (the ~130px blue text on the left, NEVER the 800px full-width div!)
+                        let rect = matchedEl.getBoundingClientRect();
+                        if (matchedTextNode) {
+                            try {
+                                const range = document.createRange();
+                                range.selectNodeContents(matchedTextNode);
+                                const rr = range.getBoundingClientRect();
+                                if (rr.width > 15 && rr.height > 8) {
+                                    rect = rr;
+                                }
+                            } catch (e) {}
+                        }
+
+                        // Click the innermost element and its clickable ancestors in JS
+                        const clickChain = [
+                            matchedEl,
+                            matchedEl.closest('a, button, [role="button"], .link, .history-toggle'),
+                            matchedEl.parentElement
+                        ].filter(Boolean);
+
+                        for (const node of clickChain) {
+                            try {
+                                node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
+                                node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                node.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
+                                node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                node.click();
+                                node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                            } catch (e) {}
+                        }
+
+                        // If rect is still wide (> 250px), click 60px from the left edge where the blue text sits
+                        const clickX = rect.width > 250 ? (rect.left + 65) : (rect.left + rect.width / 2);
+                        const clickY = rect.top + rect.height / 2;
+                        return { x: clickX, y: clickY, w: rect.width, h: rect.height };
                     }"""
                 )
-                if js_coords:
-                    if not clicked_history and js_coords.get("x", 0) > 0 and js_coords.get("y", 0) > 0:
-                        try:
-                            self.page.mouse.click(js_coords["x"], js_coords["y"])
-                        except Exception:
-                            pass
+                if js_target and js_target.get("x", 0) > 0 and js_target.get("y", 0) > 0:
+                    cx = float(js_target["x"])
+                    cy = float(js_target["y"])
+                    logger.info(
+                        f"Step 16: Clicking 'Показать историю' at ({int(cx)}, {int(cy)}) [w={int(js_target.get('w', 0))}px] (attempt {attempt + 1})..."
+                    )
+                    try:
+                        self.page.mouse.move(cx, cy)
+                        self.page.wait_for_timeout(50)
+                        self.page.mouse.down()
+                        self.page.wait_for_timeout(50)
+                        self.page.mouse.up()
+                    except Exception:
+                        pass
                     clicked_history = True
             except Exception:
                 pass
 
+            # Strategy B: Playwright get_by_text('.last') if still not clicked
+            if not clicked_history:
+                try:
+                    by_txt = self.page.get_by_text("Показать историю", exact=False).last
+                    if by_txt.count() > 0:
+                        by_txt.click(timeout=2000)
+                        clicked_history = True
+                except Exception:
+                    pass
+
             if clicked_history:
-                self.page.wait_for_timeout(1800)
+                self.page.wait_for_timeout(1500)
             else:
-                # If 'Показать историю' wasn't found yet, wait 700ms for Angular to finish rendering before next attempt
-                self.page.wait_for_timeout(700)
+                self.page.wait_for_timeout(600)
 
             # 3) Check if 'Зарегистрировано на портале' inside the history timeline is still collapsed (.history-status:not(.open))
             try:
                 body_check = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
-                if "req_preview" not in body_check or "Гражданин" not in body_check:
-                    expanded_inner = self.page.evaluate(
+                if "req_preview" not in body_check:
+                    reg_coords = self.page.evaluate(
                         r"""() => {
-                            let clicked = false;
                             const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
                             for (const st of closedStatuses) {
                                 const header = st.querySelector('.history-header, .status-title, h3, h4, span, div') || st;
                                 header.click();
-                                clicked = true;
                             }
-                            const allNodes = Array.from(document.querySelectorAll('span, div, p, a, button'));
-                            for (const n of allNodes) {
-                                const txt = (n.innerText || '').trim();
-                                if (/^Зарегистрировано на портале$/i.test(txt)) {
-                                    const clickable = n.closest('.history-status, button, a, [role="button"]') || n;
+                            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                            while (walker.nextNode()) {
+                                const node = walker.currentNode;
+                                const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                                if (/^Зарегистрировано на портале$/i.test(txt) && node.parentElement) {
+                                    const el = node.parentElement;
+                                    el.scrollIntoView({ block: 'center' });
+                                    const clickable = el.closest('.history-status, button, a, [role="button"]') || el;
                                     clickable.click();
-                                    clicked = true;
-                                    break;
+                                    const range = document.createRange();
+                                    range.selectNodeContents(node);
+                                    const r = range.getBoundingClientRect();
+                                    if (r.width > 10 && r.height > 8) {
+                                        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                                    }
                                 }
                             }
-                            return clicked;
+                            return null;
                         }"""
                     )
-                    if expanded_inner:
+                    if reg_coords and reg_coords.get("x", 0) > 0 and reg_coords.get("y", 0) > 0:
+                        try:
+                            self.page.mouse.click(float(reg_coords["x"]), float(reg_coords["y"]))
+                        except Exception:
+                            pass
                         self.page.wait_for_timeout(1200)
             except Exception:
                 pass
 
-            # Break ONLY once Гражданин or req_preview or Скрыть историю is visible, or AFTER we actually clicked Показать историю and it disappeared!
+            # Break once req_preview or Скрыть историю is visible, or after Показать историю disappears
             try:
                 body_after = self.page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
                 if (
-                    "Гражданин" in body_after
-                    or "req_preview" in body_after
+                    "req_preview" in body_after
                     or "Скрыть историю" in body_after
                     or (clicked_history and "Показать историю" not in body_after)
                 ):
@@ -3129,9 +3168,10 @@ class GosuslugiVksBot:
         # Check if we are ALREADY on an '/order/...' details page right now
         if "lk.gosuslugi.ru/order/" in (self.page.url or ""):
             page_info = self.inspect_open_order_page()
+            has_cit = bool(self._normalize_ru_tokens(page_info["citizen_name"]))
             if (
                 self.is_valid_labor_activity_service(page_info["service_title"] + " " + page_info.get("body_text", "")[:400])
-                and self.does_citizen_match_worker(page_info["citizen_name"], row, page_info.get("body_text", ""))
+                and (not has_cit or self.does_citizen_match_worker(page_info["citizen_name"], row, page_info.get("body_text", "")))
                 and not self.is_order_already_linked_to_another_worker(page_info["order_no"], sicil)
             ):
                 verified_order_no = page_info["order_no"] or expected_order_no
@@ -3159,11 +3199,12 @@ class GosuslugiVksBot:
                 logger.info(
                     f"Step 16.3: Order Page Check -> № {page_info['order_no']} | Услуга: '{page_info['service_title']}' | Гражданин: '{page_info['citizen_name']}'"
                 )
-                is_citizen_ok = self.does_citizen_match_worker(
-                    page_info["citizen_name"] or api_match["citizen_name"],
-                    row,
-                    page_info.get("body_text", ""),
-                ) or (expected_order_no and page_info["order_no"] == expected_order_no)
+                comb_cit = page_info["citizen_name"] or api_match["citizen_name"]
+                is_citizen_ok = (
+                    not self._normalize_ru_tokens(comb_cit)
+                    or self.does_citizen_match_worker(comb_cit, row, page_info.get("body_text", ""))
+                    or (expected_order_no and page_info["order_no"] == expected_order_no)
+                )
                 if (
                     self.is_valid_labor_activity_service(page_info["service_title"])
                     and is_citizen_ok
@@ -3171,7 +3212,7 @@ class GosuslugiVksBot:
                 ):
                     verified_order_no = page_info["order_no"] or api_match["application_no"]
                     logger.info(
-                        f"Step 16.3 VERIFIED: Заявление № {verified_order_no} принадлежит сотруднику '{clean_worker_name}' (Гражданин: '{page_info['citizen_name'] or api_match['citizen_name']}')!"
+                        f"Step 16.3 VERIFIED: Заявление № {verified_order_no} принадлежит сотруднику '{clean_worker_name}' (Гражданин: '{comb_cit or clean_worker_name}')!"
                     )
                     break
 
@@ -3259,7 +3300,7 @@ class GosuslugiVksBot:
 
             for cand_idx, cand_url in enumerate(candidate_hrefs[:3]):
                 checked_urls.add(cand_url)
-                logger.info(f"Step 16.2: Opening candidate order {cand_url} (will expand 'Показать историю' to verify 'Гражданин')...")
+                logger.info(f"Step 16.2: Opening candidate order {cand_url} (will expand 'Показать историю' to verify & download PDF)...")
                 try:
                     self.page.goto(cand_url, wait_until="domcontentloaded", timeout=30000)
                     self.page.wait_for_timeout(2000)
@@ -3273,7 +3314,7 @@ class GosuslugiVksBot:
                 p_body = page_info.get("body_text", "")
 
                 logger.info(
-                    f"Step 16.3: Order Page Check -> № {p_no or '?'} | Услуга: '{p_srv}' | Гражданин: '{p_cit}'"
+                    f"Step 16.3: Order Page Check -> № {p_no or '?'} | Услуга: '{p_srv}' | Гражданин: '{p_cit or '(не указано в карточке ВКС)'}'"
                 )
 
                 if not self.is_valid_labor_activity_service(p_srv + " " + p_body[:400]):
@@ -3288,10 +3329,13 @@ class GosuslugiVksBot:
                     )
                     continue
 
+                # Note: Gosuslugi VKS salary notifications ('Уведомления о трудовой деятельности иностранцев') do NOT display a 'Гражданин'
+                # field on the /order/<id> HTML page — so if p_cit is empty on the newest unlinked VKS order (cand_idx == 0), it IS our order!
+                has_explicit_cit = bool(self._normalize_ru_tokens(p_cit))
                 is_match = (
                     self.does_citizen_match_worker(p_cit, row, p_body)
                     or (expected_order_no and p_no == expected_order_no)
-                    or (cand_idx == 0 and not self._normalize_ru_tokens(p_cit) and "req_preview" in p_body)
+                    or (cand_idx == 0 and not has_explicit_cit)
                 )
                 if not is_match:
                     logger.warning(
@@ -3302,7 +3346,7 @@ class GosuslugiVksBot:
 
                 verified_order_no = p_no or expected_order_no
                 logger.info(
-                    f"Step 16.3 VERIFIED: Найдено верное заявление № {verified_order_no} для Гражданина '{p_cit or clean_worker_name}' (Код: {sicil})!"
+                    f"Step 16.3 VERIFIED: Найдено верное заявление № {verified_order_no} для сотрудника '{p_cit or clean_worker_name}' (Код: {sicil})!"
                 )
                 break
 

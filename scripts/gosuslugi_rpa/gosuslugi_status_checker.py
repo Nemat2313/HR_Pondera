@@ -399,57 +399,50 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
             pass
         page.wait_for_timeout(450)
 
-    # Click 'Показать историю' if present (pure CSS locator + get_by_text + DOM click)
+    # Click the exact blue 'Показать историю' text on the left of the card via Text-Node Range bounding box
     clicked_h = False
     try:
-        sh_loc = page.locator(
-            "a:has-text('Показать историю'):visible, "
-            "button:has-text('Показать историю'):visible, "
-            "span:has-text('Показать историю'):visible, "
-            "div:has-text('Показать историю'):visible"
-        ).first
-        if sh_loc.count() > 0 and sh_loc.is_visible():
-            try:
-                sh_loc.scroll_into_view_if_needed(timeout=1500)
-            except Exception:
-                pass
-            sh_loc.click(timeout=3000)
-            clicked_h = True
-    except Exception:
-        pass
-
-    if not clicked_h:
-        try:
-            by_txt = page.get_by_text("Показать историю", exact=False).first
-            if by_txt.count() > 0 and by_txt.is_visible():
-                box = by_txt.bounding_box()
-                if box and box["width"] > 0 and box["height"] > 0:
-                    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                    clicked_h = True
-        except Exception:
-            pass
-
-    try:
-        js_clicked = page.evaluate(
+        js_target = page.evaluate(
             r"""() => {
-                const els = Array.from(document.querySelectorAll('a, button, span, div, p'));
-                for (const el of els) {
-                    const t = (el.innerText || el.textContent || '').trim();
-                    if (/^показать\s+(всю\s+)?историю$/i.test(t)) {
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0) {
-                            el.scrollIntoView({ block: 'center' });
-                            const target = el.closest('button, a, [role="button"], .link, .history-toggle') || el;
-                            target.click();
-                            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                            return true;
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                let matchedTextNode = null;
+                let matchedEl = null;
+                while (walker.nextNode()) {
+                    const node = walker.currentNode;
+                    const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                    if (/^показать\s+(всю\s+)?историю$/i.test(txt) && node.parentElement) {
+                        const r = node.parentElement.getBoundingClientRect();
+                        if (r.width > 10 && r.height > 8) {
+                            matchedTextNode = node;
+                            matchedEl = node.parentElement;
+                            break;
                         }
                     }
                 }
-                return false;
+                if (!matchedEl) return null;
+                matchedEl.scrollIntoView({ block: 'center' });
+                let rect = matchedEl.getBoundingClientRect();
+                if (matchedTextNode) {
+                    try {
+                        const range = document.createRange();
+                        range.selectNodeContents(matchedTextNode);
+                        const rr = range.getBoundingClientRect();
+                        if (rr.width > 15 && rr.height > 8) rect = rr;
+                    } catch (e) {}
+                }
+                for (const node of [matchedEl, matchedEl.closest('a, button, [role="button"], .link'), matchedEl.parentElement].filter(Boolean)) {
+                    try {
+                        node.click();
+                        node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                    } catch (e) {}
+                }
+                const clickX = rect.width > 250 ? (rect.left + 65) : (rect.left + rect.width / 2);
+                const clickY = rect.top + rect.height / 2;
+                return { x: clickX, y: clickY };
             }"""
         )
-        if js_clicked:
+        if js_target and js_target.get("x", 0) > 0 and js_target.get("y", 0) > 0:
+            page.mouse.click(float(js_target["x"]), float(js_target["y"]))
             clicked_h = True
     except Exception:
         pass
@@ -459,10 +452,10 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
 
     # Also expand any inner collapsed 'Зарегистрировано на портале' block
     try:
-        body_check = page.locator("body").inner_text(timeout=1200)
-        if "req_preview" not in body_check or "Гражданин" not in body_check:
+        body_check = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+        if "req_preview" not in body_check:
             expanded_inner = page.evaluate(
-                """() => {
+                r"""() => {
                     let clicked = false;
                     const closedStatuses = Array.from(document.querySelectorAll('.history-status:not(.open), .history-item:not(.open)'));
                     for (const st of closedStatuses) {
@@ -470,11 +463,12 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
                         header.click();
                         clicked = true;
                     }
-                    const allNodes = Array.from(document.querySelectorAll('span, div, p, a, button'));
-                    for (const n of allNodes) {
-                        const txt = (n.innerText || '').trim();
-                        if (/^Зарегистрировано на портале$/i.test(txt)) {
-                            const clickable = n.closest('.history-status, button, a, [role="button"]') || n;
+                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+                    while (walker.nextNode()) {
+                        const node = walker.currentNode;
+                        const txt = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                        if (/^Зарегистрировано на портале$/i.test(txt) && node.parentElement) {
+                            const clickable = node.parentElement.closest('.history-status, button, a, [role="button"]') || node.parentElement;
                             clickable.click();
                             clicked = true;
                             break;
