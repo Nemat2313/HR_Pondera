@@ -123,10 +123,10 @@ export default function PowerBIDualDonuts({
   const malePct = totalCount > 0 ? Math.round((maleCount / totalCount) * 100) : 97;
   const femalePct = totalCount > 0 ? Math.max(1, Math.round((femaleCount / totalCount) * 100)) : 3;
 
-  // Custom External Callout Line & Label Renderer (replaces both Tooltip and bottom legend)
+  // Custom External Callout Line & Label Renderer (no redundant % inside slices)
   const createExternalCalloutRenderer = (colors: string[]) => {
     const CalloutLabel = (props: any) => {
-      const { cx, cy, midAngle, innerRadius, outerRadius, percent, index, payload } = props;
+      const { cx, cy, midAngle, outerRadius, percent, index, payload } = props;
       const RADIAN = Math.PI / 180;
       const sin = Math.sin(-RADIAN * midAngle);
       const cos = Math.cos(-RADIAN * midAngle);
@@ -138,37 +138,18 @@ export default function PowerBIDualDonuts({
       }`;
       const titleText = formatShortLabel(payload.label || '');
 
-      // 1. Inner badge inside the slice (if slice is large enough)
-      const midR = innerRadius + (outerRadius - innerRadius) * 0.5;
-      const inX = cx + midR * cos;
-      const inY = cy + midR * sin;
-
-      // 2. External callout line coordinates
+      // External callout line coordinates
       const sx = cx + (outerRadius + 2) * cos;
       const sy = cy + (outerRadius + 2) * sin;
-      const mx = cx + (outerRadius + 16) * cos;
-      const my = cy + (outerRadius + 16) * sin;
-      const ex = mx + (cos >= 0 ? 12 : -12);
+      const mx = cx + (outerRadius + 14) * cos;
+      const my = cy + (outerRadius + 14) * sin;
+      const ex = mx + (cos >= 0 ? 10 : -10);
       const ey = my;
       const textAnchor = cos >= 0 ? 'start' : 'end';
       const textX = ex + (cos >= 0 ? 5 : -5);
 
       return (
         <g className="pointer-events-none select-none">
-          {/* Percentage inside sector */}
-          {percent >= 0.06 && (
-            <text
-              x={inX}
-              y={inY}
-              fill="#ffffff"
-              textAnchor="middle"
-              dominantBaseline="central"
-              className="font-black text-[10.5px] drop-shadow-sm"
-            >
-              {pctText}
-            </text>
-          )}
-
           {/* Callout Leader Line */}
           <polyline
             points={`${sx},${sy} ${mx},${my} ${ex},${ey}`}
@@ -211,7 +192,7 @@ export default function PowerBIDualDonuts({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-      {/* 1. BEYAZ YAKA / MAVİ YAKA (Donut with External Callout Lines, No Tooltip, No Bottom Legend) */}
+      {/* 1. BEYAZ YAKA / MAVİ YAKA (Thick Donut Wheel with External Callout Lines) */}
       <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -260,7 +241,7 @@ export default function PowerBIDualDonuts({
                 cx="50%"
                 cy="50%"
                 innerRadius={48}
-                outerRadius={76}
+                outerRadius={90}
                 cornerRadius={5}
                 paddingAngle={3}
                 dataKey="count"
@@ -360,7 +341,7 @@ export default function PowerBIDualDonuts({
                 cx="50%"
                 cy="50%"
                 innerRadius={48}
-                outerRadius={76}
+                outerRadius={90}
                 cornerRadius={5}
                 paddingAngle={3}
                 dataKey="count"

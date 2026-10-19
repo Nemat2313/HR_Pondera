@@ -124,85 +124,90 @@ export default function PowerBIWorkPermits({
   // Active display item in center of donut
   const activeCenterItem = hoveredItem || (selectedKey ? data.find((d) => d.key === selectedKey) : null);
 
-  // Custom slice label directly on the pie chart
+  // Pre-calculate non-overlapping vertical offsets for external callouts
+  const totalSum = data.reduce((acc, d) => acc + d.count, 0) || 1;
+  const sliceAngles = (() => {
+    let accAngle = 0;
+    return data.map((item) => {
+      const sweep = (item.count / totalSum) * 360;
+      const mid = accAngle + sweep / 2;
+      accAngle += sweep;
+      return { key: item.key, mid };
+    });
+  })();
+
+  // Custom external callout label renderer (matching 1st & 2nd pie charts: Category Name + Count & Percentage outside)
   const renderCustomLabel = (props: any) => {
-    const { cx, cy, midAngle, innerRadius, outerRadius, percent, index } = props;
+    const { cx, cy, midAngle, outerRadius, index } = props;
     const item = data[index];
     if (!item) return null;
 
     const shortCode = getShortCode(item.key, lang);
     const RADIAN = Math.PI / 180;
+    const sin = Math.sin(-RADIAN * midAngle);
+    const cos = Math.cos(-RADIAN * midAngle);
 
-    // For slices with >= 6% share: display abbreviation + percentage inside the donut slice
-    if (percent >= 0.06) {
-      const radius = innerRadius + (outerRadius - innerRadius) * 0.52;
-      const x = cx + radius * Math.cos(-midAngle * RADIAN);
-      const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    const pctText = `%${item.percentage}`;
+    const countText = `${(item.count || 0).toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')} ${
+      lang === 'ru' ? 'чел.' : 'kişi'
+    }`;
 
-      return (
-        <g className="select-none pointer-events-none drop-shadow-md">
-          <text
-            x={x}
-            y={y - 7}
-            fill="#ffffff"
-            textAnchor="middle"
-            dominantBaseline="central"
-            className="font-black text-[11px] tracking-tight"
-          >
-            {shortCode}
-          </text>
-          <text
-            x={x}
-            y={y + 8}
-            fill="#ffffff"
-            textAnchor="middle"
-            dominantBaseline="central"
-            className="font-bold text-[10px] opacity-95 font-mono"
-          >
-            %{item.percentage}
-          </text>
-        </g>
-      );
+    // Start point on outer edge of slice
+    const sx = cx + (outerRadius + 2) * cos;
+    const sy = cy + (outerRadius + 2) * sin;
+
+    // Mid point of leader line, with vertical separation for adjacent small slices (e.g., VNJ & EAES)
+    let verticalNudge = 0;
+    if (item.key === 'VNJ_RVP') {
+      verticalNudge = -13;
+    } else if (item.key === 'EAES') {
+      verticalNudge = 11;
+    } else if (item.key === 'RF_CITIZEN' && sliceAngles.some((s) => s.key === 'EAES')) {
+      verticalNudge = 14;
     }
 
-    // For small slices (< 6%), show outer callout label with leader line
-    const rInside = outerRadius + 2;
-    const rOutside = outerRadius + 12;
-    const rText = outerRadius + 16;
-
-    const x1 = cx + rInside * Math.cos(-midAngle * RADIAN);
-    const y1 = cy + rInside * Math.sin(-midAngle * RADIAN);
-    const x2 = cx + rOutside * Math.cos(-midAngle * RADIAN);
-    const y2 = cy + rOutside * Math.sin(-midAngle * RADIAN);
-    const xText = cx + rText * Math.cos(-midAngle * RADIAN);
-    const yText = cy + rText * Math.sin(-midAngle * RADIAN);
-    const isRight = xText >= cx;
+    const mx = cx + (outerRadius + 14) * cos;
+    const my = cy + (outerRadius + 14) * sin + verticalNudge;
+    const ex = mx + (cos >= 0 ? 10 : -10);
+    const ey = my;
+    const textAnchor = cos >= 0 ? 'start' : 'end';
+    const textX = ex + (cos >= 0 ? 5 : -5);
 
     return (
       <g className="select-none pointer-events-none">
-        <line
-          x1={x1}
-          y1={y1}
-          x2={x2}
-          y2={y2}
+        {/* Callout Leader Line */}
+        <polyline
+          points={`${sx},${sy} ${mx},${my} ${ex},${ey}`}
           stroke={item.color}
-          strokeWidth={1.5}
-          strokeLinecap="round"
-          opacity={0.85}
+          strokeWidth={1.75}
+          fill="none"
         />
-        <circle cx={x2} cy={y2} r={2} fill={item.color} />
+        {/* Anchor dot on slice edge */}
+        <circle cx={sx} cy={sy} r={2.5} fill={item.color} />
+        {/* End dot at label */}
+        <circle cx={ex} cy={ey} r={2} fill={item.color} />
+
+        {/* External Label Line 1: Category Name */}
         <text
-          x={xText}
-          y={yText}
-          fill={item.color}
-          textAnchor={isRight ? 'start' : 'end'}
+          x={textX}
+          y={ey - 6}
+          textAnchor={textAnchor}
           dominantBaseline="central"
-          className="font-black text-[10.5px]"
+          className="fill-slate-800 dark:fill-slate-100 font-extrabold text-[11px]"
         >
-          {shortCode}{' '}
-          <tspan className="font-mono text-slate-700 dark:text-slate-200 font-bold text-[10px]">
-            %{item.percentage}
-          </tspan>
+          {shortCode}
+        </text>
+
+        {/* External Label Line 2: Count & Percentage */}
+        <text
+          x={textX}
+          y={ey + 8}
+          textAnchor={textAnchor}
+          dominantBaseline="central"
+          fill={item.color}
+          className="font-mono font-black text-[10.5px]"
+        >
+          {`${countText} (${pctText})`}
         </text>
       </g>
     );
@@ -256,22 +261,24 @@ export default function PowerBIWorkPermits({
       {/* DONUT PIE CHART STAGE (380px Height - Matches Decomposition Tree exactly) */}
       <div className="h-[380px] w-full relative flex items-center justify-center my-auto z-10">
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
+          <PieChart margin={{ top: 20, right: 32, bottom: 20, left: 32 }}>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={70}
-              outerRadius={114}
+              innerRadius={58}
+              outerRadius={100}
+              cornerRadius={4}
               paddingAngle={2.5}
               dataKey="count"
               nameKey="name"
               label={renderCustomLabel}
               labelLine={false}
+              isAnimationActive={false}
               onClick={(entry) => handleSliceClick(entry)}
               onMouseEnter={(_, index) => setHoveredItem(data[index])}
               onMouseLeave={() => setHoveredItem(null)}
-              className="cursor-pointer"
+              className="cursor-pointer focus:outline-none"
             >
               {data.map((entry) => {
                 const isSelected = selectedKey === entry.key;
@@ -281,8 +288,8 @@ export default function PowerBIWorkPermits({
                     key={`permit-cell-${entry.key}`}
                     fill={entry.color}
                     opacity={isDimmed ? 0.35 : 1}
-                    stroke={isSelected ? '#ffffff' : 'none'}
-                    strokeWidth={isSelected ? 2.5 : 0}
+                    stroke={isSelected ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+                    strokeWidth={isSelected ? 3 : 1.5}
                     className="hover:opacity-90 transition-all duration-200"
                   />
                 );

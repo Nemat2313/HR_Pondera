@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -43,6 +43,23 @@ export default function Sidebar({
 }: SidebarProps) {
   const { user } = useAuth();
   const { lang, t } = useLanguage();
+  const [versionInfo, setVersionInfo] = useState<{
+    version: string;
+    buildNumber: number;
+    commitHash: string;
+    updatedAt: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/version')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (json?.success) {
+          setVersionInfo(json);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const menuItems = [
     {
@@ -144,7 +161,21 @@ export default function Sidebar({
                   <h1 className="font-semibold text-sm text-slate-900 dark:text-white tracking-tight leading-none flex items-center gap-1">
                     Pondera <span className="text-emerald-600 dark:text-emerald-400 font-bold">HR</span>
                   </h1>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5 font-normal tracking-tight">TeamHub SaaS v2.6</p>
+                  <div
+                    className="flex items-center gap-1 mt-0.5"
+                    title={
+                      versionInfo?.commitHash
+                        ? `Build #${versionInfo.buildNumber} • Commit: ${versionInfo.commitHash} (${versionInfo.updatedAt})`
+                        : 'TeamHub SaaS v2.6'
+                    }
+                  >
+                    <span className="text-[9.5px] text-slate-400 dark:text-slate-400 font-normal tracking-tight">
+                      TeamHub
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 dark:bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-mono font-bold text-[9.5px] leading-tight">
+                      {versionInfo?.version || 'v2.6'}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
