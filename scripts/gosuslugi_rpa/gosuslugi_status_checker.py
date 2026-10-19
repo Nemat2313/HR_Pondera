@@ -753,21 +753,30 @@ def download_missing_pdf_for_order(
 
 
 def sync_updates_to_pondera_api(updates: List[Dict[str, Any]]):
-    """Pushes updated application statuses to Pondera HR Next.js API (/api/gosuslugi/submissions)."""
+    """Pushes updated application statuses to Pondera HR Central Server & Local Next.js API (/api/gosuslugi/submissions)."""
     if not updates:
         return
-    try:
-        import urllib.request
-        req = urllib.request.Request(
-            "http://localhost:3000/api/gosuslugi/submissions",
-            data=json.dumps({"records": updates}, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json; charset=utf-8"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=4.0) as _:
+    import urllib.request
+    import ssl
+    payload = json.dumps({"records": updates}, ensure_ascii=False).encode("utf-8")
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    for api_url in (
+        "https://hr.pondera.network/api/gosuslugi/submissions",
+        "http://localhost:3000/api/gosuslugi/submissions",
+    ):
+        try:
+            req = urllib.request.Request(
+                api_url,
+                data=payload,
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=6.0, context=ctx if api_url.startswith("https") else None) as _:
+                break
+        except Exception:
             pass
-    except Exception:
-        pass
 
 
 def prevent_windows_sleep():

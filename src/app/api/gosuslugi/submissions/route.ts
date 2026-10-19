@@ -19,8 +19,14 @@ function ensureTable(db: any) {
       pdf_filename TEXT DEFAULT '',
       submitted_at TEXT NOT NULL,
       checked_at TEXT DEFAULT '',
+      updated_at TEXT DEFAULT '',
       UNIQUE(sicil_no, notification_type, period_code)
     );
+  `);
+  try {
+    db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
+  } catch {}
+  db.exec(`
     UPDATE gosuslugi_submissions
     SET gosuslugi_status = 'Отправлено (PDF не скачан)'
     WHERE gosuslugi_status LIKE '%GosuslugiVksBot%' OR gosuslugi_status LIKE '%Step 16%';
@@ -107,9 +113,9 @@ export async function POST(request: Request) {
     const stmt = db.prepare(`
       INSERT INTO gosuslugi_submissions (
         sicil_no, worker_name, citizenship, notification_type, period_code,
-        application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, checked_at
+        application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, checked_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(sicil_no, notification_type, period_code) DO UPDATE SET
         worker_name = COALESCE(NULLIF(excluded.worker_name, ''), gosuslugi_submissions.worker_name),
         citizenship = COALESCE(NULLIF(excluded.citizenship, ''), gosuslugi_submissions.citizenship),
@@ -123,6 +129,14 @@ export async function POST(request: Request) {
         checked_at = CASE
           WHEN excluded.checked_at != '' THEN excluded.checked_at
           ELSE gosuslugi_submissions.checked_at
+        END,
+        updated_at = CASE
+          WHEN gosuslugi_submissions.application_no != excluded.application_no
+            OR gosuslugi_submissions.gosuslugi_status != excluded.gosuslugi_status
+            OR gosuslugi_submissions.pdf_filename != excluded.pdf_filename
+            OR gosuslugi_submissions.updated_at = ''
+          THEN excluded.updated_at
+          ELSE gosuslugi_submissions.updated_at
         END
     `);
 
@@ -161,7 +175,8 @@ export async function POST(request: Request) {
         String(item.status_detail || item.statusDetail || '').trim(),
         String(item.pdf_filename || item.pdfFilename || '').trim(),
         String(item.submitted_at || item.submittedAt || nowStr).trim(),
-        String(item.checked_at || item.checkedAt || '').trim()
+        String(item.checked_at || item.checkedAt || '').trim(),
+        nowStr
       );
       upserted++;
     }

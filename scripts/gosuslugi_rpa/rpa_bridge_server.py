@@ -220,6 +220,33 @@ def upload_pdf_to_central_server_async(entry: dict):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def sync_submission_to_central_server_async(entry: dict):
+    """Pushes a submission/error record directly to https://hr.pondera.network/api/gosuslugi/submissions."""
+    if not entry or not isinstance(entry, dict):
+        return
+
+    def _worker():
+        import urllib.request
+        import ssl
+        try:
+            payload = json.dumps({"records": [entry]}, ensure_ascii=False).encode("utf-8")
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                "https://hr.pondera.network/api/gosuslugi/submissions",
+                data=payload,
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8, context=ctx) as _:
+                pass
+        except Exception:
+            pass
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 class RPAState:
     is_running = False
     waiting_for_manual = False
@@ -273,6 +300,7 @@ class RPAState:
         if not updated:
             cls.submissions.append(entry)
         save_applications_ledger(cls.submissions)
+        sync_submission_to_central_server_async(entry)
         if entry.get("pdf_filename"):
             upload_pdf_to_central_server_async(entry)
 

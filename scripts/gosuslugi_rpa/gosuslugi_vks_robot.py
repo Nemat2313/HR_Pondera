@@ -4053,19 +4053,31 @@ class GosuslugiVksBot:
         except Exception as e:
             logger.debug(f"Could not write gosuslugi_applications.json: {e}")
 
-        # 3) Post to Pondera HR Next.js API (non-blocking)
-        try:
-            import urllib.request
-            req = urllib.request.Request(
-                "http://localhost:3000/api/gosuslugi/submissions",
-                data=json.dumps(entry, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json; charset=utf-8"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=2.5) as _:
+        # 3) Post to Pondera HR Central Server & Local Next.js API (non-blocking)
+        self._post_submission_to_backend(entry)
+
+    def _post_submission_to_backend(self, entry: Dict[str, Any]):
+        import urllib.request
+        import ssl
+        payload = json.dumps({"records": [entry]}, ensure_ascii=False).encode("utf-8")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        for api_url in (
+            "https://hr.pondera.network/api/gosuslugi/submissions",
+            "http://localhost:3000/api/gosuslugi/submissions",
+        ):
+            try:
+                req = urllib.request.Request(
+                    api_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=3.5, context=ctx if api_url.startswith("https") else None) as _:
+                    break
+            except Exception:
                 pass
-        except Exception:
-            pass
 
     def register_worker_error(self, row: Dict[str, Any], error_reason: str):
         """
@@ -4122,18 +4134,7 @@ class GosuslugiVksBot:
         except Exception as e:
             logger.debug(f"Could not write error to gosuslugi_applications.json: {e}")
 
-        try:
-            import urllib.request
-            req = urllib.request.Request(
-                "http://localhost:3000/api/gosuslugi/submissions",
-                data=json.dumps(entry, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json; charset=utf-8"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=2.5) as _:
-                pass
-        except Exception:
-            pass
+        self._post_submission_to_backend(entry)
 
 
 def load_excel_records(file_path: str, sheet_name: str = "Sheet1") -> List[Dict[str, Any]]:
