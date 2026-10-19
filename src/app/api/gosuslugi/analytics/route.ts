@@ -193,6 +193,19 @@ export async function GET() {
       }
     > = {};
 
+    const ACTIVE_STATUS_SET = new Set([
+      'mevcut',
+      'is gezisi',
+      'iş gezisi',
+      'mazeret izni',
+      'suresiz izin',
+      'süresiz izin',
+      'ucretsiz izin',
+      'ücretsiz izin',
+      'yillik izin',
+      'yıllık izin',
+    ]);
+
     for (const p of personnelRows) {
       const sicil = String(p.sicil_no || '').trim();
       if (!sicil) continue;
@@ -204,9 +217,8 @@ export async function GET() {
       }
       const kartTuru = String(rawJson['Çalışma Kart Türü'] || '').toUpperCase();
       const isVks = kartTuru.includes('ВКС') || kartTuru.includes('VKS');
-      const isActive =
-        String(p.genel_durum || '').toLowerCase() !== 'çıkış' &&
-        String(p.guncel_durum || '').toLowerCase() !== 'çıkış';
+      const guncelLower = String(p.guncel_durum || '').trim().toLowerCase();
+      const isActive = ACTIVE_STATUS_SET.has(guncelLower);
       const isVksActive = isVks && isActive;
       const reg = String(p.region || 'Belirtilmemiş').trim() || 'Belirtilmemiş';
 
