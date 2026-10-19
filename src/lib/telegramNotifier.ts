@@ -240,6 +240,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
  */
 export async function checkAndSendVks15MinReport(force = false): Promise<{
   sent: boolean;
+  queued?: boolean;
   reason?: string;
   deltaSent?: number;
   deltaErrors?: number;
