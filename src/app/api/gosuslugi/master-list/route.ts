@@ -240,22 +240,63 @@ export async function GET(request: Request) {
         ...parsed,
         id: parsed.id || `master-vks-${m.row_key}`,
         sicil: m.sicil_no,
+        sicil_no: m.sicil_no,
         code: parsed.code || m.sicil_no,
         rowOrder: m.row_order,
+        row_order: m.row_order,
         rowKey: m.row_key,
         assignedComputer: comp,
+        assigned_computer: comp,
         status: rowStatus,
         selected: rowStatus === 'pending',
         applicationNo: sub?.application_no || '',
+        application_no: sub?.application_no || '',
         gosuslugiStatus: sub?.gosuslugi_status || '',
+        gosuslugi_status: sub?.gosuslugi_status || '',
         pdfFilename: sub?.pdf_filename || '',
+        pdf_filename: sub?.pdf_filename || '',
         submittedAt: sub?.submitted_at || '',
         updatedAt: m.updated_at || '',
+        worker: {
+          Sicil: m.sicil_no,
+          Код: parsed.code || m.sicil_no,
+          Фамилия: parsed.lastName || 'Нет',
+          Имя: parsed.firstName || 'Нет',
+          Отчество: parsed.middleName || 'НЕТ',
+          ДатаРождения: parsed.birthDate || '',
+          Пол: parsed.gender || 'Мужской',
+          ТекущееГражданство: parsed.citizenship || 'Турция',
+          МестоРождения: parsed.placeOfBirth || parsed.citizenship || 'Турция',
+          СерияПаспорта: parsed.passportSeries || '',
+          НомерПаспорта: parsed.passportNumber || '',
+          ДатаВыдачи: parsed.passportIssueDate || '',
+          ПаспортКемВыдан: parsed.passportIssuedBy || 'МВД',
+          ИНН: parsed.inn || '',
+          Серия: parsed.rnrSeries || '',
+          Номер: parsed.rnrNumber || '',
+          ДатаВыдачиВКС: parsed.rnrIssueDate || '',
+          СерийныйНомер1: parsed.blankSeries || '',
+          СерийныйНомер2: parsed.blankNumber || '',
+          ДатаЗаключения: parsed.contractDate || '',
+          ДатаНачалаДействия: parsed.contractStartDate || parsed.contractDate || '',
+          ДатаОканчанияДействия: parsed.contractEndDate || '',
+          НачалоПериода: parsed.periodStart || '01.07.2026',
+          КонецПериода: parsed.periodEnd || '30.09.2026',
+          '1-месяц': parsed.month1Salary || '',
+          '2-месяц': parsed.month2Salary || '',
+          '3-месяц': parsed.month3Salary || '',
+          РазмерВыплаты: parsed.salaryAmount || '',
+          Должность: parsed.position || 'СПЕЦИАЛИСТ',
+          АдресРаботы: parsed.workAddress || '',
+          Индекс: parsed.postalCode || '',
+        },
       });
     }
 
     return NextResponse.json({
       success: true,
+      totalMaster: masterRows.length,
+      computers: computersSummary,
       summary: {
         total: masterRows.length,
         sent: totalSent,
@@ -381,8 +422,9 @@ export async function POST(request: Request) {
     let clearedErrors = 0;
     const seenSicilCounts = new Map<string, number>();
 
-    const tx = db.transaction((items: any[]) => {
-      items.forEach((raw, idx) => {
+    db.exec('BEGIN');
+    try {
+      rawRecords.forEach((raw: any, idx: number) => {
         const norm = normalizeIncomingWorker(raw, maxRowOrder + idx + 1);
         if (!norm) return;
 
@@ -450,7 +492,7 @@ export async function POST(request: Request) {
 
           if (clearErrorsForUpdated) {
             const delRes = clearErrorStmt.run(norm.sicilNo);
-            clearedErrors += delRes.changes;
+            clearedErrors += Number(delRes.changes || 0);
           }
         } else {
           const finalRowOrder = mode === 'seed' ? norm.rowOrder : ++maxRowOrder;
@@ -482,13 +524,17 @@ export async function POST(request: Request) {
 
           if (clearErrorsForUpdated) {
             const delRes = clearErrorStmt.run(norm.sicilNo);
-            clearedErrors += delRes.changes;
+            clearedErrors += Number(delRes.changes || 0);
           }
         }
       });
-    });
-
-    tx(rawRecords);
+      db.exec('COMMIT');
+    } catch (txErr) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+      throw txErr;
+    }
 
     return NextResponse.json({
       success: true,
@@ -549,7 +595,8 @@ export async function PATCH(request: Request) {
 
       let changed = 0;
 
-      const tx = db.transaction(() => {
+      db.exec('BEGIN');
+      try {
         if (strategy === 'custom_range') {
           const startRow = Number(body?.startRow) || 1;
           const endRow = Number(body?.endRow) || 3088;
@@ -604,23 +651,36 @@ export async function PATCH(request: Request) {
             changed++;
           }
         }
-      });
-
-      tx();
+        db.exec('COMMIT');
+      } catch (txErr) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        throw txErr;
+      }
 
       return NextResponse.json({
         success: true,
         strategy,
         changed,
+        message:
+          strategy === 'equal_4'
+            ? `Kalan gönderilmemiş kayıtlar 4 bilgisayara eşit bölündü (${changed} satır güncellendi)!`
+            : `1. ve 2. bilgisayarların sonundan ${tailCount}'er kayıt 3. ve 4. bilgisayarlara aktarıldı!`,
       });
     }
 
     if (action === 'retry_errors') {
       const scope = String(body?.scope || 'all').trim(); // 'all' | 'computer' | 'selected'
       const computer = Number(body?.computer) || 0;
-      const sicilNos: string[] = Array.isArray(body?.sicilNos)
-        ? body.sicilNos.map((s: any) => String(s || '').trim()).filter(Boolean)
+      const rawSicilList = Array.isArray(body?.sicils)
+        ? body.sicils
+        : Array.isArray(body?.sicilNos)
+        ? body.sicilNos
         : [];
+      const sicilNos: string[] = rawSicilList
+        .map((s: any) => String(s || '').trim())
+        .filter(Boolean);
       const targetComputer = Number(body?.targetComputer) || 0;
 
       let targetSicils: string[] = [];
@@ -653,20 +713,27 @@ export async function PATCH(request: Request) {
       `);
 
       let resetCount = 0;
-      const tx = db.transaction(() => {
+      db.exec('BEGIN');
+      try {
         for (const sic of targetSicils) {
           const res = delErrorStmt.run(sic);
-          resetCount += res.changes;
+          resetCount += Number(res.changes || 0);
           if ([1, 2, 3, 4].includes(targetComputer)) {
             reassignCompStmt.run(targetComputer, nowStr, sic);
           }
         }
-      });
-      tx();
+        db.exec('COMMIT');
+      } catch (txErr) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        throw txErr;
+      }
 
       return NextResponse.json({
         success: true,
         resetCount,
+        message: `${resetCount} hatalı (Ошибка) kayıt sıfırlandı ve tekrar gönderim kuyruğuna alındı!`,
       });
     }
 
