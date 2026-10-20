@@ -4,7 +4,18 @@ import { execSync } from 'child_process';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+let cachedVersionPayload: {
+  success: boolean;
+  version: string;
+  buildNumber: number;
+  commitHash: string;
+  updatedAt: string;
+} | null = null;
+
 export async function GET() {
+  if (cachedVersionPayload) {
+    return NextResponse.json(cachedVersionPayload);
+  }
   try {
     const commitCount = execSync('git rev-list --count HEAD', {
       cwd: process.cwd(),
@@ -24,13 +35,15 @@ export async function GET() {
       timeout: 3000,
     }).trim();
 
-    return NextResponse.json({
+    cachedVersionPayload = {
       success: true,
       version: `v2.6.${commitCount}`,
       buildNumber: Number(commitCount) || 1,
       commitHash: shortHash,
       updatedAt: commitTime,
-    });
+    };
+
+    return NextResponse.json(cachedVersionPayload);
   } catch {
     return NextResponse.json({
       success: true,

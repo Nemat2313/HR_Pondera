@@ -141,21 +141,35 @@ export async function GET(request: Request) {
     const db = getDb();
     ensureTables(db);
 
-    const masterRows = db
-      .prepare('SELECT * FROM gosuslugi_vks_master_list ORDER BY row_order ASC, row_key ASC')
-      .all() as Array<{
-      row_key: string;
-      sicil_no: string;
-      row_order: number;
-      assigned_computer: number;
-      worker_json: string;
-      source_tag: string;
-      updated_at: string;
-    }>;
+    const masterRows = summaryOnly
+      ? (db
+          .prepare(
+            'SELECT row_key, sicil_no, row_order, assigned_computer FROM gosuslugi_vks_master_list ORDER BY row_order ASC, row_key ASC'
+          )
+          .all() as Array<{
+          row_key: string;
+          sicil_no: string;
+          row_order: number;
+          assigned_computer: number;
+          worker_json?: string;
+          source_tag?: string;
+          updated_at?: string;
+        }>)
+      : (db
+          .prepare('SELECT * FROM gosuslugi_vks_master_list ORDER BY row_order ASC, row_key ASC')
+          .all() as Array<{
+          row_key: string;
+          sicil_no: string;
+          row_order: number;
+          assigned_computer: number;
+          worker_json: string;
+          source_tag: string;
+          updated_at: string;
+        }>);
 
     const subRows = db
       .prepare(
-        `SELECT * FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
+        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, submitted_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
       )
       .all() as Array<any>;
 
@@ -233,7 +247,7 @@ export async function GET(request: Request) {
 
       let parsed: Record<string, any> = {};
       try {
-        parsed = JSON.parse(m.worker_json);
+        parsed = JSON.parse(m.worker_json || '{}');
       } catch {
         continue;
       }
@@ -250,7 +264,7 @@ export async function GET(request: Request) {
         assignedComputer: comp,
         assigned_computer: comp,
         status: rowStatus,
-        selected: rowStatus === 'pending',
+        selected: rowStatus === 'pending' || statusFilter === 'error',
         applicationNo: sub?.application_no || '',
         application_no: sub?.application_no || '',
         gosuslugiStatus: sub?.gosuslugi_status || '',
@@ -322,37 +336,53 @@ export async function POST(request: Request) {
       source_tag: string;
     }>;
 
-    // Also load RNR fallback from `personnel` table on server in case any Excel row has empty RNR/Blank
-    const personnelRnrMap = new Map<
-      string,
-      { rnrSeries: string; rnrNumber: string; rnrIssueDate: string; blankSeries: string; blankNumber: string }
-    >();
+    // Also load RNR fallback from `personnel` table on server (cached in memory) in case any Excel row has empty RNR/Blank
+    type RnrFallbackEntry = {
+      rnrSeries: string;
+      rnrNumber: string;
+      rnrIssueDate: string;
+      blankSeries: string;
+      blankNumber: string;
+    };
+    const gRnrCache = globalThis as unknown as {
+      __ponderaPersonnelRnrCache?: { key: string; map: Map<string, RnrFallbackEntry> };
+    };
+    let personnelRnrMap = new Map<string, RnrFallbackEntry>();
     try {
-      const pRows = db
-        .prepare('SELECT sicil_no, all_data_json FROM personnel WHERE sicil_no IS NOT NULL AND sicil_no != ""')
-        .all() as Array<{ sicil_no: string; all_data_json: string }>;
-      const latinToCyr: Record<string, string> = {
-        A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
-      };
-      const toCyrBlank = (s: string) =>
-        s
-          .toUpperCase()
-          .replace(/[ABCEHKMOPTXY]/g, (ch) => latinToCyr[ch] || ch);
-      for (const pr of pRows) {
-        if (!pr.all_data_json) continue;
-        try {
-          const raw = JSON.parse(pr.all_data_json);
-          personnelRnrMap.set(String(pr.sicil_no).trim(), {
-            rnrSeries: String(raw['Çalışma Kart Seri No'] || '').trim(),
-            rnrNumber: String(raw['Çalışma Kart No'] || '').trim(),
-            rnrIssueDate: String(
-              raw['Çalışma Kart Alış Tarihi'] || raw['Çalışma Kart Başlangıç Tarihi'] || ''
-            ).trim(),
-            blankSeries: toCyrBlank(String(raw['Patent Form Seri No'] || '').trim()),
-            blankNumber: String(raw['Patent Form No'] || '').trim(),
-          });
-        } catch {}
+      const pVer = db
+        .prepare('SELECT COUNT(*) as cnt, COALESCE(MAX(id), 0) as maxId FROM personnel')
+        .get() as { cnt: number; maxId: number };
+      const rnrCacheKey = `${pVer.cnt}:${pVer.maxId}`;
+      if (!gRnrCache.__ponderaPersonnelRnrCache || gRnrCache.__ponderaPersonnelRnrCache.key !== rnrCacheKey) {
+        const builtMap = new Map<string, RnrFallbackEntry>();
+        const pRows = db
+          .prepare('SELECT sicil_no, all_data_json FROM personnel WHERE sicil_no IS NOT NULL AND sicil_no != ""')
+          .all() as Array<{ sicil_no: string; all_data_json: string }>;
+        const latinToCyr: Record<string, string> = {
+          A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
+        };
+        const toCyrBlank = (s: string) =>
+          s
+            .toUpperCase()
+            .replace(/[ABCEHKMOPTXY]/g, (ch) => latinToCyr[ch] || ch);
+        for (const pr of pRows) {
+          if (!pr.all_data_json) continue;
+          try {
+            const raw = JSON.parse(pr.all_data_json);
+            builtMap.set(String(pr.sicil_no).trim(), {
+              rnrSeries: String(raw['Çalışma Kart Seri No'] || '').trim(),
+              rnrNumber: String(raw['Çalışma Kart No'] || '').trim(),
+              rnrIssueDate: String(
+                raw['Çalışma Kart Alış Tarihi'] || raw['Çalışma Kart Başlangıç Tarihi'] || ''
+              ).trim(),
+              blankSeries: toCyrBlank(String(raw['Patent Form Seri No'] || '').trim()),
+              blankNumber: String(raw['Patent Form No'] || '').trim(),
+            });
+          } catch {}
+        }
+        gRnrCache.__ponderaPersonnelRnrCache = { key: rnrCacheKey, map: builtMap };
       }
+      personnelRnrMap = gRnrCache.__ponderaPersonnelRnrCache.map;
     } catch {}
 
     const existingByKey = new Map<string, (typeof existingRows)[0]>();
@@ -642,6 +672,7 @@ export async function PATCH(request: Request) {
     if (action === 'retry_errors') {
       const scope = String(body?.scope || 'all').trim(); // 'all' | 'computer' | 'selected'
       const computer = Number(body?.computer) || 0;
+      const clearFromDb = Boolean(body?.clearFromDb);
       const rawSicilList = Array.isArray(body?.sicils)
         ? body.sicils
         : Array.isArray(body?.sicilNos)
@@ -658,7 +689,11 @@ export async function PATCH(request: Request) {
         targetSicils = sicilNos;
       } else if (scope === 'computer' && [1, 2, 3, 4].includes(computer)) {
         const compRows = db
-          .prepare('SELECT sicil_no FROM gosuslugi_vks_master_list WHERE assigned_computer = ?')
+          .prepare(
+            `SELECT m.sicil_no FROM gosuslugi_vks_master_list m
+             INNER JOIN gosuslugi_submissions s ON s.sicil_no = m.sicil_no
+             WHERE m.assigned_computer = ? AND s.application_no = '' AND s.gosuslugi_status LIKE 'Ошибка%'`
+          )
           .all(computer) as Array<{ sicil_no: string }>;
         targetSicils = compRows.map((r) => r.sicil_no);
       } else {
@@ -685,8 +720,12 @@ export async function PATCH(request: Request) {
       db.exec('BEGIN');
       try {
         for (const sic of targetSicils) {
-          const res = delErrorStmt.run(sic);
-          resetCount += Number(res.changes || 0);
+          if (clearFromDb) {
+            const res = delErrorStmt.run(sic);
+            resetCount += Number(res.changes || 0);
+          } else {
+            resetCount++;
+          }
           if ([1, 2, 3, 4].includes(targetComputer)) {
             reassignCompStmt.run(targetComputer, nowStr, sic);
           }
@@ -702,7 +741,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({
         success: true,
         resetCount,
-        message: `${resetCount} hatalı (Ошибка) kayıt sıfırlandı ve tekrar gönderim kuyruğuna alındı!`,
+        sicils: targetSicils,
+        message: `${resetCount} hatalı (Ошибка) kayıt tekrar gönderim kuyruğuna alındı!`,
       });
     }
 

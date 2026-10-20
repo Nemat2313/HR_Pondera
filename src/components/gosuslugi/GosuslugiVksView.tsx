@@ -1660,7 +1660,7 @@ export default function GosuslugiVksView() {
         freshSubs
       );
       setWorkers(processed);
-      setQueueFilter(statusFilter === 'error' ? 'error' : 'all');
+      setQueueFilter('all');
 
       const sentInSlice = processed.filter((w) => isWorkerAlreadySentToGosuslugi(w)).length;
       const errInSlice = processed.filter((w) => w.status === 'error').length;
@@ -1675,7 +1675,11 @@ export default function GosuslugiVksView() {
 
       showNotice(
         'success',
-        lang === 'ru'
+        statusFilter === 'error'
+          ? lang === 'ru'
+            ? `${pcLabel}: в очередь загружено ${processed.length} записей с ошибкой (Ошибка) — отмечено для повторной отправки: ${readyUnsent} (требуют правки данных: ${invalidCnt}).`
+            : `${pcLabel}: Hata (Ошибка) veren ${processed.length} kayıt tabloya yüklendi ve tekrar gönderim için seçildi (${readyUnsent} hazır seçili, ${invalidCnt} veri düzeltmesi bekliyor)!`
+          : lang === 'ru'
           ? `${pcLabel}: загружено ${processed.length} ВКС (Отправлено: ${sentInSlice}, Готовы к отправке: ${readyUnsent}, Ошибки ГУ: ${errInSlice}, Пропуски данных: ${invalidCnt}).`
           : `${pcLabel}: ${processed.length} VKS yüklendi (Gönderilmiş: ${sentInSlice}, Gönderime Hazır Seçili: ${readyUnsent}, Gosuslugi Hatası: ${errInSlice}, Eksik Veri: ${invalidCnt}).`
       );
@@ -1724,31 +1728,35 @@ export default function GosuslugiVksView() {
     }
   };
 
-  // Reset 'Ошибка' status on central server so errored records can be re-sent
+  // Load all 'Ошибка' records directly into the queue table (checked & ready to re-send or edit),
+  // or reset a single worker's 'Ошибка' status when clicked on a single row
   const handleRetryErrors = async (
     scope: 'all' | 'computer' | 'selected',
     singleWorker?: GosuslugiVksWorkerRecord
   ) => {
     setIsRetryingErrors(true);
     try {
-      const sicilsToReset = singleWorker
-        ? [String(singleWorker.sicil || singleWorker.code).trim()]
-        : scope === 'selected'
-        ? workers
-            .filter((w) => w.status === 'error')
-            .map((w) => String(w.sicil || w.code).trim())
-        : undefined;
+      if (!singleWorker) {
+        // Check if active computer filter has any errors; if not, load all errors across all 4 computers
+        const compErrCount =
+          activeComputerFilter !== 'all' && masterSummary?.computers?.[Number(activeComputerFilter)]
+            ? masterSummary.computers[Number(activeComputerFilter)].error
+            : -1;
+        const targetCompFilter =
+          activeComputerFilter !== 'all' && compErrCount === 0 ? 'all' : activeComputerFilter;
+        await handleLoadFromMasterList(targetCompFilter, 'error');
+        return;
+      }
+
+      const sicilsToReset = [String(singleWorker.sicil || singleWorker.code).trim()];
 
       const res = await fetch('/api/gosuslugi/master-list', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'retry_errors',
-          scope: singleWorker ? 'selected' : scope,
-          computer:
-            scope === 'computer' && activeComputerFilter !== 'all'
-              ? Number(activeComputerFilter)
-              : undefined,
+          scope: 'selected',
+          clearFromDb: true,
           sicils: sicilsToReset,
         }),
       });
@@ -1756,11 +1764,11 @@ export default function GosuslugiVksView() {
       if (json.success) {
         await refreshSavedSubmissionsFromDb();
         await refreshMasterListSummary();
-        const resetSet = new Set(sicilsToReset || []);
+        const resetSet = new Set(sicilsToReset);
         setWorkers((prev) =>
           prev.map((w) => {
             const codeKey = String(w.sicil || w.code).trim();
-            if (w.status === 'error' && (resetSet.size === 0 || resetSet.has(codeKey))) {
+            if (w.status === 'error' && resetSet.has(codeKey)) {
               const isValid = validateVksWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr').isValid;
               return {
                 ...w,
@@ -1774,10 +1782,10 @@ export default function GosuslugiVksView() {
         );
         showNotice(
           'success',
-          json.message || 'Hatalı (Ошибка) kayıtlar tekrar gönderim için sıraya alındı!'
+          json.message || 'Hatalı (Ошибка) kayıt tekrar gönderim için sıraya alındı!'
         );
       } else {
-        showNotice('error', json.message || 'Hatalı kayıtlar sıfırlanamadı.');
+        showNotice('error', json.message || 'Hatalı kayıt sıfırlanamadı.');
       }
     } catch {
       showNotice('error', 'Sunucu bağlantı hatası.');

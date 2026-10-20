@@ -152,35 +152,121 @@ export async function GET() {
       );
     `);
 
-    // 1. Load all active VKS personnel from personnel table to map region/project/passport/details
-    const personnelRows = db
-      .prepare(
-        `SELECT
-          sicil_no, ad_soyad, tam_adi_kiril, uyruk, region, proje_adi, departman, gorevi,
-          guncel_durum, genel_durum, pasaport_no, all_data_json
-        FROM personnel`
-      )
-      .all() as any[];
+    // 1. Load & cache active VKS personnel from personnel table so 15MB of all_data_json is not re-parsed on every poll
+    const pVersionRow = db
+      .prepare('SELECT COUNT(*) as cnt, COALESCE(MAX(id), 0) as maxId FROM personnel')
+      .get() as { cnt: number; maxId: number };
+    const cacheKey = `${pVersionRow.cnt}:${pVersionRow.maxId}`;
 
-    const personnelBySicil: Record<
-      string,
-      {
-        sicil_no: string;
-        ad_soyad: string;
-        tam_adi_kiril: string;
-        uyruk: string;
-        region: string;
-        proje_adi: string;
-        departman: string;
-        gorevi: string;
-        guncel_durum: string;
-        pasaport_no: string;
-        rnr_no: string;
-        isVksActive: boolean;
+    type CachedPersonnelInfo = {
+      sicil_no: string;
+      ad_soyad: string;
+      tam_adi_kiril: string;
+      uyruk: string;
+      region: string;
+      proje_adi: string;
+      departman: string;
+      gorevi: string;
+      guncel_durum: string;
+      pasaport_no: string;
+      rnr_no: string;
+      isVksActive: boolean;
+    };
+
+    const gCache = globalThis as unknown as {
+      __ponderaPersonnelAnalyticsCache?: {
+        key: string;
+        personnelBySicil: Record<string, CachedPersonnelInfo>;
+        totalTargetVksPersonnel: number;
+        regionTargetMap: Record<string, number>;
+      };
+    };
+
+    if (!gCache.__ponderaPersonnelAnalyticsCache || gCache.__ponderaPersonnelAnalyticsCache.key !== cacheKey) {
+      const personnelRows = db
+        .prepare(
+          `SELECT
+            sicil_no, ad_soyad, tam_adi_kiril, uyruk, region, proje_adi, departman, gorevi,
+            guncel_durum, genel_durum, pasaport_no, all_data_json
+          FROM personnel`
+        )
+        .all() as any[];
+
+      const builtBySicil: Record<string, CachedPersonnelInfo> = {};
+      let builtTotalTarget = 0;
+      const builtRegionTargets: Record<string, number> = {};
+
+      const ACTIVE_STATUS_SET = new Set([
+        'mevcut',
+        'is gezisi',
+        'iş gezisi',
+        'mazeret izni',
+        'suresiz izin',
+        'süresiz izin',
+        'ucretsiz izin',
+        'ücretsiz izin',
+        'yillik izin',
+        'yıllık izin',
+      ]);
+
+      for (const p of personnelRows) {
+        const sicil = String(p.sicil_no || '').trim();
+        if (!sicil) continue;
+        let rawJson: any = {};
+        if (p.all_data_json) {
+          try {
+            rawJson = JSON.parse(p.all_data_json);
+          } catch {}
+        }
+        const kartTuru = String(rawJson['Çalışma Kart Türü'] || '').toUpperCase();
+        const isVks = kartTuru.includes('ВКС') || kartTuru.includes('VKS');
+        const guncelLower = String(p.guncel_durum || '').trim().toLowerCase();
+        const isActive = ACTIVE_STATUS_SET.has(guncelLower);
+        const isVksActive = isVks && isActive;
+        const reg = String(p.region || 'Belirtilmemiş').trim() || 'Belirtilmemiş';
+
+        if (isVksActive) {
+          builtTotalTarget++;
+          builtRegionTargets[reg] = (builtRegionTargets[reg] || 0) + 1;
+        }
+
+        builtBySicil[sicil] = {
+          sicil_no: sicil,
+          ad_soyad: String(p.ad_soyad || '').trim(),
+          tam_adi_kiril: String(p.tam_adi_kiril || '').trim(),
+          uyruk: String(p.uyruk || '').trim(),
+          region: reg,
+          proje_adi: String(p.proje_adi || '').trim(),
+          departman: String(p.departman || '').trim(),
+          gorevi: String(p.gorevi || '').trim(),
+          guncel_durum: String(p.guncel_durum || '').trim(),
+          pasaport_no: String(p.pasaport_no || '').trim(),
+          rnr_no: String(
+            rawJson['Çalışma Kart No'] || rawJson['VKS RNR No'] || rawJson['RNR No'] || ''
+          ).trim(),
+          isVksActive,
+        };
       }
-    > = {};
 
-    let totalTargetVksPersonnel = 0;
+      gCache.__ponderaPersonnelAnalyticsCache = {
+        key: cacheKey,
+        personnelBySicil: builtBySicil,
+        totalTargetVksPersonnel: builtTotalTarget,
+        regionTargetMap: builtRegionTargets,
+      };
+    }
+
+    const personnelBySicil = gCache.__ponderaPersonnelAnalyticsCache.personnelBySicil;
+    let totalTargetVksPersonnel = gCache.__ponderaPersonnelAnalyticsCache.totalTargetVksPersonnel;
+    try {
+      const masterCntRow = db
+        .prepare('SELECT COUNT(*) as cnt FROM gosuslugi_vks_master_list')
+        .get() as { cnt: number } | undefined;
+      if (masterCntRow && masterCntRow.cnt > 0) {
+        totalTargetVksPersonnel = masterCntRow.cnt;
+      }
+    } catch {}
+
     const regionStatsMap: Record<
       string,
       {
@@ -193,65 +279,16 @@ export async function GET() {
       }
     > = {};
 
-    const ACTIVE_STATUS_SET = new Set([
-      'mevcut',
-      'is gezisi',
-      'iş gezisi',
-      'mazeret izni',
-      'suresiz izin',
-      'süresiz izin',
-      'ucretsiz izin',
-      'ücretsiz izin',
-      'yillik izin',
-      'yıllık izin',
-    ]);
-
-    for (const p of personnelRows) {
-      const sicil = String(p.sicil_no || '').trim();
-      if (!sicil) continue;
-      let rawJson: any = {};
-      if (p.all_data_json) {
-        try {
-          rawJson = JSON.parse(p.all_data_json);
-        } catch {}
-      }
-      const kartTuru = String(rawJson['Çalışma Kart Türü'] || '').toUpperCase();
-      const isVks = kartTuru.includes('ВКС') || kartTuru.includes('VKS');
-      const guncelLower = String(p.guncel_durum || '').trim().toLowerCase();
-      const isActive = ACTIVE_STATUS_SET.has(guncelLower);
-      const isVksActive = isVks && isActive;
-      const reg = String(p.region || 'Belirtilmemiş').trim() || 'Belirtilmemiş';
-
-      if (isVksActive) {
-        totalTargetVksPersonnel++;
-        if (!regionStatsMap[reg]) {
-          regionStatsMap[reg] = {
-            region: reg,
-            targetVks: 0,
-            sentCount: 0,
-            pdfCount: 0,
-            errorCount: 0,
-            pendingCount: 0,
-          };
-        }
-        regionStatsMap[reg].targetVks++;
-      }
-
-      personnelBySicil[sicil] = {
-        sicil_no: sicil,
-        ad_soyad: String(p.ad_soyad || '').trim(),
-        tam_adi_kiril: String(p.tam_adi_kiril || '').trim(),
-        uyruk: String(p.uyruk || '').trim(),
+    for (const [reg, targetCnt] of Object.entries(
+      gCache.__ponderaPersonnelAnalyticsCache.regionTargetMap
+    )) {
+      regionStatsMap[reg] = {
         region: reg,
-        proje_adi: String(p.proje_adi || '').trim(),
-        departman: String(p.departman || '').trim(),
-        gorevi: String(p.gorevi || '').trim(),
-        guncel_durum: String(p.guncel_durum || '').trim(),
-        pasaport_no: String(p.pasaport_no || '').trim(),
-        rnr_no: String(
-          rawJson['Çalışma Kart No'] || rawJson['VKS RNR No'] || rawJson['RNR No'] || ''
-        ).trim(),
-        isVksActive,
+        targetVks: targetCnt,
+        sentCount: 0,
+        pdfCount: 0,
+        errorCount: 0,
+        pendingCount: 0,
       };
     }
 

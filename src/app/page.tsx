@@ -1,22 +1,24 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import OverviewView from '@/components/dashboard/OverviewView';
-import PersonnelListView from '@/components/personnel/PersonnelListView';
-import SitesView from '@/components/sites/SitesView';
-import DemographicsView from '@/components/demographics/DemographicsView';
-import ManagementReportsView from '@/components/reports/ManagementReportsView';
-import DatabaseManagementView from '@/components/database/DatabaseManagementView';
-import UserManagementView from '@/components/admin/UserManagementView';
-import ComplianceAnalyticsView from '@/components/compliance/ComplianceAnalyticsView';
-import GosuslugiVksView from '@/components/gosuslugi/GosuslugiVksView';
-import GosuslugiAnalyticsView from '@/components/gosuslugi/GosuslugiAnalyticsView';
-import ExcelUploadModal from '@/components/modals/ExcelUploadModal';
 import LoginModal from '@/components/auth/LoginModal';
 import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+
+const PersonnelListView = dynamic(() => import('@/components/personnel/PersonnelListView'));
+const SitesView = dynamic(() => import('@/components/sites/SitesView'));
+const DemographicsView = dynamic(() => import('@/components/demographics/DemographicsView'));
+const ManagementReportsView = dynamic(() => import('@/components/reports/ManagementReportsView'));
+const DatabaseManagementView = dynamic(() => import('@/components/database/DatabaseManagementView'));
+const UserManagementView = dynamic(() => import('@/components/admin/UserManagementView'));
+const ComplianceAnalyticsView = dynamic(() => import('@/components/compliance/ComplianceAnalyticsView'));
+const GosuslugiVksView = dynamic(() => import('@/components/gosuslugi/GosuslugiVksView'));
+const GosuslugiAnalyticsView = dynamic(() => import('@/components/gosuslugi/GosuslugiAnalyticsView'));
+const ExcelUploadModal = dynamic(() => import('@/components/modals/ExcelUploadModal'));
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth();

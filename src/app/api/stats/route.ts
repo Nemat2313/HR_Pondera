@@ -33,6 +33,22 @@ export async function GET(request: Request) {
 
     const db = getDb();
 
+    // Fast in-memory cache keyed by personnel table state + query parameters
+    const verRow = db
+      .prepare('SELECT COUNT(*) as cnt, COALESCE(MAX(id), 0) as maxId FROM personnel')
+      .get() as { cnt: number; maxId: number };
+    const statsCacheKey = `${verRow.cnt}:${verRow.maxId}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const gStats = globalThis as unknown as {
+      __ponderaStatsCache?: Map<string, any>;
+    };
+    if (!gStats.__ponderaStatsCache) {
+      gStats.__ponderaStatsCache = new Map();
+    }
+    const cachedStats = gStats.__ponderaStatsCache.get(statsCacheKey);
+    if (cachedStats) {
+      return NextResponse.json(cachedStats);
+    }
+
     // Build filter map for Power BI cross-highlighting
     const filterMap: Record<string, { col: string; op: string; val: any }> = {};
 
@@ -470,7 +486,7 @@ export async function GET(request: Request) {
       systemInfo[row.key] = row.value;
     }
 
-    return NextResponse.json({
+    const responsePayload = {
       success: true,
       totalCount,
       collarDistribution,
@@ -503,7 +519,14 @@ export async function GET(request: Request) {
         type: scopeType,
         value: scopeVal,
       },
-    });
+    };
+
+    if (gStats.__ponderaStatsCache && gStats.__ponderaStatsCache.size > 100) {
+      gStats.__ponderaStatsCache.clear();
+    }
+    gStats.__ponderaStatsCache?.set(statsCacheKey, responsePayload);
+
+    return NextResponse.json(responsePayload);
   } catch {
     return NextResponse.json(
       { success: false, message: 'Veri istatistikleri alınırken bir sorun oluştu.' },

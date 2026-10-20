@@ -73,6 +73,22 @@ function ensureUsersTable(db: any) {
         synced_at TEXT NOT NULL,
         UNIQUE(application_no, gosuslugi_status, email_date)
       );
+
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
+      PRAGMA cache_size = -16000;
+
+      CREATE INDEX IF NOT EXISTS idx_personnel_sicil ON personnel(sicil_no);
+      CREATE INDEX IF NOT EXISTS idx_personnel_durum ON personnel(genel_durum);
+      CREATE INDEX IF NOT EXISTS idx_personnel_region ON personnel(region);
+      CREATE INDEX IF NOT EXISTS idx_personnel_proje ON personnel(proje_adi);
+      CREATE INDEX IF NOT EXISTS idx_personnel_dept ON personnel(departman);
+      CREATE INDEX IF NOT EXISTS idx_personnel_uyruk ON personnel(uyruk);
+      CREATE INDEX IF NOT EXISTS idx_personnel_sira ON personnel(sira_no);
+      CREATE INDEX IF NOT EXISTS idx_gos_subs_sicil ON gosuslugi_submissions(sicil_no);
+      CREATE INDEX IF NOT EXISTS idx_gos_subs_type ON gosuslugi_submissions(notification_type);
+      CREATE INDEX IF NOT EXISTS idx_gos_subs_appno ON gosuslugi_submissions(application_no);
+      CREATE INDEX IF NOT EXISTS idx_gos_subs_subat ON gosuslugi_submissions(submitted_at);
     `);
   } catch {
     // Ignore if database is opened in read-only filesystem
