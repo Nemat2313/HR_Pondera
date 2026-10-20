@@ -1184,10 +1184,11 @@ export default function GosuslugiVksView() {
   }, [workers, lang]);
 
   // Apply initial validation when loading rows from Excel or DB:
-  // Valid unsent rows -> selected: true; Already-sent rows -> selected: false; Invalid rows -> selected: false
+  // Valid unsent rows -> selected: true; Already-sent rows -> selected: false; Errored (Ошибка) rows -> selected: false (unless selectErroredRows is true)
   const applyInitialValidationSelection = (
     list: GosuslugiVksWorkerRecord[],
-    customSubmissions?: Record<string, GosuslugiSubmissionEntry>
+    customSubmissions?: Record<string, GosuslugiSubmissionEntry>,
+    selectErroredRows: boolean = false
   ) => {
     const subsMap = customSubmissions || savedSubmissions;
     let validCnt = 0;
@@ -1209,7 +1210,8 @@ export default function GosuslugiVksView() {
         gosuslugiStatus: nextGosStatus,
         pdfFilename: nextPdf,
       });
-      const isErr = !alreadySent && /^ошибк/i.test(nextGosStatus);
+      const isErr =
+        !alreadySent && (w.status === 'error' || /^ошибк/i.test(nextGosStatus));
 
       const enriched: GosuslugiVksWorkerRecord = savedSub
         ? {
@@ -1224,8 +1226,9 @@ export default function GosuslugiVksView() {
       const v = validateVksWorkerRecord(enriched, lang === 'ru' ? 'ru' : 'tr');
       if (v.isValid) {
         validCnt++;
-        // Never pre-select a row whose notification was already sent to Gosuslugi!
-        return { ...enriched, selected: !alreadySent };
+        // Never pre-select a row whose notification was already sent, and skip errored (Ошибка) rows unless explicitly loading error retry queue!
+        const shouldSelect = selectErroredRows ? !alreadySent : !alreadySent && !isErr;
+        return { ...enriched, selected: shouldSelect };
       } else {
         invalidCnt++;
         return { ...enriched, selected: false };
@@ -1337,7 +1340,7 @@ export default function GosuslugiVksView() {
                         nextAppNo !== w.applicationNo ||
                         nextGosStatus !== w.gosuslugiStatus ||
                         nextPdf !== w.pdfFilename ||
-                        (alreadySent && w.selected)
+                        ((alreadySent || isSubErr) && w.selected)
                       ) {
                         nextW = {
                           ...nextW,
@@ -1345,8 +1348,8 @@ export default function GosuslugiVksView() {
                           gosuslugiStatus: nextGosStatus,
                           pdfFilename: nextPdf,
                           status: isSubErr ? 'error' : 'success',
-                          // Automatically uncheck checkbox once notification has been sent!
-                          selected: alreadySent ? false : nextW.selected,
+                          // Automatically uncheck checkbox once notification has been sent OR errored (errors are retried separately at the end)!
+                          selected: alreadySent || isSubErr ? false : nextW.selected,
                         };
                       }
                     }
@@ -1364,7 +1367,9 @@ export default function GosuslugiVksView() {
                       : { ...nextW, status: 'success', selected: false };
                   }
                   if (isErrored) {
-                    return nextW.status === 'error' ? nextW : { ...nextW, status: 'error' };
+                    return nextW.status === 'error' && !nextW.selected
+                      ? nextW
+                      : { ...nextW, status: 'error', selected: false };
                   }
                   const isCurrent =
                     data.running &&
@@ -1657,10 +1662,11 @@ export default function GosuslugiVksView() {
 
       const { processed, validCnt, invalidCnt } = applyInitialValidationSelection(
         rawMapped,
-        freshSubs
+        freshSubs,
+        statusFilter === 'error'
       );
       setWorkers(processed);
-      setQueueFilter('all');
+      setQueueFilter(statusFilter === 'error' ? 'error' : 'all');
 
       const sentInSlice = processed.filter((w) => isWorkerAlreadySentToGosuslugi(w)).length;
       const errInSlice = processed.filter((w) => w.status === 'error').length;
@@ -2455,6 +2461,12 @@ export default function GosuslugiVksView() {
         return;
       }
 
+      const isRetryErrorRun = Boolean(
+        singleWorker ||
+          queueFilter === 'error' ||
+          recordsToSend.every((r) => r.status === 'error')
+      );
+
       const targetIds = new Set(recordsToSend.map((r) => r.id));
       setWorkers((prev) =>
         prev.map((w) => (targetIds.has(w.id) ? { ...w, status: 'pending' } : w))
@@ -2473,6 +2485,7 @@ export default function GosuslugiVksView() {
           PERIOD_END: periodEnd,
           PERIOD_CODE: periodCode,
           SKIP_STEP16_PDF: skipPdfDownload,
+          RETRY_ERRORS: isRetryErrorRun,
         },
       };
 

@@ -1357,6 +1357,12 @@ class GosuslugiVksBot:
                         st = str(s.get("gosuslugi_status") or "").strip()
                         st_low = st.lower()
                         if st_low.startswith("ошибк"):
+                            if not self.cfg.get("RETRY_ERRORS"):
+                                logger.info(
+                                    f"SKIP_PREVIOUS_ERROR: Сотрудник {full_name} (Код: {clean_sicil}) ранее завершился с ошибкой "
+                                    f"({st}) — автоматический пропуск (ошибки обрабатываются отдельно в конце)!"
+                                )
+                                return True
                             continue
                         if app_no or any(
                             k in st_low
