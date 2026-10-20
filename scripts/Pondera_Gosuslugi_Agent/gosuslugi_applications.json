@@ -1,0 +1,14 @@
+[
+  {
+    "sicil": "901342",
+    "sicil_no": "901342",
+    "worker_name": "Аджар Мемет Галип",
+    "citizenship": "ТУРЦИЯ",
+    "notification_type": "vks_salary",
+    "period_code": "2026-3",
+    "application_no": "",
+    "gosuslugi_status": "Ошибка: Locator.wait_for: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator(\"epgu-cf-ui-long-button:has-text('О выплате'), button:has-text('О выплате зарплаты высококвали",
+    "pdf_filename": "",
+    "submitted_at": "2026-10-20 21:20:29"
+  }
+]
