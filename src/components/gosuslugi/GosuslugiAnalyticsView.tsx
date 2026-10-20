@@ -1451,7 +1451,8 @@ export default function GosuslugiAnalyticsView() {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
