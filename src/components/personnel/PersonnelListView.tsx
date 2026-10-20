@@ -319,7 +319,9 @@ export default function PersonnelListView({
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterNationality, setFilterNationality] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('Mevcut');
+  const [filterStatus, setFilterStatus] = useState(() =>
+    initialFilter?.type === 'search' && initialFilter.value ? 'all' : 'Mevcut'
+  );
   const [filterCollar, setFilterCollar] = useState('all');
   const [filterPermit, setFilterPermit] = useState('all');
 
@@ -485,6 +487,7 @@ export default function PersonnelListView({
         setFilterPermit(initialFilter.value);
       } else if (initialFilter.type === 'search') {
         setSearch(initialFilter.value);
+        setFilterStatus('all');
       }
       setPage(1);
       if (onClearInitialFilter) {

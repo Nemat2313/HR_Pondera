@@ -141,7 +141,7 @@ export async function GET(request: Request) {
         OR json_extract(all_data_json, '$."Resmi Çıkış Tarihi"') LIKE '%.2026'
         OR (json_extract(all_data_json, '$."Resmi Çıkış Tarihi"') >= '46000' AND json_extract(all_data_json, '$."Resmi Çıkış Tarihi"') <= '47000')
       )`);
-    } else if (status !== 'all') {
+    } else if (status !== 'all' && !(search && status === 'Mevcut')) {
       if (status === 'Sevke Hazır' || status === 'Sevke Hazir') {
         conditions.push('(genel_durum = ? OR genel_durum LIKE ?)');
         params.push('Sevke Hazır', 'Sevke Haz%');
