@@ -805,6 +805,20 @@ function normalizeSentGosuslugiStatus(rawStatus?: string): string {
   return s;
 }
 
+function isProgressedGosuslugiStatus(st?: string): boolean {
+  const s = String(st || '').trim();
+  return /Услуга оказана|Услуга отказана|Промежуточные результаты|Заявление зарегистрировано|Отправлено в ведомство/i.test(s);
+}
+
+function pickBetterGosuslugiStatus(existing?: string, incoming?: string): string {
+  const normEx = normalizeSentGosuslugiStatus(existing);
+  const normIn = normalizeSentGosuslugiStatus(incoming);
+  if (isProgressedGosuslugiStatus(normEx) && (!normIn || /^Отправлено(\s*\(PDF не скачан\))?$/i.test(normIn))) {
+    return normEx;
+  }
+  return normIn || normEx;
+}
+
 function isWorkerAlreadySentToGosuslugi(w: {
   status?: string;
   applicationNo?: string;
@@ -1020,6 +1034,21 @@ export default function GosuslugiVksView() {
   // Load saved Gosuslugi application numbers and Mail.ru config from Pondera HR DB,
   // and poll every 15 seconds so multiple computers see newly submitted applications in real time
   useEffect(() => {
+    try {
+      const savedComp = localStorage.getItem('pondera_vks_computer_filter_v1');
+      if (savedComp && ['all', '1', '2', '3', '4'].includes(savedComp)) {
+        setActiveComputerFilter(savedComp as 'all' | '1' | '2' | '3' | '4');
+      }
+      const savedWorkersRaw = localStorage.getItem('pondera_vks_active_workers_v1');
+      if (savedWorkersRaw) {
+        const parsed = JSON.parse(savedWorkersRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setWorkers((prev) => (prev.length === 0 ? parsed : prev));
+        }
+      }
+    } catch {
+      // Ignore localStorage quota/parse issues
+    }
     refreshSavedSubmissionsFromDb();
     refreshMasterListSummary();
     fetch('/api/gosuslugi/mail-sync')
@@ -1099,6 +1128,18 @@ export default function GosuslugiVksView() {
       setIsSyncingMailRu(false);
     }
   };
+
+  // Persist active workers list & computer filter in localStorage so browser refresh (F5) never loses the computer's active queue
+  useEffect(() => {
+    try {
+      localStorage.setItem('pondera_vks_computer_filter_v1', activeComputerFilter);
+      if (workers.length > 0) {
+        localStorage.setItem('pondera_vks_active_workers_v1', JSON.stringify(workers));
+      }
+    } catch {
+      // Ignore storage quota warnings
+    }
+  }, [workers, activeComputerFilter]);
 
   // Automatic background Mail.ru check every 3 minutes when configured and enabled
   useEffect(() => {
@@ -1321,11 +1362,9 @@ export default function GosuslugiVksView() {
                     );
                     if (matchedSub) {
                       const nextAppNo = matchedSub.application_no || w.applicationNo;
-                      const nextGosStatus = normalizeSentGosuslugiStatus(
-                        matchedSub.gosuslugi_status ||
-                          w.gosuslugiStatus ||
-                          (isErrored ? '' : 'Отправлено')
-                      );
+                      const nextGosStatus =
+                        pickBetterGosuslugiStatus(w.gosuslugiStatus, matchedSub.gosuslugi_status) ||
+                        (isErrored ? '' : 'Отправлено');
                       const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
                       const alreadySent = isWorkerAlreadySentToGosuslugi({
                         applicationNo: nextAppNo,
