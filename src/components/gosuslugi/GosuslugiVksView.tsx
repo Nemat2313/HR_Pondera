@@ -2532,7 +2532,7 @@ export default function GosuslugiVksView() {
   };
 
   // Second Button (Item 5): Scan downloaded PDFs & Query Gosuslugi statuses by application_no (№ Заявления)
-  const handleCheckGosuslugiStatuses = async () => {
+  const handleCheckGosuslugiStatuses = async (statusOnly = false) => {
     if (bridgeStatus.status !== 'online') {
       setShowAgentGuide(true);
       showNotice(
@@ -2546,6 +2546,28 @@ export default function GosuslugiVksView() {
 
     setIsCheckingStatuses(true);
     try {
+      if (statusOnly) {
+        const res = await fetch(`${activeBridgeUrl}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'check_status_fast',
+          }),
+        });
+        if (res.ok) {
+          showNotice(
+            'success',
+            lang === 'ru'
+              ? 'Запущена быстрая JSON-проверка 1200 заявлений Госуслуг (без скачивания PDF)...'
+              : "Gosuslugi JSON üzerinden 1.200 başvurunun hızlı statü kontrolü (PDF'siz) başlatıldı..."
+          );
+        } else {
+          const err = await res.json();
+          showNotice('error', err.error || 'Hızlı statü kontrolü başlatılamadı.');
+        }
+        return;
+      }
+
       // 1. First scan ~/Downloads on the bridge for any existing PDFs (<Sicil>_<AppNo>_... or <AppNo>_...)
       let scannedList: GosuslugiSubmissionEntry[] = [];
       try {
@@ -3912,12 +3934,30 @@ export default function GosuslugiVksView() {
               </button>
 
               <button
-                onClick={handleCheckGosuslugiStatuses}
+                onClick={() => handleCheckGosuslugiStatuses(true)}
                 disabled={isCheckingStatuses}
                 title={
                   lang === 'ru'
-                    ? 'Проверить статусы отправленных заявлений по № заявления на Госуслугах («Услуга оказана» / «Услуга отказана»)'
-                    : 'Kaydedilen başvuru numaralarından (№ Заявления) Gosuslugi durumlarını sorgula («Услуга оказана» / «Услуга отказана»)'
+                    ? 'Быстрая JSON-проверка 1200 заявлений без скачивания PDF (также выполняется автоматически каждые 30 минут)'
+                    : 'PDF indirmeden Gosuslugi JSON üzerinden 1.200 başvurunun statüsünü 3 saniyede güncelle (Ayrıca her 30 dakikada bir otomatik çalışır)'
+                }
+                className="h-9 px-3.5 rounded-xl border border-violet-200 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-500/15 hover:bg-violet-100 dark:hover:bg-violet-500/25 text-violet-800 dark:text-violet-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+              >
+                <Zap className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                <span>
+                  {lang === 'ru'
+                    ? '⚡ Быстрый JSON-статус (1200 без PDF)'
+                    : "⚡ Hızlı Statü (1200 JSON / PDF'siz)"}
+                </span>
+              </button>
+
+              <button
+                onClick={() => handleCheckGosuslugiStatuses(false)}
+                disabled={isCheckingStatuses}
+                title={
+                  lang === 'ru'
+                    ? 'Проверить статусы отправленных заявлений и скачать PDF-квитанции на Госуслугах'
+                    : 'Kaydedilen başvuru numaralarından Gosuslugi durumlarını sorgula ve PDF makbuzlarını indir'
                 }
                 className="h-9 px-3.5 rounded-xl border border-indigo-200 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-800 dark:text-indigo-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
@@ -3928,8 +3968,8 @@ export default function GosuslugiVksView() {
                 />
                 <span>
                   {lang === 'ru'
-                    ? '3. Проверить статусы ГУ (№ Заявл.)'
-                    : '3. Başvuru Durumlarını Sorgula (№)'}
+                    ? '3. Скачать PDF и проверить статусы'
+                    : '3. PDF İndir & Statü Sorgula'}
                 </span>
               </button>
 

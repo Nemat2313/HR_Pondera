@@ -1,3 +1,4 @@
+import https from 'https';
 import { getDb } from '@/lib/db';
 
 const DEFAULT_BOT_TOKEN = '8675607954:AAF-jIXICz0y15KV5WuJfVbPyZ0j1Q7dnM4';
@@ -42,6 +43,66 @@ export function getMoscowTimeParts(now = new Date()) {
   };
 }
 
+function postHttpsViaIp(
+  ipOrHost: string,
+  sniHost: string,
+  pathStr: string,
+  payloadStr: string,
+  timeoutMs = 3500
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const bodyBuf = Buffer.from(payloadStr, 'utf-8');
+    const req = https.request(
+      {
+        host: ipOrHost,
+        port: 443,
+        servername: sniHost,
+        path: pathStr,
+        method: 'POST',
+        headers: {
+          Host: sniHost,
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': bodyBuf.length,
+          'User-Agent': 'PonderaHR-Bot/2.6',
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c) => chunks.push(Buffer.from(c)));
+        res.on('end', () => {
+          try {
+            const raw = Buffer.concat(chunks).toString('utf-8');
+            const parsed = JSON.parse(raw);
+            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300 && parsed?.ok) {
+              resolve({ ok: true });
+            } else {
+              resolve({
+                ok: false,
+                error: parsed?.description || `HTTP ${res.statusCode}`,
+              });
+            }
+          } catch (e: any) {
+            resolve({ ok: false, error: e?.message || 'Invalid JSON from Telegram gateway' });
+          }
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ ok: false, error: `Timeout (${ipOrHost})` });
+    });
+
+    req.on('error', (err: any) => {
+      resolve({ ok: false, error: err?.message || `Network error (${ipOrHost})` });
+    });
+
+    req.write(bodyBuf);
+    req.end();
+  });
+}
+
 export async function sendTelegramMessage(htmlText: string): Promise<{ ok: boolean; error?: string }> {
   const { botToken, chatId } = getTelegramConfig();
   const payload = JSON.stringify({
@@ -51,36 +112,25 @@ export async function sendTelegramMessage(htmlText: string): Promise<{ ok: boole
     disable_web_page_preview: true,
   });
 
-  // Russian VPS datacenters block direct 149.154.160.0/20 (api.telegram.org) TCP connections;
-  // try the edge HTTPS gateway first (~340ms from Moscow VPS), then fall back to api.telegram.org.
-  const endpoints = [
-    `https://telegram-api.vercel.app/bot${botToken}/sendMessage`,
-    `https://api.telegram.org/bot${botToken}/sendMessage`,
+  // Russian VPS datacenters block direct 149.154.160.0/20 (api.telegram.org) and some Vercel Anycast IPs (e.g. 216.198.79.67).
+  // Connect directly to verified unblocked edge IPs with SNI/Host = telegram-api.vercel.app (~300ms from Moscow VPS),
+  // then fall back to api.telegram.org.
+  const targets: Array<{ ip: string; host: string; path: string }> = [
+    { ip: '64.29.17.1', host: 'telegram-api.vercel.app', path: `/bot${botToken}/sendMessage` },
+    { ip: '76.76.21.93', host: 'telegram-api.vercel.app', path: `/bot${botToken}/sendMessage` },
+    { ip: '64.29.17.65', host: 'telegram-api.vercel.app', path: `/bot${botToken}/sendMessage` },
+    { ip: '76.76.21.142', host: 'telegram-api.vercel.app', path: `/bot${botToken}/sendMessage` },
+    { ip: '216.198.79.1', host: 'telegram-api.vercel.app', path: `/bot${botToken}/sendMessage` },
+    { ip: 'api.telegram.org', host: 'api.telegram.org', path: `/bot${botToken}/sendMessage` },
   ];
 
   let lastError = 'Telegram network error';
-  for (const url of endpoints) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 7000);
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'PonderaHR-Bot/2.6',
-        },
-        body: payload,
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      const data = await res.json();
-      if (res.ok && data?.ok) {
-        return { ok: true };
-      }
-      lastError = data?.description || `HTTP ${res.status}`;
-    } catch (err: any) {
-      lastError = err?.message || 'Telegram network error';
+  for (const t of targets) {
+    const res = await postHttpsViaIp(t.ip, t.host, t.path, payload, 3500);
+    if (res.ok) {
+      return { ok: true };
     }
+    lastError = res.error || lastError;
   }
   return { ok: false, error: lastError };
 }

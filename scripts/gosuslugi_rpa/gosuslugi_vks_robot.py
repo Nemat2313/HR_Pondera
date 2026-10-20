@@ -4344,6 +4344,7 @@ def main():
         bot = GosuslugiVksBot(page, custom_cfg)
         success_count = 0
         fail_count = 0
+        last_json_status_sync_ts = time.time()
 
         for idx, record in enumerate(records):
             prevent_windows_sleep()
@@ -4433,7 +4434,25 @@ def main():
                 except Exception:
                     pass
 
+            # Every 30 minutes (1800s), right AFTER the current worker's Zayavka finishes (never interrupting an active form!),
+            # run the fast Gosuslugi JSON status check (up to 1,200 orders, 0 PDFs downloaded) to update statuses on central DB.
+            if time.time() - last_json_status_sync_ts >= 1800:
+                last_json_status_sync_ts = time.time()
+                try:
+                    from gosuslugi_status_checker import run_fast_json_status_sync_on_page
+                    logger.info(">>> 30-Minute Interval Reached (Current Zayavka Completed): Running fast JSON status check (1200 orders, no PDF download)... <<<")
+                    run_fast_json_status_sync_on_page(bot.page, max_pages=60)
+                except Exception as sync_err:
+                    logger.debug(f"30-min fast JSON status sync note: {sync_err}")
+
             time.sleep(2)
+
+        # Final fast JSON status sync at the end of the batch (no PDF download)
+        try:
+            from gosuslugi_status_checker import run_fast_json_status_sync_on_page
+            run_fast_json_status_sync_on_page(bot.page, max_pages=60)
+        except Exception:
+            pass
 
         logger.info(f"\n=== RPA Batch Complete ===\nTotal: {len(records)}, Success: {success_count}, Failed: {fail_count}")
 

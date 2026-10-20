@@ -265,6 +265,7 @@ class RPAState:
     completed_codes = []
     error_codes = []
     submissions = load_saved_applications()
+    last_json_status_sync_ts = 0.0
 
     @classmethod
     def upsert_submission(cls, entry: dict):
@@ -444,7 +445,7 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
 
     if mode == "dismissal":
         script_name = "gosuslugi_dismissal_robot.py"
-    elif mode == "check_status":
+    elif mode in ("check_status", "check_status_fast"):
         script_name = "gosuslugi_status_checker.py"
     else:
         script_name = "gosuslugi_vks_robot.py"
@@ -452,15 +453,17 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
     script_path = os.path.join(CURRENT_DIR, script_name)
     cmd = [sys.executable, script_path]
 
-    if json_file and os.path.exists(json_file):
+    if mode == "check_status_fast":
+        cmd.extend(["--status-only", "--max-pages", "60"])
+    elif json_file and os.path.exists(json_file):
         cmd.extend(["--json", json_file])
     elif mode != "check_status":
         cmd.extend(["--sheet", sheet])
 
-    if config_file and os.path.exists(config_file) and mode != "check_status":
+    if config_file and os.path.exists(config_file) and mode not in ("check_status", "check_status_fast"):
         cmd.extend(["--config-json", config_file])
 
-    if limit > 0:
+    if limit > 0 and mode != "check_status_fast":
         cmd.extend(["--limit", str(limit)])
 
     try:
@@ -507,6 +510,9 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
                             RPAState.upsert_submission(parsed_entry)
                         except Exception:
                             pass
+
+                if "FAST_JSON_STATUS_SYNC:" in clean_line:
+                    RPAState.last_json_status_sync_ts = time.time()
 
                 # Detect Fatal Stop (e.g. Insufficient permissions on Gosuslugi: 'У вас недостаточно полномочий для отправки уведомлений')
                 if "FATAL_STOP:" in clean_line:
@@ -869,6 +875,42 @@ def sync_vks_queue_to_central_master_list_async(records: list):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def start_auto_30min_gosuslugi_status_sync_thread():
+    """
+    Runs a fast JSON-only Gosuslugi status sync (up to 1,200 Zayavkas, no PDF download)
+    every 30 minutes across all computers.
+    - When a VKS robot is actively running (`RPAState.is_running == True`), `gosuslugi_vks_robot.py`
+      executes the fast JSON status sync strictly between workers (right after the active Zayavka finishes),
+      so no in-progress application is ever interrupted.
+    - When the robot is idle (`not RPAState.is_running`) and Chrome Debug Port 9222 is open,
+      this background thread triggers `check_status_fast` every 30 minutes.
+    """
+    def _worker():
+        time.sleep(90)  # Initial grace period after bridge startup
+        while True:
+            try:
+                now_ts = time.time()
+                if (
+                    not RPAState.is_running
+                    and is_port_open(CHROME_CDP_PORT)
+                    and (now_ts - RPAState.last_json_status_sync_ts >= 1800)
+                ):
+                    RPAState.last_json_status_sync_ts = now_ts
+                    RPAState.reset_stats()
+                    t = threading.Thread(
+                        target=run_robot_worker,
+                        args=("check_status_fast", 0, "Sheet1", "", ""),
+                        daemon=True,
+                    )
+                    RPAState.thread = t
+                    t.start()
+            except Exception:
+                pass
+            time.sleep(60)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def main():
     # Prevent Windows from entering Sleep Mode, Hibernate, or turning off display/network
     prevent_windows_sleep()
@@ -878,6 +920,8 @@ def main():
     auto_update_scripts_from_server()
     # Start background Telegram report relay thread (polls backend every 60s)
     start_telegram_outbox_relay_thread()
+    # Start background 30-min fast JSON Gosuslugi status sync (1,200 Zayavkas, no PDF download)
+    start_auto_30min_gosuslugi_status_sync_thread()
     # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts
     for d in scan_downloads_pdfs():
         RPAState.upsert_submission(d)

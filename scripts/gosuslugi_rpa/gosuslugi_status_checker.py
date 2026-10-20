@@ -869,6 +869,116 @@ def prevent_windows_sleep():
         pass
 
 
+def run_fast_json_status_sync_on_page(
+    page: Page,
+    max_pages: int = 60,
+    records: Optional[List[Dict[str, Any]]] = None,
+) -> int:
+    """
+    Fast, non-intrusive status sync (NO PDF download, NO /order/<feed_id> navigation):
+    Fetches up to `max_pages * 20` (e.g. 1,200) applications directly from Gosuslugi's JSON API
+    (/api/lk/v1/feeds/) using the current browser session cookies in ~2-4 seconds, matches them
+    against the central 3,088 VKS master list by application_no or Гражданин name, and updates
+    their statuses ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению',
+    'Заявление зарегистрировано') on the central Pondera HR server.
+    """
+    try:
+        cur_url = (page.url or "").lower()
+        if "gosuslugi.ru" not in cur_url or "esia.gosuslugi.ru" in cur_url:
+            logger.info("Fast JSON status sync skipped: active tab is not on an authenticated gosuslugi.ru page.")
+            return 0
+
+        target_records = records if records is not None else fetch_central_master_list_records()
+        if not target_records:
+            return 0
+
+        bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
+        if not bulk_orders:
+            return 0
+
+        labor_orders_list = [
+            ord_item for ord_item in bulk_orders.values()
+            if is_valid_labor_notification_order(ord_item)
+        ]
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        updated_records: List[Dict[str, Any]] = []
+        assigned_app_nos_to_sicil: Dict[str, str] = {}
+
+        for rec in target_records:
+            raw_app_no = str(rec.get("application_no") or "").strip()
+            app_no = raw_app_no if raw_app_no.isdigit() else ""
+            sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
+            worker_name = str(rec.get("worker_name") or "").strip()
+
+            matched_order: Optional[Dict[str, Any]] = None
+
+            if app_no and app_no in bulk_orders:
+                candidate = bulk_orders[app_no]
+                if is_valid_labor_notification_order(candidate):
+                    if not (
+                        worker_name
+                        and candidate.get("citizen_name")
+                        and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name)
+                    ):
+                        matched_order = candidate
+            elif worker_name and not app_no:
+                for cand in labor_orders_list:
+                    cand_no = cand["application_no"]
+                    owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
+                    if owner_sicil and sicil and owner_sicil != sicil:
+                        continue
+                    if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
+                        matched_order = cand
+                        app_no = cand_no
+                        break
+
+            if not matched_order:
+                continue
+
+            final_app_no = matched_order["application_no"]
+            owner_sicil = assigned_app_nos_to_sicil.get(final_app_no)
+            if owner_sicil and sicil and owner_sicil != sicil:
+                continue
+            if sicil:
+                assigned_app_nos_to_sicil[final_app_no] = sicil
+
+            prev_status = str(rec.get("gosuslugi_status") or "").strip()
+            new_status = str(matched_order.get("gosuslugi_status") or "").strip()
+            if prev_status == new_status and raw_app_no == final_app_no:
+                continue
+
+            updated_entry = {
+                **rec,
+                "sicil": sicil,
+                "sicil_no": sicil,
+                "worker_name": worker_name or matched_order.get("citizen_name") or "",
+                "application_no": final_app_no,
+                "pdf_filename": str(rec.get("pdf_filename") or "").strip(),
+                "gosuslugi_status": new_status,
+                "status_detail": matched_order.get("status_detail", ""),
+                "checked_at": now_str,
+            }
+            updated_records.append(updated_entry)
+            logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated_entry, ensure_ascii=False)}")
+
+        if updated_records:
+            sync_updates_to_pondera_api(updated_records)
+            logger.info(
+                f">>> Fast 30-Min JSON Status Sync: Scanned {len(bulk_orders)} orders on this Gosuslugi account, "
+                f"updated {len(updated_records)} application statuses on central server (0 PDFs downloaded)! <<<"
+            )
+        else:
+            logger.info(
+                f">>> Fast 30-Min JSON Status Sync: Scanned {len(bulk_orders)} orders on this Gosuslugi account "
+                f"(all statuses already up to date). <<<"
+            )
+        return len(updated_records)
+    except Exception as e:
+        logger.warning(f"Fast JSON status sync note: {e}")
+        return 0
+
+
 def main():
     prevent_windows_sleep()
     parser = argparse.ArgumentParser(description="Pondera HR Gosuslugi Status Checker (lk.gosuslugi.ru/orders)")
@@ -876,6 +986,7 @@ def main():
     parser.add_argument("--cdp-port", type=int, default=9222, help="Chrome Remote Debugging Port")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of records to check")
     parser.add_argument("--max-pages", type=int, default=60, help="Max bulk pages (20 orders/page, 60 = 1200 orders) to fetch without searching")
+    parser.add_argument("--status-only", action="store_true", help="Fast JSON-only status check without downloading PDFs or opening individual order pages")
     args = parser.parse_args()
 
     records: List[Dict[str, Any]] = []
@@ -954,7 +1065,12 @@ def main():
             logger.error(f"Could not connect to Chrome on port {args.cdp_port}: {e}")
             return
 
-        # Navigate to https://lk.gosuslugi.ru/orders if not already there
+        # Navigate to https://lk.gosuslugi.ru/orders if not already there (unless --status-only and already on gosuslugi.ru)
+        cur_page_url = (page.url or "").lower()
+        if args.status_only and "gosuslugi.ru" in cur_page_url and "esia.gosuslugi.ru" not in cur_page_url:
+            run_fast_json_status_sync_on_page(page, max_pages=args.max_pages, records=records)
+            return
+
         if "lk.gosuslugi.ru/orders" not in (page.url or ""):
             logger.info(f"Navigating to Gosuslugi Заявления ({ORDERS_URL})...")
             try:
@@ -962,6 +1078,10 @@ def main():
                 page.wait_for_timeout(2000)
             except Exception as e:
                 logger.warning(f"Navigation to lk.gosuslugi.ru/orders note: {e}")
+
+        if args.status_only:
+            run_fast_json_status_sync_on_page(page, max_pages=args.max_pages, records=records)
+            return
 
         # If Gosuslugi redirected to login (esia.gosuslugi.ru/login), wait until user logs in
         if "esia.gosuslugi.ru" in (page.url or "").lower():
