@@ -234,14 +234,35 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
         "&pageSize=20&status=&startDate="
     )
     candidate_bases = [
-        f"/api/lk/v1/feeds/{query_prefix}",
         f"https://www.gosuslugi.ru/api/lk/v1/feeds/{query_prefix}",
+        f"/api/lk/v1/feeds/{query_prefix}",
         f"https://lk.gosuslugi.ru/api/lk/v1/feeds/{query_prefix}",
     ]
 
     try:
         raw_items = page.evaluate(
             """async ({ candidateBases, maxPages }) => {
+                const fetchJsonViaXhr = (url) => new Promise((resolve) => {
+                    try {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open("GET", url + "&_=" + Math.random(), true);
+                        xhr.withCredentials = true;
+                        xhr.onload = () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                try {
+                                    resolve({ ok: true, data: JSON.parse(xhr.responseText) });
+                                    return;
+                                } catch (e) {}
+                            }
+                            resolve({ ok: false, status: xhr.status });
+                        };
+                        xhr.onerror = () => resolve({ ok: false, status: -1 });
+                        xhr.send();
+                    } catch (e) {
+                        resolve({ ok: false, status: -2 });
+                    }
+                });
+
                 for (const baseUrl of candidateBases) {
                     try {
                         const collected = [];
@@ -249,9 +270,17 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
                         let lastDate = "";
                         for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
                             const url = `${baseUrl}&lastFeedId=${encodeURIComponent(lastId)}&lastFeedDate=${encodeURIComponent(lastDate)}&q=`;
-                            const resp = await fetch(url, { credentials: "include", headers: { "Accept": "application/json" } });
-                            if (!resp.ok) break;
-                            const data = await resp.json();
+                            let res = await fetchJsonViaXhr(url);
+                            if (!res.ok) {
+                                try {
+                                    const fResp = await fetch(url, { credentials: "include" });
+                                    if (fResp.ok) {
+                                        res = { ok: true, data: await fResp.json() };
+                                    }
+                                } catch (fe) {}
+                            }
+                            if (!res.ok || !res.data) break;
+                            const data = res.data;
                             const items = Array.isArray(data.items) ? data.items : [];
                             if (items.length === 0) break;
                             collected.push(...items);
@@ -295,7 +324,7 @@ def query_single_order_by_no(page: Page, app_no: str) -> Optional[Dict[str, Any]
     if not clean_no:
         return None
 
-    # 1) Direct JSON API query (?q=<app_no>)
+    # 1) Direct JSON API query (?q=<app_no>) via XHR
     query_url = (
         "https://www.gosuslugi.ru/api/lk/v1/feeds/"
         "?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
@@ -304,10 +333,27 @@ def query_single_order_by_no(page: Page, app_no: str) -> Optional[Dict[str, Any]
     try:
         api_res = page.evaluate(
             """async (url) => {
-                const resp = await fetch(url, { credentials: "include", headers: { "Accept": "application/json" } });
-                if (!resp.ok) return { ok: false, items: [] };
-                const data = await resp.json();
-                return { ok: true, items: Array.isArray(data.items) ? data.items : [] };
+                return await new Promise((resolve) => {
+                    try {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open("GET", url + "&_=" + Math.random(), true);
+                        xhr.withCredentials = true;
+                        xhr.onload = () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                try {
+                                    const data = JSON.parse(xhr.responseText);
+                                    resolve({ ok: true, items: Array.isArray(data.items) ? data.items : [] });
+                                    return;
+                                } catch (e) {}
+                            }
+                            resolve({ ok: false, items: [] });
+                        };
+                        xhr.onerror = () => resolve({ ok: false, items: [] });
+                        xhr.send();
+                    } catch (e) {
+                        resolve({ ok: false, items: [] });
+                    }
+                });
             }""",
             query_url,
         )
@@ -1184,6 +1230,14 @@ def main():
             matched_on_this_account_count = 0
             pdfs_downloaded_count = 0
 
+            # Prioritize records whose application_no is directly present in this account's bulk_orders
+            records.sort(
+                key=lambda r: (
+                    0 if str(r.get("application_no") or "").strip() in bulk_orders else 1,
+                    0 if not str(r.get("pdf_filename") or "").strip() else 1,
+                )
+            )
+
             for idx, rec in enumerate(records):
                 raw_app_no = str(rec.get("application_no") or "").strip()
                 app_no = raw_app_no if raw_app_no.isdigit() else ""
@@ -1236,9 +1290,8 @@ def main():
                             )
                             break
 
-                # 2.5) If still not matched and worker has no app_no, inspect recent unassigned labor orders (up to 80)
-                # that had empty 'citizen_name' in the API snippet by opening /order/<feed_id> once
-                if not matched_order and worker_name and not app_no:
+                # 2.5) Only for small targeted batches (<= 50 records): inspect recent unassigned labor orders
+                if not matched_order and not is_large_batch and worker_name and not app_no:
                     for cand in labor_orders_list[:80]:
                         cand_no = cand["application_no"]
                         cand_feed_id = cand.get("feed_id", "")
