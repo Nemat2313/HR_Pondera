@@ -236,10 +236,11 @@ export async function GET(request: Request) {
         departman LIKE ? OR
         proje_adi LIKE ? OR
         pasaport_no LIKE ? OR
-        tc_kimlik_no LIKE ?
+        tc_kimlik_no LIKE ? OR
+        json_extract(all_data_json, '$."Adı Soyadı Kiril"') LIKE ?
       )`);
       const searchPattern = `%${search}%`;
-      for (let i = 0; i < 11; i++) {
+      for (let i = 0; i < 12; i++) {
         params.push(searchPattern);
       }
     }

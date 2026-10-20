@@ -307,7 +307,9 @@ export default function PersonnelListView({
   const [pageSize, setPageSize] = useState(25);
 
   // Filters with RLS presets
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() =>
+    initialFilter?.type === 'search' && initialFilter.value ? initialFilter.value : ''
+  );
   const [filterRegion, setFilterRegion] = useState(
     user?.scope_type === 'region' ? user.scope_value : 'all'
   );
@@ -489,7 +491,8 @@ export default function PersonnelListView({
         onClearInitialFilter();
       }
     }
-  }, [initialFilter, user, onClearInitialFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFilter, user]);
 
   // Fetch filter dropdown options once
   useEffect(() => {
@@ -510,8 +513,10 @@ export default function PersonnelListView({
       .catch(() => {});
   }, []);
 
-  // Fetch personnel data with RLS parameters
+  // Fetch personnel data with RLS parameters (with AbortController to prevent stale unfiltered response overwriting search results)
   useEffect(() => {
+    const controller = new AbortController();
+    let isCancelled = false;
     setLoading(true);
     const params = new URLSearchParams();
     params.set('page', String(page));
@@ -527,7 +532,10 @@ export default function PersonnelListView({
       params.set('userScopeValue', user.scope_value);
     }
 
-    if (search.trim()) params.set('search', search.trim());
+    const activeSearch = (
+      initialFilter?.type === 'search' && initialFilter.value ? initialFilter.value : search
+    ).trim();
+    if (activeSearch) params.set('search', activeSearch);
     if (filterRegion !== 'all') params.set('region', filterRegion);
     if (filterProject !== 'all') params.set('project', filterProject);
     if (filterDepartment !== 'all') params.set('department', filterDepartment);
@@ -536,21 +544,31 @@ export default function PersonnelListView({
     if (filterCollar !== 'all') params.set('collar', filterCollar);
     if (filterPermit !== 'all') params.set('permit', filterPermit);
 
-    fetch(`/api/personnel?${params.toString()}`)
+    fetch(`/api/personnel?${params.toString()}`, { signal: controller.signal })
       .then((res) => res.json())
       .then((resData) => {
-        if (resData.success) {
+        if (!isCancelled && resData.success) {
           setData(resData.data || []);
           setTotalRows(resData.pagination?.totalRows || 0);
           setTotalPages(resData.pagination?.totalPages || 1);
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
   }, [
     page,
     pageSize,
     search,
+    initialFilter,
     filterRegion,
     filterProject,
     filterDepartment,
