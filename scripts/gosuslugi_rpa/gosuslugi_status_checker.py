@@ -737,9 +737,9 @@ def download_missing_pdf_for_order(
 
     clean_name = clean_worker_name_for_pdf(worker_name)
     clean_sicil = re.sub(r'[<>:"/\\|?*]+', "", str(sicil or "").strip())
-    clean_period = str(period_code or "2026-1").strip() or "2026-1"
+    clean_period = str(period_code or "2026-3").strip() or "2026-3"
     if not re.match(r"^20\d{2}-[1-4]$", clean_period):
-        clean_period = "2026-1"
+        clean_period = "2026-3"
 
     new_filename = f"{clean_sicil}_{clean_no}_{clean_name}_{clean_period}.pdf" if clean_sicil else f"{clean_no}_{clean_name}_{clean_period}.pdf"
     new_filepath = downloads_dir / new_filename
@@ -747,9 +747,89 @@ def download_missing_pdf_for_order(
         if downloaded_path.resolve() != new_filepath.resolve():
             os.replace(str(downloaded_path), str(new_filepath))
         logger.info(f"  -> Downloaded & renamed missing PDF: {new_filename}")
+        upload_pdf_to_central_server(new_filepath, clean_no, clean_sicil)
         return new_filename
     except Exception:
+        upload_pdf_to_central_server(downloaded_path, clean_no, clean_sicil)
         return downloaded_path.name
+
+
+def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str):
+    """Uploads the downloaded PDF receipt directly to Pondera HR Central Server (/api/gosuslugi/pdf) so all 4 PCs share PDFs."""
+    try:
+        if not pdf_path or not pdf_path.exists():
+            return
+        import base64
+        import urllib.request
+        import ssl
+        b64_str = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
+        payload = json.dumps({
+            "filename": pdf_path.name,
+            "pdf_base64": b64_str,
+            "application_no": str(app_no or "").strip(),
+            "sicil_no": str(sicil_no or "").strip(),
+        }).encode("utf-8")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        for api_url in (
+            "https://hr.pondera.network/api/gosuslugi/pdf",
+            "http://localhost:3000/api/gosuslugi/pdf",
+        ):
+            try:
+                req = urllib.request.Request(
+                    api_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=10.0, context=ctx if api_url.startswith("https") else None) as _:
+                    logger.info(f"  -> Uploaded PDF to central server: {pdf_path.name}")
+                    break
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def fetch_central_master_list_records() -> List[Dict[str, Any]]:
+    """Fetches the unified 3,088-worker master list + submissions from https://hr.pondera.network/api/gosuslugi/master-list."""
+    import urllib.request
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    for api_url in (
+        "https://hr.pondera.network/api/gosuslugi/master-list",
+        "http://localhost:3000/api/gosuslugi/master-list",
+    ):
+        try:
+            req = urllib.request.Request(api_url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=8.0, context=ctx if api_url.startswith("https") else None) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    rows = data.get("data") or []
+                    if isinstance(rows, list) and len(rows) > 0:
+                        mapped = []
+                        for w in rows:
+                            sic = str(w.get("sicil") or w.get("code") or "").strip()
+                            parts = [str(w.get("lastName") or "").strip(), str(w.get("firstName") or "").strip(), str(w.get("middleName") or "").strip()]
+                            full_name = " ".join([p for p in parts if p and p.lower() != "нет"]).strip()
+                            mapped.append({
+                                "sicil": sic,
+                                "sicil_no": sic,
+                                "worker_name": full_name,
+                                "citizenship": str(w.get("citizenship") or "").strip(),
+                                "notification_type": "vks_salary",
+                                "period_code": "2026-3",
+                                "application_no": str(w.get("applicationNo") or "").strip(),
+                                "gosuslugi_status": str(w.get("gosuslugiStatus") or "").strip(),
+                                "pdf_filename": str(w.get("pdfFilename") or "").strip(),
+                            })
+                        return mapped
+        except Exception:
+            pass
+    return []
 
 
 def sync_updates_to_pondera_api(updates: List[Dict[str, Any]]):
@@ -795,7 +875,7 @@ def main():
     parser.add_argument("--json", default="", help="Path to JSON queue of applications/workers to check")
     parser.add_argument("--cdp-port", type=int, default=9222, help="Chrome Remote Debugging Port")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of records to check")
-    parser.add_argument("--max-pages", type=int, default=15, help="Max bulk pages (20 orders/page) to fetch without searching")
+    parser.add_argument("--max-pages", type=int, default=60, help="Max bulk pages (20 orders/page, 60 = 1200 orders) to fetch without searching")
     args = parser.parse_args()
 
     records: List[Dict[str, Any]] = []
@@ -815,6 +895,26 @@ def main():
                     break
             except Exception as e:
                 logger.warning(f"Could not read {jpath}: {e}")
+
+    # Always merge with the central 3,088-worker master list from https://hr.pondera.network so all 4 Gosuslugi accounts
+    # can match orders by application_no or Гражданин name and skip orders whose PDF is already downloaded centrally!
+    central_records = fetch_central_master_list_records()
+    if central_records:
+        by_sicil = {str(r.get("sicil") or r.get("sicil_no") or "").strip(): r for r in records if str(r.get("sicil") or r.get("sicil_no") or "").strip()}
+        for cr in central_records:
+            csic = cr["sicil_no"]
+            if csic in by_sicil:
+                existing_r = by_sicil[csic]
+                if not existing_r.get("application_no") and cr.get("application_no"):
+                    existing_r["application_no"] = cr["application_no"]
+                if not existing_r.get("pdf_filename") and cr.get("pdf_filename"):
+                    existing_r["pdf_filename"] = cr["pdf_filename"]
+                if not existing_r.get("worker_name") and cr.get("worker_name"):
+                    existing_r["worker_name"] = cr["worker_name"]
+            else:
+                records.append(cr)
+                by_sicil[csic] = cr
+        logger.info(f"Synced with Central Master List: {len(records)} total VKS workers ready for multi-account status/PDF check.")
 
     # Also merge any PDFs found in ~/Downloads that have Gosuslugi application numbers
     discovered_pdfs = scan_downloads_for_applications()
@@ -911,16 +1011,29 @@ def main():
             # (because 'Гражданин' is inside 'Показать историю' on /order/<feed_id>), inspect them once on demand
             inspected_feed_ids = set()
 
+            # Multi-account optimization: when checking full 3,088 master list across 4 Gosuslugi accounts,
+            # bulk_orders already holds up to 1,200 orders from the CURRENT logged-in Gosuslugi account.
+            is_large_batch = len(records) > 50
+            matched_on_this_account_count = 0
+            pdfs_downloaded_count = 0
+
             for idx, rec in enumerate(records):
                 raw_app_no = str(rec.get("application_no") or "").strip()
                 app_no = raw_app_no if raw_app_no.isdigit() else ""
                 sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
                 worker_name = str(rec.get("worker_name") or "").strip()
 
-                logger.info(
-                    f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
-                    f"(Код: {sicil or '—'}, № Заявления: {app_no or 'по ФИО'})"
-                )
+                # Fast multi-account skip: if this worker already has an application_no recorded from another
+                # computer/account and that application_no is NOT in the current account's bulk_orders feed,
+                # skip immediately without slow per-worker UI searches!
+                if is_large_batch and app_no and app_no not in bulk_orders:
+                    continue
+
+                if not is_large_batch or (app_no and app_no in bulk_orders):
+                    logger.info(
+                        f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
+                        f"(Код: {sicil or '—'}, № Заявления: {app_no or 'по ФИО'})"
+                    )
 
                 matched_order: Optional[Dict[str, Any]] = None
 
@@ -942,7 +1055,7 @@ def main():
                         )
 
                 # 2) Match by Citizen Name ('Гражданин') in labor_orders_list if application_no not matched
-                if not matched_order and worker_name:
+                if not matched_order and worker_name and not app_no:
                     for cand in labor_orders_list:
                         cand_no = cand["application_no"]
                         owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
@@ -956,9 +1069,9 @@ def main():
                             )
                             break
 
-                # 2.5) If still not matched, inspect recent labor orders (up to 80) that had empty 'citizen_name' in the API snippet
-                # by opening /order/<feed_id> and clicking 'Показать историю'
-                if not matched_order and worker_name:
+                # 2.5) If still not matched and worker has no app_no, inspect recent unassigned labor orders (up to 80)
+                # that had empty 'citizen_name' in the API snippet by opening /order/<feed_id> once
+                if not matched_order and worker_name and not app_no:
                     for cand in labor_orders_list[:80]:
                         cand_no = cand["application_no"]
                         cand_feed_id = cand.get("feed_id", "")
@@ -981,8 +1094,8 @@ def main():
                             )
                             break
 
-                # 3) Tier 2 Fallback: Query single numeric application_no via ?q=<app_no> or UI search box
-                if not matched_order and app_no and app_no.isdigit():
+                # 3) Tier 2 Fallback: Query single numeric application_no ONLY for small targeted batches (<= 50 records)
+                if not matched_order and not is_large_batch and app_no and app_no.isdigit():
                     logger.info(f"  -> № {app_no} not in recent bulk feed, querying directly...")
                     candidate = query_single_order_by_no(page, app_no)
                     if candidate:
@@ -1001,6 +1114,7 @@ def main():
                             )
 
                 if matched_order:
+                    matched_on_this_account_count += 1
                     final_app_no = matched_order["application_no"]
                     owner_sicil = assigned_app_nos_to_sicil.get(final_app_no)
                     if owner_sicil and sicil and owner_sicil != sicil:
@@ -1011,18 +1125,21 @@ def main():
                     if sicil:
                         assigned_app_nos_to_sicil[final_app_no] = sicil
 
-                    # Automatically download and rename the receipt PDF if missing from ~/Downloads
+                    # Automatically download and rename the receipt PDF if not already recorded on central server
+                    # (or if running a small targeted check where local download is requested)
                     pdf_file = str(rec.get("pdf_filename") or "").strip()
-                    dl_pdf = download_missing_pdf_for_order(
-                        page=page,
-                        feed_id=str(matched_order.get("feed_id") or ""),
-                        app_no=final_app_no,
-                        sicil=sicil,
-                        worker_name=worker_name or matched_order.get("citizen_name") or "",
-                        period_code=str(rec.get("period_code") or "2026-1"),
-                    )
-                    if dl_pdf:
-                        pdf_file = dl_pdf
+                    if not pdf_file or not is_large_batch:
+                        dl_pdf = download_missing_pdf_for_order(
+                            page=page,
+                            feed_id=str(matched_order.get("feed_id") or ""),
+                            app_no=final_app_no,
+                            sicil=sicil,
+                            worker_name=worker_name or matched_order.get("citizen_name") or "",
+                            period_code=str(rec.get("period_code") or "2026-3"),
+                        )
+                        if dl_pdf:
+                            pdf_file = dl_pdf
+                            pdfs_downloaded_count += 1
 
                     updated_entry = {
                         **rec,
@@ -1041,10 +1158,15 @@ def main():
                         f"SUCCESS: Status checked for {updated_entry['worker_name']} "
                         f"(№ {updated_entry['application_no']}: {updated_entry['gosuslugi_status']})!"
                     )
-                else:
+                elif not is_large_batch:
                     logger.info(
                         f"  -> No matching labor notification order found on current Gosuslugi account for {worker_name} (№ {app_no or '—'})."
                     )
+
+            logger.info(
+                f"Multi-Account Summary on this Gosuslugi account: matched {matched_on_this_account_count} orders, "
+                f"downloaded/uploaded {pdfs_downloaded_count} PDFs."
+            )
         else:
             # No pre-existing local records — only register labor notification orders
             for s_ord in labor_orders_list[:50]:

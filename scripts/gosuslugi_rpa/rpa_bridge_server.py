@@ -720,6 +720,8 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                     json.dump(records, f, ensure_ascii=False, indent=2)
                 RPAState.total = len(records)
                 RPAState.add_log(f"Получено {len(records)} записей напрямую из Pondera HR UI ({mode.upper()}).")
+                if mode == "vks" and len(records) > 1:
+                    sync_vks_queue_to_central_master_list_async(records)
 
             if config_overrides and isinstance(config_overrides, dict):
                 config_file = os.path.join(CURRENT_DIR, cfg_filename)
@@ -835,6 +837,38 @@ def start_telegram_outbox_relay_thread():
     t.start()
 
 
+def sync_vks_queue_to_central_master_list_async(records: list):
+    """Pushes an active VKS queue from this computer to https://hr.pondera.network/api/gosuslugi/master-list (mode: merge)."""
+    if not records or not isinstance(records, list) or len(records) <= 1:
+        return
+
+    def _worker():
+        import urllib.request
+        import ssl
+        try:
+            payload = json.dumps({
+                "records": records,
+                "mode": "merge",
+                "sourceTag": "rpa_bridge_queue",
+            }, ensure_ascii=False).encode("utf-8")
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                "https://hr.pondera.network/api/gosuslugi/master-list",
+                data=payload,
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+                if resp.status == 200:
+                    print(f"[RPA BRIDGE] Synced {len(records)} active VKS queue records to central master list.")
+        except Exception:
+            pass
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def main():
     # Prevent Windows from entering Sleep Mode, Hibernate, or turning off display/network
     prevent_windows_sleep()
@@ -847,6 +881,16 @@ def main():
     # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts
     for d in scan_downloads_pdfs():
         RPAState.upsert_submission(d)
+    # If an active VKS queue (> 1 record) exists on this computer, merge it into the central master list
+    try:
+        active_q_path = os.path.join(CURRENT_DIR, "active_vks_queue.json")
+        if os.path.exists(active_q_path):
+            with open(active_q_path, "r", encoding="utf-8") as qf:
+                q_recs = json.load(qf)
+                if isinstance(q_recs, list) and len(q_recs) > 1:
+                    sync_vks_queue_to_central_master_list_async(q_recs)
+    except Exception:
+        pass
 
     server = HTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
     print("=====================================================")

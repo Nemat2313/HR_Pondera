@@ -90,6 +90,12 @@ function doesSubMatchWorker(
   if (!sub) return false;
   const wCode = String(w.code || w.sicil || '').trim();
   const sCode = String(sub.sicil_no || '').trim();
+  if (wCode && sCode && wCode === sCode) {
+    return true;
+  }
+  if (w.applicationNo && sub.application_no && w.applicationNo === sub.application_no) {
+    return true;
+  }
   if (wCode && sCode && wCode !== sCode) {
     return false;
   }
@@ -105,11 +111,11 @@ function doesSubMatchWorker(
       .map((p) => String(p || '').toLowerCase().trim())
       .flatMap((p) => p.replace(/[^а-яёa-z0-9\s]/gi, ' ').split(/\s+/))
       .filter((tok) => tok.length >= 2 && !stopWords.has(tok));
-    if (wTokens.length > 0 && !wTokens.every((tok) => sName.includes(tok))) {
-      return false;
+    if (wTokens.length > 0 && wTokens.every((tok) => sName.includes(tok))) {
+      return true;
     }
   }
-  return Boolean((wCode && sCode && wCode === sCode) || (w.applicationNo && sub.application_no === w.applicationNo));
+  return false;
 }
 
 export interface VksValidationIssue {
@@ -133,7 +139,7 @@ export interface VksValidationResult {
   fieldErrors: Partial<Record<VksValidationIssue['field'], string[]>>;
 }
 
-type QueueFilterMode = 'all' | 'ready' | 'invalid' | 'sent';
+type QueueFilterMode = 'all' | 'ready' | 'invalid' | 'sent' | 'error';
 
 const BRIDGE_URLS = ['http://127.0.0.1:8088', 'http://localhost:8088'];
 
@@ -868,6 +874,26 @@ export default function GosuslugiVksView() {
   const syncedAppsRef = useRef<Set<string>>(new Set());
   const uploadedPdfsRef = useRef<Set<string>>(new Set());
 
+  // Central Backend Master VKS List (3,088 records & 4-Computer Queue Partitioning)
+  const [masterSummary, setMasterSummary] = useState<{
+    totalMaster: number;
+    computers: Record<
+      number,
+      {
+        total: number;
+        sent: number;
+        error: number;
+        pending: number;
+        minRow: number;
+        maxRow: number;
+      }
+    >;
+  } | null>(null);
+  const [activeComputerFilter, setActiveComputerFilter] = useState<'all' | '1' | '2' | '3' | '4'>('all');
+  const [isLoadingMaster, setIsLoadingMaster] = useState(false);
+  const [isSplittingMaster, setIsSplittingMaster] = useState(false);
+  const [isRetryingErrors, setIsRetryingErrors] = useState(false);
+
   // Mail.ru IMAP Background Status Checker State
   const [showMailRuModal, setShowMailRuModal] = useState(false);
   const [mailRuEmail, setMailRuEmail] = useState('');
@@ -910,10 +936,10 @@ export default function GosuslugiVksView() {
     }, 5500);
   };
 
-  const refreshSavedSubmissionsFromDb = async () => {
+  const refreshSavedSubmissionsFromDb = async (): Promise<Record<string, GosuslugiSubmissionEntry>> => {
     try {
       const res = await fetch('/api/gosuslugi/submissions?type=VKS_SALARY');
-      if (!res.ok) return;
+      if (!res.ok) return savedSubmissions;
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         const bySicil: Record<string, GosuslugiSubmissionEntry> = {};
@@ -923,7 +949,12 @@ export default function GosuslugiVksView() {
             gosuslugi_status: normalizeSentGosuslugiStatus(rawRow.gosuslugi_status),
           };
           if (row.sicil_no) {
-            bySicil[String(row.sicil_no)] = row;
+            const key = String(row.sicil_no).trim();
+            const existing = bySicil[key];
+            // Prefer entry that has application_no or keep the newest one (first in DESC order)
+            if (!existing || (!existing.application_no && row.application_no)) {
+              bySicil[key] = row;
+            }
           }
           if (row.application_no) {
             bySicil[`app:${row.application_no}`] = row;
@@ -933,7 +964,7 @@ export default function GosuslugiVksView() {
         setSavedSubmissions(bySicil);
         setWorkers((prev) =>
           prev.map((w) => {
-            const codeKey = w.code || w.sicil;
+            const codeKey = String(w.code || w.sicil || '').trim();
             const subByApp = w.applicationNo ? bySicil[`app:${w.applicationNo}`] : undefined;
             const subByCode = codeKey ? bySicil[codeKey] : undefined;
             const matchedSub =
@@ -945,26 +976,41 @@ export default function GosuslugiVksView() {
             );
             const nextPdf = w.pdfFilename || matchedSub.pdf_filename;
             const alreadySent = isWorkerAlreadySentToGosuslugi({
-              status: w.status,
+              status: w.status === 'success' ? 'success' : undefined,
               applicationNo: nextAppNo,
               gosuslugiStatus: nextGosStatus,
               pdfFilename: nextPdf,
             });
+            const isErr = !alreadySent && /^ошибк/i.test(nextGosStatus);
             return {
               ...w,
               applicationNo: nextAppNo,
               gosuslugiStatus: nextGosStatus,
               pdfFilename: nextPdf,
-              status: alreadySent
-                ? 'success'
-                : /^ошибк/i.test(nextGosStatus)
-                ? 'error'
-                : w.status,
+              status: alreadySent ? 'success' : isErr ? 'error' : 'pending',
               // Uncheck already-sent workers so their Zayavka is not accidentally re-submitted!
               selected: alreadySent ? false : w.selected,
             };
           })
         );
+        return bySicil;
+      }
+    } catch {
+      // Silent fallback
+    }
+    return savedSubmissions;
+  };
+
+  const refreshMasterListSummary = async () => {
+    try {
+      const res = await fetch('/api/gosuslugi/master-list?computer=all');
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.success && json.computers) {
+        setMasterSummary({
+          totalMaster: json.totalMaster || 0,
+          computers: json.computers,
+        });
       }
     } catch {
       // Silent fallback
@@ -975,6 +1021,7 @@ export default function GosuslugiVksView() {
   // and poll every 15 seconds so multiple computers see newly submitted applications in real time
   useEffect(() => {
     refreshSavedSubmissionsFromDb();
+    refreshMasterListSummary();
     fetch('/api/gosuslugi/mail-sync')
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
@@ -995,6 +1042,7 @@ export default function GosuslugiVksView() {
 
     const multiPcSyncTimer = setInterval(() => {
       refreshSavedSubmissionsFromDb();
+      refreshMasterListSummary();
     }, 15000);
     return () => clearInterval(multiPcSyncTimer);
   }, []);
@@ -1137,14 +1185,18 @@ export default function GosuslugiVksView() {
 
   // Apply initial validation when loading rows from Excel or DB:
   // Valid unsent rows -> selected: true; Already-sent rows -> selected: false; Invalid rows -> selected: false
-  const applyInitialValidationSelection = (list: GosuslugiVksWorkerRecord[]) => {
+  const applyInitialValidationSelection = (
+    list: GosuslugiVksWorkerRecord[],
+    customSubmissions?: Record<string, GosuslugiSubmissionEntry>
+  ) => {
+    const subsMap = customSubmissions || savedSubmissions;
     let validCnt = 0;
     let invalidCnt = 0;
     const processed = list.map((w) => {
-      const codeKey = w.code || w.sicil;
+      const codeKey = String(w.code || w.sicil || '').trim();
       const candidateSub: GosuslugiSubmissionEntry | undefined =
-        (codeKey ? savedSubmissions[codeKey] : undefined) ||
-        (w.applicationNo ? savedSubmissions[`app:${w.applicationNo}`] : undefined);
+        (codeKey ? subsMap[codeKey] : undefined) ||
+        (w.applicationNo ? subsMap[`app:${w.applicationNo}`] : undefined);
       const savedSub = doesSubMatchWorker(candidateSub, w) ? candidateSub : undefined;
       const nextAppNo = w.applicationNo || savedSub?.application_no;
       const nextGosStatus = normalizeSentGosuslugiStatus(
@@ -1152,11 +1204,12 @@ export default function GosuslugiVksView() {
       );
       const nextPdf = w.pdfFilename || savedSub?.pdf_filename;
       const alreadySent = isWorkerAlreadySentToGosuslugi({
-        status: w.status,
+        status: w.status === 'success' ? 'success' : undefined,
         applicationNo: nextAppNo,
         gosuslugiStatus: nextGosStatus,
         pdfFilename: nextPdf,
       });
+      const isErr = !alreadySent && /^ошибк/i.test(nextGosStatus);
 
       const enriched: GosuslugiVksWorkerRecord = savedSub
         ? {
@@ -1164,11 +1217,7 @@ export default function GosuslugiVksView() {
             applicationNo: nextAppNo,
             gosuslugiStatus: nextGosStatus || 'Отправлено',
             pdfFilename: nextPdf,
-            status: alreadySent
-              ? 'success'
-              : /^ошибк/i.test(nextGosStatus)
-              ? 'error'
-              : w.status,
+            status: alreadySent ? 'success' : isErr ? 'error' : w.status,
           }
         : w;
 
@@ -1510,17 +1559,273 @@ export default function GosuslugiVksView() {
     }
   };
 
-  // Upload & Parse Excel File (matching 11.docx PAD columns + 1-месяц, 2-месяц, 3-месяц)
+  // Load directly from Central Backend Master VKS List (3,088 records partitioned across 4 Computers)
+  const handleLoadFromMasterList = async (
+    computerFilter: 'all' | '1' | '2' | '3' | '4' = 'all',
+    statusFilter: 'all' | 'pending' | 'error' = 'all'
+  ) => {
+    setIsLoadingMaster(true);
+    setActiveComputerFilter(computerFilter);
+    try {
+      const freshSubs = await refreshSavedSubmissionsFromDb();
+      const res = await fetch(
+        `/api/gosuslugi/master-list?computer=${computerFilter}&status=${statusFilter}`
+      );
+      const json = await res.json();
+      if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
+        showNotice(
+          'info',
+          lang === 'ru'
+            ? 'В центральном списке ВКС нет записей по выбранному фильтру.'
+            : 'Merkezi VKS listesinde seçili filtreye uygun kayıt bulunamadı.'
+        );
+        return;
+      }
+
+      if (json.computers) {
+        setMasterSummary({
+          totalMaster: json.totalMaster || 0,
+          computers: json.computers,
+        });
+      }
+
+      const rawMapped: GosuslugiVksWorkerRecord[] = json.data.map((item: any, idx: number) => {
+        const wRec = item.worker || {};
+        const sicilVal = String(item.sicil_no || wRec.Sicil || wRec.Код || idx + 1).trim();
+        const rowPStart = formatDateRu(wRec.НачалоПериода) || periodStart;
+        const rowPEnd = formatDateRu(wRec.КонецПериода) || periodEnd;
+        const m1 = formatSalaryWithKopecks(wRec['1-месяц'] || '');
+        const m2 = formatSalaryWithKopecks(wRec['2-месяц'] || '');
+        const m3 = formatSalaryWithKopecks(wRec['3-месяц'] || '');
+        const totSal =
+          sumMonthlySalaries(m1, m2, m3) || formatSalaryWithKopecks(wRec.РазмерВыплаты || '');
+
+        return {
+          id: `master-vks-${item.row_order || idx + 1}-${sicilVal}`,
+          selected: true,
+          status:
+            item.status === 'success'
+              ? 'success'
+              : item.status === 'error'
+              ? 'error'
+              : 'pending',
+          sicil: sicilVal,
+          code: String(wRec.Код || sicilVal).trim(),
+          lastName: String(wRec.Фамилия || 'Нет').trim(),
+          firstName: String(wRec.Имя || '').trim(),
+          middleName: String(wRec.Отчество || 'НЕТ').trim(),
+          birthDate: formatDateRu(wRec.ДатаРождения),
+          gender: String(wRec.Пол || 'Мужской').trim(),
+          citizenship: String(wRec.ТекущееГражданство || 'Турция').trim(),
+          placeOfBirth: String(wRec.МестоРождения || wRec.ТекущееГражданство || 'Турция').trim(),
+          passportSeries: String(wRec.СерияПаспорта || '').trim(),
+          passportNumber: String(wRec.НомерПаспорта || '').trim(),
+          passportIssueDate: formatDateRu(wRec.ДатаВыдачи),
+          passportIssuedBy: String(wRec.ПаспортКемВыдан || 'МВД').trim(),
+          inn: String(wRec.ИНН || '').trim(),
+          rnrSeries: String(wRec.Серия || '').trim(),
+          rnrNumber: String(wRec.Номер || '').trim(),
+          rnrIssueDate: formatDateRu(wRec.ДатаВыдачиВКС),
+          blankSeries: String(wRec.СерийныйНомер1 || '').trim(),
+          blankNumber: String(wRec.СерийныйНомер2 || '').trim(),
+          contractDate: formatDateRu(wRec.ДатаЗаключения),
+          contractStartDate:
+            formatDateRu(wRec.ДатаНачалаДействия) || formatDateRu(wRec.ДатаЗаключения),
+          contractEndDate: formatDateRu(wRec.ДатаОканчанияДействия),
+          periodStart: rowPStart,
+          periodEnd: rowPEnd,
+          month1Salary: m1,
+          month2Salary: m2,
+          month3Salary: m3,
+          salaryAmount: totSal,
+          position: String(wRec.Должность || 'СПЕЦИАЛИСТ').trim(),
+          workAddress: String(wRec.АдресРаботы || workAddress).trim(),
+          postalCode: String(wRec.Индекс || postalCode).trim(),
+          applicationNo: item.application_no || undefined,
+          gosuslugiStatus: item.gosuslugi_status || undefined,
+          pdfFilename: item.pdf_filename || undefined,
+        };
+      });
+
+      const { processed, validCnt, invalidCnt } = applyInitialValidationSelection(
+        rawMapped,
+        freshSubs
+      );
+      setWorkers(processed);
+      setQueueFilter(statusFilter === 'error' ? 'error' : 'all');
+
+      const sentInSlice = processed.filter((w) => isWorkerAlreadySentToGosuslugi(w)).length;
+      const errInSlice = processed.filter((w) => w.status === 'error').length;
+      const readyUnsent = processed.filter((w) => w.selected).length;
+
+      const pcLabel =
+        computerFilter === 'all'
+          ? lang === 'ru'
+            ? 'Все 4 ПК (Общий список)'
+            : 'Tüm Liste (4 Bilgisayar)'
+          : `Bilgisayar ${computerFilter}`;
+
+      showNotice(
+        'success',
+        lang === 'ru'
+          ? `${pcLabel}: загружено ${processed.length} ВКС (Отправлено: ${sentInSlice}, Готовы к отправке: ${readyUnsent}, Ошибки ГУ: ${errInSlice}, Пропуски данных: ${invalidCnt}).`
+          : `${pcLabel}: ${processed.length} VKS yüklendi (Gönderilmiş: ${sentInSlice}, Gönderime Hazır Seçili: ${readyUnsent}, Gosuslugi Hatası: ${errInSlice}, Eksik Veri: ${invalidCnt}).`
+      );
+    } catch {
+      showNotice(
+        'error',
+        lang === 'ru'
+          ? 'Ошибка загрузки центрального списка ВКС.'
+          : 'Merkezi VKS listesi yüklenirken hata oluştu.'
+      );
+    } finally {
+      setIsLoadingMaster(false);
+    }
+  };
+
+  // Partition 3,088 records across 4 Computers (transfer last 500 or 600 from PC 1 -> PC 3 and PC 2 -> PC 4, or equal 4-way split)
+  const handleSplit4Computers = async (
+    strategy: 'tail_transfer' | 'equal_4',
+    tailCount: number = 600
+  ) => {
+    setIsSplittingMaster(true);
+    try {
+      const res = await fetch('/api/gosuslugi/master-list', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'split_4_computers',
+          strategy,
+          tailCount,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await refreshMasterListSummary();
+        if (workers.length > 0) {
+          await handleLoadFromMasterList(activeComputerFilter, 'all');
+        }
+        showNotice('success', json.message || '4 bilgisayar kuyruk dağılımı güncellendi!');
+      } else {
+        showNotice('error', json.message || 'Dağıtım güncellenemedi.');
+      }
+    } catch {
+      showNotice('error', 'Sunucu bağlantı hatası.');
+    } finally {
+      setIsSplittingMaster(false);
+    }
+  };
+
+  // Reset 'Ошибка' status on central server so errored records can be re-sent
+  const handleRetryErrors = async (
+    scope: 'all' | 'computer' | 'selected',
+    singleWorker?: GosuslugiVksWorkerRecord
+  ) => {
+    setIsRetryingErrors(true);
+    try {
+      const sicilsToReset = singleWorker
+        ? [String(singleWorker.sicil || singleWorker.code).trim()]
+        : scope === 'selected'
+        ? workers
+            .filter((w) => w.status === 'error')
+            .map((w) => String(w.sicil || w.code).trim())
+        : undefined;
+
+      const res = await fetch('/api/gosuslugi/master-list', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'retry_errors',
+          scope: singleWorker ? 'selected' : scope,
+          computer:
+            scope === 'computer' && activeComputerFilter !== 'all'
+              ? Number(activeComputerFilter)
+              : undefined,
+          sicils: sicilsToReset,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await refreshSavedSubmissionsFromDb();
+        await refreshMasterListSummary();
+        const resetSet = new Set(sicilsToReset || []);
+        setWorkers((prev) =>
+          prev.map((w) => {
+            const codeKey = String(w.sicil || w.code).trim();
+            if (w.status === 'error' && (resetSet.size === 0 || resetSet.has(codeKey))) {
+              const isValid = validateVksWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr').isValid;
+              return {
+                ...w,
+                status: 'pending',
+                gosuslugiStatus: undefined,
+                selected: isValid,
+              };
+            }
+            return w;
+          })
+        );
+        showNotice(
+          'success',
+          json.message || 'Hatalı (Ошибка) kayıtlar tekrar gönderim için sıraya alındı!'
+        );
+      } else {
+        showNotice('error', json.message || 'Hatalı kayıtlar sıfırlanamadı.');
+      }
+    } catch {
+      showNotice('error', 'Sunucu bağlantı hatası.');
+    } finally {
+      setIsRetryingErrors(false);
+    }
+  };
+
+  // Persist a single edited worker row to the central master list & clear its error status if it had 'Ошибка'
+  const saveWorkerRowToMasterList = async (w: GosuslugiVksWorkerRecord) => {
+    try {
+      const payloadRecs = buildPayloadRecords([w]);
+      await fetch('/api/gosuslugi/master-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          records: payloadRecs,
+          mode: 'merge',
+          clearErrorsForUpdated: true,
+          sourceTag: 'ui_inline_edit',
+        }),
+      });
+      await refreshSavedSubmissionsFromDb();
+      await refreshMasterListSummary();
+    } catch {
+      // Silent background sync
+    }
+  };
+
+  // Upload & Parse Excel File (supports both 34-column HR Master Excel 'Отчет ВКС 3 квартал 2026 - Latest' and 28-column template)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const sheetName = wb.SheetNames.includes('Sheet1') ? 'Sheet1' : wb.SheetNames[0];
+        // Automatically prefer 'latest' or 'Sheet1', or the sheet with the most rows
+        let sheetName = wb.SheetNames[0];
+        if (wb.SheetNames.includes('latest')) {
+          sheetName = 'latest';
+        } else if (wb.SheetNames.includes('Sheet1')) {
+          sheetName = 'Sheet1';
+        } else {
+          let maxLen = 0;
+          for (const sn of wb.SheetNames) {
+            const rowsTest = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1 });
+            if (rowsTest.length > maxLen) {
+              maxLen = rowsTest.length;
+              sheetName = sn;
+            }
+          }
+        }
+
         const ws = wb.Sheets[sheetName];
         const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
@@ -1537,16 +1842,30 @@ export default function GosuslugiVksView() {
         const header = data[0].map((h: any) => String(h || '').trim());
         const rows = data.slice(1);
 
-        const findCol = (candidates: string[], fallbackIdx: number): number => {
+        const findCol = (candidates: string[], fallbackIdx: number, startFrom: number = 0): number => {
           for (const c of candidates) {
-            const idx = header.findIndex((h) => h.toLowerCase() === c.toLowerCase());
+            const idx = header.findIndex(
+              (h, i) => i >= startFrom && h.toLowerCase() === c.toLowerCase()
+            );
             if (idx !== -1) return idx;
           }
           return fallbackIdx;
         };
 
-        const idxSicil = findCol(['Sicil', 'Sicil No', 'Табельный'], 0);
-        const idxCode = findCol(['Код', 'Code', 'Sicil'], 1);
+        // Support both 34-column HR Master Excel ('Табельный номер', duplicate 'Серия'/'Номер', 'Июль'/'август'/'сентябрь')
+        // and 28-column PAD template Excel
+        const isHrMasterFormat = header.some(
+          (h) => h.toLowerCase() === 'табельный номер' || h.toLowerCase() === 'серия бланка'
+        );
+
+        const idxSicil = findCol(
+          ['Табельный номер', 'Sicil', 'Sicil No', 'Табельный', 'Код', 'Code'],
+          isHrMasterFormat ? 1 : 0
+        );
+        const idxCode = findCol(
+          ['Код', 'Code', 'Табельный номер', 'Sicil', 'Sicil No'],
+          idxSicil
+        );
         const idxLastName = findCol(['Фамилия', 'Soyadı (Kiril)', 'Soyadı'], 2);
         const idxFirstName = findCol(['Имя', 'Adı (Kiril)', 'Adı'], 3);
         const idxMiddleName = findCol(['Отчество', 'Baba Adı (Kiril)', 'Baba Adı'], 4);
@@ -1554,33 +1873,92 @@ export default function GosuslugiVksView() {
         const idxGender = findCol(['Пол', 'Cinsiyet'], 6);
         const idxCitizenship = findCol(['ТекущееГражданство', 'Гражданство', 'Uyruk'], 7);
         const idxPlaceOfBirth = findCol(['МестоРождения', 'Место рождения', 'Doğum Yeri'], 8);
-        const idxPassSeries = findCol(['СерияПаспорта', 'Pasaport Seri No'], 9);
-        const idxPassNumber = findCol(['НомерПаспорта', 'Pasaport No'], 10);
-        const idxPassIssueDate = findCol(['ДатаВыдачи', 'Pasaport Düzenleme Tarihi'], 11);
-        const idxPassIssuedBy = findCol(['ПаспортКемВыдан', 'Pasaportu Veren Makam (Kiril)'], 12);
-        const idxInn = findCol(['ИНН', 'INN No', 'INN'], 13);
-        const idxRnrSeries = findCol(['Серия', 'Çalışma Kart Seri No'], 14);
-        const idxRnrNumber = findCol(['Номер', 'Çalışma Kart No'], 15);
-        const idxRnrIssueDate = findCol(['ДатаВыдачиВКС', 'Çalışma Kart Alış Tarihi'], 16);
-        const idxBlank1 = findCol(['СерийныйНомер1', 'Patent Form Seri No'], 17);
-        const idxBlank2 = findCol(['СерийныйНомер2', 'Patent Form No'], 18);
-        const idxContractDate = findCol(['ДатаЗаключения', 'ДатаПриема', 'İş Sözleşmesi İmza Tarihi'], 19);
-        const idxContractStart = findCol(['ДатаНачалаДействия', 'İş Sözleşmesi Giriş Tarihi'], 20);
-        const idxContractEnd = findCol(
-          ['ДатаОканчанияДействия', 'ДатаОкончанияДействия', 'Çalışma Kart Bitiş Tarihi'],
-          21
+
+        // In 34-col HR Master Excel, 'Серия' and 'Номер' appear twice: first for Passport (cols 11-12), second for RNR (cols 18-19)
+        const idxPassSeries = findCol(
+          ['СерияПаспорта', 'Pasaport Seri No', 'Серия'],
+          isHrMasterFormat ? 11 : 9
         );
-        const idxPeriodStart = findCol(['НачалоПериода'], 22);
-        const idxPeriodEnd = findCol(['КонецПериода'], 23);
-        const idxMonth1 = findCol(['1-месяц', '1 месяц', 'Месяц 1', '1. Ay', 'Month1'], -1);
-        const idxMonth2 = findCol(['2-месяц', '2 месяц', 'Месяц 2', '2. Ay', 'Month2'], -1);
-        const idxMonth3 = findCol(['3-месяц', '3 месяц', 'Месяц 3', '3. Ay', 'Month3'], -1);
+        const idxPassNumber = findCol(
+          ['НомерПаспорта', 'Pasaport No', 'Номер'],
+          isHrMasterFormat ? 12 : 10
+        );
+        const idxPassIssueDate = findCol(
+          ['ДатаВыдачи', 'Pasaport Düzenleme Tarihi'],
+          isHrMasterFormat ? 13 : 11
+        );
+        const idxPassIssuedBy = findCol(
+          ['ПаспортКемВыдан', 'КемВыдан', 'Pasaportu Veren Makam (Kiril)'],
+          isHrMasterFormat ? 14 : 12
+        );
+        const idxInn = findCol(['ИНН', 'INN No', 'INN'], isHrMasterFormat ? 16 : 13);
+
+        const rnrSearchStart = Math.max(idxPassNumber + 1, 13);
+        const idxRnrSeries = isHrMasterFormat
+          ? findCol(['Серия', 'Çalışma Kart Seri No'], 18, rnrSearchStart)
+          : findCol(['Серия', 'Çalışma Kart Seri No'], 14);
+        const idxRnrNumber = isHrMasterFormat
+          ? findCol(['Номер', 'Çalışma Kart No'], 19, rnrSearchStart)
+          : findCol(['Номер', 'Çalışma Kart No'], 15);
+        const idxRnrIssueDate = findCol(
+          ['ДатаВыдачиВКС', 'Çalışma Kart Alış Tarihi'],
+          isHrMasterFormat ? 20 : 16
+        );
+        const idxBlank1 = findCol(
+          ['СерийныйНомер1', 'Серия бланка', 'Patent Form Seri No'],
+          isHrMasterFormat ? 21 : 17
+        );
+        const idxBlank2 = findCol(
+          ['СерийныйНомер2', 'Номер бланка', 'Patent Form No'],
+          isHrMasterFormat ? 22 : 18
+        );
+        const idxContractDate = findCol(
+          ['ДатаЗаключения', 'ДатаПриема', 'İş Sözleşmesi İmza Tarihi'],
+          isHrMasterFormat ? 23 : 19
+        );
+        const idxContractStart = findCol(
+          ['ДатаНачалаДействия', 'ДатаНачала действия', 'İş Sözleşmesi Giriş Tarihi'],
+          isHrMasterFormat ? 24 : 20
+        );
+        const idxContractEnd = findCol(
+          [
+            'ДатаОканчанияДействия',
+            'ДатаОканчания действия',
+            'ДатаОкончанияДействия',
+            'ДатаОкончания действия',
+            'Çalışma Kart Bitiş Tarihi',
+          ],
+          isHrMasterFormat ? 25 : 21
+        );
+        const idxPeriodStart = findCol(['НачалоПериода'], isHrMasterFormat ? 26 : 22);
+        const idxPeriodEnd = findCol(['КонецПериода'], isHrMasterFormat ? 27 : 23);
+        const idxMonth1 = findCol(
+          ['1-месяц', '1 месяц', 'Месяц 1', '1. Ay', 'Month1', 'Июль'],
+          -1
+        );
+        const idxMonth2 = findCol(
+          ['2-месяц', '2 месяц', 'Месяц 2', '2. Ay', 'Month2', 'август'],
+          -1
+        );
+        const idxMonth3 = findCol(
+          ['3-месяц', '3 месяц', 'Месяц 3', '3. Ay', 'Month3', 'сентябрь'],
+          -1
+        );
         const idxExitDate = findCol(['ДатаУвольнения', 'Resmi Çıkış Tarihi', 'Çıkış Tarihi'], -1);
         const hasMonthlyCols = idxMonth1 !== -1 || idxMonth2 !== -1 || idxMonth3 !== -1;
-        const idxSalary = findCol(['РазмерВыплаты', 'Resmi Maaş', 'Сумма', 'Toplam'], hasMonthlyCols ? 27 : 24);
-        const idxPosition = findCol(['Должность', 'Resmi Görevi', 'Görevi'], hasMonthlyCols ? 28 : 25);
-        const idxWorkAddr = findCol(['АдресРаботы'], hasMonthlyCols ? 29 : 26);
-        const idxPostal = findCol(['Индекс'], hasMonthlyCols ? 30 : 27);
+        const idxSalary = findCol(
+          ['РазмерВыплаты', 'Resmi Maaş', 'Сумма', 'Toplam'],
+          isHrMasterFormat ? 31 : hasMonthlyCols ? 27 : 24
+        );
+        const idxPosition = findCol(
+          ['Должность', 'Resmi Görevi', 'Görevi'],
+          isHrMasterFormat ? 32 : hasMonthlyCols ? 28 : 25
+        );
+        const idxWorkAddr = findCol(
+          ['АдресРаботы', 'Фактический адрес работы иностранца'],
+          isHrMasterFormat ? 33 : hasMonthlyCols ? 29 : 26
+        );
+        const idxPostal = findCol(['Индекс'], isHrMasterFormat ? -1 : hasMonthlyCols ? 30 : 27);
 
         const getVal = (r: any[], colIdx: number) => {
           if (colIdx < 0 || colIdx >= r.length) return '';
@@ -1588,16 +1966,20 @@ export default function GosuslugiVksView() {
           return v !== undefined && v !== null ? String(v).trim() : '';
         };
 
+        // Always fetch latest savedSubmissions from central server BEFORE mapping Excel rows
+        // so previously sent ('Отправлено') and errored ('Ошибка') statuses are 100% preserved!
+        const freshSubs = await refreshSavedSubmissionsFromDb();
+
         const rawMapped: GosuslugiVksWorkerRecord[] = [];
         rows.forEach((r, idx) => {
           if (!r || r.length === 0) return;
           const lName = getVal(r, idxLastName);
           const fName = getVal(r, idxFirstName);
-          const sicilCell = getVal(r, idxSicil);
+          const sicilCell = getVal(r, idxSicil).replace(/\.0$/, '');
           if (!lName && !fName && !sicilCell) return;
 
           const sicilVal = sicilCell || String(idx + 1);
-          const codeVal = getVal(r, idxCode) || sicilVal;
+          const codeVal = getVal(r, idxCode).replace(/\.0$/, '') || sicilVal;
           const citVal = getVal(r, idxCitizenship) || 'Турция';
 
           const rowPeriodStart = formatDateRu(r[idxPeriodStart]) || periodStart;
@@ -1631,7 +2013,20 @@ export default function GosuslugiVksView() {
           const computedSum = sumMonthlySalaries(m1, m2, m3);
           const finalTotal = computedSum || rawTotalCell;
 
-          const mappedCit = CITIZENSHIP_MAP_RU[citVal.toUpperCase()] || sanitizeCyrillicGosuslugiText(citVal, 'Турция', false);
+          const mappedCit =
+            CITIZENSHIP_MAP_RU[citVal.toUpperCase()] ||
+            sanitizeCyrillicGosuslugiText(citVal, 'Турция', false);
+
+          const rawAddr = getVal(r, idxWorkAddr) || workAddress;
+          const addrMatch = rawAddr.match(/\b(\d{6})\b/);
+          const rowPostal =
+            getVal(r, idxPostal) || (addrMatch ? addrMatch[1] : '') || postalCode;
+
+          // Normalize Latin B -> Cyrillic В in blank series
+          const rawBlank1 = getVal(r, idxBlank1)
+            .toUpperCase()
+            .replace(/B/g, 'В')
+            .replace(/A/g, 'А');
 
           rawMapped.push({
             id: `excel-vks-${idx}`,
@@ -1641,23 +2036,36 @@ export default function GosuslugiVksView() {
             code: codeVal,
             lastName: sanitizeCyrillicGosuslugiText(lName, 'Нет', false),
             firstName: sanitizeCyrillicGosuslugiText(fName, '', false),
-            middleName: sanitizeCyrillicGosuslugiText(getVal(r, idxMiddleName) || 'НЕТ', 'НЕТ', false),
+            middleName: sanitizeCyrillicGosuslugiText(
+              getVal(r, idxMiddleName) || 'НЕТ',
+              'НЕТ',
+              false
+            ),
             birthDate: formatDateRu(r[idxBirthDate]),
             gender: getVal(r, idxGender) || 'Мужской',
             citizenship: mappedCit,
-            placeOfBirth: sanitizeCyrillicGosuslugiText(getVal(r, idxPlaceOfBirth) || mappedCit, mappedCit, true),
-            passportSeries: getVal(r, idxPassSeries),
-            passportNumber: getVal(r, idxPassNumber),
+            placeOfBirth: sanitizeCyrillicGosuslugiText(
+              getVal(r, idxPlaceOfBirth) || mappedCit,
+              mappedCit,
+              true
+            ),
+            passportSeries: getVal(r, idxPassSeries).replace(/\.0$/, ''),
+            passportNumber: getVal(r, idxPassNumber).replace(/\.0$/, ''),
             passportIssueDate: formatDateRu(r[idxPassIssueDate]),
-            passportIssuedBy: sanitizeCyrillicGosuslugiText(getVal(r, idxPassIssuedBy), 'МВД', true),
-            inn: getVal(r, idxInn),
-            rnrSeries: getVal(r, idxRnrSeries),
-            rnrNumber: getVal(r, idxRnrNumber),
+            passportIssuedBy: sanitizeCyrillicGosuslugiText(
+              getVal(r, idxPassIssuedBy),
+              'МВД',
+              true
+            ),
+            inn: getVal(r, idxInn).replace(/\.0$/, ''),
+            rnrSeries: getVal(r, idxRnrSeries).replace(/\.0$/, ''),
+            rnrNumber: getVal(r, idxRnrNumber).replace(/\.0$/, ''),
             rnrIssueDate: formatDateRu(r[idxRnrIssueDate]),
-            blankSeries: getVal(r, idxBlank1),
-            blankNumber: getVal(r, idxBlank2),
+            blankSeries: rawBlank1,
+            blankNumber: getVal(r, idxBlank2).replace(/\.0$/, ''),
             contractDate: formatDateRu(r[idxContractDate]),
-            contractStartDate: formatDateRu(r[idxContractStart]) || formatDateRu(r[idxContractDate]),
+            contractStartDate:
+              formatDateRu(r[idxContractStart]) || formatDateRu(r[idxContractDate]),
             contractEndDate: formatDateRu(r[idxContractEnd]),
             periodStart: rowPeriodStart,
             periodEnd: rowPeriodEnd,
@@ -1667,28 +2075,49 @@ export default function GosuslugiVksView() {
             month3Salary: m3,
             salaryAmount: finalTotal,
             position: getVal(r, idxPosition) || 'СПЕЦИАЛИСТ',
-            workAddress: getVal(r, idxWorkAddr) || workAddress,
-            postalCode: getVal(r, idxPostal) || postalCode,
+            workAddress: rawAddr,
+            postalCode: rowPostal,
           });
         });
 
-        const { processed, validCnt, invalidCnt } = applyInitialValidationSelection(rawMapped);
+        const { processed, validCnt, invalidCnt } = applyInitialValidationSelection(
+          rawMapped,
+          freshSubs
+        );
         setWorkers(processed);
         setQueueFilter('all');
+
+        // Merge uploaded Excel records into central master list in the background (preserving statuses & clearing 'Ошибка' for updated rows)
+        const payloadForMaster = buildPayloadRecords(processed);
+        fetch('/api/gosuslugi/master-list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            records: payloadForMaster,
+            mode: 'merge',
+            clearErrorsForUpdated: true,
+            sourceTag: `excel_${file.name}`,
+          }),
+        })
+          .then(() => refreshMasterListSummary())
+          .catch(() => {});
+
+        const alreadySentCnt = processed.filter((w) => isWorkerAlreadySentToGosuslugi(w)).length;
+        const readyUnsentCnt = processed.filter((w) => w.selected).length;
 
         if (invalidCnt > 0) {
           showNotice(
             'info',
             lang === 'ru'
-              ? `Импортировано ${processed.length} строк из Excel: ${validCnt} готовы, ${invalidCnt} содержат ошибки/пропуски и не будут отправлены до исправления.`
-              : `Excel'den ${processed.length} satır yüklendi: ${validCnt} satır işleme hazır, ${invalidCnt} satırda eksik/hatalı tarih veya veri var (düzeltilene kadar işleme alınmaz).`
+              ? `Импортировано ${processed.length} строк из Excel (${sheetName}): уже отправлено — ${alreadySentCnt}, готовы к отправке — ${readyUnsentCnt}, пропуски/ошибки — ${invalidCnt}. Синхронизировано с сервером!`
+              : `Excel'den (${sheetName}) ${processed.length} satır yüklendi: ${alreadySentCnt} satır zaten gönderilmiş (korundu), ${readyUnsentCnt} satır gönderime hazır, ${invalidCnt} satırda eksik veri var. Merkezi sunucuyla senkronize edildi!`
           );
         } else {
           showNotice(
             'success',
             lang === 'ru'
-              ? `Импортировано ${processed.length} записей ВКС из Excel (${sheetName}) — все данные корректны!`
-              : `Excel (${sheetName}) dosyasından ${processed.length} VKS kaydı başarıyla yüklendi — tüm veriler geçerli!`
+              ? `Импортировано ${processed.length} ВКС из Excel (${sheetName}): уже отправлено — ${alreadySentCnt}, готовы к отправке — ${readyUnsentCnt}!`
+              : `Excel (${sheetName}) dosyasından ${processed.length} VKS yüklendi: ${alreadySentCnt} gönderilmiş statüsü korundu, ${readyUnsentCnt} satır gönderime hazır!`
           );
         }
       } catch {
@@ -2203,12 +2632,14 @@ export default function GosuslugiVksView() {
     workers.filter((w) => w.status === 'success').length || bridgeStatus.success;
   const errorCount = workers.filter((w) => w.status === 'error').length || bridgeStatus.errors;
 
-  // Filtered rows by tab ('all' | 'ready' | 'invalid' | 'sent') + search query
+  // Filtered rows by tab ('all' | 'ready' | 'invalid' | 'sent' | 'error') + search query
   const filteredWorkers = workers.filter((w) => {
     const isRowValid = validationMap[w.id]?.isValid ?? true;
-    if (queueFilter === 'ready' && !isRowValid) return false;
+    const isSentRow = w.status === 'success' || isWorkerAlreadySentToGosuslugi(w);
+    if (queueFilter === 'ready' && (!isRowValid || isSentRow)) return false;
     if (queueFilter === 'invalid' && isRowValid) return false;
-    if (queueFilter === 'sent' && w.status !== 'success') return false;
+    if (queueFilter === 'sent' && !isSentRow) return false;
+    if (queueFilter === 'error' && w.status !== 'error') return false;
 
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -2911,6 +3342,168 @@ export default function GosuslugiVksView() {
         </div>
       )}
 
+      {/* CENTRAL BACKEND MASTER LIST & 4-COMPUTER QUEUE PARTITIONING PANEL */}
+      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-[#111F38] to-slate-900 text-white border border-teal-500/30 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-extrabold">
+              <Database className="w-3.5 h-3.5" />
+              {lang === 'ru'
+                ? `Единый серверный список ВКС (${masterSummary?.totalMaster || 3088} чел.)`
+                : `Merkezi Sunucu VKS Kuyruğu (${masterSummary?.totalMaster || 3088} Kayıt)`}
+            </span>
+            <span className="text-[11px] text-slate-300">
+              {lang === 'ru'
+                ? 'Без дубликатов • Сохранение статусов • Распределение на 4 компьютера (4 аккаунта Госуслуг)'
+                : 'Mükerrer Gönderim Korumalı • Statüler Kaybolmaz • 4 Bilgisayar / 4 Gosuslugi Hesabı Yönetimi'}
+            </span>
+          </div>
+
+          {/* Partitioning & Error Retry Controls */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => handleSplit4Computers('tail_transfer', 600)}
+              disabled={isSplittingMaster}
+              className="h-7 px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              title="1. ve 2. bilgisayarların listelerinin sonundan 600'er kişiyi 3. ve 4. bilgisayarlara aktarır"
+            >
+              <Zap className="w-3 h-3 text-amber-300" />
+              <span>
+                {lang === 'ru'
+                  ? 'Передать по 600 с конца -> ПК 3 и ПК 4'
+                  : "Sondan 600'er Kaydı -> PC 3 & PC 4'e Aktar"}
+              </span>
+            </button>
+            <button
+              onClick={() => handleSplit4Computers('tail_transfer', 500)}
+              disabled={isSplittingMaster}
+              className="h-7 px-2.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 text-teal-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              title="1. ve 2. bilgisayarların listelerinin sonundan 500'er kişiyi 3. ve 4. bilgisayarlara aktarır"
+            >
+              <Zap className="w-3 h-3 text-teal-300" />
+              <span>
+                {lang === 'ru'
+                  ? 'Передать по 500 с конца -> ПК 3 и ПК 4'
+                  : "Sondan 500'er Kaydı -> PC 3 & PC 4'e Aktar"}
+              </span>
+            </button>
+            <button
+              onClick={() => handleSplit4Computers('equal_4', 600)}
+              disabled={isSplittingMaster}
+              className="h-7 px-2.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              title="Kalan gönderilmemiş tüm başvuruları 4 bilgisayara eşit böler"
+            >
+              <Users className="w-3 h-3 text-indigo-300" />
+              <span>{lang === 'ru' ? 'Поровну на 4 ПК' : 'Kalanları 4 PC Eşit Böl'}</span>
+            </button>
+            <button
+              onClick={() =>
+                handleRetryErrors(activeComputerFilter === 'all' ? 'all' : 'computer')
+              }
+              disabled={isRetryingErrors}
+              className="h-7 px-2.5 rounded-lg bg-rose-500/25 hover:bg-rose-500/35 border border-rose-400/50 text-rose-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              title="Hata (Ошибка) veren kayıtların hata statüsünü sıfırlayıp tekrar gönderim kuyruğuna alır"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRetryingErrors ? 'animate-spin' : ''}`} />
+              <span>
+                {lang === 'ru'
+                  ? 'Сбросить ошибки (Повторить)'
+                  : '🔄 Hatalıları (Ошибка) Tekrar Sıraya Al'}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* 5 Computer Queue Buttons (All + PC 1, PC 2, PC 3, PC 4) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <button
+            onClick={() => handleLoadFromMasterList('all', 'all')}
+            disabled={isLoadingMaster}
+            className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+              activeComputerFilter === 'all' && workers.length > 0
+                ? 'bg-emerald-600/25 border-emerald-400 ring-1 ring-emerald-400/50'
+                : 'bg-white/5 hover:bg-white/10 border-white/10'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-xs font-extrabold text-white">
+                {lang === 'ru' ? '🌐 Весь список (1–3088)' : '🌐 Tüm Liste (1–3088)'}
+              </span>
+              {isLoadingMaster && activeComputerFilter === 'all' && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+              )}
+            </div>
+            <div className="text-[10.5px] text-slate-300 mt-1 flex items-center justify-between font-mono">
+              <span>Top: {masterSummary?.totalMaster || 3088}</span>
+              <span className="text-emerald-300 font-bold">
+                ✓{' '}
+                {masterSummary
+                  ? Object.values(masterSummary.computers).reduce((a, b) => a + b.sent, 0)
+                  : '—'}
+              </span>
+              <span className="text-amber-300">
+                ⏳{' '}
+                {masterSummary
+                  ? Object.values(masterSummary.computers).reduce((a, b) => a + b.pending, 0)
+                  : '—'}
+              </span>
+              <span className="text-rose-300">
+                ⚠{' '}
+                {masterSummary
+                  ? Object.values(masterSummary.computers).reduce((a, b) => a + b.error, 0)
+                  : '—'}
+              </span>
+            </div>
+          </button>
+
+          {([1, 2, 3, 4] as const).map((pcNum) => {
+            const pcStat = masterSummary?.computers?.[pcNum];
+            const pcStr = String(pcNum) as '1' | '2' | '3' | '4';
+            const isSelectedPc = activeComputerFilter === pcStr && workers.length > 0;
+            const rangeText =
+              pcStat && pcStat.minRow > 0 ? `${pcStat.minRow}–${pcStat.maxRow}` : '—';
+            return (
+              <div
+                key={pcNum}
+                className={`p-2.5 rounded-xl border transition flex flex-col justify-between ${
+                  isSelectedPc
+                    ? 'bg-teal-600/25 border-teal-400 ring-1 ring-teal-400/50'
+                    : 'bg-white/5 hover:bg-white/10 border-white/10'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <button
+                    onClick={() => handleLoadFromMasterList(pcStr, 'all')}
+                    disabled={isLoadingMaster}
+                    className="text-xs font-extrabold text-white hover:text-teal-300 cursor-pointer text-left flex-1 truncate"
+                  >
+                    💻 Bilgisayar {pcNum}{' '}
+                    <span className="text-[10px] font-mono text-slate-300">({rangeText})</span>
+                  </button>
+                  {pcStat && pcStat.error > 0 && (
+                    <button
+                      onClick={() => handleLoadFromMasterList(pcStr, 'error')}
+                      className="px-1.5 py-0.5 rounded bg-rose-500/30 hover:bg-rose-500/50 border border-rose-400/40 text-rose-200 text-[9.5px] font-bold cursor-pointer"
+                      title={`Bilgisayar ${pcNum} üzerindeki ${pcStat.error} hatalı kaydı göster`}
+                    >
+                      ⚠ {pcStat.error} Hata
+                    </button>
+                  )}
+                </div>
+                <div
+                  onClick={() => handleLoadFromMasterList(pcStr, 'all')}
+                  className="text-[10.5px] text-slate-300 mt-1 flex items-center justify-between font-mono cursor-pointer"
+                >
+                  <span>Top: {pcStat?.total ?? '—'}</span>
+                  <span className="text-emerald-300 font-bold">✓ {pcStat?.sent ?? 0}</span>
+                  <span className="text-amber-300 font-bold">⏳ {pcStat?.pending ?? 0}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 5 KPI SUMMARY CARDS (Including Ready vs Blocked/Invalid Data Stats) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Card 1: Total Loaded */}
@@ -3133,7 +3726,7 @@ export default function GosuslugiVksView() {
 
           {/* Filter Tabs */}
           {workers.length > 0 && (
-            <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-[11px] font-bold gap-1">
+            <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-[11px] font-bold gap-1">
               <button
                 onClick={() => setQueueFilter('all')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition ${
@@ -3154,7 +3747,39 @@ export default function GosuslugiVksView() {
               >
                 <CheckCircle2 className="w-3 h-3" />
                 <span>
-                  {lang === 'ru' ? `Готовы (${validCount})` : `İşleme Hazır (${validCount})`}
+                  {lang === 'ru'
+                    ? `Ожидают (${selectedValidCount})`
+                    : `Gönderime Hazır (${selectedValidCount})`}
+                </span>
+              </button>
+              <button
+                onClick={() => setQueueFilter('sent')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
+                  queueFilter === 'sent'
+                    ? 'bg-teal-600 text-white shadow-2xs'
+                    : 'text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40'
+                }`}
+              >
+                <ShieldCheck className="w-3 h-3" />
+                <span>
+                  {lang === 'ru' ? `Отправлено (${completedCount})` : `Gönderilen (${completedCount})`}
+                </span>
+              </button>
+              <button
+                onClick={() => setQueueFilter('error')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
+                  queueFilter === 'error'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : errorCount > 0
+                    ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <AlertCircle className="w-3 h-3" />
+                <span>
+                  {lang === 'ru'
+                    ? `Ошибки ГУ (${errorCount})`
+                    : `Gosuslugi Hatası (${errorCount})`}
                 </span>
               </button>
               <button
@@ -3170,8 +3795,8 @@ export default function GosuslugiVksView() {
                 <AlertTriangle className="w-3 h-3" />
                 <span>
                   {lang === 'ru'
-                    ? `С ошибками / Пропуск (${invalidCount})`
-                    : `Eksik / Hatalı (${invalidCount})`}
+                    ? `Пропуск данных (${invalidCount})`
+                    : `Eksik Veri (${invalidCount})`}
                 </span>
               </button>
             </div>
@@ -4169,11 +4794,24 @@ export default function GosuslugiVksView() {
                         )}
                       </td>
 
-                      {/* Row Actions: Edit or Send Single Row */}
+                      {/* Row Actions: Edit, Reset Error, or Send Single Row */}
                       <td className="p-3 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
                           <button
-                            onClick={() => setEditingRowId(isEditing ? null : w.id)}
+                            onClick={() => {
+                              if (isEditing) {
+                                setEditingRowId(null);
+                                saveWorkerRowToMasterList(w);
+                                showNotice(
+                                  'success',
+                                  lang === 'ru'
+                                    ? `Изменения сотрудника ${w.sicil} сохранены в центральный список на сервере!`
+                                    : `${w.sicil} personelinin düzeltilen verileri merkezi sunucu listesine kaydedildi!`
+                                );
+                              } else {
+                                setEditingRowId(w.id);
+                              }
+                            }}
                             className={`p-1.5 rounded-lg border cursor-pointer transition ${
                               isEditing
                                 ? 'border-emerald-500 bg-emerald-600 text-white'
@@ -4184,8 +4822,8 @@ export default function GosuslugiVksView() {
                             title={
                               isEditing
                                 ? lang === 'ru'
-                                  ? 'Готово (сохранить строку)'
-                                  : 'Düzenlemeyi Tamamla'
+                                  ? 'Готово (сохранить строку на сервере и сбросить ошибку)'
+                                  : 'Düzenlemeyi Tamamla & Merkezi Sunucuya Kaydet'
                                 : lang === 'ru'
                                 ? 'Редактировать поля строки'
                                 : 'Satırdaki Hataları Düzenle'
@@ -4197,6 +4835,21 @@ export default function GosuslugiVksView() {
                               <Edit3 className="w-3.5 h-3.5" />
                             )}
                           </button>
+                          {w.status === 'error' && (
+                            <button
+                              onClick={() => handleRetryErrors('selected', w)}
+                              disabled={isRetryingErrors}
+                              className="px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-sans font-bold text-[10px] inline-flex items-center gap-1 cursor-pointer transition"
+                              title={
+                                lang === 'ru'
+                                  ? 'Сбросить статус Ошибка и вернуть в очередь'
+                                  : 'Hata (Ошибка) statüsünü sıfırla ve tekrar sıraya al'
+                              }
+                            >
+                              <RefreshCw className="w-2.5 h-2.5" />
+                              <span>{lang === 'ru' ? 'Сброс' : 'Sıraya Al'}</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => handleStartRobot(1, w)}
                             disabled={isRunning || !isRowValid}

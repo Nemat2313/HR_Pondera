@@ -1329,6 +1329,51 @@ class GosuslugiVksBot:
                 return
             self.page.wait_for_timeout(500)
 
+    def check_if_worker_already_sent_centrally(self, row: Dict[str, Any], code: str, full_name: str) -> bool:
+        """
+        Checks https://hr.pondera.network/api/gosuslugi/submissions?sicil=<code> before starting a worker.
+        If another computer (or an earlier batch) already sent this worker's VKS notification,
+        immediately skips the worker to prevent duplicate MVD notifications across the 4 computers.
+        """
+        clean_sicil = str(row.get("Sicil") or code or "").strip()
+        if not clean_sicil:
+            return False
+        import urllib.request
+        import urllib.parse
+        import ssl
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        url = f"https://hr.pondera.network/api/gosuslugi/submissions?type=vks_salary&sicil={urllib.parse.quote(clean_sicil)}"
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=2.5, context=ctx) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    rows = data.get("data") or []
+                    for s in rows:
+                        app_no = str(s.get("application_no") or "").strip()
+                        st = str(s.get("gosuslugi_status") or "").strip()
+                        st_low = st.lower()
+                        if st_low.startswith("ошибк"):
+                            continue
+                        if app_no or any(
+                            k in st_low
+                            for k in ("отправлен", "зарегистрирован", "оказан", "исполнен", "принят", "промежуточн", "pdf не скачан")
+                        ):
+                            logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
+                            logger.info(
+                                f"SKIP_ALREADY_SENT: Сотрудник {full_name} (Код: {clean_sicil}) уже отправлен в Госуслуги "
+                                f"(№ {app_no or '—'}, статус: {st}) — автоматический пропуск (защита от дубликатов между 4 ПК)!"
+                            )
+                            logger.info(f"APPLICATION_REGISTERED: {json.dumps(s, ensure_ascii=False)}")
+                            logger.info(f"SUCCESS: Notification submitted for {full_name}!")
+                            return True
+        except Exception:
+            pass
+        return False
+
     def fill_vks_notification(self, row: Dict[str, Any]) -> bool:
         """
         Executes the complete Gosuslugi VKS Salary Notification flow for a single employee (1 attempt only).
@@ -1343,6 +1388,10 @@ class GosuslugiVksBot:
         middle_name = str(row.get("Отчество", "")).strip()
         code = str(row.get("Код", row.get("Sicil", ""))).strip()
         full_name = f"{last_name} {first_name} {middle_name}".strip()
+
+        # Multi-computer de-duplication guard: check central server before filling the form
+        if self.check_if_worker_already_sent_centrally(row, code, full_name):
+            return True
 
         try:
             return self._execute_vks_notification_attempt(
