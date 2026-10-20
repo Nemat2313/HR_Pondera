@@ -4445,9 +4445,11 @@ def main():
             if time.time() - last_json_status_sync_ts >= 1800:
                 last_json_status_sync_ts = time.time()
                 try:
-                    from gosuslugi_status_checker import run_fast_json_status_sync_on_page
+                    import importlib
+                    import gosuslugi_status_checker
+                    importlib.reload(gosuslugi_status_checker)
                     logger.info(">>> 30-Minute Interval Reached (Current Zayavka Completed): Running fast JSON status check (1200 orders, no PDF download)... <<<")
-                    run_fast_json_status_sync_on_page(bot.page, max_pages=60)
+                    gosuslugi_status_checker.run_fast_json_status_sync_on_page(bot.page, max_pages=60)
                 except Exception as sync_err:
                     logger.debug(f"30-min fast JSON status sync note: {sync_err}")
 

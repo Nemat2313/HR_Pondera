@@ -239,11 +239,13 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
                             const items = Array.isArray(data.items) ? data.items : [];
                             if (items.length === 0) break;
                             collected.push(...items);
-                            if (!data.hasMore) break;
+                            if (data.hasMore === false) break;
                             const lastItem = items[items.length - 1];
-                            lastId = String(lastItem.id || "");
-                            lastDate = String(lastItem.date || "");
-                            if (!lastId || !lastDate) break;
+                            const nextId = String(lastItem.id || "");
+                            const nextDate = String(lastItem.date || "");
+                            if (!nextId || !nextDate || nextId === lastId) break;
+                            lastId = nextId;
+                            lastDate = nextDate;
                         }
                         if (collected.length > 0) return collected;
                     } catch (e) {}
