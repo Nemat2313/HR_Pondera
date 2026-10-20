@@ -136,6 +136,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const computerFilter = searchParams.get('computer') || 'all';
     const statusFilter = searchParams.get('status') || 'all';
+    const summaryOnly = searchParams.get('summaryOnly') === '1';
 
     const db = getDb();
     ensureTables(db);
@@ -193,13 +194,6 @@ export async function GET(request: Request) {
     const enrichedList: any[] = [];
 
     for (const m of masterRows) {
-      let parsed: Record<string, any> = {};
-      try {
-        parsed = JSON.parse(m.worker_json);
-      } catch {
-        continue;
-      }
-
       const comp = [1, 2, 3, 4].includes(Number(m.assigned_computer))
         ? Number(m.assigned_computer)
         : 1;
@@ -229,12 +223,20 @@ export async function GET(request: Request) {
         compStat.pending++;
       }
 
+      if (summaryOnly) continue;
       if (computerFilter !== 'all' && String(comp) !== String(computerFilter)) {
         continue;
       }
       if (statusFilter === 'sent' && !sent) continue;
       if (statusFilter === 'error' && !errored) continue;
       if (statusFilter === 'pending' && (sent || errored)) continue;
+
+      let parsed: Record<string, any> = {};
+      try {
+        parsed = JSON.parse(m.worker_json);
+      } catch {
+        continue;
+      }
 
       enrichedList.push({
         ...parsed,
@@ -257,39 +259,6 @@ export async function GET(request: Request) {
         pdf_filename: sub?.pdf_filename || '',
         submittedAt: sub?.submitted_at || '',
         updatedAt: m.updated_at || '',
-        worker: {
-          Sicil: m.sicil_no,
-          Код: parsed.code || m.sicil_no,
-          Фамилия: parsed.lastName || 'Нет',
-          Имя: parsed.firstName || 'Нет',
-          Отчество: parsed.middleName || 'НЕТ',
-          ДатаРождения: parsed.birthDate || '',
-          Пол: parsed.gender || 'Мужской',
-          ТекущееГражданство: parsed.citizenship || 'Турция',
-          МестоРождения: parsed.placeOfBirth || parsed.citizenship || 'Турция',
-          СерияПаспорта: parsed.passportSeries || '',
-          НомерПаспорта: parsed.passportNumber || '',
-          ДатаВыдачи: parsed.passportIssueDate || '',
-          ПаспортКемВыдан: parsed.passportIssuedBy || 'МВД',
-          ИНН: parsed.inn || '',
-          Серия: parsed.rnrSeries || '',
-          Номер: parsed.rnrNumber || '',
-          ДатаВыдачиВКС: parsed.rnrIssueDate || '',
-          СерийныйНомер1: parsed.blankSeries || '',
-          СерийныйНомер2: parsed.blankNumber || '',
-          ДатаЗаключения: parsed.contractDate || '',
-          ДатаНачалаДействия: parsed.contractStartDate || parsed.contractDate || '',
-          ДатаОканчанияДействия: parsed.contractEndDate || '',
-          НачалоПериода: parsed.periodStart || '01.07.2026',
-          КонецПериода: parsed.periodEnd || '30.09.2026',
-          '1-месяц': parsed.month1Salary || '',
-          '2-месяц': parsed.month2Salary || '',
-          '3-месяц': parsed.month3Salary || '',
-          РазмерВыплаты: parsed.salaryAmount || '',
-          Должность: parsed.position || 'СПЕЦИАЛИСТ',
-          АдресРаботы: parsed.workAddress || '',
-          Индекс: parsed.postalCode || '',
-        },
       });
     }
 

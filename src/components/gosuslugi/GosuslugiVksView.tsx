@@ -1003,7 +1003,7 @@ export default function GosuslugiVksView() {
 
   const refreshMasterListSummary = async () => {
     try {
-      const res = await fetch('/api/gosuslugi/master-list?computer=all');
+      const res = await fetch('/api/gosuslugi/master-list?summaryOnly=1');
       if (!res.ok) return;
       const json = await res.json();
       if (json.success && json.computers) {
@@ -1590,18 +1590,23 @@ export default function GosuslugiVksView() {
       }
 
       const rawMapped: GosuslugiVksWorkerRecord[] = json.data.map((item: any, idx: number) => {
-        const wRec = item.worker || {};
-        const sicilVal = String(item.sicil_no || wRec.Sicil || wRec.Код || idx + 1).trim();
-        const rowPStart = formatDateRu(wRec.НачалоПериода) || periodStart;
-        const rowPEnd = formatDateRu(wRec.КонецПериода) || periodEnd;
-        const m1 = formatSalaryWithKopecks(wRec['1-месяц'] || '');
-        const m2 = formatSalaryWithKopecks(wRec['2-месяц'] || '');
-        const m3 = formatSalaryWithKopecks(wRec['3-месяц'] || '');
+        const wRec = item.worker || item || {};
+        const sicilVal = String(
+          item.sicil_no || item.sicil || wRec.Sicil || wRec.Код || idx + 1
+        ).trim();
+        const rowPStart =
+          formatDateRu(item.periodStart || wRec.НачалоПериода) || periodStart;
+        const rowPEnd =
+          formatDateRu(item.periodEnd || wRec.КонецПериода) || periodEnd;
+        const m1 = formatSalaryWithKopecks(item.month1Salary || wRec['1-месяц'] || '');
+        const m2 = formatSalaryWithKopecks(item.month2Salary || wRec['2-месяц'] || '');
+        const m3 = formatSalaryWithKopecks(item.month3Salary || wRec['3-месяц'] || '');
         const totSal =
-          sumMonthlySalaries(m1, m2, m3) || formatSalaryWithKopecks(wRec.РазмерВыплаты || '');
+          sumMonthlySalaries(m1, m2, m3) ||
+          formatSalaryWithKopecks(item.salaryAmount || wRec.РазмерВыплаты || '');
 
         return {
-          id: `master-vks-${item.row_order || idx + 1}-${sicilVal}`,
+          id: `master-vks-${item.row_order || item.rowOrder || idx + 1}-${sicilVal}`,
           selected: true,
           status:
             item.status === 'success'
@@ -1610,40 +1615,43 @@ export default function GosuslugiVksView() {
               ? 'error'
               : 'pending',
           sicil: sicilVal,
-          code: String(wRec.Код || sicilVal).trim(),
-          lastName: String(wRec.Фамилия || 'Нет').trim(),
-          firstName: String(wRec.Имя || '').trim(),
-          middleName: String(wRec.Отчество || 'НЕТ').trim(),
-          birthDate: formatDateRu(wRec.ДатаРождения),
-          gender: String(wRec.Пол || 'Мужской').trim(),
-          citizenship: String(wRec.ТекущееГражданство || 'Турция').trim(),
-          placeOfBirth: String(wRec.МестоРождения || wRec.ТекущееГражданство || 'Турция').trim(),
-          passportSeries: String(wRec.СерияПаспорта || '').trim(),
-          passportNumber: String(wRec.НомерПаспорта || '').trim(),
-          passportIssueDate: formatDateRu(wRec.ДатаВыдачи),
-          passportIssuedBy: String(wRec.ПаспортКемВыдан || 'МВД').trim(),
-          inn: String(wRec.ИНН || '').trim(),
-          rnrSeries: String(wRec.Серия || '').trim(),
-          rnrNumber: String(wRec.Номер || '').trim(),
-          rnrIssueDate: formatDateRu(wRec.ДатаВыдачиВКС),
-          blankSeries: String(wRec.СерийныйНомер1 || '').trim(),
-          blankNumber: String(wRec.СерийныйНомер2 || '').trim(),
-          contractDate: formatDateRu(wRec.ДатаЗаключения),
+          code: String(item.code || wRec.Код || sicilVal).trim(),
+          lastName: String(item.lastName || wRec.Фамилия || 'Нет').trim(),
+          firstName: String(item.firstName || wRec.Имя || '').trim(),
+          middleName: String(item.middleName || wRec.Отчество || 'НЕТ').trim(),
+          birthDate: formatDateRu(item.birthDate || wRec.ДатаРождения),
+          gender: String(item.gender || wRec.Пол || 'Мужской').trim(),
+          citizenship: String(item.citizenship || wRec.ТекущееГражданство || 'Турция').trim(),
+          placeOfBirth: String(
+            item.placeOfBirth || wRec.МестоРождения || item.citizenship || wRec.ТекущееГражданство || 'Турция'
+          ).trim(),
+          passportSeries: String(item.passportSeries || wRec.СерияПаспорта || '').trim(),
+          passportNumber: String(item.passportNumber || wRec.НомерПаспорта || '').trim(),
+          passportIssueDate: formatDateRu(item.passportIssueDate || wRec.ДатаВыдачи),
+          passportIssuedBy: String(item.passportIssuedBy || wRec.ПаспортКемВыдан || 'МВД').trim(),
+          inn: String(item.inn || wRec.ИНН || '').trim(),
+          rnrSeries: String(item.rnrSeries || wRec.Серия || '').trim(),
+          rnrNumber: String(item.rnrNumber || wRec.Номер || '').trim(),
+          rnrIssueDate: formatDateRu(item.rnrIssueDate || wRec.ДатаВыдачиВКС),
+          blankSeries: String(item.blankSeries || wRec.СерийныйНомер1 || '').trim(),
+          blankNumber: String(item.blankNumber || wRec.СерийныйНомер2 || '').trim(),
+          contractDate: formatDateRu(item.contractDate || wRec.ДатаЗаключения),
           contractStartDate:
-            formatDateRu(wRec.ДатаНачалаДействия) || formatDateRu(wRec.ДатаЗаключения),
-          contractEndDate: formatDateRu(wRec.ДатаОканчанияДействия),
+            formatDateRu(item.contractStartDate || wRec.ДатаНачалаДействия) ||
+            formatDateRu(item.contractDate || wRec.ДатаЗаключения),
+          contractEndDate: formatDateRu(item.contractEndDate || wRec.ДатаОканчанияДействия),
           periodStart: rowPStart,
           periodEnd: rowPEnd,
           month1Salary: m1,
           month2Salary: m2,
           month3Salary: m3,
           salaryAmount: totSal,
-          position: String(wRec.Должность || 'СПЕЦИАЛИСТ').trim(),
-          workAddress: String(wRec.АдресРаботы || workAddress).trim(),
-          postalCode: String(wRec.Индекс || postalCode).trim(),
-          applicationNo: item.application_no || undefined,
-          gosuslugiStatus: item.gosuslugi_status || undefined,
-          pdfFilename: item.pdf_filename || undefined,
+          position: String(item.position || wRec.Должность || 'СПЕЦИАЛИСТ').trim(),
+          workAddress: String(item.workAddress || wRec.АдресРаботы || workAddress).trim(),
+          postalCode: String(item.postalCode || wRec.Индекс || postalCode).trim(),
+          applicationNo: item.application_no || item.applicationNo || undefined,
+          gosuslugiStatus: item.gosuslugi_status || item.gosuslugiStatus || undefined,
+          pdfFilename: item.pdf_filename || item.pdfFilename || undefined,
         };
       });
 
