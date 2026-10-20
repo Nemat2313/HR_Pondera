@@ -14,58 +14,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const BUILTIN_DEMO_USERS: Array<User & { pass: string }> = [
-  {
-    id: 1,
-    name: 'Sistem Yöneticisi (Admin)',
-    email: 'admin@pondera.com',
-    pass: 'admin123',
-    role: 'admin',
-    scope_type: 'all',
-    scope_value: 'all',
-    created_at: '2026-10-08 19:00:00',
-  },
-  {
-    id: 2,
-    name: 'Kazan Şantiye Yönetimi',
-    email: 'kazan@pondera.com',
-    pass: 'kazan123',
-    role: 'user',
-    scope_type: 'region',
-    scope_value: 'Kazan',
-    created_at: '2026-10-08 19:00:00',
-  },
-  {
-    id: 3,
-    name: 'Svobodny Şantiye Yönetimi',
-    email: 'svobodny@pondera.com',
-    pass: 'svobodny123',
-    role: 'user',
-    scope_type: 'region',
-    scope_value: 'Svobodny-AGHK',
-    created_at: '2026-10-08 19:00:00',
-  },
-  {
-    id: 4,
-    name: 'Ust Luga Şantiye Yönetimi',
-    email: 'ustluga@pondera.com',
-    pass: 'ustluga123',
-    role: 'user',
-    scope_type: 'region',
-    scope_value: 'Ust Luga',
-    created_at: '2026-10-08 19:00:00',
-  },
-  {
-    id: 5,
-    name: 'DGP-02 Proje Yönetimi',
-    email: 'dgp02@pondera.com',
-    pass: 'dgp123',
-    role: 'user',
-    scope_type: 'project',
-    scope_value: 'TOBOLSK DGP-2 PROJESİ',
-    created_at: '2026-10-08 19:00:00',
-  },
-];
+const BUILTIN_ADMIN_USER: User & { pass: string } = {
+  id: 1,
+  name: 'Sistem Yöneticisi (Admin)',
+  email: 'admin@pondera.com',
+  pass: 'Polo90',
+  role: 'admin',
+  scope_type: 'all',
+  scope_value: 'all',
+  created_at: '2026-10-08 19:00:00',
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -102,12 +60,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      // Fallback for built-in accounts if server DB did not have users table initialized
-      const fallback = BUILTIN_DEMO_USERS.find(
-        (u) => u.email === cleanEmail && u.pass === password
-      );
-      if (fallback) {
-        const { pass: _p, ...userObj } = fallback;
+      const isBuiltinAdmin =
+        (cleanEmail === 'admin' || cleanEmail === 'admin@pondera.com') &&
+        password === BUILTIN_ADMIN_USER.pass;
+      if (isBuiltinAdmin) {
+        const { pass: _p, ...userObj } = BUILTIN_ADMIN_USER;
         setUser(userObj);
         localStorage.setItem('pondera_hr_user', JSON.stringify(userObj));
         return { success: true };
@@ -115,11 +72,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { success: false, message: data.message || 'Giriş başarısız.' };
     } catch {
-      const fallback = BUILTIN_DEMO_USERS.find(
-        (u) => u.email === cleanEmail && u.pass === password
-      );
-      if (fallback) {
-        const { pass: _p, ...userObj } = fallback;
+      const isBuiltinAdmin =
+        (cleanEmail === 'admin' || cleanEmail === 'admin@pondera.com') &&
+        password === BUILTIN_ADMIN_USER.pass;
+      if (isBuiltinAdmin) {
+        const { pass: _p, ...userObj } = BUILTIN_ADMIN_USER;
         setUser(userObj);
         localStorage.setItem('pondera_hr_user', JSON.stringify(userObj));
         return { success: true };

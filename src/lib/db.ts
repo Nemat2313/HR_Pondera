@@ -19,19 +19,26 @@ function ensureUsersTable(db: any) {
       );
     `);
 
-    const countRow = db.prepare('SELECT COUNT(*) as cnt FROM users').get() as any;
-    if (!countRow || Number(countRow.cnt) === 0) {
-      const insert = db.prepare(`
-        INSERT OR IGNORE INTO users (id, name, email, password, role, scope_type, scope_value, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      const now = '2026-10-08 19:00:00';
-      insert.run(1, 'Sistem Yöneticisi (Admin)', 'admin@pondera.com', 'admin123', 'admin', 'all', 'all', now);
-      insert.run(2, 'Kazan Şantiye Yönetimi', 'kazan@pondera.com', 'kazan123', 'user', 'region', 'Kazan', now);
-      insert.run(3, 'Svobodny Şantiye Yönetimi', 'svobodny@pondera.com', 'svobodny123', 'user', 'region', 'Svobodny-AGHK', now);
-      insert.run(4, 'Ust Luga Şantiye Yönetimi', 'ustluga@pondera.com', 'ustluga123', 'user', 'region', 'Ust Luga', now);
-      insert.run(5, 'DGP-02 Proje Yönetimi', 'dgp02@pondera.com', 'dgp123', 'user', 'project', 'TOBOLSK DGP-2 PROJESİ', now);
-    }
+    // Remove legacy demo accounts and ensure the single admin account uses password 'Polo90'
+    db.exec(`
+      DELETE FROM users WHERE email IN (
+        'kazan@pondera.com',
+        'svobodny@pondera.com',
+        'ustluga@pondera.com',
+        'dgp02@pondera.com'
+      );
+    `);
+
+    const upsertAdmin = db.prepare(`
+      INSERT INTO users (id, name, email, password, role, scope_type, scope_value, created_at)
+      VALUES (1, 'Sistem Yöneticisi (Admin)', 'admin@pondera.com', 'Polo90', 'admin', 'all', 'all', '2026-10-08 19:00:00')
+      ON CONFLICT(email) DO UPDATE SET
+        password = CASE WHEN users.password = 'admin123' THEN 'Polo90' ELSE users.password END,
+        role = 'admin',
+        scope_type = 'all',
+        scope_value = 'all'
+    `);
+    upsertAdmin.run();
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS gosuslugi_submissions (

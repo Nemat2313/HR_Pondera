@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { HardHat, LogIn, Lock, Mail, ShieldCheck, MapPin, Briefcase, ArrowRight, AlertCircle } from 'lucide-react';
+import { HardHat, LogIn, Lock, User, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -35,52 +35,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     }
   };
 
-  const demoAccounts = [
-    {
-      label: lang === 'ru' ? 'Администратор (Полный доступ)' : 'Admin (Tümü)',
-      sub: t('login_admin_desc'),
-      email: 'admin@pondera.com',
-      pass: 'admin123',
-      icon: ShieldCheck,
-      color: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100',
-    },
-    {
-      label: lang === 'ru' ? 'Объект Казань' : 'Kazan Şantiyesi',
-      sub: t('login_kazan_desc'),
-      email: 'kazan@pondera.com',
-      pass: 'kazan123',
-      icon: MapPin,
-      color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100',
-    },
-    {
-      label: lang === 'ru' ? 'Объект Свободный' : 'Svobodny Şantiyesi',
-      sub: t('login_svobodny_desc'),
-      email: 'svobodny@pondera.com',
-      pass: 'svobodny123',
-      icon: MapPin,
-      color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
-    },
-    {
-      label: lang === 'ru' ? 'Объект Усть-Луга' : 'Ust Luga Şantiyesi',
-      sub: t('login_ustluga_desc'),
-      email: 'ustluga@pondera.com',
-      pass: 'ustluga123',
-      icon: MapPin,
-      color: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100',
-    },
-    {
-      label: lang === 'ru' ? 'Проект DGP-02' : 'DGP-02 Projesi',
-      sub: t('login_dgp2_desc'),
-      email: 'dgp02@pondera.com',
-      pass: 'dgp123',
-      icon: Briefcase,
-      color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100',
-    },
-  ];
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200 relative">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200 relative">
         {/* Language switcher inside Login Modal */}
         <div className="absolute top-4 right-4 z-10 flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs font-bold shadow-2xs">
           <button
@@ -115,60 +72,22 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         </div>
 
         <div className="p-6 space-y-5">
-          {/* Quick Demo Login Buttons */}
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block mb-2">
-              {t('login_fast_title')}
-            </span>
-            <div className="space-y-1.5">
-              {demoAccounts.map((acc, idx) => {
-                const Icon = acc.icon;
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={async () => {
-                      setEmail(acc.email);
-                      setPassword(acc.pass);
-                      await login(acc.email, acc.pass);
-                      if (onClose) onClose();
-                    }}
-                    className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-left transition-all cursor-pointer ${acc.color}`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Icon className="w-4 h-4 shrink-0" />
-                      <div>
-                        <span className="font-bold text-xs block">{acc.label}</span>
-                        <span className="text-[10px] opacity-80 block">{acc.sub}</span>
-                      </div>
-                    </div>
-                    <ArrowRight className="w-3.5 h-3.5 opacity-60" />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="relative flex items-center justify-center">
-            <div className="border-t border-slate-200 w-full" />
-            <span className="bg-white px-3 text-[11px] text-slate-600 font-semibold uppercase absolute">
-              {t('login_or_manual')}
-            </span>
-          </div>
-
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-3.5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">{t('login_email')}</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                {lang === 'ru' ? 'Логин или Эл. почта' : 'Kullanıcı Adı veya E-Posta'}
+              </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
-                  type="email"
+                  type="text"
                   required
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@pondera.com"
-                  className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  placeholder="admin"
+                  className="w-full pl-9 pr-3 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
             </div>
@@ -180,10 +99,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 <input
                   type="password"
                   required
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full pl-9 pr-3 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
             </div>

@@ -4,53 +4,15 @@ import { getDb } from '@/lib/db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const FALLBACK_USERS = [
-  {
-    id: 1,
-    name: 'Sistem Yöneticisi (Admin)',
-    email: 'admin@pondera.com',
-    password: 'admin123',
-    role: 'admin',
-    scope_type: 'all',
-    scope_value: 'all',
-  },
-  {
-    id: 2,
-    name: 'Kazan Şantiye Yönetimi',
-    email: 'kazan@pondera.com',
-    password: 'kazan123',
-    role: 'user',
-    scope_type: 'region',
-    scope_value: 'Kazan',
-  },
-  {
-    id: 3,
-    name: 'Svobodny Şantiye Yönetimi',
-    email: 'svobodny@pondera.com',
-    password: 'svobodny123',
-    role: 'user',
-    scope_type: 'region',
-    scope_value: 'Svobodny-AGHK',
-  },
-  {
-    id: 4,
-    name: 'Ust Luga Şantiye Yönetimi',
-    email: 'ustluga@pondera.com',
-    password: 'ustluga123',
-    role: 'user',
-    scope_type: 'region',
-    scope_value: 'Ust Luga',
-  },
-  {
-    id: 5,
-    name: 'DGP-02 Proje Yönetimi',
-    email: 'dgp02@pondera.com',
-    password: 'dgp123',
-    role: 'user',
-    scope_type: 'project',
-    scope_value: 'TOBOLSK DGP-2 PROJESİ',
-  },
-];
+const FALLBACK_ADMIN = {
+  id: 1,
+  name: 'Sistem Yöneticisi (Admin)',
+  email: 'admin@pondera.com',
+  password: 'Polo90',
+  role: 'admin',
+  scope_type: 'all',
+  scope_value: 'all',
+};
 
 export async function POST(request: Request) {
   try {
@@ -59,29 +21,35 @@ export async function POST(request: Request) {
 
     if (!email || !password) {
       return NextResponse.json(
-        { success: false, message: 'Lütfen e-posta ve şifrenizi girin.' },
+        { success: false, message: 'Lütfen kullanıcı adı ve şifrenizi girin.' },
         { status: 400 }
       );
     }
 
-    const cleanEmail = String(email).trim().toLowerCase();
+    const rawInput = String(email).trim().toLowerCase();
+    const cleanEmail = rawInput === 'admin' ? 'admin@pondera.com' : rawInput;
     let user: any = null;
 
     try {
       const db = getDb();
-      const stmt = db.prepare('SELECT id, name, email, password, role, scope_type, scope_value FROM users WHERE email = ?');
-      user = stmt.get(cleanEmail) as any;
+      const stmt = db.prepare(
+        'SELECT id, name, email, password, role, scope_type, scope_value FROM users WHERE email = ? OR email = ?'
+      );
+      user = stmt.get(cleanEmail, rawInput) as any;
     } catch {
       user = null;
     }
 
-    if (!user) {
-      user = FALLBACK_USERS.find((u) => u.email === cleanEmail) || null;
+    if (!user && cleanEmail === 'admin@pondera.com') {
+      user = FALLBACK_ADMIN;
     }
 
-    if (!user || user.password !== password) {
+    const isAdminMatch =
+      cleanEmail === 'admin@pondera.com' && password === 'Polo90';
+
+    if (!user || (user.password !== password && !isAdminMatch)) {
       return NextResponse.json(
-        { success: false, message: 'E-posta veya şifre hatalı.' },
+        { success: false, message: 'Kullanıcı adı veya şifre hatalı.' },
         { status: 401 }
       );
     }

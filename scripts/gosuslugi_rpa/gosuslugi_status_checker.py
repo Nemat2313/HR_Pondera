@@ -200,40 +200,57 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict[str, Any]]:
     """
-    Fetches up to `max_pages * 20` (e.g. 300) orders directly from Gosuslugi's internal
+    Fetches up to `max_pages * 20` (e.g. 1,200) orders directly from Gosuslugi's internal
     /api/lk/v1/feeds/ JSON API using the browser's active session cookies — NO manual search typing needed!
     Returns a dict keyed by `application_no` (extId).
     """
+    cur_url = (page.url or "").lower()
+    if "esia.gosuslugi.ru/login" in cur_url or "esia.gosuslugi.ru/idp" in cur_url:
+        logger.warning(
+            "Сессия Госуслуг не активна (открыто окно входа esia.gosuslugi.ru/login). "
+            "Пожалуйста, войдите в аккаунт Госуслуг в Chrome для получения статусов!"
+        )
+        return {}
+
     logger.info(f"Fetching bulk order list from Gosuslugi API (/api/lk/v1/feeds/, up to {max_pages * 20} items)...")
-    base_url = (
-        "https://www.gosuslugi.ru/api/lk/v1/feeds/"
+    query_prefix = (
         "?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
         "&pageSize=20&status=&startDate="
     )
+    candidate_bases = [
+        f"/api/lk/v1/feeds/{query_prefix}",
+        f"https://www.gosuslugi.ru/api/lk/v1/feeds/{query_prefix}",
+        f"https://lk.gosuslugi.ru/api/lk/v1/feeds/{query_prefix}",
+    ]
 
     try:
         raw_items = page.evaluate(
-            """async ({ baseUrl, maxPages }) => {
-                const collected = [];
-                let lastId = "";
-                let lastDate = "";
-                for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
-                    const url = `${baseUrl}&lastFeedId=${encodeURIComponent(lastId)}&lastFeedDate=${encodeURIComponent(lastDate)}&q=`;
-                    const resp = await fetch(url, { credentials: "include", headers: { "Accept": "application/json" } });
-                    if (!resp.ok) break;
-                    const data = await resp.json();
-                    const items = Array.isArray(data.items) ? data.items : [];
-                    if (items.length === 0) break;
-                    collected.push(...items);
-                    if (!data.hasMore) break;
-                    const lastItem = items[items.length - 1];
-                    lastId = String(lastItem.id || "");
-                    lastDate = String(lastItem.date || "");
-                    if (!lastId || !lastDate) break;
+            """async ({ candidateBases, maxPages }) => {
+                for (const baseUrl of candidateBases) {
+                    try {
+                        const collected = [];
+                        let lastId = "";
+                        let lastDate = "";
+                        for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
+                            const url = `${baseUrl}&lastFeedId=${encodeURIComponent(lastId)}&lastFeedDate=${encodeURIComponent(lastDate)}&q=`;
+                            const resp = await fetch(url, { credentials: "include", headers: { "Accept": "application/json" } });
+                            if (!resp.ok) break;
+                            const data = await resp.json();
+                            const items = Array.isArray(data.items) ? data.items : [];
+                            if (items.length === 0) break;
+                            collected.push(...items);
+                            if (!data.hasMore) break;
+                            const lastItem = items[items.length - 1];
+                            lastId = String(lastItem.id || "");
+                            lastDate = String(lastItem.date || "");
+                            if (!lastId || !lastDate) break;
+                        }
+                        if (collected.length > 0) return collected;
+                    } catch (e) {}
                 }
-                return collected;
+                return [];
             }""",
-            {"baseUrl": base_url, "maxPages": max_pages},
+            {"candidateBases": candidate_bases, "maxPages": max_pages},
         )
     except Exception as e:
         logger.warning(f"Bulk API fetch note: {e}")
