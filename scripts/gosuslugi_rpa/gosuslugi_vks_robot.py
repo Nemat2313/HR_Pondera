@@ -76,6 +76,11 @@ class InsufficientPermissionsError(Exception):
     pass
 
 
+class MvdServiceDownError(Exception):
+    """Raised when Gosuslugi shows 'Сервис МВД не отвечает — Попробуйте подать заявление позже'. Stops form submission without marking the worker as an error and switches to PDF download & status check."""
+    pass
+
+
 def prevent_windows_sleep():
     """
     Prevents Windows from entering Sleep Mode, Hibernate, or turning off the screen/network
@@ -328,11 +333,53 @@ class GosuslugiVksBot:
 
         return False
 
+    def check_and_switch_if_mvd_service_down(self):
+        """
+        Detects if Gosuslugi displays the MVD outage screen:
+        'Сервис МВД не отвечает — Попробуйте подать заявление позже' (with 'На главную' button).
+        When detected, raises MvdServiceDownError so the current worker is NOT marked as an error
+        and the robot automatically switches to PDF download & status checking mode.
+        """
+        try:
+            mvd_down_loc = self.page.locator(
+                "h1:has-text('Сервис МВД не отвечает'):visible, "
+                "h2:has-text('Сервис МВД не отвечает'):visible, "
+                "h3:has-text('Сервис МВД не отвечает'):visible, "
+                "div:has-text('Сервис МВД не отвечает'):visible, "
+                "p:has-text('Попробуйте подать заявление позже'):visible, "
+                "h1:has-text('Сервис временно недоступен'):visible"
+            )
+            if mvd_down_loc.count() > 0:
+                body_text = ""
+                try:
+                    body_text = self.page.locator("body").inner_text(timeout=1500)
+                except Exception:
+                    pass
+                body_low = (body_text or "").lower()
+                if (
+                    "сервис мвд не отвечает" in body_low
+                    or "попробуйте подать заявление позже" in body_low
+                    or "сервис временно недоступен" in body_low
+                ):
+                    msg = (
+                        "Сервис МВД не отвечает (Попробуйте подать заявление позже). "
+                        "Отправка новых заявлений приостановлена (текущий сотрудник НЕ помечается ошибкой), "
+                        "робот автоматически переключается на скачивание PDF-квитанций и проверку статусов!"
+                    )
+                    logger.warning(f"MVD_SERVICE_DOWN: {msg}")
+                    raise MvdServiceDownError(msg)
+        except MvdServiceDownError:
+            raise
+        except Exception:
+            pass
+
     def check_and_handle_error_modal(self) -> bool:
-        """Equivalent to PAD GetError subflow: Pause if logged out, click 'Попробовать ещё раз' or MVD warning continue."""
+        """Equivalent to PAD GetError subflow: Pause if logged out, switch to PDF download if MVD service down, click 'Попробовать ещё раз' or MVD warning continue."""
         handled = False
         if self.wait_if_logged_out():
             handled = True
+
+        self.check_and_switch_if_mvd_service_down()
 
         try:
             retry_btn = self.page.locator("button:has-text('Попробовать ещё раз'), span:has-text('Попробовать ещё раз')")
@@ -1415,10 +1462,15 @@ class GosuslugiVksBot:
         except InsufficientPermissionsError:
             # Never retry when the Gosuslugi account lacks authority ('У вас недостаточно полномочий для отправки уведомлений')
             raise
+        except MvdServiceDownError:
+            # Never mark worker as errored when MVD service is down ('Сервис МВД не отвечает') — switch to PDF downloader!
+            raise
         except Exception as ex:
             # Never mark the worker as errored if the Chrome tab/browser closed or PC slept — let main() reconnect & retry!
             if is_browser_closed_error(ex):
                 raise
+            # Check if the step timed out because Gosuslugi displayed 'Сервис МВД не отвечает'
+            self.check_and_switch_if_mvd_service_down()
             # If Gosuslugi logged out mid-step (redirected to esia.gosuslugi.ru/login), wait for login and retry this worker!
             if self.wait_if_logged_out():
                 logger.info(f"Повторный запуск уведомления для {full_name} (Код: {code}) после восстановления входа в Госуслуги...")
@@ -1426,9 +1478,12 @@ class GosuslugiVksBot:
                     return self._execute_vks_notification_attempt(
                         row, full_name, code, last_name, first_name, middle_name, form_attempt=1
                     )
+                except MvdServiceDownError:
+                    raise
                 except Exception as retry_ex:
                     if is_browser_closed_error(retry_ex):
                         raise
+                    self.check_and_switch_if_mvd_service_down()
                     self.register_worker_error(row, str(retry_ex))
                     raise
             self.register_worker_error(row, str(ex))
@@ -1649,6 +1704,7 @@ class GosuslugiVksBot:
         # Step 4: Click 'Перейти к уведомлению'
         logger.info("Step 4: Clicking 'Перейти к уведомлению'...")
         for _ in range(15):
+            self.check_and_handle_error_modal()
             go_btn = self.page.locator(
                 "button:has-text('Перейти к уведомлению'):visible, "
                 "lib-button:has-text('Перейти к уведомлению') button:visible, "
@@ -4360,6 +4416,7 @@ def main():
         success_count = 0
         fail_count = 0
         last_json_status_sync_ts = 0.0
+        switch_to_pdf_download_mode = False
 
         for idx, record in enumerate(records):
             prevent_windows_sleep()
@@ -4390,6 +4447,14 @@ def main():
                     fail_count += 1
                     if args.excel and row_idx is not None and os.path.exists(args.excel):
                         mark_row_completed(args.excel, row_idx, False, "Submission failed")
+            except MvdServiceDownError as mvd_ex:
+                logger.warning(f"=== СЕРВИС МВД НЕ ОТВЕЧАЕТ: {mvd_ex} ===")
+                logger.info(
+                    f"Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} (Код: {record.get('Код', '')}) "
+                    f"НЕ помечен ошибкой и останется в очереди Ожидание (Pending)."
+                )
+                switch_to_pdf_download_mode = True
+                break
             except InsufficientPermissionsError as perm_ex:
                 fail_count += 1
                 logger.error(f"Error processing {record.get('Фамилия')} {record.get('Имя')}: {perm_ex}")
@@ -4432,6 +4497,10 @@ def main():
                                 mark_row_completed(args.excel, row_idx, True)
                         else:
                             fail_count += 1
+                    except MvdServiceDownError as mvd_ex2:
+                        logger.warning(f"=== СЕРВИС МВД НЕ ОТВЕЧАЕТ: {mvd_ex2} ===")
+                        switch_to_pdf_download_mode = True
+                        break
                     except Exception as retry_after_recon_ex:
                         if is_browser_closed_error(retry_after_recon_ex):
                             logger.error("FATAL_STOP: Соединение с Chrome снова прервалось. Остановка робота.")
@@ -4465,13 +4534,24 @@ def main():
             time.sleep(2)
 
         # Final fast JSON status sync at the end of the batch (no PDF download)
-        try:
-            from gosuslugi_status_checker import run_fast_json_status_sync_on_page
-            run_fast_json_status_sync_on_page(bot.page, max_pages=60)
-        except Exception:
-            pass
+        if not switch_to_pdf_download_mode:
+            try:
+                from gosuslugi_status_checker import run_fast_json_status_sync_on_page
+                run_fast_json_status_sync_on_page(bot.page, max_pages=60)
+            except Exception:
+                pass
 
         logger.info(f"\n=== RPA Batch Complete ===\nTotal: {len(records)}, Success: {success_count}, Failed: {fail_count}")
+
+    if switch_to_pdf_download_mode:
+        logger.info(">>> Автоматический запуск скачивания PDF-квитанций и проверки статусов (gosuslugi_status_checker.py)... <<<")
+        checker_script = os.path.join(CURRENT_DIR, "gosuslugi_status_checker.py")
+        if os.path.exists(checker_script):
+            import subprocess
+            subprocess.run(
+                [sys.executable, checker_script, "--cdp-port", str(args.cdp_port), "--max-pages", "60"],
+                check=False,
+            )
 
 
 if __name__ == "__main__":

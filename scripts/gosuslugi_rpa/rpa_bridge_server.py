@@ -390,8 +390,7 @@ def auto_update_scripts_from_server():
     Automatically downloads the latest Pondera_Gosuslugi_Agent.zip from https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip
     and updates local robot .py scripts so GitHub deployments immediately take effect on every client PC without manual zip re-extraction.
     """
-    parent_folder = os.path.basename(os.path.dirname(CURRENT_DIR)).lower()
-    if parent_folder == "scripts":
+    if os.path.basename(CURRENT_DIR).lower() == "gosuslugi_rpa":
         return  # Skip inside git dev repo (scripts/gosuslugi_rpa)
     import io
     import zipfile
@@ -513,6 +512,14 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
 
                 if "FAST_JSON_STATUS_SYNC:" in clean_line:
                     RPAState.last_json_status_sync_ts = time.time()
+
+                # Detect MVD Service Outage -> Automatic switch to PDF Download & Status Checker mode
+                if "MVD_SERVICE_DOWN:" in clean_line:
+                    RPAState.mode = "check_status"
+                    RPAState.active_worker_code = None
+                    RPAState.active_worker_name = "Сервис МВД не отвечает -> Скачивание PDF"
+                    RPAState.waiting_for_manual = False
+                    RPAState.manual_message = None
 
                 # Detect Fatal Stop (e.g. Insufficient permissions on Gosuslugi: 'У вас недостаточно полномочий для отправки уведомлений')
                 if "FATAL_STOP:" in clean_line:

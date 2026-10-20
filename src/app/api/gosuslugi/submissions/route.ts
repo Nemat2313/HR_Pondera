@@ -36,6 +36,7 @@ function ensureTable(db: any) {
         gosuslugi_status LIKE '%Target page, context or browser has been closed%'
         OR gosuslugi_status LIKE '%Browser has been closed%'
         OR gosuslugi_status LIKE '%Context or browser has been closed%'
+        OR gosuslugi_status LIKE '%epgu-cf-ui-long-button:has-text(%'
       );
   `);
 }
