@@ -23,9 +23,21 @@ function sanitizePdfFilename(raw: string): string {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const rawFile = searchParams.get('file') || '';
-    const appNo = searchParams.get('appNo') || '';
-    const sicilNo = searchParams.get('sicil') || '';
+    const rawFile = searchParams.get('file') || searchParams.get('filename') || '';
+    let appNo = searchParams.get('appNo') || searchParams.get('application_no') || '';
+    let sicilNo = searchParams.get('sicil') || searchParams.get('sicil_no') || '';
+    const forceDownload = searchParams.get('download') === '1';
+
+    if (rawFile) {
+      const mBoth = rawFile.match(/^(\d{4,8})_([789]\d{8,12})_/);
+      if (mBoth) {
+        if (!sicilNo) sicilNo = mBoth[1];
+        if (!appNo) appNo = mBoth[2];
+      } else {
+        const mApp = rawFile.match(/([789]\d{9})/);
+        if (mApp && !appNo) appNo = mApp[1];
+      }
+    }
 
     const storageDir = getPdfStorageDir();
     let targetFile = rawFile ? sanitizePdfFilename(rawFile) : '';
@@ -79,12 +91,13 @@ export async function GET(request: Request) {
 
     const fileBuffer = fs.readFileSync(fullPath);
     const encodedName = encodeURIComponent(targetFile);
+    const disposition = forceDownload ? 'attachment' : 'inline';
 
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodedName}`,
+        'Content-Disposition': `${disposition}; filename*=UTF-8''${encodedName}`,
         'Content-Length': String(fileBuffer.length),
         'Cache-Control': 'private, max-age=3600',
       },
