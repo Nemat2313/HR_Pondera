@@ -4350,7 +4350,7 @@ def main():
         bot = GosuslugiVksBot(page, custom_cfg)
         success_count = 0
         fail_count = 0
-        last_json_status_sync_ts = time.time()
+        last_json_status_sync_ts = 0.0
 
         for idx, record in enumerate(records):
             prevent_windows_sleep()

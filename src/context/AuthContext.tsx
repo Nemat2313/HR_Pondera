@@ -1,7 +1,30 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User } from '@/types';
+
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const RPA_BRIDGE_HEALTH_URLS = [
+  'http://127.0.0.1:8088/health',
+  'http://localhost:8088/health',
+];
+
+async function isLocalRpaAgentActive(): Promise<boolean> {
+  for (const url of RPA_BRIDGE_HEALTH_URLS) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // Try next local RPA bridge URL
+    }
+  }
+  return false;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -28,6 +51,7 @@ const BUILTIN_ADMIN_USER: User & { pass: string } = {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastActivityRef = useRef<number>(Date.now());
 
   useEffect(() => {
     try {
@@ -43,6 +67,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  // Automatically sign out after 30 minutes of user inactivity,
+  // EXCEPT on computers running the local Gosuslugi RPA Agent (port 8088) — robot PCs must NEVER sign out!
+  useEffect(() => {
+    if (!user) return;
+    lastActivityRef.current = Date.now();
+
+    const updateActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    for (const ev of events) {
+      window.addEventListener(ev, updateActivity, { passive: true });
+    }
+
+    const checkInterval = setInterval(async () => {
+      if (Date.now() - lastActivityRef.current < INACTIVITY_TIMEOUT_MS) {
+        return;
+      }
+      // Never sign out a computer where the Gosuslugi RPA Bridge (port 8088) is running
+      const rpaActive = await isLocalRpaAgentActive();
+      if (rpaActive) {
+        lastActivityRef.current = Date.now();
+        return;
+      }
+      setUser(null);
+      localStorage.removeItem('pondera_hr_user');
+    }, 30000);
+
+    return () => {
+      for (const ev of events) {
+        window.removeEventListener(ev, updateActivity);
+      }
+      clearInterval(checkInterval);
+    };
+  }, [user]);
 
   const login = async (email: string, password: string) => {
     const cleanEmail = String(email || '').trim().toLowerCase();

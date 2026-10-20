@@ -910,6 +910,18 @@ def run_fast_json_status_sync_on_page(
             return 0
 
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
+        if not bulk_orders and "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
+            try:
+                logger.info("Navigating briefly to https://lk.gosuslugi.ru/orders to fetch 1,200 JSON order statuses...")
+                page.goto(
+                    "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL",
+                    wait_until="domcontentloaded",
+                    timeout=25000,
+                )
+                page.wait_for_timeout(2500)
+                bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
+            except Exception as nav_err:
+                logger.debug(f"Orders navigation note: {nav_err}")
         if not bulk_orders:
             return 0
 

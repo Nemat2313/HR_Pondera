@@ -788,7 +788,14 @@ def start_telegram_outbox_relay_thread():
         ctx.verify_mode = ssl.CERT_NONE
         cron_url = "https://hr.pondera.network/api/telegram/cron?relay=1"
         ack_url = "https://hr.pondera.network/api/telegram/cron"
+        tick_cnt = 0
         while True:
+            tick_cnt += 1
+            if tick_cnt % 15 == 0:
+                try:
+                    auto_update_scripts_from_server()
+                except Exception:
+                    pass
             try:
                 req = urllib.request.Request(
                     cron_url,
