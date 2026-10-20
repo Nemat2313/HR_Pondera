@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,6 +19,15 @@ export async function GET() {
     return NextResponse.json(cachedVersionPayload);
   }
   try {
+    let pkgVersion = '';
+    try {
+      const pkgRaw = fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8');
+      const pkg = JSON.parse(pkgRaw);
+      if (pkg?.version) {
+        pkgVersion = `v${String(pkg.version).replace(/^v/i, '')}`;
+      }
+    } catch {}
+
     const commitCount = execSync('git rev-list --count HEAD', {
       cwd: process.cwd(),
       encoding: 'utf-8',
@@ -37,7 +48,7 @@ export async function GET() {
 
     cachedVersionPayload = {
       success: true,
-      version: `v2.6.${commitCount}`,
+      version: pkgVersion || `v2.6.${commitCount}`,
       buildNumber: Number(commitCount) || 1,
       commitHash: shortHash,
       updatedAt: commitTime,

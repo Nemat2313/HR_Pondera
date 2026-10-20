@@ -130,12 +130,24 @@ export async function POST(request: Request) {
       const db = getDb();
       if (applicationNo) {
         db.prepare(
-          'UPDATE gosuslugi_submissions SET pdf_filename = ? WHERE application_no = ?'
+          `UPDATE gosuslugi_submissions
+           SET pdf_filename = ?,
+               gosuslugi_status = CASE
+                 WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
+                 ELSE gosuslugi_status
+               END
+           WHERE application_no = ?`
         ).run(safeFilename, applicationNo);
       }
       if (sicilNo) {
         db.prepare(
-          'UPDATE gosuslugi_submissions SET pdf_filename = ? WHERE sicil_no = ? AND (pdf_filename IS NULL OR pdf_filename = "")'
+          `UPDATE gosuslugi_submissions
+           SET pdf_filename = ?,
+               gosuslugi_status = CASE
+                 WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
+                 ELSE gosuslugi_status
+               END
+           WHERE sicil_no = ? AND (pdf_filename IS NULL OR pdf_filename = "")`
         ).run(safeFilename, sicilNo);
       }
     } catch {

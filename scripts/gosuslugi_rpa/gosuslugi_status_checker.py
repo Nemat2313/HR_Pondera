@@ -214,10 +214,113 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+INTERCEPTED_FEED_ORDERS: Dict[str, Dict[str, Any]] = {}
+
+
+def attach_feeds_network_listener(page: Page):
+    """
+    Attaches a Playwright response listener on `page` so whenever Angular on lk.gosuslugi.ru/orders
+    makes a native request to `/api/lk/v1/feeds/` (which is NEVER blocked by Gosuslugi's 428 WAF),
+    we automatically capture and parse all items into `INTERCEPTED_FEED_ORDERS`.
+    """
+    def _on_response(resp):
+        try:
+            u = resp.url or ""
+            if "/api/lk/v1/feeds" in u and resp.status == 200:
+                data = resp.json()
+                items = data.get("items") if isinstance(data, dict) else None
+                if isinstance(items, list):
+                    for raw_it in items:
+                        parsed = parse_feed_item(raw_it)
+                        if parsed and parsed.get("application_no"):
+                            INTERCEPTED_FEED_ORDERS[parsed["application_no"]] = parsed
+        except Exception:
+            pass
+
+    try:
+        page.on("response", _on_response)
+    except Exception:
+        pass
+
+
+def extract_orders_from_dom(page: Page) -> Dict[str, Dict[str, Any]]:
+    """
+    Scrapes all visible `<a href*='/order/'>` order cards directly from the DOM on https://lk.gosuslugi.ru/orders.
+    Immune to `/api/lk/v1/feeds/` 428 Firewall blocks because the cards are already rendered in the page DOM.
+    """
+    dom_orders: Dict[str, Dict[str, Any]] = {}
+    try:
+        raw_cards = page.evaluate(
+            r"""() => {
+                const results = [];
+                const links = Array.from(document.querySelectorAll("a[href*='/order/']"));
+                for (const a of links) {
+                    const href = a.getAttribute("href") || "";
+                    if (!href) continue;
+                    let card = a;
+                    for (let depth = 0; depth < 6 && card.parentElement; depth++) {
+                        const parent = card.parentElement;
+                        const orderLinksInParent = parent.querySelectorAll("a[href*='/order/']");
+                        if (orderLinksInParent.length === 1) {
+                            card = parent;
+                        } else {
+                            break;
+                        }
+                    }
+                    const text = (card.innerText || "").trim();
+                    results.push({ href, text });
+                }
+                return results;
+            }"""
+        )
+        if isinstance(raw_cards, list):
+            for c in raw_cards:
+                c_href = str(c.get("href") or "").strip()
+                c_text = str(c.get("text") or "").strip()
+                if not c_href or not c_text:
+                    continue
+                m_feed = re.search(r"/order/(\d+)", c_href)
+                feed_id = m_feed.group(1) if m_feed else ""
+                m_no = re.search(r"№\s*(\d{8,14})", c_text)
+                app_no = m_no.group(1) if m_no else ""
+                if not app_no:
+                    continue
+                status_label = classify_gosuslugi_status_text(c_text)
+                m_cit = re.search(r"Гражданин\s*:?\s*([^\n\r]+)", c_text, re.IGNORECASE)
+                citizen_name = m_cit.group(1).strip() if m_cit else ""
+                srv_title = (
+                    "Уведомления о трудовой деятельности иностранцев"
+                    if "трудовой деятельности" in c_text.lower()
+                    else ""
+                )
+                entry = {
+                    "application_no": app_no,
+                    "feed_id": feed_id,
+                    "gosuslugi_status": status_label,
+                    "raw_title": status_label,
+                    "raw_status": "",
+                    "service_title": srv_title,
+                    "epgu_code": "",
+                    "citizen_name": citizen_name,
+                    "address": "",
+                    "initiator": "",
+                    "order_date": "",
+                    "status_detail": c_text.replace("\n", " | ")[:240],
+                }
+                dom_orders[app_no] = entry
+                if app_no not in INTERCEPTED_FEED_ORDERS or not INTERCEPTED_FEED_ORDERS[app_no].get("feed_id"):
+                    INTERCEPTED_FEED_ORDERS[app_no] = entry
+    except Exception:
+        pass
+    return dom_orders
+
+
 def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict[str, Any]]:
     """
-    Fetches up to `max_pages * 20` (e.g. 1,200) orders directly from Gosuslugi's internal
-    /api/lk/v1/feeds/ JSON API using the browser's active session cookies — NO manual search typing needed!
+    Fetches orders from https://lk.gosuslugi.ru/orders using a 3-layer approach:
+    1) Direct XHR/fetch to `/api/lk/v1/feeds/`
+    2) Playwright network response interception (`INTERCEPTED_FEED_ORDERS`)
+    3) DOM `<a href*='/order/'>` card scraping + clicking 'Показать ещё' when WAF 428 blocks direct JS fetch
     Returns a dict keyed by `application_no` (extId).
     """
     cur_url = (page.url or "").lower()
@@ -229,14 +332,18 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
         return {}
 
     logger.info(f"Fetching bulk order list from Gosuslugi API (/api/lk/v1/feeds/, up to {max_pages * 20} items)...")
+    orders_by_no: Dict[str, Dict[str, Any]] = dict(INTERCEPTED_FEED_ORDERS)
+    if "lk.gosuslugi.ru/orders" in cur_url:
+        orders_by_no.update(extract_orders_from_dom(page))
+
     query_prefix = (
         "?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
         "&pageSize=20&status=&startDate="
     )
     candidate_bases = [
-        f"https://www.gosuslugi.ru/api/lk/v1/feeds/{query_prefix}",
         f"/api/lk/v1/feeds/{query_prefix}",
         f"https://lk.gosuslugi.ru/api/lk/v1/feeds/{query_prefix}",
+        f"https://www.gosuslugi.ru/api/lk/v1/feeds/{query_prefix}",
     ]
 
     try:
@@ -245,8 +352,9 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
                 const fetchJsonViaXhr = (url) => new Promise((resolve) => {
                     try {
                         const xhr = new XMLHttpRequest();
-                        xhr.open("GET", url + "&_=" + Math.random(), true);
+                        xhr.open("GET", url, true);
                         xhr.withCredentials = true;
+                        xhr.setRequestHeader("Accept", "application/json, text/plain, */*");
                         xhr.onload = () => {
                             if (xhr.status >= 200 && xhr.status < 300) {
                                 try {
@@ -303,12 +411,64 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
         logger.warning(f"Bulk API fetch note: {e}")
         raw_items = []
 
-    orders_by_no: Dict[str, Dict[str, Any]] = {}
     if isinstance(raw_items, list):
         for raw_it in raw_items:
             parsed = parse_feed_item(raw_it)
             if parsed and parsed["application_no"]:
                 orders_by_no[parsed["application_no"]] = parsed
+                INTERCEPTED_FEED_ORDERS[parsed["application_no"]] = parsed
+
+    # Fallback when Gosuslugi WAF (428) blocks direct JS XHR/fetch:
+    # Reload/read DOM on lk.gosuslugi.ru/orders and click 'Показать ещё' so Angular's own HttpClient loads the feed!
+    if len(orders_by_no) < 20:
+        try:
+            if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
+                page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=35000)
+                page.wait_for_timeout(2500)
+            elif len(orders_by_no) == 0:
+                page.reload(wait_until="domcontentloaded", timeout=35000)
+                page.wait_for_timeout(2500)
+
+            orders_by_no.update(INTERCEPTED_FEED_ORDERS)
+            orders_by_no.update(extract_orders_from_dom(page))
+
+            # Clear any leftover filter in search input if present
+            try:
+                s_inp = page.locator("input.search-input:visible, lib-search input:visible, input[type='search']:visible").first
+                if s_inp.count() > 0 and s_inp.is_visible() and (s_inp.input_value() or "").strip():
+                    s_inp.click()
+                    page.keyboard.press("Control+A")
+                    page.keyboard.press("Backspace")
+                    page.keyboard.press("Enter")
+                    page.wait_for_timeout(1500)
+                    orders_by_no.update(INTERCEPTED_FEED_ORDERS)
+                    orders_by_no.update(extract_orders_from_dom(page))
+            except Exception:
+                pass
+
+            # Click 'Показать ещё' up to min(max_pages, 15) times to load recent applications in bulk
+            for _ in range(min(max_pages, 15)):
+                show_more = page.locator(
+                    "button:has-text('Показать ещё'):visible, "
+                    "button:has-text('Показать еще'):visible, "
+                    "lib-button:has-text('Показать ещё') button:visible, "
+                    "span:has-text('Показать ещё'):visible"
+                ).first
+                if show_more.count() == 0 or not show_more.is_visible():
+                    break
+                try:
+                    show_more.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    show_more.click(timeout=2500)
+                except Exception:
+                    break
+                page.wait_for_timeout(900)
+                orders_by_no.update(INTERCEPTED_FEED_ORDERS)
+                orders_by_no.update(extract_orders_from_dom(page))
+        except Exception as dom_err:
+            logger.debug(f"DOM/Intercept fallback note: {dom_err}")
 
     logger.info(f"Bulk fetch complete: retrieved {len(orders_by_no)} unique applications (Заявления) without typing!")
     return orders_by_no
@@ -317,79 +477,96 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
 def query_single_order_by_no(page: Page, app_no: str) -> Optional[Dict[str, Any]]:
     """
     Looks up a single `application_no` on https://lk.gosuslugi.ru/orders:
-    1) First tries direct JSON API query `/api/lk/v1/feeds/?...&q=<app_no>` (~0.2s)
-    2) Falls back to typing `<app_no>` into the `input.search-input` box on https://lk.gosuslugi.ru/orders
+    1) Checks `INTERCEPTED_FEED_ORDERS` cache first
+    2) Navigates to https://lk.gosuslugi.ru/orders (if currently on an `/order/<feed_id>` page),
+       types `<app_no>` into the search box (`input.search-input`), and extracts both the
+       intercepted `/api/lk/v1/feeds/` JSON item AND the `<a href*='/order/'>` DOM card (including `feed_id`!)
     """
     clean_no = str(app_no or "").strip()
     if not clean_no:
         return None
 
-    # 1) Direct JSON API query (?q=<app_no>) via XHR
-    query_url = (
-        "https://www.gosuslugi.ru/api/lk/v1/feeds/"
-        "?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
-        f"&pageSize=10&status=&startDate=&lastFeedId=&lastFeedDate=&q={clean_no}"
-    )
+    if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("feed_id"):
+        return INTERCEPTED_FEED_ORDERS[clean_no]
+
+    # Ensure browser is on the orders list page (https://lk.gosuslugi.ru/orders) where the search input exists
     try:
-        api_res = page.evaluate(
-            """async (url) => {
-                return await new Promise((resolve) => {
-                    try {
-                        const xhr = new XMLHttpRequest();
-                        xhr.open("GET", url + "&_=" + Math.random(), true);
-                        xhr.withCredentials = true;
-                        xhr.onload = () => {
-                            if (xhr.status >= 200 && xhr.status < 300) {
-                                try {
-                                    const data = JSON.parse(xhr.responseText);
-                                    resolve({ ok: true, items: Array.isArray(data.items) ? data.items : [] });
-                                    return;
-                                } catch (e) {}
-                            }
-                            resolve({ ok: false, items: [] });
-                        };
-                        xhr.onerror = () => resolve({ ok: false, items: [] });
-                        xhr.send();
-                    } catch (e) {
-                        resolve({ ok: false, items: [] });
-                    }
-                });
-            }""",
-            query_url,
-        )
-        if isinstance(api_res, dict) and api_res.get("ok"):
-            for raw_it in api_res.get("items") or []:
-                parsed = parse_feed_item(raw_it)
-                if parsed and parsed["application_no"] == clean_no:
-                    return parsed
-            return None
+        if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
+            page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=35000)
+            page.wait_for_timeout(2000)
+            extract_orders_from_dom(page)
+            if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("feed_id"):
+                return INTERCEPTED_FEED_ORDERS[clean_no]
     except Exception:
         pass
 
-    # 2) Fallback: UI Search Input on https://lk.gosuslugi.ru/orders
+    # UI Search Input on https://lk.gosuslugi.ru/orders (triggers Angular's native request + renders <a href='/order/...'>)
     try:
-        search_inp = page.locator("input.search-input:visible, input[type='search']:visible, input[placeholder*='Поиск']:visible").first
+        search_inp = page.locator(
+            "input.search-input:visible, "
+            "lib-search input:visible, "
+            "epgu-search input:visible, "
+            "input[placeholder*='Поиск']:visible, "
+            "input[placeholder*='поиск']:visible, "
+            "input[placeholder*='Номер']:visible, "
+            "input[type='search']:visible"
+        ).first
         if search_inp.count() > 0 and search_inp.is_visible():
             search_inp.click()
             page.keyboard.press("Control+A")
             page.keyboard.press("Backspace")
             search_inp.fill(clean_no)
             page.keyboard.press("Enter")
-            page.wait_for_timeout(1500)
+            # Also click search button icon if present
+            try:
+                search_btn = page.locator(
+                    "button.search-button:visible, lib-search button:visible, button[type='submit']:visible"
+                ).first
+                if search_btn.count() > 0 and search_btn.is_visible():
+                    search_btn.click(timeout=1000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1800)
+
+            if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("feed_id"):
+                return INTERCEPTED_FEED_ORDERS[clean_no]
+
+            dom_found = extract_orders_from_dom(page)
+            if clean_no in dom_found:
+                return dom_found[clean_no]
 
             card_loc = page.locator(f"a[href*='/order/']:has-text('{clean_no}'), div.feed-item:has-text('{clean_no}')").first
             if card_loc.count() > 0 and card_loc.is_visible():
                 card_text = card_loc.inner_text()
+                href_val = card_loc.get_attribute("href") or ""
+                if not href_val:
+                    try:
+                        inner_a = card_loc.locator("a[href*='/order/']").first
+                        if inner_a.count() > 0:
+                            href_val = inner_a.get_attribute("href") or ""
+                    except Exception:
+                        pass
+                m_feed = re.search(r"/order/(\d+)", href_val)
+                feed_id = m_feed.group(1) if m_feed else ""
                 status_label = classify_gosuslugi_status_text(card_text)
-                citizen_match = re.search(r"Гражданин:\s*([^\n\r]+)", card_text)
+                citizen_match = re.search(r"Гражданин\s*:?\s*([^\n\r]+)", card_text, re.IGNORECASE)
                 citizen_name = citizen_match.group(1).strip() if citizen_match else ""
-                return {
+                srv_title = (
+                    "Уведомления о трудовой деятельности иностранцев"
+                    if "трудовой деятельности" in card_text.lower()
+                    else ""
+                )
+                found_item = {
                     "application_no": clean_no,
+                    "feed_id": feed_id,
                     "gosuslugi_status": status_label,
                     "raw_title": status_label,
+                    "service_title": srv_title,
                     "citizen_name": citizen_name,
                     "status_detail": card_text.replace("\n", " | ")[:240],
                 }
+                INTERCEPTED_FEED_ORDERS[clean_no] = found_item
+                return found_item
     except Exception as e:
         logger.debug(f"UI search fallback note for № {clean_no}: {e}")
 
@@ -630,6 +807,7 @@ def expand_history_and_inspect_order_page(page: Page, feed_id: str) -> Dict[str,
         m_no = re.search(r"№\s*(\d{8,14})", b_txt)
         if m_no:
             info["order_no"] = m_no.group(1).strip()
+        info["gosuslugi_status"] = classify_gosuslugi_status_text(b_txt[:700])
     except Exception:
         pass
 
@@ -647,8 +825,9 @@ def download_missing_pdf_for_order(
     """
     Checks if a PDF for `app_no` already exists in ~/Downloads.
     If not, opens https://lk.gosuslugi.ru/order/<feed_id>, expands 'Показать историю',
-    clicks 'Скачать' next to 'req_preview', and renames the file to:
+    clicks 'Скачать' next to 'req_preview', renames the file to:
       <Sicil>_<AppNo>_<CleanWorkerName>_<Period>.pdf
+    and uploads a copy to the central backend (/api/gosuslugi/pdf).
     """
     downloads_dir = Path.home() / "Downloads"
     downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -656,10 +835,31 @@ def download_missing_pdf_for_order(
     if not clean_no:
         return ""
 
-    # Check if already downloaded
+    clean_name = clean_worker_name_for_pdf(worker_name)
+    clean_sicil = re.sub(r'[<>:"/\\|?*]+', "", str(sicil or "").strip())
+    clean_period = str(period_code or "2026-3").strip() or "2026-3"
+    if not re.match(r"^20\d{2}-[1-4]$", clean_period):
+        clean_period = "2026-3"
+
+    target_filename = (
+        f"{clean_sicil}_{clean_no}_{clean_name}_{clean_period}.pdf"
+        if clean_sicil
+        else f"{clean_no}_{clean_name}_{clean_period}.pdf"
+    )
+    target_filepath = downloads_dir / target_filename
+
+    # Check if already downloaded in ~/Downloads -> ensure renamed & uploaded to backend
     for p in downloads_dir.glob("*.pdf"):
         if clean_no in p.name and not p.name.startswith("tmp_"):
-            return p.name
+            try:
+                if p.resolve() != target_filepath.resolve():
+                    os.replace(str(p), str(target_filepath))
+                    logger.info(f"  -> Renamed existing PDF in Downloads: {target_filename}")
+                upload_pdf_to_central_server(target_filepath, clean_no, clean_sicil)
+                return target_filename
+            except Exception:
+                upload_pdf_to_central_server(p, clean_no, clean_sicil)
+                return p.name
 
     if not feed_id:
         return ""
@@ -1154,9 +1354,30 @@ def main():
             else:
                 page = context.new_page()
             page.bring_to_front()
+            attach_feeds_network_listener(page)
         except Exception as e:
             logger.error(f"Could not connect to Chrome on port {args.cdp_port}: {e}")
             return
+
+        # Identify which sicil codes belong to THIS computer's local VKS queue
+        local_sicils = set()
+        for r in records:
+            if r.get("is_local_worker"):
+                s = str(r.get("sicil") or r.get("sicil_no") or "").strip()
+                if s:
+                    local_sicils.add(s)
+        active_vks_q_path = os.path.join(CURRENT_DIR, "active_vks_queue.json")
+        if os.path.exists(active_vks_q_path):
+            try:
+                with open(active_vks_q_path, "r", encoding="utf-8") as qf:
+                    q_data = json.load(qf)
+                    if isinstance(q_data, list):
+                        for qr in q_data:
+                            qs = str(qr.get("Sicil") or qr.get("Код") or qr.get("sicil") or "").strip()
+                            if qs:
+                                local_sicils.add(qs)
+            except Exception:
+                pass
 
         # Navigate to https://lk.gosuslugi.ru/orders if not already there (unless --status-only and already on gosuslugi.ru)
         cur_page_url = (page.url or "").lower()
@@ -1168,7 +1389,7 @@ def main():
             logger.info(f"Navigating to Gosuslugi Заявления ({ORDERS_URL})...")
             try:
                 page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=45000)
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(2500)
             except Exception as e:
                 logger.warning(f"Navigation to lk.gosuslugi.ru/orders note: {e}")
 
@@ -1191,12 +1412,12 @@ def main():
                     if "lk.gosuslugi.ru/orders" not in cur_u:
                         try:
                             page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=45000)
-                            page.wait_for_timeout(2000)
+                            page.wait_for_timeout(2500)
                         except Exception:
                             pass
                     break
 
-        # TIER 1: Bulk fetch orders directly via Gosuslugi JSON API (no search box typing needed!)
+        # TIER 1: Bulk fetch orders via Gosuslugi API / Network Interceptor / DOM + 'Показать ещё'
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=args.max_pages)
 
         # Filter labor notification orders for citizen lookup
@@ -1220,46 +1441,53 @@ def main():
                 )
 
         if records:
-            # For recent labor orders whose feed snippet did NOT include 'citizen_name'
-            # (because 'Гражданин' is inside 'Показать историю' on /order/<feed_id>), inspect them once on demand
             inspected_feed_ids = set()
-
-            # Multi-account optimization: when checking full 3,088 master list across 4 Gosuslugi accounts,
-            # bulk_orders already holds up to 1,200 orders from the CURRENT logged-in Gosuslugi account.
             is_large_batch = len(records) > 50
             matched_on_this_account_count = 0
             pdfs_downloaded_count = 0
+            consecutive_nonlocal_search_misses = 0
 
-            # Prioritize records whose application_no is directly present in this account's bulk_orders
-            records.sort(
-                key=lambda r: (
-                    0 if str(r.get("application_no") or "").strip() in bulk_orders else 1,
-                    0 if not str(r.get("pdf_filename") or "").strip() else 1,
-                )
-            )
+            def _record_sort_key(r: Dict[str, Any]):
+                r_app = str(r.get("application_no") or "").strip()
+                has_app = bool(r_app and r_app.isdigit())
+                missing_pdf = not bool(str(r.get("pdf_filename") or "").strip())
+                in_bulk = has_app and (r_app in bulk_orders)
+                r_sic = str(r.get("sicil") or r.get("sicil_no") or "").strip()
+                is_local = bool(r.get("is_local_worker")) or (r_sic in local_sicils)
+                if in_bulk and missing_pdf:
+                    return (0, 0 if is_local else 1)
+                if has_app and missing_pdf and is_local:
+                    return (1, 0)
+                if has_app and missing_pdf:
+                    return (2, 0)
+                if in_bulk:
+                    return (3, 0)
+                return (4, 0 if is_local else 1)
+
+            records.sort(key=_record_sort_key)
 
             for idx, rec in enumerate(records):
+                prevent_windows_sleep()
                 raw_app_no = str(rec.get("application_no") or "").strip()
                 app_no = raw_app_no if raw_app_no.isdigit() else ""
                 sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
                 worker_name = str(rec.get("worker_name") or "").strip()
+                pdf_file = str(rec.get("pdf_filename") or "").strip()
+                is_local = bool(rec.get("is_local_worker")) or (sicil in local_sicils) or (not local_sicils)
 
-                # Fast multi-account skip: if this worker already has an application_no recorded from another
-                # computer/account and that application_no is NOT in the current account's bulk_orders feed,
-                # skip immediately without slow per-worker UI searches!
-                if is_large_batch and app_no and app_no not in bulk_orders:
+                # If PDF is already downloaded and order is not in bulk_orders, skip slow search in large batches
+                if is_large_batch and pdf_file and (not app_no or app_no not in bulk_orders):
                     continue
 
-                if not is_large_batch or (app_no and app_no in bulk_orders):
-                    logger.info(
-                        f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
-                        f"(Код: {sicil or '—'}, № Заявления: {app_no or 'по ФИО'})"
-                    )
-
+                # If worker has no application_no and is not in bulk_orders, only check citizen name against labor_orders_list
                 matched_order: Optional[Dict[str, Any]] = None
 
                 # 1) Match by application_no in bulk feed (with citizen & service validation!)
                 if app_no and app_no in bulk_orders:
+                    logger.info(
+                        f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
+                        f"(Код: {sicil or '—'}, № Заявления: {app_no})"
+                    )
                     candidate = bulk_orders[app_no]
                     if not is_valid_labor_notification_order(candidate):
                         logger.warning(
@@ -1272,7 +1500,7 @@ def main():
                     else:
                         matched_order = candidate
                         logger.info(
-                            f"  -> Matched № {app_no} in bulk feed (no search needed): {matched_order['gosuslugi_status']}"
+                            f"  -> Matched № {app_no} in bulk feed: {matched_order['gosuslugi_status']}"
                         )
 
                 # 2) Match by Citizen Name ('Гражданин') in labor_orders_list if application_no not matched
@@ -1314,11 +1542,18 @@ def main():
                             )
                             break
 
-                # 3) Tier 2 Fallback: Query single numeric application_no ONLY for small targeted batches (<= 50 records)
-                if not matched_order and not is_large_batch and app_no and app_no.isdigit():
-                    logger.info(f"  -> № {app_no} not in recent bulk feed, querying directly...")
+                # 3) One-by-one search on lk.gosuslugi.ru/orders for ANY worker that has application_no and needs PDF download!
+                if not matched_order and app_no and app_no.isdigit() and (not pdf_file or not is_large_batch):
+                    if not is_local and consecutive_nonlocal_search_misses >= 10:
+                        continue
+                    logger.info(
+                        f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
+                        f"(Код: {sicil or '—'}, № Заявления: {app_no}) — поштучный поиск и скачивание PDF..."
+                    )
                     candidate = query_single_order_by_no(page, app_no)
                     if candidate:
+                        if not is_local:
+                            consecutive_nonlocal_search_misses = 0
                         if not is_valid_labor_notification_order(candidate):
                             logger.warning(
                                 f"  -> Rejecting targeted № {app_no}: wrong service ('{candidate.get('service_title')}') or draft!"
@@ -1329,9 +1564,14 @@ def main():
                             )
                         else:
                             matched_order = candidate
+                            bulk_orders[app_no] = candidate
                             logger.info(
-                                f"  -> Found № {app_no} via targeted search: {matched_order['gosuslugi_status']}"
+                                f"  -> Found № {app_no} via search on lk.gosuslugi.ru/orders (feed_id={candidate.get('feed_id')}): {matched_order['gosuslugi_status']}"
                             )
+                    else:
+                        if not is_local:
+                            consecutive_nonlocal_search_misses += 1
+                        logger.info(f"  -> Заявление № {app_no} не найдено в текущем аккаунте Госуслуг (возможно, отправлено с другого аккаунта).")
 
                 if matched_order:
                     matched_on_this_account_count += 1
@@ -1345,9 +1585,7 @@ def main():
                     if sicil:
                         assigned_app_nos_to_sicil[final_app_no] = sicil
 
-                    # Automatically download and rename the receipt PDF if not already recorded on central server
-                    # (or if running a small targeted check where local download is requested)
-                    pdf_file = str(rec.get("pdf_filename") or "").strip()
+                    # Automatically download, rename, and upload the receipt PDF to backend if missing
                     if not pdf_file or not is_large_batch:
                         dl_pdf = download_missing_pdf_for_order(
                             page=page,
@@ -1374,9 +1612,11 @@ def main():
                     }
                     updated_records.append(updated_entry)
                     logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated_entry, ensure_ascii=False)}")
+                    # Immediately sync this updated record (with its new PDF filename & status) to central backend!
+                    sync_updates_to_pondera_api([updated_entry])
                     logger.info(
-                        f"SUCCESS: Status checked for {updated_entry['worker_name']} "
-                        f"(№ {updated_entry['application_no']}: {updated_entry['gosuslugi_status']})!"
+                        f"SUCCESS: Status checked & synced for {updated_entry['worker_name']} "
+                        f"(№ {updated_entry['application_no']}: {updated_entry['gosuslugi_status']}, PDF: {pdf_file or '—'})!"
                     )
                 elif not is_large_batch:
                     logger.info(
