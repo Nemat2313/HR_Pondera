@@ -258,12 +258,20 @@ export async function GET() {
 
     const personnelBySicil = gCache.__ponderaPersonnelAnalyticsCache.personnelBySicil;
     let totalTargetVksPersonnel = gCache.__ponderaPersonnelAnalyticsCache.totalTargetVksPersonnel;
+    const masterWorkerBySicil: Record<string, any> = {};
     try {
-      const masterCntRow = db
-        .prepare('SELECT COUNT(*) as cnt FROM gosuslugi_vks_master_list')
-        .get() as { cnt: number } | undefined;
-      if (masterCntRow && masterCntRow.cnt > 0) {
-        totalTargetVksPersonnel = masterCntRow.cnt;
+      const masterRows = db
+        .prepare('SELECT sicil_no, worker_json FROM gosuslugi_vks_master_list')
+        .all() as Array<{ sicil_no: string; worker_json: string }>;
+      if (masterRows.length > 0) {
+        totalTargetVksPersonnel = masterRows.length;
+        for (const mr of masterRows) {
+          if (mr.sicil_no && mr.worker_json) {
+            try {
+              masterWorkerBySicil[String(mr.sicil_no).trim()] = JSON.parse(mr.worker_json);
+            } catch {}
+          }
+        }
       }
     } catch {}
 
@@ -312,6 +320,10 @@ export async function GET() {
     let totalPdf = 0;
     let totalNoPdf = 0;
     let totalRegisteredMvd = 0;
+    let totalServiceRendered = 0;
+    let totalRegisteredOnly = 0;
+    let totalRefusedMvd = 0;
+    let totalSentPendingStatus = 0;
     let totalErrors = 0;
 
     let last15mSent = 0;
@@ -360,21 +372,70 @@ export async function GET() {
       }
 
       const pInfo = personnelBySicil[sicil];
+      const mWorker = masterWorkerBySicil[sicil] || {};
       const region = pInfo?.region || 'Diğer / Eşleşmeyen';
       const citizenship =
         pInfo?.uyruk || String(r.citizenship || '').trim() || 'BELİRTİLMEMİŞ';
 
       const isError = /^ошибк/i.test(rawStatus);
+      const isRefusedMvd = !isError && /отказан/i.test(rawStatus);
+      const isServiceRendered = !isError && !isRefusedMvd && /оказан|исполнен/i.test(rawStatus);
+      const isRegisteredOnly =
+        !isError && !isRefusedMvd && !isServiceRendered && /зарегистрирован|принят|промежуточн/i.test(rawStatus);
       const hasPdf = Boolean(pdf);
-      const isRegisteredMvd =
-        !isError &&
-        /зарегистрирован|оказан|исполнен|принят/i.test(rawStatus);
+      const isRegisteredMvd = isServiceRendered || isRegisteredOnly;
       const isSent =
         !isError &&
         (Boolean(appNo) ||
           hasPdf ||
           isRegisteredMvd ||
+          isRefusedMvd ||
           /отправлен|промежуточн|обработк|PDF не скачан/i.test(rawStatus));
+      const isSentPendingStatus = isSent && !isServiceRendered && !isRegisteredOnly && !isRefusedMvd;
+
+      let gosuslugiStatusKey: 'service_rendered' | 'registered_mvd' | 'refused_mvd' | 'sent_pending' | 'error' = 'sent_pending';
+      if (isError) gosuslugiStatusKey = 'error';
+      else if (isRefusedMvd) gosuslugiStatusKey = 'refused_mvd';
+      else if (isServiceRendered) gosuslugiStatusKey = 'service_rendered';
+      else if (isRegisteredOnly) gosuslugiStatusKey = 'registered_mvd';
+
+      // Diagnose probable MVD refusal reason when Услуга отказана
+      let refusalHint = '';
+      if (isRefusedMvd) {
+        const reasons: string[] = [];
+        const passNoCheck = String(mWorker.passportNumber || pInfo?.pasaport_no || '').trim();
+        const blankNoCheck = String(mWorker.blankNumber || '').trim();
+        const codeCheck = String(mWorker.code || '').trim();
+        const cEndCheck = String(mWorker.contractEndDate || '').trim();
+        const m1Check = String(mWorker.month1Salary || '').trim();
+        const m2Check = String(mWorker.month2Salary || '').trim();
+        const m3Check = String(mWorker.month3Salary || '').trim();
+
+        if (/[А-Яа-яЁё]/.test(passNoCheck)) {
+          reasons.push(`Pasaport No (${passNoCheck}) içinde Latin yerine Rusça Kiril harf kullanılmış`);
+        }
+        if (blankNoCheck && blankNoCheck.length !== 7) {
+          reasons.push(`RNR Blank No (${blankNoCheck}) 7 hane yerine ${blankNoCheck.length} haneli girilmiş`);
+        }
+        if (m1Check && m3Check && !m2Check) {
+          reasons.push(`2. Ay (Ağustos) maaşı boş bırakılmış (1.Ay=${m1Check}, 2.Ay=Boş, 3.Ay=${m3Check})`);
+        }
+        if (mWorker.lastName === 'Нет') {
+          reasons.push(`Soyadı (Фамилия) 'Нет' olarak girilmiş, tam isim Имя alanına yazılmış`);
+        }
+        if (/[а-яa-z]$/i.test(codeCheck)) {
+          reasons.push(`Mükerrer / Yeniden giriş kodu (${codeCheck}) — eski/yeni sözleşme veya RNR tarihi uyuşmazlığı`);
+        }
+        if (cEndCheck) {
+          reasons.push(`3. Çeyrek içinde çıkış / sözleşme feshi (${cEndCheck}) — МВД veritabanında RNR/Sözleşme aktif görünmüyor olabilir`);
+        }
+        if (reasons.length === 0) {
+          reasons.push(
+            `МВД veritabanı kontrolü: RNR (${mWorker.rnrSeries || ''} ${mWorker.rnrNumber || pInfo?.rnr_no || ''}) / Sözleşme tarihi (${mWorker.contractDate || '-'}) / МВД birimi uyuşmazlığı`
+          );
+        }
+        refusalHint = reasons.join(' • ');
+      }
 
       let errorCat: ErrorCategoryDef | null = null;
       if (isError) {
@@ -385,6 +446,10 @@ export async function GET() {
         if (hasPdf) totalPdf++;
         else totalNoPdf++;
         if (isRegisteredMvd) totalRegisteredMvd++;
+        if (isServiceRendered) totalServiceRendered++;
+        else if (isRegisteredOnly) totalRegisteredOnly++;
+        else if (isRefusedMvd) totalRefusedMvd++;
+        else if (isSentPendingStatus) totalSentPendingStatus++;
       }
 
       // Check 15m and 60m activity
@@ -456,11 +521,13 @@ export async function GET() {
         proje_adi: pInfo?.proje_adi || '',
         departman: pInfo?.departman || '',
         gorevi: pInfo?.gorevi || '',
-        pasaport_no: pInfo?.pasaport_no || '',
-        rnr_no: pInfo?.rnr_no || '',
+        pasaport_no: pInfo?.pasaport_no || mWorker.passportNumber || '',
+        rnr_no: pInfo?.rnr_no || (mWorker.rnrSeries && mWorker.rnrNumber ? `${mWorker.rnrSeries} ${mWorker.rnrNumber}` : mWorker.rnrNumber || ''),
         period_code: String(r.period_code || '').trim(),
         application_no: appNo,
         gosuslugi_status: rawStatus,
+        gosuslugiStatusKey,
+        refusalHint,
         status_detail: detail,
         pdf_filename: pdf,
         submitted_at: subAt,
@@ -538,6 +605,10 @@ export async function GET() {
         totalPdf,
         totalNoPdf,
         totalRegisteredMvd,
+        totalServiceRendered,
+        totalRegisteredOnly,
+        totalRefusedMvd,
+        totalSentPendingStatus,
         totalErrors,
         remainingTarget,
         overallCompletionPct,

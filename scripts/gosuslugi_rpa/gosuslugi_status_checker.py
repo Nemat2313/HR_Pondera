@@ -157,9 +157,14 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
 
-    # Parse snippets JSON for 'Гражданин' and 'Адрес'
+    # Parse snippets JSON for 'Гражданин', 'Адрес', and any refusal/status reason
     citizen_name = ""
     address = ""
+    extra_notes = []
+    for extra_key in ("description", "comment", "message", "statusComment", "reason"):
+        v = str(raw_item.get(extra_key) or data_obj.get(extra_key) or "").strip()
+        if v and v not in extra_notes:
+            extra_notes.append(v)
     snippets = data_obj.get("snippets") or []
     if isinstance(snippets, list):
         for snip in snippets:
@@ -176,11 +181,22 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                             citizen_name = txt
                         elif "адрес" in lbl:
                             address = txt
+                        elif txt and ("причин" in lbl or "комментар" in lbl or "основан" in lbl or "ошибк" in lbl or "отказ" in lbl):
+                            extra_notes.append(f"{it.get('label')}: {txt}")
                 except Exception:
                     pass
 
     normalized_status = classify_gosuslugi_status_text(raw_title, raw_status)
-    detail_parts = [p for p in [sub_title, f"Гражданин: {citizen_name}" if citizen_name else "", f"Инициатор: {initiator}" if initiator else ""] if p]
+    detail_parts = [
+        p
+        for p in [
+            sub_title,
+            f"Гражданин: {citizen_name}" if citizen_name else "",
+            f"Инициатор: {initiator}" if initiator else "",
+            *extra_notes,
+        ]
+        if p
+    ]
 
     return {
         "application_no": ext_id,

@@ -653,6 +653,15 @@ class GosuslugiVksBot:
 
         s_dt = parse_ru_dt(p_start_str)
         e_dt = parse_ru_dt(p_end_str)
+        c_start_str = (
+            str(row.get("ДатаНачалаДействия", "")).strip()
+            or str(row.get("İş Sözleşmesi Giriş Tarihi", "")).strip()
+        )
+        cs_dt = parse_ru_dt(c_start_str)
+        if cs_dt and s_dt and cs_dt > s_dt and (not e_dt or cs_dt <= e_dt):
+            s_dt = cs_dt
+            p_start_str = cs_dt.strftime("%d.%m.%Y")
+
         ex_dt = parse_ru_dt(exit_str)
         if ex_dt and e_dt and ex_dt <= e_dt and (not s_dt or ex_dt >= s_dt):
             e_dt = ex_dt

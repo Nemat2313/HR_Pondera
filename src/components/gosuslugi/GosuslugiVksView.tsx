@@ -446,6 +446,24 @@ export function computeQuarterMonthSlices(
 }
 
 /**
+ * If an employee started working within the reporting period (contractStart > globalPeriodStart and contractStart <= globalPeriodEnd),
+ * their periodStart is their contractStartDate (e.g. 10.08.2026); otherwise it is globalPeriodStart (e.g. 01.07.2026).
+ */
+function resolveEffectivePeriodStart(
+  globalStart: string,
+  globalEnd: string,
+  contractStartStr?: string
+): string {
+  const gStart = parseStrictDateRu(globalStart);
+  const gEnd = parseStrictDateRu(globalEnd);
+  const cs = parseStrictDateRu(contractStartStr);
+  if (cs.valid && gStart.valid && cs.ts > gStart.ts && (!gEnd.valid || cs.ts <= gEnd.ts)) {
+    return contractStartStr!.trim();
+  }
+  return globalStart;
+}
+
+/**
  * If an employee exited within the reporting period (exitDate <= globalPeriodEnd and exitDate >= globalPeriodStart),
  * their periodEnd is their exitDate; otherwise it is globalPeriodEnd (e.g. 30.09.2026).
  */
@@ -1522,9 +1540,11 @@ export default function GosuslugiVksView() {
             ? 'Женский'
             : 'Мужской';
 
-        // Exited employees before 30.09.2026 get their exit date as periodEnd; others get 30.09.2026
-        const workerPeriodEnd = resolveEffectivePeriodEnd(periodStart, periodEnd, exitDateRu);
-        const slices = computeQuarterMonthSlices(periodStart, workerPeriodEnd);
+        // Employees hired within Q3 get their contractStartDate as periodStart; exited employees get exitDate as periodEnd
+        const contractStartRu = formatDateRu(raw['İş Sözleşmesi Giriş Tarihi'] || emp.ise_giris_tarihi);
+        const workerPeriodStart = resolveEffectivePeriodStart(periodStart, periodEnd, contractStartRu);
+        const workerPeriodEnd = resolveEffectivePeriodEnd(workerPeriodStart, periodEnd, exitDateRu);
+        const slices = computeQuarterMonthSlices(workerPeriodStart, workerPeriodEnd);
         const monthlyBase = formatSalaryWithKopecks(raw['Resmi Maaş'] || '217400.00');
         const m1 = slices[0]?.active ? monthlyBase : '';
         const m2 = slices[1]?.active ? monthlyBase : '';
@@ -1561,7 +1581,7 @@ export default function GosuslugiVksView() {
           contractEndDate: formatDateRu(raw['Çalışma Kart Bitiş Tarihi']),
           workAddress,
           postalCode,
-          periodStart,
+          periodStart: workerPeriodStart,
           periodEnd: workerPeriodEnd,
           exitDate: exitDateRu || undefined,
           month1Salary: m1,
@@ -2043,7 +2063,14 @@ export default function GosuslugiVksView() {
           const codeVal = getVal(r, idxCode).replace(/\.0$/, '') || sicilVal;
           const citVal = getVal(r, idxCitizenship) || 'Турция';
 
-          const rowPeriodStart = formatDateRu(r[idxPeriodStart]) || periodStart;
+          const contractStartCell =
+            formatDateRu(r[idxContractStart]) || formatDateRu(r[idxContractDate]);
+          const rawPeriodStartCell = formatDateRu(r[idxPeriodStart]) || periodStart;
+          const rowPeriodStart = resolveEffectivePeriodStart(
+            rawPeriodStartCell,
+            periodEnd,
+            contractStartCell
+          );
           const exitDateVal = idxExitDate !== -1 ? formatDateRu(r[idxExitDate]) : '';
           const rawPeriodEndCell = formatDateRu(r[idxPeriodEnd]);
           const rowPeriodEnd = rawPeriodEndCell

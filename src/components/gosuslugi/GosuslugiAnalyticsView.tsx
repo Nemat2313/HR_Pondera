@@ -88,6 +88,10 @@ interface EnrichedSubmission {
   state: 'sent' | 'error' | 'other';
   hasPdf: boolean;
   isRegisteredMvd: boolean;
+  isServiceRendered?: boolean;
+  isRefusedMvd?: boolean;
+  gosuslugiStatusKey?: 'service_rendered' | 'registered_mvd' | 'refused_mvd' | 'sent_pending' | 'error';
+  refusalHint?: string | null;
   errorCategoryId: string | null;
   errorCategoryTitle: string | null;
   errorStepLabel: string | null;
@@ -103,6 +107,10 @@ interface AnalyticsResponse {
     totalPdf: number;
     totalNoPdf: number;
     totalRegisteredMvd: number;
+    totalServiceRendered?: number;
+    totalRegisteredOnly?: number;
+    totalRefusedMvd?: number;
+    totalSentPendingStatus?: number;
     totalErrors: number;
     remainingTarget: number;
     overallCompletionPct: number;
@@ -129,7 +137,16 @@ export default function GosuslugiAnalyticsView() {
 
   // Filters for Zayavka / Submission table
   const [statusFilter, setStatusFilter] = useState<
-    'all' | 'sent' | 'error' | 'no_pdf' | 'has_pdf' | 'registered_mvd'
+    | 'all'
+    | 'sent'
+    | 'error'
+    | 'no_pdf'
+    | 'has_pdf'
+    | 'registered_mvd'
+    | 'service_rendered'
+    | 'registered_only'
+    | 'refused_mvd'
+    | 'sent_pending'
   >('all');
   const [selectedErrorCat, setSelectedErrorCat] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
@@ -203,6 +220,10 @@ export default function GosuslugiAnalyticsView() {
       if (statusFilter === 'no_pdf' && (item.state !== 'sent' || item.hasPdf)) return false;
       if (statusFilter === 'has_pdf' && !item.hasPdf) return false;
       if (statusFilter === 'registered_mvd' && !item.isRegisteredMvd) return false;
+      if (statusFilter === 'service_rendered' && !item.isServiceRendered) return false;
+      if (statusFilter === 'registered_only' && item.gosuslugiStatusKey !== 'registered_mvd') return false;
+      if (statusFilter === 'refused_mvd' && !item.isRefusedMvd) return false;
+      if (statusFilter === 'sent_pending' && item.gosuslugiStatusKey !== 'sent_pending') return false;
 
       if (selectedErrorCat !== 'all' && item.errorCategoryId !== selectedErrorCat) {
         return false;
@@ -227,6 +248,7 @@ export default function GosuslugiAnalyticsView() {
           item.rnr_no,
           item.gosuslugi_status,
           item.status_detail,
+          item.refusalHint,
           item.errorCategoryTitle,
         ]
           .filter(Boolean)
@@ -260,10 +282,19 @@ export default function GosuslugiAnalyticsView() {
       'Pasaport No': item.pasaport_no,
       'VKS RNR No': item.rnr_no,
       'Dönem': item.period_code,
-      'Durum Grubu': item.state === 'error' ? 'Hatalı (Ошибка)' : 'Başarılı Gönderim',
+      'Durum Grubu':
+        item.state === 'error'
+          ? 'Hatalı (Ошибка)'
+          : item.isRefusedMvd
+          ? 'МВД Red (Услуга отказана)'
+          : item.isServiceRendered
+          ? 'Onaylandı (Услуга оказана)'
+          : item.isRegisteredMvd
+          ? 'МВД Kayıtlı (Заявление зарегистрировано)'
+          : 'Gönderildi (Beklemede)',
       'Hata Kategorisi': item.errorCategoryTitle || '-',
       'Gosuslugi Durumu / Hata Detayı': item.gosuslugi_status,
-      'Ek Detay': item.status_detail || '-',
+      'Ek Detay / Red Analizi': item.refusalHint || item.status_detail || '-',
       'PDF Dosyası': item.pdf_filename || 'İndirilmedi (Hızlı Gönderim)',
       'Gönderim Zamanı (MSK)': item.submitted_at,
       'Son Kontrol Zamanı': item.checked_at || '-',
@@ -295,6 +326,10 @@ export default function GosuslugiAnalyticsView() {
     totalPdf: 0,
     totalNoPdf: 0,
     totalRegisteredMvd: 0,
+    totalServiceRendered: 0,
+    totalRegisteredOnly: 0,
+    totalRefusedMvd: 0,
+    totalSentPendingStatus: 0,
     totalErrors: 0,
     remainingTarget: 0,
     overallCompletionPct: 0,
@@ -578,6 +613,121 @@ export default function GosuslugiAnalyticsView() {
           <div className="text-[11px] mt-1 text-slate-600 dark:text-slate-300">
             Son 1 Saat: <strong>+{s.last60mSent} gönderim</strong> / {s.last60mErrors} hata
           </div>
+        </div>
+      </div>
+
+      {/* GOSUSLUGI PORTAL STATUS BREAKDOWN STRIP */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Filter className="w-4 h-4 text-emerald-500" />
+              Gosuslugi Portal Resmi Durum Dağılımı (JSON Senkronizasyon)
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Kartlara tıklayarak doğrudan o Gosuslugi statüsündeki başvuruları filtreleyebilirsiniz
+            </p>
+          </div>
+          {['service_rendered', 'registered_only', 'refused_mvd', 'sent_pending'].includes(statusFilter) && (
+            <button
+              onClick={() => setStatusFilter('all')}
+              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1 cursor-pointer"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Statü Filtresini Kaldır
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <button
+            onClick={() => {
+              setStatusFilter(statusFilter === 'service_rendered' ? 'all' : 'service_rendered');
+              setSelectedErrorCat('all');
+            }}
+            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
+              statusFilter === 'service_rendered'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400'
+            }`}
+          >
+            <div className="text-[11px] font-bold opacity-90">✅ Услуга оказана</div>
+            <div className="text-xl font-extrabold mt-0.5">
+              {(s.totalServiceRendered ?? 0).toLocaleString('tr-TR')}
+            </div>
+            <div className="text-[10px] opacity-80">МВД Tarafından Onaylandı</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setStatusFilter(statusFilter === 'registered_only' ? 'all' : 'registered_only');
+              setSelectedErrorCat('all');
+            }}
+            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
+              statusFilter === 'registered_only'
+                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                : 'bg-teal-50/60 dark:bg-teal-950/30 border-teal-200 dark:border-teal-900/60 hover:border-teal-400'
+            }`}
+          >
+            <div className="text-[11px] font-bold opacity-90">🏛 Заявление зарегистрировано</div>
+            <div className="text-xl font-extrabold mt-0.5">
+              {(s.totalRegisteredOnly ?? 0).toLocaleString('tr-TR')}
+            </div>
+            <div className="text-[10px] opacity-80">МВД Kaydında (İncelemede)</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setStatusFilter(statusFilter === 'refused_mvd' ? 'all' : 'refused_mvd');
+              setSelectedErrorCat('all');
+            }}
+            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
+              statusFilter === 'refused_mvd'
+                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                : 'bg-orange-50/70 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900/60 hover:border-orange-400'
+            }`}
+          >
+            <div className="text-[11px] font-bold opacity-90">🚫 Услуга отказана</div>
+            <div className="text-xl font-extrabold mt-0.5">
+              {(s.totalRefusedMvd ?? 0).toLocaleString('tr-TR')}
+            </div>
+            <div className="text-[10px] opacity-80">МВД Reddetti (Detaylı Teşhis)</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setStatusFilter(statusFilter === 'sent_pending' ? 'all' : 'sent_pending');
+              setSelectedErrorCat('all');
+            }}
+            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
+              statusFilter === 'sent_pending'
+                ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                : 'bg-amber-50/60 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60 hover:border-amber-400'
+            }`}
+          >
+            <div className="text-[11px] font-bold opacity-90">📤 Отправлено (Bekleyen)</div>
+            <div className="text-xl font-extrabold mt-0.5">
+              {(s.totalSentPendingStatus ?? 0).toLocaleString('tr-TR')}
+            </div>
+            <div className="text-[10px] opacity-80">Kuyrukta / МВД Yanıtı Bekleniyor</div>
+          </button>
+
+          <button
+            onClick={() => {
+              setStatusFilter(statusFilter === 'error' ? 'all' : 'error');
+            }}
+            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
+              statusFilter === 'error'
+                ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                : 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60 hover:border-rose-400'
+            }`}
+          >
+            <div className="text-[11px] font-bold opacity-90">❌ Ошибка (Form Hatası)</div>
+            <div className="text-xl font-extrabold mt-0.5">
+              {s.totalErrors.toLocaleString('tr-TR')}
+            </div>
+            <div className="text-[10px] opacity-80">Gönderilemeyen / Veri Hatası</div>
+          </button>
         </div>
       </div>
 
@@ -934,6 +1084,25 @@ export default function GosuslugiAnalyticsView() {
             </div>
 
             <select
+              value={statusFilter}
+              onChange={(e) => {
+                const val = e.target.value as any;
+                setStatusFilter(val);
+                if (val !== 'error' && val !== 'all') setSelectedErrorCat('all');
+              }}
+              className="px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
+            >
+              <option value="all">Tüm Gosuslugi Statüleri ({s.totalRecords})</option>
+              <option value="service_rendered">✅ Услуга оказана ({s.totalServiceRendered ?? 0})</option>
+              <option value="registered_only">🏛 Заявление зарегистрировано ({s.totalRegisteredOnly ?? 0})</option>
+              <option value="refused_mvd">🚫 Услуга отказана ({s.totalRefusedMvd ?? 0})</option>
+              <option value="sent_pending">📤 Отправлено - Bekleyen ({s.totalSentPendingStatus ?? 0})</option>
+              <option value="error">❌ Ошибка - Form Hatası ({s.totalErrors})</option>
+              <option value="has_pdf">📄 PDF İndirilen ({s.totalPdf})</option>
+              <option value="no_pdf">⚡ PDF Bekleyen ({s.totalNoPdf})</option>
+            </select>
+
+            <select
               value={selectedErrorCat}
               onChange={(e) => {
                 setSelectedErrorCat(e.target.value);
@@ -968,11 +1137,13 @@ export default function GosuslugiAnalyticsView() {
         <div className="flex flex-wrap gap-1.5 pt-1">
           {[
             { id: 'all', label: `Tümü (${s.totalRecords})` },
-            { id: 'sent', label: `✅ Başarılı (${s.totalSent})` },
-            { id: 'error', label: `❌ Hatalı (${s.totalErrors})` },
-            { id: 'no_pdf', label: `⚡ PDF Bekleyen (${s.totalNoPdf})` },
+            { id: 'service_rendered', label: `✅ Услуга оказана (${s.totalServiceRendered ?? 0})` },
+            { id: 'registered_only', label: `🏛 Заявление зарегистрировано (${s.totalRegisteredOnly ?? 0})` },
+            { id: 'refused_mvd', label: `🚫 Услуга отказана (${s.totalRefusedMvd ?? 0})` },
+            { id: 'sent_pending', label: `📤 Отправлено (${s.totalSentPendingStatus ?? 0})` },
+            { id: 'error', label: `❌ Ошибка (${s.totalErrors})` },
             { id: 'has_pdf', label: `📄 PDF İndirilen (${s.totalPdf})` },
-            { id: 'registered_mvd', label: `🏛 МВД Kayıtlı (${s.totalRegisteredMvd})` },
+            { id: 'no_pdf', label: `⚡ PDF Bekleyen (${s.totalNoPdf})` },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -984,7 +1155,11 @@ export default function GosuslugiAnalyticsView() {
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 statusFilter === tab.id
-                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  ? tab.id === 'refused_mvd'
+                    ? 'bg-orange-600 text-white shadow-2xs'
+                    : tab.id === 'error'
+                    ? 'bg-rose-600 text-white shadow-2xs'
+                    : 'bg-emerald-600 text-white shadow-2xs'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
               }`}
             >
@@ -1001,6 +1176,8 @@ export default function GosuslugiAnalyticsView() {
               className={`p-3.5 rounded-xl border space-y-2 ${
                 item.state === 'error'
                   ? 'border-rose-200 dark:border-rose-900/70 bg-rose-50/20 dark:bg-rose-950/15'
+                  : item.isRefusedMvd
+                  ? 'border-orange-300 dark:border-orange-900/70 bg-orange-50/25 dark:bg-orange-950/15'
                   : 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30'
               }`}
             >
@@ -1057,10 +1234,17 @@ export default function GosuslugiAnalyticsView() {
                 className={`text-[11px] font-mono break-all p-2 rounded-lg ${
                   item.state === 'error'
                     ? 'bg-rose-100/60 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200'
+                    : item.isRefusedMvd
+                    ? 'bg-orange-100/70 dark:bg-orange-950/50 text-orange-900 dark:text-orange-200'
                     : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
                 }`}
               >
-                {item.gosuslugi_status}
+                {item.isRefusedMvd ? `🚫 ${item.gosuslugi_status}` : item.gosuslugi_status}
+                {item.refusalHint && (
+                  <div className="mt-1 font-sans text-[11px] font-semibold text-orange-800 dark:text-orange-300">
+                    🔍 Olası Red Nedeni: {item.refusalHint}
+                  </div>
+                )}
                 {item.status_detail && (
                   <div className="mt-1 text-[10px] opacity-80">{item.status_detail}</div>
                 )}
@@ -1104,6 +1288,8 @@ export default function GosuslugiAnalyticsView() {
                   className={`transition-colors ${
                     item.state === 'error'
                       ? 'bg-rose-50/20 dark:bg-rose-950/10 hover:bg-rose-50/50 dark:hover:bg-rose-950/25'
+                      : item.isRefusedMvd
+                      ? 'bg-orange-50/30 dark:bg-orange-950/15 hover:bg-orange-50/60 dark:hover:bg-orange-950/30'
                       : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
                   }`}
                 >
@@ -1154,13 +1340,30 @@ export default function GosuslugiAnalyticsView() {
                           {item.gosuslugi_status}
                         </div>
                       </div>
+                    ) : item.isRefusedMvd ? (
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-800 text-[11px] font-bold">
+                          <AlertTriangle className="w-3 h-3" />
+                          🚫 {item.gosuslugi_status}
+                        </span>
+                        {item.refusalHint && (
+                          <div className="text-[11px] font-semibold text-orange-700 dark:text-orange-300">
+                            🔍 {item.refusalHint}
+                          </div>
+                        )}
+                        {item.status_detail && (
+                          <div className="text-[11px] text-slate-500">{item.status_detail}</div>
+                        )}
+                      </div>
                     ) : (
                       <div className="space-y-0.5">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            item.isRegisteredMvd
+                            item.isServiceRendered
+                              ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                              : item.isRegisteredMvd
                               ? 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300'
-                              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                              : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
                           }`}
                         >
                           <CheckCircle2 className="w-3 h-3" />
