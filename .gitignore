@@ -56,3 +56,6 @@ Thumbs.db
 # Central Gosuslugi PDF storage
 data/gosuslugi_pdfs/
 
+
+scripts/Pondera_Gosuslugi_Agent/
+scripts/Pondera_Gosuslugi_Agent.zip
