@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import {
   checkAndSendVks15MinReport,
   sendDailyCompliance915Report,
+  sendTelegramMessage,
   getMoscowTimeParts,
   claimPendingOutboxMessages,
   markOutboxDelivered,
@@ -84,8 +85,25 @@ export async function GET(request: Request) {
     // 2. Check Daily 09:15 Moscow Time Document Expiry Report
     const complianceResult = await sendDailyCompliance915Report(false);
 
-    // 3. Return queued outbox messages ONLY when ?relay=1 is passed by a verified relay client
+    // 3. Server-side outbox flush: try delivering any previously queued messages directly from the server
     const isRelay = searchParams.get('relay') === '1';
+    if (!isRelay) {
+      const queuedOnServer = claimPendingOutboxMessages(db);
+      if (queuedOnServer.length > 0) {
+        const flushedIds: number[] = [];
+        for (const item of queuedOnServer) {
+          const sendRes = await sendTelegramMessage(item.text || item.html_text);
+          if (sendRes.ok) {
+            flushedIds.push(item.id);
+          }
+        }
+        if (flushedIds.length > 0) {
+          markOutboxDelivered(db, flushedIds);
+        }
+      }
+    }
+
+    // 4. Return any still-undelivered outbox messages when ?relay=1 is passed by a client
     const pendingOutbox = isRelay ? claimPendingOutboxMessages(db) : [];
 
     return NextResponse.json({

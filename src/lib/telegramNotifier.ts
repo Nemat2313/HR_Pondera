@@ -44,25 +44,45 @@ export function getMoscowTimeParts(now = new Date()) {
 
 export async function sendTelegramMessage(htmlText: string): Promise<{ ok: boolean; error?: string }> {
   const { botToken, chatId } = getTelegramConfig();
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: htmlText,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data?.ok) {
-      return { ok: false, error: data?.description || `HTTP ${res.status}` };
+  const payload = JSON.stringify({
+    chat_id: chatId,
+    text: htmlText,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  });
+
+  // Russian VPS datacenters block direct 149.154.160.0/20 (api.telegram.org) TCP connections;
+  // try the edge HTTPS gateway first (~340ms from Moscow VPS), then fall back to api.telegram.org.
+  const endpoints = [
+    `https://telegram-api.vercel.app/bot${botToken}/sendMessage`,
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
+  ];
+
+  let lastError = 'Telegram network error';
+  for (const url of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7000);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'PonderaHR-Bot/2.6',
+        },
+        body: payload,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const data = await res.json();
+      if (res.ok && data?.ok) {
+        return { ok: true };
+      }
+      lastError = data?.description || `HTTP ${res.status}`;
+    } catch (err: any) {
+      lastError = err?.message || 'Telegram network error';
     }
-    return { ok: true };
-  } catch (err: any) {
-    return { ok: false, error: err?.message || 'Telegram network error' };
   }
+  return { ok: false, error: lastError };
 }
 
 function ensureSystemInfoTable(db: any) {

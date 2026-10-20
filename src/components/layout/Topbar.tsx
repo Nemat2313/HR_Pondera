@@ -76,7 +76,7 @@ export default function Topbar({
 
     const checkTelegramCron = async () => {
       try {
-        const res = await fetch('/api/telegram/cron', { cache: 'no-store' });
+        const res = await fetch('/api/telegram/cron?relay=1', { cache: 'no-store' });
         const data = await res.json();
         const tgToken = data?.telegramConfig?.botToken || data?.telegramConfig?.token;
         if (
