@@ -539,7 +539,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const computerFilter = searchParams.get('computer') || 'all';
-    const mode = searchParams.get('mode') || 'all_errors'; // 'all_errors' | 'only_oshibka' | 'only_data_errors'
+    const mode = searchParams.get('mode') || 'all_errors'; // 'all_errors' | 'only_oshibka' | 'only_data_errors' | 'refused'
+    const refusalCategoryFilter = (searchParams.get('refusalCategory') || 'all').trim();
 
     const db = getDb();
 
@@ -555,14 +556,28 @@ export async function GET(request: Request) {
 
     const subRows = db
       .prepare(
-        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
+        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, submitted_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
       )
       .all() as Array<{
       sicil_no: string;
       application_no: string;
       gosuslugi_status: string;
       pdf_filename: string;
+      submitted_at: string;
     }>;
+
+    // Load HR database passport numbers to detect renewed passports
+    const hrPassportBySicil = new Map<string, string>();
+    try {
+      const pRows = db
+        .prepare('SELECT sicil_no, pasaport_no FROM personnel WHERE sicil_no IS NOT NULL AND sicil_no != ""')
+        .all() as Array<{ sicil_no: string; pasaport_no: string }>;
+      for (const pr of pRows) {
+        const s = String(pr.sicil_no || '').trim();
+        const p = String(pr.pasaport_no || '').trim();
+        if (s && p) hrPassportBySicil.set(s, p);
+      }
+    } catch {}
 
     const subBySicil = new Map<string, (typeof subRows)[0]>();
     for (const s of subRows) {
@@ -587,16 +602,8 @@ export async function GET(request: Request) {
       }
 
       const sub = subBySicil.get(m.sicil_no);
-      const isSent = Boolean(
-        sub &&
-          (String(sub.application_no || '').trim() !== '' ||
-            String(sub.pdf_filename || '').trim() !== '' ||
-            (/отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн/i.test(
-              String(sub.gosuslugi_status || '')
-            ) &&
-              !/^ошибк/i.test(String(sub.gosuslugi_status || ''))))
-      );
-      if (isSent) continue;
+      const gosStatus = String(sub?.gosuslugi_status || '').trim();
+      const isRefused = Boolean(sub && !/^ошибк/i.test(gosStatus) && /отказан/i.test(gosStatus));
 
       let w: Record<string, any> = {};
       try {
@@ -605,15 +612,188 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const gosStatus = String(sub?.gosuslugi_status || '').trim();
+      const getField = (k: string, alt?: string, def = '') =>
+        String(w[k] ?? (alt ? w[alt] : '') ?? def).trim();
+
+      if (mode === 'refused') {
+        if (!isRefused) continue;
+
+        const diag = diagnoseWorkerErrors(w, '');
+        const redCols = new Set<number>(diag.redCols);
+        const amberCols = new Set<number>(diag.amberCols);
+        const explanations: string[] = [...diag.explanations];
+
+        const appNo = String(sub?.application_no || '').trim();
+        const subAt = String(sub?.submitted_at || '').trim();
+        const passNoCheck = getField('passportNumber', 'НомерПаспорта');
+        const hrPassNo = hrPassportBySicil.get(m.sicil_no) || '';
+        const hrPassDigits = hrPassNo.replace(/\D+/g, '');
+        const masterPassDigits = passNoCheck.replace(/\D+/g, '');
+        const blankNoCheck = getField('blankNumber', 'СерийныйНомер2');
+        const rnrNoCheck = getField('rnrNumber', 'Номер');
+        const codeCheck = getField('code', 'Код', m.sicil_no);
+        const cEndCheck = getField('contractEndDate', 'ДатаОканчанияДействия');
+        const m1Check = getField('month1Salary', '1-месяц');
+        const m2Check = getField('month2Salary', '2-месяц');
+        const m3Check = getField('month3Salary', '3-месяц');
+        const m1Num = parseFloat(m1Check.replace(',', '.') || '0') || 0;
+        const m2Num = parseFloat(m2Check.replace(',', '.') || '0') || 0;
+        const m3Num = parseFloat(m3Check.replace(',', '.') || '0') || 0;
+        const totalQSal = m1Num + m2Num + m3Num;
+
+        const isOutageWindow21Oct =
+          (subAt >= '2026-10-21 03:00:00' && subAt <= '2026-10-21 12:00:00') ||
+          /^829[567]/.test(appNo);
+        const hasCyrillicPass = /[А-Яа-яЁё]/.test(passNoCheck);
+        const hasBadBlankLen = Boolean(blankNoCheck && blankNoCheck.length !== 7);
+        const hasBadRnrLen = Boolean(rnrNoCheck && rnrNoCheck.length !== 10);
+        const hasPassportChangedInHr = Boolean(
+          hrPassDigits &&
+            masterPassDigits &&
+            hrPassDigits.length >= 6 &&
+            masterPassDigits !== hrPassDigits &&
+            !masterPassDigits.endsWith(hrPassDigits)
+        );
+        const hasSalaryGap = Boolean(
+          (m1Num > 0 && m3Num > 0 && m2Num === 0) || (m1Num === 0 && m2Num > 0 && m3Num === 0)
+        );
+        const hasLowFullQuarterSalary = Boolean(
+          m1Num > 0 && m2Num > 0 && m3Num > 0 && totalQSal < 750000
+        );
+        const hasContractEnd = Boolean(cEndCheck);
+        const hasLastNameNet = getField('lastName', 'Фамилия', 'Нет') === 'Нет';
+        const hasDuplicateCode = /[а-яa-z]$/i.test(codeCheck);
+
+        let refusalCategoryId = 'mvd_registry_other';
+        if (hasCyrillicPass || hasBadBlankLen || hasBadRnrLen || hasPassportChangedInHr) {
+          refusalCategoryId = 'doc_blank_or_passport_mismatch';
+        } else if (hasSalaryGap || (!isOutageWindow21Oct && hasLowFullQuarterSalary)) {
+          refusalCategoryId = 'salary_gap_or_low';
+        } else if (isOutageWindow21Oct) {
+          refusalCategoryId = 'mvd_outage_21oct';
+        } else if (hasContractEnd) {
+          refusalCategoryId = 'contract_ended_or_exit';
+        } else if (hasLastNameNet || hasDuplicateCode) {
+          refusalCategoryId = 'fio_lastname_net_or_reentry';
+        }
+
+        if (refusalCategoryFilter !== 'all' && refusalCategoryId !== refusalCategoryFilter) {
+          continue;
+        }
+
+        if (hasPassportChangedInHr) {
+          redCols.add(10);
+          amberCols.add(11);
+          explanations.push(
+            `[Pasaport Uyuşmazlığı] Şablonda "${passNoCheck}", İK Veritabanında "${hrPassNo}" kayıtlı — pasaport yenilenmişse güncel pasaportu girin.`
+          );
+        }
+        if (hasSalaryGap) {
+          if (m2Num === 0) redCols.add(25);
+          if (m1Num === 0) amberCols.add(24);
+          if (m3Num === 0) amberCols.add(26);
+          amberCols.add(27);
+          explanations.push(
+            `[Maaş Ay Boşluğu] 1.Ay=${m1Check || 'Boş'}, 2.Ay=${m2Check || 'Boş'}, 3.Ay=${m3Check || 'Boş'} — ara ay boş bırakılmış.`
+          );
+        } else if (hasLowFullQuarterSalary && !isOutageWindow21Oct) {
+          amberCols.add(27);
+          explanations.push(
+            `[VKS Maaş Alt Sınırı] 3 tam ay toplamı (${totalQSal.toFixed(2)} ₽) 750.000 ₽ alt sınırının altında.`
+          );
+        }
+        if (hasContractEnd) {
+          amberCols.add(21);
+          explanations.push(
+            `[İşten Çıkış / Fesih] Sözleşme bitiş tarihi (${cEndCheck}) mevcut — МВД'de fesih işlendiyse kontrol edin.`
+          );
+        }
+        if (hasLastNameNet && !isOutageWindow21Oct) {
+          amberCols.add(2);
+          amberCols.add(3);
+          explanations.push(
+            `[ФИО Kontrolü] Фамилия='Нет', tam ad Имя alanına yazılmış — РНР kartındaki yazılımı kontrol edin.`
+          );
+        }
+        if (hasDuplicateCode && !isOutageWindow21Oct) {
+          amberCols.add(1);
+          amberCols.add(19);
+          explanations.push(
+            `[Mükerrer Kod (${codeCheck})] МВД'deki son aktif sözleşme tarihi (${getField('contractDate', 'ДатаЗаключения')}) ile uyumu kontrol edin.`
+          );
+        }
+        if (isOutageWindow21Oct) {
+          explanations.push(
+            `[Услуга отказана № ${appNo} — 21 Ekim МВД Sistem Çöküşü (03:27–11:25 MSK)] МВД veritabanı yanıt vermediği sırada gönderildiği için otomatik reddedildi. Veriler doğruysa değişiklik yapmadan tekrar yükleyip gönderebilirsiniz.`
+          );
+        } else if (explanations.length === 0) {
+          amberCols.add(15);
+          amberCols.add(16);
+          amberCols.add(19);
+          explanations.push(
+            `[Услуга отказана № ${appNo}] МВД ЦБДУИГ kontrolü: РНР No/Tarihi (${getField('rnrSeries', 'Серия')} ${rnrNoCheck} / ${getField('rnrIssueDate', 'ДатаВыдачиВКС')}) ve Sözleşme Tarihini (${getField('contractDate', 'ДатаЗаключения')}) kontrol edin.`
+          );
+        }
+
+        const rowValues: string[] = [
+          m.sicil_no,
+          getField('code', 'Код', m.sicil_no),
+          getField('lastName', 'Фамилия', 'Нет'),
+          getField('firstName', 'Имя'),
+          getField('middleName', 'Отчество', 'НЕТ'),
+          getField('birthDate', 'ДатаРождения'),
+          getField('gender', 'Пол', 'Мужской'),
+          getField('citizenship', 'ТекущееГражданство', 'Турция'),
+          getField('placeOfBirth', 'МестоРождения'),
+          getField('passportSeries', 'СерияПаспорта'),
+          getField('passportNumber', 'НомерПаспорта'),
+          getField('passportIssueDate', 'ДатаВыдачи'),
+          getField('passportIssuedBy', 'ПаспортКемВыдан', 'МВД'),
+          getField('inn', 'ИНН'),
+          getField('rnrSeries', 'Серия'),
+          getField('rnrNumber', 'Номер'),
+          getField('rnrIssueDate', 'ДатаВыдачиВКС'),
+          getField('blankSeries', 'СерийныйНомер1'),
+          getField('blankNumber', 'СерийныйНомер2'),
+          getField('contractDate', 'ДатаЗаключения'),
+          getField('contractStartDate', 'ДатаНачалаДействия'),
+          getField('contractEndDate', 'ДатаОканчанияДействия'),
+          getField('periodStart', 'НачалоПериода', '01.07.2026'),
+          getField('periodEnd', 'КонецПериода', '30.09.2026'),
+          getField('month1Salary', '1-месяц'),
+          getField('month2Salary', '2-месяц'),
+          getField('month3Salary', '3-месяц'),
+          getField('salaryAmount', 'РазмерВыплаты'),
+          getField('position', 'Должность', 'СПЕЦИАЛИСТ'),
+          getField('workAddress', 'АдресРаботы'),
+          getField('postalCode', 'Индекс', '626150'),
+          explanations.join(' | '),
+        ];
+
+        const sortPriority = redCols.size > 0 ? 0 : amberCols.size > 0 ? 1 : 2;
+        exportRows.push({
+          values: rowValues,
+          redCols,
+          amberCols,
+          sortPriority,
+        });
+        continue;
+      }
+
+      const isSent = Boolean(
+        sub &&
+          (String(sub.application_no || '').trim() !== '' ||
+            String(sub.pdf_filename || '').trim() !== '' ||
+            (/отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн/i.test(gosStatus) &&
+              !/^ошибк/i.test(gosStatus)))
+      );
+      if (isSent) continue;
+
       const diag = diagnoseWorkerErrors(w, gosStatus);
 
       if (mode === 'only_oshibka' && !diag.hasGosuslugiError) continue;
       if (mode === 'only_data_errors' && !diag.hasDataError) continue;
       if (!diag.hasGosuslugiError && !diag.hasDataError) continue;
-
-      const getField = (k: string, alt?: string, def = '') =>
-        String(w[k] ?? (alt ? w[alt] : '') ?? def).trim();
 
       const explanationText = diag.explanations.join(' | ');
 
@@ -667,7 +847,8 @@ export async function GET(request: Request) {
 
     const xlsxBuffer = buildStyledXlsxBuffer(exportRows);
     const dateTag = new Date().toISOString().slice(0, 10);
-    const fileName = `Pondera_VKS_Hatali_Kayitlar_Sablon_${exportRows.length}_Kayit_${dateTag}.xlsx`;
+    const prefix = mode === 'refused' ? 'Pondera_VKS_Red_Otkazano_Sablon' : 'Pondera_VKS_Hatali_Kayitlar_Sablon';
+    const fileName = `${prefix}_${exportRows.length}_Kayit_${dateTag}.xlsx`;
 
     return new NextResponse(new Uint8Array(xlsxBuffer), {
       status: 200,

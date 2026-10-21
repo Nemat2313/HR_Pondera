@@ -130,6 +130,23 @@ function ensureTables(db: any) {
       updated_at TEXT DEFAULT '',
       UNIQUE(sicil_no, notification_type, period_code)
     );
+
+    CREATE TABLE IF NOT EXISTS gosuslugi_refused_archive (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sicil_no TEXT NOT NULL,
+      worker_name TEXT,
+      citizenship TEXT,
+      notification_type TEXT NOT NULL DEFAULT 'vks_salary',
+      period_code TEXT DEFAULT '',
+      application_no TEXT NOT NULL DEFAULT '',
+      gosuslugi_status TEXT NOT NULL DEFAULT 'Услуга отказана',
+      status_detail TEXT DEFAULT '',
+      pdf_filename TEXT DEFAULT '',
+      submitted_at TEXT DEFAULT '',
+      archived_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_refused_arch_appno ON gosuslugi_refused_archive(application_no);
+    CREATE INDEX IF NOT EXISTS idx_refused_arch_sicil ON gosuslugi_refused_archive(sicil_no);
   `);
 
   if (!__masterListAutoHealed) {
@@ -319,19 +336,21 @@ export async function GET(request: Request) {
         computer: number;
         total: number;
         sent: number;
+        refused: number;
         error: number;
         pending: number;
         minRow: number;
         maxRow: number;
       }
     > = {
-      1: { computer: 1, total: 0, sent: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
-      2: { computer: 2, total: 0, sent: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
-      3: { computer: 3, total: 0, sent: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
-      4: { computer: 4, total: 0, sent: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
+      1: { computer: 1, total: 0, sent: 0, refused: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
+      2: { computer: 2, total: 0, sent: 0, refused: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
+      3: { computer: 3, total: 0, sent: 0, refused: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
+      4: { computer: 4, total: 0, sent: 0, refused: 0, error: 0, pending: 0, minRow: 0, maxRow: 0 },
     };
 
     let totalSent = 0;
+    let totalRefused = 0;
     let totalError = 0;
     let totalPending = 0;
 
@@ -344,6 +363,7 @@ export async function GET(request: Request) {
       const sub = subBySicil.get(m.sicil_no);
       const sent = isSentSubmission(sub);
       const errored = isErrorSubmission(sub);
+      const refused = Boolean(sub && !errored && /отказан/i.test(String(sub.gosuslugi_status || '')));
 
       const rowStatus: 'success' | 'error' | 'pending' = sent
         ? 'success'
@@ -359,6 +379,10 @@ export async function GET(request: Request) {
       if (sent) {
         totalSent++;
         compStat.sent++;
+        if (refused) {
+          totalRefused++;
+          compStat.refused++;
+        }
       } else if (errored) {
         totalError++;
         compStat.error++;
@@ -372,6 +396,7 @@ export async function GET(request: Request) {
         continue;
       }
       if (statusFilter === 'sent' && !sent) continue;
+      if (statusFilter === 'refused' && !refused) continue;
       if (statusFilter === 'error' && !errored) continue;
       if (statusFilter === 'pending' && (sent || errored)) continue;
 
@@ -413,6 +438,7 @@ export async function GET(request: Request) {
       summary: {
         total: masterRows.length,
         sent: totalSent,
+        refused: totalRefused,
         error: totalError,
         pending: totalPending,
         computers: computersSummary,
@@ -546,9 +572,27 @@ export async function POST(request: Request) {
       WHERE sicil_no = ? AND (application_no IS NULL OR TRIM(application_no) = '') AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE '%ошибк%')
     `);
 
+    const archiveRefusedBySicilStmt = db.prepare(`
+      INSERT INTO gosuslugi_refused_archive (
+        sicil_no, worker_name, citizenship, notification_type, period_code,
+        application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+      )
+      SELECT
+        sicil_no, worker_name, citizenship, notification_type, period_code,
+        application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
+      FROM gosuslugi_submissions
+      WHERE sicil_no = ? AND gosuslugi_status LIKE '%отказан%'
+    `);
+
+    const clearRefusedBySicilStmt = db.prepare(`
+      DELETE FROM gosuslugi_submissions
+      WHERE sicil_no = ? AND gosuslugi_status LIKE '%отказан%'
+    `);
+
     let inserted = 0;
     let updated = 0;
     let clearedErrors = 0;
+    let reopenedRefused = 0;
     const seenSicilCounts = new Map<string, number>();
 
     db.exec('BEGIN');
@@ -622,6 +666,9 @@ export async function POST(request: Request) {
           if (clearErrorsForUpdated) {
             const delRes = clearErrorStmt.run(norm.sicilNo);
             clearedErrors += Number(delRes.changes || 0);
+            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
+            const refRes = clearRefusedBySicilStmt.run(norm.sicilNo);
+            reopenedRefused += Number(refRes.changes || 0);
           }
         } else {
           const finalRowOrder = mode === 'seed' ? norm.rowOrder : ++maxRowOrder;
@@ -654,6 +701,9 @@ export async function POST(request: Request) {
           if (clearErrorsForUpdated) {
             const delRes = clearErrorStmt.run(norm.sicilNo);
             clearedErrors += Number(delRes.changes || 0);
+            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
+            const refRes = clearRefusedBySicilStmt.run(norm.sicilNo);
+            reopenedRefused += Number(refRes.changes || 0);
           }
         }
       });
@@ -670,6 +720,7 @@ export async function POST(request: Request) {
       inserted,
       updated,
       clearedErrors,
+      reopenedRefused,
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -873,6 +924,91 @@ export async function PATCH(request: Request) {
         resetCount,
         sicils: targetSicils,
         message: `${resetCount} hatalı (Ошибка) kayıt tekrar gönderim kuyruğuna alındı!`,
+      });
+    }
+
+    if (action === 'reopen_refused') {
+      const scope = String(body?.scope || 'all').trim(); // 'all' | 'computer' | 'selected'
+      const computer = Number(body?.computer) || 0;
+      const rawSicilList = Array.isArray(body?.sicils)
+        ? body.sicils
+        : Array.isArray(body?.sicilNos)
+        ? body.sicilNos
+        : [];
+      const sicilNos: string[] = rawSicilList
+        .map((s: any) => String(s || '').trim())
+        .filter(Boolean);
+      const targetComputer = Number(body?.targetComputer) || 0;
+
+      let targetSicils: string[] = [];
+
+      if (scope === 'selected' && sicilNos.length > 0) {
+        targetSicils = sicilNos;
+      } else if (scope === 'computer' && [1, 2, 3, 4].includes(computer)) {
+        const compRows = db
+          .prepare(
+            `SELECT m.sicil_no FROM gosuslugi_vks_master_list m
+             INNER JOIN gosuslugi_submissions s ON s.sicil_no = m.sicil_no
+             WHERE m.assigned_computer = ? AND s.gosuslugi_status LIKE '%отказан%'`
+          )
+          .all(computer) as Array<{ sicil_no: string }>;
+        targetSicils = compRows.map((r) => r.sicil_no);
+      } else {
+        const refRows = db
+          .prepare(
+            `SELECT sicil_no FROM gosuslugi_submissions WHERE gosuslugi_status LIKE '%отказан%'`
+          )
+          .all() as Array<{ sicil_no: string }>;
+        targetSicils = refRows.map((r) => r.sicil_no);
+      }
+
+      const archiveRefusedStmt = db.prepare(`
+        INSERT INTO gosuslugi_refused_archive (
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+        )
+        SELECT
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
+        FROM gosuslugi_submissions
+        WHERE sicil_no = ? AND gosuslugi_status LIKE '%отказан%'
+      `);
+
+      const delRefusedStmt = db.prepare(`
+        DELETE FROM gosuslugi_submissions
+        WHERE sicil_no = ? AND gosuslugi_status LIKE '%отказан%'
+      `);
+
+      const reassignCompStmt = db.prepare(`
+        UPDATE gosuslugi_vks_master_list
+        SET assigned_computer = ?, updated_at = ?
+        WHERE sicil_no = ?
+      `);
+
+      let reopenedCount = 0;
+      db.exec('BEGIN');
+      try {
+        for (const sic of targetSicils) {
+          archiveRefusedStmt.run(nowStr, sic);
+          const res = delRefusedStmt.run(sic);
+          reopenedCount += Number(res.changes || 0);
+          if ([1, 2, 3, 4].includes(targetComputer)) {
+            reassignCompStmt.run(targetComputer, nowStr, sic);
+          }
+        }
+        db.exec('COMMIT');
+      } catch (txErr) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        throw txErr;
+      }
+
+      return NextResponse.json({
+        success: true,
+        reopenedCount,
+        sicils: targetSicils,
+        message: `${reopenedCount} adet «Услуга отказана» (Red) kaydı arşivlenerek tekrar gönderim kuyruğuna (Bekleyen) açıldı!`,
       });
     }
 

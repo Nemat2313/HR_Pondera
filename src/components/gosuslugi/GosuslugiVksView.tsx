@@ -2233,10 +2233,11 @@ export default function GosuslugiVksView() {
           });
         });
 
-        // 1) First sync uploaded rows into the 3,088 Central Master List and clear 'Ошибка' statuses for updated sicils
+        // 1) First sync uploaded rows into the 3,088 Central Master List and clear 'Ошибка' / 'Услуга отказана' statuses for updated sicils
         const payloadForMaster = buildPayloadRecords(rawMapped);
         let updatedMasterCnt = 0;
         let clearedErrorsCnt = 0;
+        let reopenedRefusedCnt = 0;
         try {
           const masterRes = await fetch('/api/gosuslugi/master-list', {
             method: 'POST',
@@ -2252,10 +2253,11 @@ export default function GosuslugiVksView() {
             const mJson = await masterRes.json();
             updatedMasterCnt = Number(mJson.updated || 0) + Number(mJson.inserted || 0);
             clearedErrorsCnt = Number(mJson.clearedErrors || 0);
+            reopenedRefusedCnt = Number(mJson.reopenedRefused || 0);
           }
         } catch {}
 
-        // 2) Re-fetch submissions after clearing 'Ошибка' so edited rows are no longer marked as errored!
+        // 2) Re-fetch submissions after clearing 'Ошибка' / 'Услуга отказана' so edited rows are unlocked!
         const freshSubsAfterMerge = await refreshSavedSubmissionsFromDb();
         await refreshMasterListSummary();
 
@@ -2290,20 +2292,26 @@ export default function GosuslugiVksView() {
 
         const alreadySentCnt = processed.filter((w) => isWorkerAlreadySentToGosuslugi(w)).length;
         const readyUnsentCnt = processed.filter((w) => w.selected).length;
+        const unlockedExtraText =
+          reopenedRefusedCnt > 0
+            ? lang === 'ru'
+              ? `, разблокировано Отказов: ${reopenedRefusedCnt}`
+              : `, ${reopenedRefusedCnt} Услуга отказана tekrar gönderime açıldı`
+            : '';
 
         if (invalidCnt > 0) {
           showNotice(
             'info',
             lang === 'ru'
-              ? `Обновлено в базе (3088): ${updatedMasterCnt || processed.length} стр. (снято Ошибка: ${clearedErrorsCnt}). Готовы к отправке: ${readyUnsentCnt}, ещё требуют правки: ${invalidCnt}.`
-              : `Merkezi 3.088 listede ${updatedMasterCnt || processed.length} kayıt güncellendi (${clearedErrorsCnt} Ошибка temizlendi). ${readyUnsentCnt} kayıt gönderime hazır seçildi, ${invalidCnt} kayıtta hala eksik veri var.`
+              ? `Обновлено в базе (3088): ${updatedMasterCnt || processed.length} стр. (снято Ошибка: ${clearedErrorsCnt}${unlockedExtraText}). Готовы к отправке: ${readyUnsentCnt}, ещё требуют правки: ${invalidCnt}.`
+              : `Merkezi 3.088 listede ${updatedMasterCnt || processed.length} kayıt güncellendi (${clearedErrorsCnt} Ошибка temizlendi${unlockedExtraText}). ${readyUnsentCnt} kayıt gönderime hazır seçildi, ${invalidCnt} kayıtta hala eksik veri var.`
           );
         } else {
           showNotice(
             'success',
             lang === 'ru'
-              ? `В центральном списке (3088) успешно обновлено ${updatedMasterCnt || processed.length} записей (снято Ошибка: ${clearedErrorsCnt}) — ${readyUnsentCnt} готовы к отправке!`
-              : `Merkezi 3.088 kişilik listede ${updatedMasterCnt || processed.length} kayıt başarıyla güncellendi (${clearedErrorsCnt} Ошибка statüsü sıfırlandı, ${readyUnsentCnt} kayıt gönderime hazır seçildi)!`
+              ? `В центральном списке (3088) успешно обновлено ${updatedMasterCnt || processed.length} записей (снято Ошибка: ${clearedErrorsCnt}${unlockedExtraText}) — ${readyUnsentCnt} готовы к отправке!`
+              : `Merkezi 3.088 kişilik listede ${updatedMasterCnt || processed.length} kayıt başarıyla güncellendi (${clearedErrorsCnt} Ошибка statüsü sıfırlandı${unlockedExtraText}, ${readyUnsentCnt} kayıt gönderime hazır seçildi)!`
           );
         }
       } catch {
@@ -3266,7 +3274,25 @@ export default function GosuslugiVksView() {
               <span>
                 {lang === 'ru'
                   ? '🛠️ Шаблон Ошибок (Цветной)'
-                  : '🛠️ Hatalı Kayıtları Şablon İndir (Renkli)'}
+                  : '🛠️ Hatalı (Ошибка) Şablon İndir'}
+              </span>
+            </a>
+
+            <a
+              href={`/api/gosuslugi/master-list/export-errors?mode=refused&computer=${activeComputerFilter}`}
+              download
+              title={
+                lang === 'ru'
+                  ? 'Скачать записи со статусом «Услуга отказана» в формате шаблона ВКС (с цветным выделением подозрительных ячеек и причиной отказа в последнем столбце). После правки загрузите через «Загрузить Excel» для повторной отправки!'
+                  : 'Услуга отказана (МВД Red) alan kayıtları şablon formatında (şüpheli hücreler KIRMIZI/SARI işaretli ve son sütunda red açıklamalı) indirir. Düzenleyip «Excel Yükle (VKS)» ile yüklediğinizde merkezi liste güncellenir ve tekrar gönderime açılır!'
+              }
+              className="h-8 px-3 rounded-xl border border-orange-300 dark:border-orange-500/40 bg-orange-50/90 dark:bg-orange-950/40 hover:bg-orange-100 dark:hover:bg-orange-900/50 text-orange-800 dark:text-orange-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+              <span>
+                {lang === 'ru'
+                  ? '🚫 Шаблон Отказов (Услуга отказана)'
+                  : '🚫 Red (Услуга отказана) Şablon İndir'}
               </span>
             </a>
 

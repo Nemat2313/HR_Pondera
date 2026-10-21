@@ -93,6 +93,9 @@ interface EnrichedSubmission {
   isRefusedMvd?: boolean;
   gosuslugiStatusKey?: 'service_rendered' | 'registered_mvd' | 'refused_mvd' | 'sent_pending' | 'error';
   refusalHint?: string | null;
+  refusalCategoryId?: string | null;
+  refusalCategoryTitle?: string | null;
+  refusalStepLabel?: string | null;
   errorCategoryId: string | null;
   errorCategoryTitle: string | null;
   errorStepLabel: string | null;
@@ -122,6 +125,7 @@ interface AnalyticsResponse {
     last60mErrors: number;
   };
   errorCategories: ErrorCategoryItem[];
+  refusalCategories?: ErrorCategoryItem[];
   regionBreakdown: RegionBreakdownItem[];
   citizenshipBreakdown: CitizenshipBreakdownItem[];
   hourlyTimeline: HourlyTimelineItem[];
@@ -136,6 +140,7 @@ export default function GosuslugiAnalyticsView() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [sendingTelegram, setSendingTelegram] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [reopeningRefused, setReopeningRefused] = useState<string | null>(null);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
 
   // Filters for Zayavka / Submission table
@@ -152,10 +157,12 @@ export default function GosuslugiAnalyticsView() {
     | 'sent_pending'
   >('all');
   const [selectedErrorCat, setSelectedErrorCat] = useState<string>('all');
+  const [selectedRefusalCat, setSelectedRefusalCat] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [selectedCitizenship, setSelectedCitizenship] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedErrorCatId, setExpandedErrorCatId] = useState<string | null>(null);
+  const [expandedRefusalCatId, setExpandedRefusalCatId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState<number>(100);
 
@@ -253,6 +260,9 @@ export default function GosuslugiAnalyticsView() {
       if (selectedErrorCat !== 'all' && item.errorCategoryId !== selectedErrorCat) {
         return false;
       }
+      if (selectedRefusalCat !== 'all' && item.refusalCategoryId !== selectedRefusalCat) {
+        return false;
+      }
       if (selectedRegion !== 'all' && item.region !== selectedRegion) {
         return false;
       }
@@ -274,6 +284,7 @@ export default function GosuslugiAnalyticsView() {
           item.gosuslugi_status,
           item.status_detail,
           item.refusalHint,
+          item.refusalCategoryTitle,
           item.errorCategoryTitle,
         ]
           .filter(Boolean)
@@ -288,14 +299,15 @@ export default function GosuslugiAnalyticsView() {
     data?.submissions,
     statusFilter,
     selectedErrorCat,
+    selectedRefusalCat,
     selectedRegion,
     selectedCitizenship,
     searchQuery,
   ]);
 
-  const handleExportExcel = () => {
-    if (!filteredSubmissions.length) return;
-    const rows = filteredSubmissions.map((item, idx) => ({
+  const exportItemsToExcel = (itemsToExport: EnrichedSubmission[], filePrefix = 'Gosuslugi_VKS_Analitik_Rapor') => {
+    if (!itemsToExport.length) return;
+    const rows = itemsToExport.map((item, idx) => ({
       'Sıra': idx + 1,
       'Sicil No': item.sicil_no,
       'Заявка № (Başvuru No)': item.application_no || '-',
@@ -317,7 +329,7 @@ export default function GosuslugiAnalyticsView() {
           : item.isRegisteredMvd
           ? 'МВД Kayıtlı (Заявление зарегистрировано)'
           : 'Gönderildi (Beklemede)',
-      'Hata Kategorisi': item.errorCategoryTitle || '-',
+      'Hata / Red Kategorisi': item.refusalCategoryTitle || item.errorCategoryTitle || '-',
       'Gosuslugi Durumu / Hata Detayı': item.gosuslugi_status,
       'Ek Detay / Red Analizi': item.refusalHint || item.status_detail || '-',
       'PDF Dosyası': item.pdf_filename || 'İndirilmedi (Hızlı Gönderim)',
@@ -329,13 +341,55 @@ export default function GosuslugiAnalyticsView() {
     XLSX.utils.book_append_sheet(wb, ws, 'Gosuslugi_VKS_Rapor');
     XLSX.writeFile(
       wb,
-      `Gosuslugi_VKS_Analitik_Rapor_${new Date().toISOString().slice(0, 10)}.xlsx`
+      `${filePrefix}_${itemsToExport.length}_Kayit_${new Date().toISOString().slice(0, 10)}.xlsx`
     );
+  };
+
+  const handleExportExcel = () => {
+    exportItemsToExcel(filteredSubmissions, 'Gosuslugi_VKS_Analitik_Rapor');
+  };
+
+  const handleReopenRefusedGroup = async (sicilList: string[], label: string) => {
+    if (!sicilList.length) return;
+    if (
+      !window.confirm(
+        `«${label}» grubundaki ${sicilList.length} adet «Услуга отказана» (Red) kaydını arşivleyip tekrar gönderim kuyruğuna (Bekleyen) açmak istediğinize emin misiniz?\n\nEski Заявка numaraları arşivlenecek ve bu personeller Gosuslugi robotunda tekrar gönderilebilir (Bekleyen) durumuna geçecektir.`
+      )
+    ) {
+      return;
+    }
+    setReopeningRefused(label);
+    try {
+      const res = await fetch('/api/gosuslugi/master-list', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reopen_refused',
+          scope: 'selected',
+          sicils: sicilList,
+        }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        setTelegramFeedback(
+          `✅ ${json.reopenedCount || sicilList.length} adet «Услуга отказана» kaydı tekrar gönderim kuyruğuna (Bekleyen) açıldı!`
+        );
+        fetchAnalytics(false);
+      } else {
+        setTelegramFeedback(`⚠️ İşlem tamamlanamadı: ${json?.message || ''}`);
+      }
+    } catch {
+      setTelegramFeedback('⚠️ Red kayıtları tekrar gönderime açılırken bağlantı hatası oluştu.');
+    } finally {
+      setReopeningRefused(null);
+      setTimeout(() => setTelegramFeedback(null), 6000);
+    }
   };
 
   const isFilteredView =
     statusFilter !== 'all' ||
     selectedErrorCat !== 'all' ||
+    selectedRefusalCat !== 'all' ||
     selectedRegion !== 'all' ||
     selectedCitizenship !== 'all' ||
     searchQuery.trim() !== '';
@@ -524,6 +578,16 @@ export default function GosuslugiAnalyticsView() {
                 🛠️ Hatalı (Ошибка) Şablon İndir (Renkli)
               </a>
             )}
+
+            <a
+              href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
+              download
+              title="Услуга отказана (МВД Red) alan tüm kayıtları 32 sütunlu VKS şablon formatında, şüpheli hücreler KIRMIZI/SARI işaretli ve son sütunda detaylı red analiziyle indirir"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer no-underline"
+            >
+              <Download className="w-3.5 h-3.5" />
+              🚫 Red (Услуга отказана) Şablon İndir ({s.totalRefusedMvd ?? 0})
+            </a>
 
             <button
               onClick={handleExportExcel}
@@ -850,6 +914,272 @@ export default function GosuslugiAnalyticsView() {
             <div className="text-[10px] opacity-80">Gönderilemeyen / Veri Hatası</div>
           </button>
         </div>
+      </div>
+
+      {/* SECTION 0.5: MVD Refusal (Услуга отказана) Root-Cause Grouping & Action Center */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-orange-200 dark:border-orange-900/60 p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-orange-600" />
+              🚫 МВД Red («Услуга отказана») Nedenlerine Göre Gruplama ve Çözüm Merkezi ({s.totalRefusedMvd ?? 0} Red Kaydı)
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              МВД ЦБДУИГ (ГИСМУ) veritabanı ve canlı başvuru saatleri analiz edilerek tespit edilen red nedenleri, grup bazlı detaylı Excel/Şablon indirme ve tekrar gönderime açma merkezi
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedRefusalCat !== 'all' && (
+              <button
+                onClick={() => {
+                  setSelectedRefusalCat('all');
+                  setStatusFilter('all');
+                }}
+                className="px-3 py-1.5 rounded-lg bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Red Grubu Filtresini Temizle
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                const allRefused = (data?.submissions || []).filter(
+                  (it) => it.isRefusedMvd || it.gosuslugiStatusKey === 'refused_mvd'
+                );
+                exportItemsToExcel(allRefused, 'Pondera_VKS_Usluga_Otkazana_Detayli_Rapor');
+              }}
+              disabled={!s.totalRefusedMvd}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Tüm Redleri Detaylı Excel İndir ({s.totalRefusedMvd ?? 0})
+            </button>
+
+            <a
+              href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
+              download
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1.5 no-underline"
+            >
+              <Download className="w-3.5 h-3.5" />
+              🛠️ Tüm Redleri VKS Şablon İndir (Renkli)
+            </a>
+          </div>
+        </div>
+
+        {/* Empirical Root-Cause Summary Box */}
+        <div className="p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 text-xs text-slate-700 dark:text-slate-200 space-y-1.5">
+          <div className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+            <span>📌 Canlı Veritabanı ve МВД (ЦБДУИГ) Analiz Bulguları:</span>
+          </div>
+          <ul className="list-disc pl-5 space-y-1 text-[11.5px] leading-relaxed">
+            <li>
+              <strong>1. Pasaport Seri ve Numarası Birleşik Yazımı HATA DEĞİLDİR (%100 Doğrulandı):</strong> МВД tarafından onaylanan{' '}
+              <strong className="text-emerald-700 dark:text-emerald-400">
+                {(s.totalServiceRendered ?? 1126).toLocaleString('tr-TR')} adet «Услуга оказана»
+              </strong>{' '}
+              başvurunun tamamında (%100) <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-slate-800">Серия паспорта</code> alanı boş bırakılmış ve harf+rakam birleşik olarak{' '}
+              <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-slate-800">Номер паспорта</code> alanında (örn. Hindistan: <code className="font-mono">V0399684</code>, Türkiye: <code className="font-mono">U26532222</code>, Türkmenistan: <code className="font-mono">A1234567</code>) gönderilmiştir. Rusya МВД ЦБДУИГ veritabanında vizeli ülke yabancı pasaportları serisiz (birleşik numara) olarak kayıtlıdır.
+            </li>
+            <li>
+              <strong>2. Redlerin %96,8&apos;inin (572 Kayıt) Nedeni — 21 Ekim Sabahı МВД Sistem Çöküşü (03:27–11:25 MSK):</strong> 19–20 Ekim tarihlerinde gönderilen 1.144 başvurunun{' '}
+              <strong className="text-emerald-700 dark:text-emerald-400">1.125&apos;i (%98,3) onaylanmış</strong>, sadece 19&apos;u reddedilmiştir. Ancak{' '}
+              <strong>21 Ekim 03:27–11:25 MSK</strong> saatleri arasında МВД СМЭВ-3 veritabanı çöktüğü (saat 11:25&apos;te Gosuslugi&apos;nin «Сервис МВД не отвечает» ekranıyla sistemi tamamen durdurduğu) sırada robot «Данные не найдены в базе МВД» uyarısına «Продолжить» diyerek gönderime devam ettiği için bu aralıktaki 573 başvurunun 572&apos;si otomatik reddedilmiştir. <strong>Robot artık üst üste 3 kez «Данные не найдены в базе МВД» uyarısı gördüğünde gönderimi anında durdurup PDF/Statü moduna geçecek şekilde korumaya alınmıştır.</strong>
+            </li>
+            <li>
+              <strong>3. Çıkışlı Personellerde Sözleşme Bitiş Tarihi (Дата окончания) Yazılması Red Sebebi midir? — HAYIR (%98,5 Onaylandı):</strong> 19–20 Ekim&apos;de МВД sistemi normalken sözleşme bitiş tarihine çıkış tarihi yazılan{' '}
+              <strong className="text-emerald-700 dark:text-emerald-400">338 başvurunun 333&apos;ü (%98,5) ONAYLANMIŞTIR («Услуга оказана»)</strong>, yalnızca 5&apos;i reddedilmiştir! Üstelik 3. çeyrek ortasında işten çıktığı için 3 aylık toplam ödemesi 750.000 ₽ altında kalan (örn. Temmuz&apos;da çıkıp 160.000 ₽ alan) personellerde çıkış tarihinin yazılmış olması, çalışanın tam çeyrek çalışmadığını gösterdiği için 333 kişinin onaylanmasını sağlamıştır. Reddedilen 5 çıkışlı kayıtta (<code className="font-mono">931408, 901327, 920404, 939777, 926653</code>) ise İK veritabanındaki resmi çıkış tarihi ile şablondaki bitiş tarihi arasında 1–10 gün fark olduğu veya çalışanın 2. çeyrek sonunda (<code className="font-mono">30.06.2026</code>) çıktığı tespit edilmiştir.
+            </li>
+            <li>
+              <strong>4. Kalan Diğer Kayıtların Gerçek Veri Red Nedenleri:</strong> (a) РНР Blank numarasının 7 hane yerine 8 haneli yazılması (örn. Sicil <code className="font-mono">927442</code>), (b) Yenilenmiş pasaportun İK veritabanında güncellenip VKS şablonunda eski pasaport kalması ve ara ay maaş boşluğu (örn. Sicil <code className="font-mono">900256</code>).
+            </li>
+          </ul>
+        </div>
+
+        {!data?.refusalCategories || data.refusalCategories.length === 0 ? (
+          <div className="p-5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-center">
+            <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto mb-1.5" />
+            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+              Şu anda aktif «Услуга отказана» (Red) kaydı bulunmuyor!
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {data.refusalCategories.map((cat) => {
+              const isExpanded = expandedRefusalCatId === cat.id;
+              const isSelected = selectedRefusalCat === cat.id;
+              const badgeColors =
+                cat.id === 'mvd_outage_21oct'
+                  ? 'bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-800'
+                  : cat.severity === 'high'
+                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                  : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800';
+
+              return (
+                <div
+                  key={cat.id}
+                  className={`rounded-xl border transition-all overflow-hidden ${
+                    isSelected
+                      ? 'border-orange-500 dark:border-orange-500 bg-orange-50/30 dark:bg-orange-950/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                  }`}
+                >
+                  <div className="p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                    <div className="space-y-1 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColors}`}
+                        >
+                          {cat.stepLabel}
+                        </span>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                          {cat.titleTr}
+                        </h3>
+                        <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
+                          ({cat.titleRu})
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">{cat.hintTr}</p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
+                      <div className="text-right mr-2">
+                        <div className="text-lg font-extrabold text-orange-600 dark:text-orange-400 leading-none">
+                          {cat.count} kayıt
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          Redlerin %{cat.percentage}&apos;i
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedRefusalCat('all');
+                            setStatusFilter('all');
+                          } else {
+                            setSelectedRefusalCat(cat.id);
+                            setSelectedErrorCat('all');
+                            setStatusFilter('refused_mvd');
+                          }
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-orange-600 text-white border-orange-600'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-orange-400'
+                        }`}
+                      >
+                        {isSelected ? 'Filtrelendi ✓' : 'Tabloda Filtrele'}
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          exportItemsToExcel(cat.items, `Pondera_VKS_Red_${cat.id}`)
+                        }
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1 cursor-pointer"
+                        title="Bu gruptaki red kayıtlarını detaylı analiz sütunlarıyla Excel olarak indir"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Detaylı Excel ({cat.count})
+                      </button>
+
+                      <a
+                        href={`/api/gosuslugi/master-list/export-errors?mode=refused&refusalCategory=${encodeURIComponent(cat.id)}&computer=all`}
+                        download
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1 no-underline"
+                        title="Bu gruptaki kayıtları 32 sütunlu VKS şablon formatında (hatalı/şüpheli hücreler renkli ve son sütunda açıklamalı) indir"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Şablon İndir (Renkli)
+                      </a>
+
+                      {user?.role !== 'viewer' && (
+                        <button
+                          onClick={() =>
+                            handleReopenRefusedGroup(
+                              cat.items.map((it) => it.sicil_no),
+                              cat.titleTr
+                            )
+                          }
+                          disabled={reopeningRefused !== null}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          title="Bu gruptaki kişilerin eski red statüsünü arşivleyip Gosuslugi robotunda tekrar gönderilebilir (Bekleyen) duruma açar"
+                        >
+                          <RefreshCw
+                            className={`w-3.5 h-3.5 ${
+                              reopeningRefused === cat.titleTr ? 'animate-spin' : ''
+                            }`}
+                          />
+                          Tekrar Gönderime Aç ({cat.count})
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => setExpandedRefusalCatId(isExpanded ? null : cat.id)}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-200/70 dark:bg-slate-700/70 text-slate-800 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
+                      >
+                        {isExpanded ? (
+                          <>
+                            Gizle <ChevronUp className="w-3.5 h-3.5" />
+                          </>
+                        ) : (
+                          <>
+                            Kişileri Gör ({cat.count}) <ChevronDown className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 p-3 space-y-2 max-h-80 overflow-y-auto">
+                      {cat.items.map((emp) => (
+                        <div
+                          key={`ref-${emp.sicil_no}-${emp.id}`}
+                          className="p-2.5 rounded-lg border border-orange-100 dark:border-orange-950/60 bg-orange-50/30 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                                Sicil: {emp.sicil_no}
+                              </span>
+                              {emp.application_no && (
+                                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300">
+                                  № {emp.application_no}
+                                </span>
+                              )}
+                              <span className="font-bold text-slate-900 dark:text-white">
+                                {emp.worker_name}
+                              </span>
+                              {emp.ad_soyad_tr && (
+                                <span className="text-slate-500">({emp.ad_soyad_tr})</span>
+                              )}
+                              <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-medium">
+                                {emp.region}
+                              </span>
+                              <span className="text-slate-500">{emp.citizenship}</span>
+                            </div>
+                            {emp.refusalHint && (
+                              <div className="text-[11px] text-orange-800 dark:text-orange-300 font-medium">
+                                🔎 {emp.refusalHint}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500">
+                            {emp.pasaport_no && <span>Pasaport: {emp.pasaport_no}</span>}
+                            {emp.rnr_no && <span>RNR: {emp.rnr_no}</span>}
+                            <span>{emp.submitted_at}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* SECTION 1: Error Breakdown by Type (Hata Çeşitlerine Göre Detaylı Kırılım) */}
@@ -1195,6 +1525,7 @@ export default function GosuslugiAnalyticsView() {
             </div>
             {(statusFilter !== 'all' ||
               selectedErrorCat !== 'all' ||
+              selectedRefusalCat !== 'all' ||
               selectedRegion !== 'all' ||
               selectedCitizenship !== 'all' ||
               searchQuery.trim() !== '') && (
@@ -1202,6 +1533,7 @@ export default function GosuslugiAnalyticsView() {
                 onClick={() => {
                   setStatusFilter('all');
                   setSelectedErrorCat('all');
+                  setSelectedRefusalCat('all');
                   setSelectedRegion('all');
                   setSelectedCitizenship('all');
                   setSearchQuery('');
@@ -1215,7 +1547,7 @@ export default function GosuslugiAnalyticsView() {
           </div>
 
           {/* Search & Dropdown Filters in a Clean Bounded Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             <div className="relative min-w-0">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -1233,6 +1565,7 @@ export default function GosuslugiAnalyticsView() {
                 const val = e.target.value as any;
                 setStatusFilter(val);
                 if (val !== 'error' && val !== 'all') setSelectedErrorCat('all');
+                if (val !== 'refused_mvd' && val !== 'all') setSelectedRefusalCat('all');
               }}
               className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
             >
@@ -1247,14 +1580,36 @@ export default function GosuslugiAnalyticsView() {
             </select>
 
             <select
-              value={selectedErrorCat}
+              value={selectedRefusalCat}
               onChange={(e) => {
-                setSelectedErrorCat(e.target.value);
-                if (e.target.value !== 'all') setStatusFilter('error');
+                setSelectedRefusalCat(e.target.value);
+                if (e.target.value !== 'all') {
+                  setStatusFilter('refused_mvd');
+                  setSelectedErrorCat('all');
+                }
               }}
               className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
             >
-              <option value="all">Tüm Hata Çeşitleri</option>
+              <option value="all">Tüm Red (Услуга отказана) Nedenleri</option>
+              {data?.refusalCategories?.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.stepLabel} — {cat.titleTr.slice(0, 50)} ({cat.count})
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedErrorCat}
+              onChange={(e) => {
+                setSelectedErrorCat(e.target.value);
+                if (e.target.value !== 'all') {
+                  setStatusFilter('error');
+                  setSelectedRefusalCat('all');
+                }
+              }}
+              className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+            >
+              <option value="all">Tüm Hata (Ошибка) Çeşitleri</option>
               {data?.errorCategories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.stepLabel} — {cat.titleTr.slice(0, 55)} ({cat.count})

@@ -134,6 +134,8 @@ class GosuslugiVksBot:
         self.current_row: Dict[str, Any] = {}
         self.allow_full_restart: bool = True
         self.current_form_order_id: str = ""
+        self.consecutive_mvd_not_found_warnings: int = 0
+        self.current_worker_had_mvd_warning: bool = False
         self.cdp = None
         self.attach_page(page)
 
@@ -398,7 +400,20 @@ class GosuslugiVksBot:
                 "span:has-text('Данные не найдены в базе МВД'):visible"
             )
             if mvd_warning.count() > 0 and mvd_warning.first.is_visible():
-                logger.warning("Detected MVD warning modal. Clicking continue...")
+                if not self.current_worker_had_mvd_warning:
+                    self.current_worker_had_mvd_warning = True
+                    self.consecutive_mvd_not_found_warnings += 1
+                logger.warning(
+                    f"Detected MVD warning modal ('Данные не найдены в базе МВД' — подряд: {self.consecutive_mvd_not_found_warnings}/3)."
+                )
+                if self.consecutive_mvd_not_found_warnings >= 3:
+                    err_mvd_outage = (
+                        "База МВД (ЦБДУИГ / СМЭВ) не отвечает: 3 сотрудника подряд получили предупреждение "
+                        "«Данные не найдены в базе МВД — МВД может отказать». Отправка новых уведомлений автоматически "
+                        "приостановлена для защиты от массовых отказов «Услуга отказана». Переключаемся на скачивание PDF и проверку статусов!"
+                    )
+                    logger.warning(f"MVD_SERVICE_DOWN: {err_mvd_outage}")
+                    raise MvdServiceDownError(err_mvd_outage)
                 cont_btn = self.page.locator(
                     "button:has-text('Продолжить'), button:has-text('Все равно продолжить'), button:has-text('Продолжить без проверки')"
                 ).first
@@ -406,6 +421,8 @@ class GosuslugiVksBot:
                     cont_btn.click(timeout=2500)
                     self.page.wait_for_timeout(2000)
                     handled = True
+        except MvdServiceDownError:
+            raise
         except Exception:
             pass
 
@@ -1551,6 +1568,7 @@ class GosuslugiVksBot:
             self.register_worker_error(row, err_inn_msg)
             raise RuntimeError(err_inn_msg)
         row["ИНН"] = clean_inn_digits
+        self.current_worker_had_mvd_warning = False
 
         # Step 1: Navigate to https://www.gosuslugi.ru/600585/1/form (or reuse immediately if already open on form start/drafts modal)
         cur_url_now = self.page.url or ""
@@ -2143,6 +2161,8 @@ class GosuslugiVksBot:
         self.click_continue_strict("Шаг 10: Договор и Адрес работы", 2000)
 
         # Step 11: VKS Salary Payment Details ('Укажите информацию о выплате зарплаты иностранцу' — по месяцам в рамках квартала)
+        if not self.current_worker_had_mvd_warning:
+            self.consecutive_mvd_not_found_warnings = 0
         self.check_and_handle_error_modal()
         self.fill_step11_monthly_periods(row)
         self.page.wait_for_timeout(600)

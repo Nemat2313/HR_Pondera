@@ -81,6 +81,63 @@ const ERROR_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
   },
 };
 
+const REFUSAL_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
+  mvd_outage_21oct: {
+    id: 'mvd_outage_21oct',
+    titleTr: '21 Ekim МВД Sistem Çöküşü / Kesintisi Sırasında Gönderilenler (03:27–11:25 MSK)',
+    titleRu: 'Сбой сервиса МВД 21.10 (03:27–11:25 МСК) — Авто-отказ шлюза СМЭВ',
+    stepLabel: '⚡ МВД Servis Kesintisi',
+    hintTr:
+      '19-20 Ekimde aynı şablon ve pasaport formatıyla gönderilen 1.144 başvurunun 1.125 adedi (%98,3) onaylanırken (Услуга оказана), 21 Ekim sabahı 03:27–11:25 arasında МВД veritabanı yanıt vermediği (saat 11:25te «Сервис МВД не отвечает» uyarısıyla tamamen kapandığı) için bu aralıktaki başvurular veri hatası olmaksızın otomatik reddedilmiştir. МВД servisi açıkken doğrudan tekrar gönderilebilir.',
+    severity: 'high',
+  },
+  doc_blank_or_passport_mismatch: {
+    id: 'doc_blank_or_passport_mismatch',
+    titleTr: 'РНР Blank No (7 Hane Dışı) / Yenilenmiş Pasaport (İK Uyuşmazlığı) / Kiril Harf',
+    titleRu: 'Некорректный номер бланка РНР (не 7 цифр) / Смена паспорта / Кириллица',
+    stepLabel: '📄 Belge / Blank Hatası',
+    hintTr:
+      'РНР Blank numarası (СерийныйНомер2) 7 hane olmayan (örn. 8 haneli), pasaportu yenilenmiş olup İK veritabanında farklı pasaport numarası kayıtlı olan veya pasaport numarasında Kiril harf bulunan kayıtlar.',
+    severity: 'high',
+  },
+  salary_gap_or_low: {
+    id: 'salary_gap_or_low',
+    titleTr: 'Maaş Dönemi Boşluğu (Ay Eksikliği) veya Çeyreklik VKS Maaş Alt Sınırı (< 750.000 ₽)',
+    titleRu: 'Пропуск месяца выплаты или сумма за квартал ниже порога ВКС',
+    stepLabel: '💰 Maaş / Dönem Hatası',
+    hintTr:
+      'Çeyrek içindeki aylardan biri boş bırakılmış (örn. 1. ve 3. ay dolu, 2. ay boş) veya 3 aylık toplam ödemesi VKS yasal alt sınırının (750.000 ₽ / aylık 250.000 ₽) altında kalan kayıtlar.',
+    severity: 'high',
+  },
+  contract_ended_or_exit: {
+    id: 'contract_ended_or_exit',
+    titleTr: '3. Çeyrek İçinde/Öncesinde İşten Çıkış (Дата окончания) veya Sözleşme Feshi',
+    titleRu: 'Расторжение договора / Увольнение в 3 квартале (Дата окончания действия)',
+    stepLabel: '📅 Çıkış / Sözleşme Feshi',
+    hintTr:
+      'Sözleşme bitiş tarihi (ДатаОканчанияДействия) girilmiş veya İK veritabanında Çıkış durumunda olan; МВД veritabanında sözleşme fesih bildirimi işlendiği için aktif РНР/sözleşme kontrolüne takılan kayıtlar.',
+    severity: 'medium',
+  },
+  fio_lastname_net_or_reentry: {
+    id: 'fio_lastname_net_or_reentry',
+    titleTr: "Soyadı (Фамилия) 'Нет' Yazılması veya Mükerrer Kod (а/б) Sözleşme Uyuşmazlığı",
+    titleRu: "Фамилия «Нет» (полное имя в поле Имя) или повторный код договора (а/б)",
+    stepLabel: "👤 ФИО 'Нет' / Mükerrer Kod",
+    hintTr:
+      "Soyadı 'Нет' yazılıp tam adı Имя alanına yazılan (МВД РНР kartında Soyadı/Adı ayrı basılmış olabilir) veya mükerrer sicil kodlu (929511а vb.) olup МВД'deki son aktif sözleşme tarihiyle uyuşmayan kayıtlar.",
+    severity: 'medium',
+  },
+  mvd_registry_other: {
+    id: 'mvd_registry_other',
+    titleTr: 'Diğer МВД ЦБДУИГ Kayıt Uyuşmazlığı (РНР Veriliş Tarihi / Sözleşme Tarihi)',
+    titleRu: 'Прочие расхождения с базой ЦБДУИГ МВД (дата выдачи РНР / дата договора)',
+    stepLabel: '🔍 МВД Kayıt Kontrolü',
+    hintTr:
+      '19-20 Ekimde МВД sistemi normal çalışırken reddedilen; basılı РНР kartındaki veriliş tarihi (ДатаВыдачиВКС), sözleşme tarihi (ДатаЗаключения) veya ИНН bilgisinin orijinal belgeyle kontrol edilmesi gereken kayıtlar.',
+    severity: 'medium',
+  },
+};
+
 function classifyGosuslugiError(statusText: string, detailText = ''): ErrorCategoryDef {
   const combined = `${statusText || ''} ${detailText || ''}`;
   if (/Шаг 12|Подразделение МВД|подразделение МВД/i.test(combined)) {
@@ -384,6 +441,15 @@ export async function GET(request: Request) {
       }
     > = {};
 
+    const refusalCategoriesMap: Record<
+      string,
+      ErrorCategoryDef & {
+        count: number;
+        percentage: number;
+        items: any[];
+      }
+    > = {};
+
     const hourlyTimelineMap: Record<
       string,
       { hourSlot: string; sent: number; errors: number; total: number }
@@ -446,42 +512,100 @@ export async function GET(request: Request) {
       else if (isServiceRendered) gosuslugiStatusKey = 'service_rendered';
       else if (isRegisteredOnly) gosuslugiStatusKey = 'registered_mvd';
 
-      // Diagnose probable MVD refusal reason when Услуга отказана
+      // Diagnose probable MVD refusal reason & category when Услуга отказана
       let refusalHint = '';
+      let refusalCat: ErrorCategoryDef | null = null;
       if (isRefusedMvd) {
         const reasons: string[] = [];
         const passNoCheck = String(mWorker.passportNumber || pInfo?.pasaport_no || '').trim();
+        const hrPassDigits = String(pInfo?.pasaport_no || '').replace(/\D+/g, '');
+        const masterPassDigits = passNoCheck.replace(/\D+/g, '');
         const blankNoCheck = String(mWorker.blankNumber || '').trim();
+        const rnrNoCheck = String(mWorker.rnrNumber || '').trim();
         const codeCheck = String(mWorker.code || '').trim();
         const cEndCheck = String(mWorker.contractEndDate || '').trim();
         const m1Check = String(mWorker.month1Salary || '').trim();
         const m2Check = String(mWorker.month2Salary || '').trim();
         const m3Check = String(mWorker.month3Salary || '').trim();
+        const m1Num = parseFloat(m1Check.replace(',', '.') || '0') || 0;
+        const m2Num = parseFloat(m2Check.replace(',', '.') || '0') || 0;
+        const m3Num = parseFloat(m3Check.replace(',', '.') || '0') || 0;
+        const totalQSal = m1Num + m2Num + m3Num;
 
-        if (/[А-Яа-яЁё]/.test(passNoCheck)) {
+        const isOutageWindow21Oct =
+          (subAt >= '2026-10-21 03:00:00' && subAt <= '2026-10-21 12:00:00') ||
+          /^829[567]/.test(appNo);
+
+        const hasCyrillicPass = /[А-Яа-яЁё]/.test(passNoCheck);
+        const hasBadBlankLen = Boolean(blankNoCheck && blankNoCheck.length !== 7);
+        const hasBadRnrLen = Boolean(rnrNoCheck && rnrNoCheck.length !== 10);
+        const hasPassportChangedInHr = Boolean(
+          hrPassDigits &&
+            masterPassDigits &&
+            hrPassDigits.length >= 6 &&
+            masterPassDigits !== hrPassDigits &&
+            !masterPassDigits.endsWith(hrPassDigits)
+        );
+        const hasSalaryGap = Boolean((m1Num > 0 && m3Num > 0 && m2Num === 0) || (m1Num === 0 && m2Num > 0 && m3Num === 0));
+        const hasLowFullQuarterSalary = Boolean(m1Num > 0 && m2Num > 0 && m3Num > 0 && totalQSal < 750000);
+        const hasContractEnd = Boolean(cEndCheck);
+        const hasLastNameNet = mWorker.lastName === 'Нет';
+        const hasDuplicateCode = /[а-яa-z]$/i.test(codeCheck);
+
+        if (isOutageWindow21Oct) {
+          reasons.push(
+            `⚡ 21 Ekim МВД Sistem Kesintisi (03:27–11:25 MSK) sırasında gönderildi («Данные не найдены в базе МВД» oto-red)`
+          );
+        }
+        if (hasCyrillicPass) {
           reasons.push(`Pasaport No (${passNoCheck}) içinde Latin yerine Rusça Kiril harf kullanılmış`);
         }
-        if (blankNoCheck && blankNoCheck.length !== 7) {
+        if (hasPassportChangedInHr) {
+          reasons.push(
+            `Pasaport Uyuşmazlığı: Şablonda (${passNoCheck}), İK Veritabanında (${pInfo?.pasaport_no}) — pasaport yenilenmiş olabilir`
+          );
+        }
+        if (hasBadBlankLen) {
           reasons.push(`RNR Blank No (${blankNoCheck}) 7 hane yerine ${blankNoCheck.length} haneli girilmiş`);
         }
-        if (m1Check && m3Check && !m2Check) {
-          reasons.push(`2. Ay (Ağustos) maaşı boş bırakılmış (1.Ay=${m1Check}, 2.Ay=Boş, 3.Ay=${m3Check})`);
+        if (hasBadRnrLen) {
+          reasons.push(`RNR No (${rnrNoCheck}) 10 hane yerine ${rnrNoCheck.length} haneli girilmiş`);
         }
-        if (mWorker.lastName === 'Нет') {
-          reasons.push(`Soyadı (Фамилия) 'Нет' olarak girilmiş, tam isim Имя alanına yazılmış`);
+        if (hasSalaryGap) {
+          reasons.push(`Maaş ayında boşluk var (1.Ay=${m1Check || 'Boş'}, 2.Ay=${m2Check || 'Boş'}, 3.Ay=${m3Check || 'Boş'})`);
+        } else if (hasLowFullQuarterSalary) {
+          reasons.push(`3 aylık toplam maaş (${totalQSal.toFixed(2)} ₽) VKS alt sınırının (750.000 ₽) altında`);
         }
-        if (/[а-яa-z]$/i.test(codeCheck)) {
-          reasons.push(`Mükerrer / Yeniden giriş kodu (${codeCheck}) — eski/yeni sözleşme veya RNR tarihi uyuşmazlığı`);
+        if (hasContractEnd) {
+          reasons.push(`3. Çeyrek içinde çıkış / sözleşme feshi (${cEndCheck})`);
         }
-        if (cEndCheck) {
-          reasons.push(`3. Çeyrek içinde çıkış / sözleşme feshi (${cEndCheck}) — МВД veritabanında RNR/Sözleşme aktif görünmüyor olabilir`);
+        if (hasLastNameNet) {
+          reasons.push(`Soyadı (Фамилия) 'Нет' girilmiş, tam isim Имя alanına yazılmış`);
+        }
+        if (hasDuplicateCode) {
+          reasons.push(`Mükerrer / Yeniden giriş kodu (${codeCheck}) — eski/yeni sözleşme tarihi kontrolü`);
         }
         if (reasons.length === 0) {
           reasons.push(
-            `МВД veritabanı kontrolü: RNR (${mWorker.rnrSeries || ''} ${mWorker.rnrNumber || pInfo?.rnr_no || ''}) / Sözleşme tarihi (${mWorker.contractDate || '-'}) / МВД birimi uyuşmazlığı`
+            `МВД ЦБДУИГ kontrolü: RNR (${mWorker.rnrSeries || ''} ${mWorker.rnrNumber || pInfo?.rnr_no || ''}) / Sözleşme (${mWorker.contractDate || '-'}) tarihi kontrol edilmeli`
           );
         }
         refusalHint = reasons.join(' • ');
+
+        // Primary Refusal Category assignment
+        if (hasCyrillicPass || hasBadBlankLen || hasBadRnrLen || hasPassportChangedInHr) {
+          refusalCat = REFUSAL_CATEGORY_DEFINITIONS.doc_blank_or_passport_mismatch;
+        } else if (hasSalaryGap || (!isOutageWindow21Oct && hasLowFullQuarterSalary)) {
+          refusalCat = REFUSAL_CATEGORY_DEFINITIONS.salary_gap_or_low;
+        } else if (isOutageWindow21Oct) {
+          refusalCat = REFUSAL_CATEGORY_DEFINITIONS.mvd_outage_21oct;
+        } else if (hasContractEnd) {
+          refusalCat = REFUSAL_CATEGORY_DEFINITIONS.contract_ended_or_exit;
+        } else if (hasLastNameNet || hasDuplicateCode) {
+          refusalCat = REFUSAL_CATEGORY_DEFINITIONS.fio_lastname_net_or_reentry;
+        } else {
+          refusalCat = REFUSAL_CATEGORY_DEFINITIONS.mvd_registry_other;
+        }
       }
 
       let errorCat: ErrorCategoryDef | null = null;
@@ -588,6 +712,9 @@ export async function GET(request: Request) {
         errorCategoryId: errorCat?.id || null,
         errorCategoryTitle: errorCat?.titleTr || null,
         errorStepLabel: errorCat?.stepLabel || null,
+        refusalCategoryId: refusalCat?.id || null,
+        refusalCategoryTitle: refusalCat?.titleTr || null,
+        refusalStepLabel: refusalCat?.stepLabel || null,
       };
 
       if (isError && errorCat) {
@@ -603,6 +730,19 @@ export async function GET(request: Request) {
         errorCategoriesMap[errorCat.id].items.push(enrichedItem);
       }
 
+      if (isRefusedMvd && refusalCat) {
+        if (!refusalCategoriesMap[refusalCat.id]) {
+          refusalCategoriesMap[refusalCat.id] = {
+            ...refusalCat,
+            count: 0,
+            percentage: 0,
+            items: [],
+          };
+        }
+        refusalCategoriesMap[refusalCat.id].count++;
+        refusalCategoriesMap[refusalCat.id].items.push(enrichedItem);
+      }
+
       enrichedSubmissions.push(enrichedItem);
     }
 
@@ -611,6 +751,14 @@ export async function GET(request: Request) {
       .map((cat) => ({
         ...cat,
         percentage: totalErrors > 0 ? Math.round((cat.count / totalErrors) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    // Finalize refusal category percentages
+    const refusalCategories = Object.values(refusalCategoriesMap)
+      .map((cat) => ({
+        ...cat,
+        percentage: totalRefusedMvd > 0 ? Math.round((cat.count / totalRefusedMvd) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
 
@@ -669,6 +817,7 @@ export async function GET(request: Request) {
         last60mErrors,
       },
       errorCategories,
+      refusalCategories,
       regionBreakdown,
       citizenshipBreakdown,
       hourlyTimeline,

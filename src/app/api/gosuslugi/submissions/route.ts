@@ -22,6 +22,23 @@ function ensureTable(db: any) {
       updated_at TEXT DEFAULT '',
       UNIQUE(sicil_no, notification_type, period_code)
     );
+
+    CREATE TABLE IF NOT EXISTS gosuslugi_refused_archive (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sicil_no TEXT NOT NULL,
+      worker_name TEXT,
+      citizenship TEXT,
+      notification_type TEXT NOT NULL DEFAULT 'vks_salary',
+      period_code TEXT DEFAULT '',
+      application_no TEXT NOT NULL DEFAULT '',
+      gosuslugi_status TEXT NOT NULL DEFAULT 'Услуга отказана',
+      status_detail TEXT DEFAULT '',
+      pdf_filename TEXT DEFAULT '',
+      submitted_at TEXT DEFAULT '',
+      archived_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_refused_arch_appno ON gosuslugi_refused_archive(application_no);
+    CREATE INDEX IF NOT EXISTS idx_refused_arch_sicil ON gosuslugi_refused_archive(sicil_no);
   `);
   try {
     db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
@@ -111,6 +128,12 @@ export async function POST(request: Request) {
       LIMIT 1
     `);
 
+    const checkArchivedRefusalStmt = db.prepare(`
+      SELECT id FROM gosuslugi_refused_archive
+      WHERE application_no = ? AND application_no != ''
+      LIMIT 1
+    `);
+
     const stmt = db.prepare(`
       INSERT INTO gosuslugi_submissions (
         sicil_no, worker_name, citizenship, notification_type, period_code,
@@ -163,6 +186,11 @@ export async function POST(request: Request) {
         : rawStatus;
 
       if (!sicil && !appNo) continue;
+
+      // Skip old refused application_no that was explicitly archived/re-opened for re-sending
+      if (appNo && checkArchivedRefusalStmt.get(appNo)) {
+        continue;
+      }
 
       // Prevent linking the same Gosuslugi application_no to two different workers across multiple computers
       if (appNo && sicil) {
@@ -230,6 +258,12 @@ export async function PATCH(request: Request) {
       WHERE sicil_no = ?
     `);
 
+    const checkArchivedRefusalStmt = db.prepare(`
+      SELECT id FROM gosuslugi_refused_archive
+      WHERE application_no = ? AND application_no != ''
+      LIMIT 1
+    `);
+
     let updated = 0;
     for (const u of updates) {
       const appNo = String(u.application_no || u.applicationNo || '').trim();
@@ -237,6 +271,7 @@ export async function PATCH(request: Request) {
       const status = String(u.gosuslugi_status || u.gosuslugiStatus || '').trim();
       const detail = String(u.status_detail || u.statusDetail || '').trim();
       if (!status) continue;
+      if (appNo && checkArchivedRefusalStmt.get(appNo)) continue;
 
       if (appNo) {
         const res = byAppNoStmt.run(status, detail, nowStr, appNo);
