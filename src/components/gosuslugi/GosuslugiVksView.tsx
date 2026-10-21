@@ -124,6 +124,7 @@ export interface VksValidationIssue {
     | 'birthDate'
     | 'citizenship'
     | 'passport'
+    | 'inn'
     | 'rnr'
     | 'contract'
     | 'period'
@@ -616,8 +617,15 @@ export function validateVksWorkerRecord(
   }
 
   // 4. Passport (Номер, Дата выдачи, Кем выдан)
-  if (!w.passportNumber || !w.passportNumber.trim()) {
+  const cleanPassNum = String(w.passportNumber || '').trim();
+  if (!cleanPassNum) {
     addIssue('passport', 'Отсутствует номер паспорта', 'Pasaport numarası eksik');
+  } else if (/\s|\d{2}\.\d{2}\.\d{4}/.test(cleanPassNum) || cleanPassNum.length > 12) {
+    addIssue(
+      'passport',
+      `Некорректный номер паспорта (${cleanPassNum})`,
+      `Pasaport numarası hatalı/boşluklu (${cleanPassNum})`
+    );
   }
   if (!w.passportIssuedBy || !w.passportIssuedBy.trim()) {
     addIssue('passport', 'Не указано, кем выдан паспорт', 'Pasaportu veren makam eksik');
@@ -654,18 +662,49 @@ export function validateVksWorkerRecord(
     }
   }
 
-  // 5. Work Permit (РНР Серия, Номер, Бланк Серия/Номер, Дата выдачи РНР)
-  if (!w.rnrSeries || !w.rnrSeries.trim()) {
-    addIssue('rnr', 'Отсутствует серия РНР', 'Çalışma izni (РНР) seri no eksik');
+  // 4b. Foreigner INN (12 digits required by Gosuslugi Step 8)
+  const cleanInn = String(w.inn || '').replace(/\s+/g, '');
+  if (!cleanInn || !/^\d{12}$/.test(cleanInn)) {
+    addIssue(
+      'inn',
+      `ИНН иностранца должен состоять из 12 цифр (сейчас: «${w.inn || 'пусто'}»)`,
+      `ИНН 12 haneli rakam olmalıdır (mevcut: «${w.inn || 'boş'}»)`
+    );
   }
-  if (!w.rnrNumber || !w.rnrNumber.trim()) {
+
+  // 5. Work Permit (РНР Серия, Номер, Бланк Серия/Номер, Дата выдачи РНР)
+  const cleanRnrSeries = String(w.rnrSeries || '').trim();
+  const cleanRnrNum = String(w.rnrNumber || '').trim();
+  const cleanBlankNum = String(w.blankNumber || '').trim();
+  if (!cleanRnrSeries) {
+    addIssue('rnr', 'Отсутствует серия РНР', 'Çalışma izni (РНР) seri no eksik');
+  } else if (!/^\d{2}$/.test(cleanRnrSeries)) {
+    addIssue(
+      'rnr',
+      `Серия РНР должна состоять из 2 цифр (${cleanRnrSeries})`,
+      `Çalışma izni (РНР) serisi 2 haneli rakam olmalı (${cleanRnrSeries})`
+    );
+  }
+  if (!cleanRnrNum) {
     addIssue('rnr', 'Отсутствует номер РНР', 'Çalışma izni (РНР) numarası eksik');
+  } else if (!/^\d{10}$/.test(cleanRnrNum)) {
+    addIssue(
+      'rnr',
+      `Номер РНР должен состоять из 10 цифр (сейчас ${cleanRnrNum.length}: «${cleanRnrNum}»)`,
+      `Çalışma izni (РНР) numarası 10 haneli rakam olmalı (mevcut ${cleanRnrNum.length} haneli: «${cleanRnrNum}»)`
+    );
   }
   if (!w.blankSeries || !w.blankSeries.trim()) {
     addIssue('rnr', 'Отсутствует серия бланка РНР (напр. ВВ)', 'Бланк seri no (örn. ВВ) eksik');
   }
-  if (!w.blankNumber || !w.blankNumber.trim()) {
+  if (!cleanBlankNum) {
     addIssue('rnr', 'Отсутствует номер бланка РНР', 'Бланк numarası eksik');
+  } else if (!/^\d{7}$/.test(cleanBlankNum)) {
+    addIssue(
+      'rnr',
+      `Номер бланка РНР должен состоять из 7 цифр (сейчас: «${cleanBlankNum}»)`,
+      `Бланк numarası 7 haneli rakam olmalı (mevcut: «${cleanBlankNum}»)`
+    );
   }
   const rnrIssue = parseStrictDateRu(w.rnrIssueDate);
   if (!rnrIssue.empty && !rnrIssue.valid) {
@@ -2112,9 +2151,35 @@ export default function GosuslugiVksView() {
 
           // Normalize Latin B -> Cyrillic В in blank series
           const rawBlank1 = getVal(r, idxBlank1)
+            .replace(/\s+/g, '')
             .toUpperCase()
             .replace(/B/g, 'В')
             .replace(/A/g, 'А');
+
+          let cleanBlank2 = getVal(r, idxBlank2).replace(/\.0$/, '').replace(/\s+/g, '');
+          if (/^\d{5,6}$/.test(cleanBlank2)) {
+            cleanBlank2 = cleanBlank2.padStart(7, '0');
+          }
+
+          const cyrToLatPass: Record<string, string> = {
+            А: 'A', В: 'B', С: 'C', Е: 'E', Н: 'H', К: 'K', М: 'M', О: 'O', Р: 'P', Т: 'T', Х: 'X', У: 'Y',
+            а: 'A', в: 'B', с: 'C', е: 'E', н: 'H', к: 'K', м: 'M', о: 'O', р: 'P', т: 'T', х: 'X', у: 'Y',
+          };
+          let cleanPassNum = getVal(r, idxPassNumber)
+            .replace(/\.0$/, '')
+            .replace(/(\d{2}\.\d{2}\.\d{4})$/, '')
+            .replace(/\s+/g, '');
+          if (/^[АВЕКМНОРСТУХавекмнорстухA-Za-z]{1,3}\d{5,9}$/.test(cleanPassNum)) {
+            cleanPassNum = cleanPassNum
+              .replace(/[АВЕКМНОРСТУХавекмнорстух]/g, (ch) => cyrToLatPass[ch] || ch)
+              .toUpperCase();
+          }
+
+          let cleanInnVal = getVal(r, idxInn).replace(/\.0$/, '').trim();
+          const cleanInnDigits = cleanInnVal.replace(/\s+/g, '');
+          if (/^\d{10,12}$/.test(cleanInnDigits)) {
+            cleanInnVal = cleanInnDigits;
+          }
 
           rawMapped.push({
             id: `excel-vks-${idx}`,
@@ -2138,19 +2203,19 @@ export default function GosuslugiVksView() {
               true
             ),
             passportSeries: getVal(r, idxPassSeries).replace(/\.0$/, ''),
-            passportNumber: getVal(r, idxPassNumber).replace(/\.0$/, ''),
+            passportNumber: cleanPassNum,
             passportIssueDate: formatDateRu(r[idxPassIssueDate]),
             passportIssuedBy: sanitizeCyrillicGosuslugiText(
               getVal(r, idxPassIssuedBy),
               'МВД',
               true
             ),
-            inn: getVal(r, idxInn).replace(/\.0$/, ''),
-            rnrSeries: getVal(r, idxRnrSeries).replace(/\.0$/, ''),
-            rnrNumber: getVal(r, idxRnrNumber).replace(/\.0$/, ''),
+            inn: cleanInnVal,
+            rnrSeries: getVal(r, idxRnrSeries).replace(/\.0$/, '').replace(/\s+/g, ''),
+            rnrNumber: getVal(r, idxRnrNumber).replace(/\.0$/, '').replace(/\s+/g, ''),
             rnrIssueDate: formatDateRu(r[idxRnrIssueDate]),
             blankSeries: rawBlank1,
-            blankNumber: getVal(r, idxBlank2).replace(/\.0$/, ''),
+            blankNumber: cleanBlank2,
             contractDate: formatDateRu(r[idxContractDate]),
             contractStartDate:
               formatDateRu(r[idxContractStart]) || formatDateRu(r[idxContractDate]),
@@ -2168,27 +2233,60 @@ export default function GosuslugiVksView() {
           });
         });
 
+        // 1) First sync uploaded rows into the 3,088 Central Master List and clear 'Ошибка' statuses for updated sicils
+        const payloadForMaster = buildPayloadRecords(rawMapped);
+        let updatedMasterCnt = 0;
+        let clearedErrorsCnt = 0;
+        try {
+          const masterRes = await fetch('/api/gosuslugi/master-list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              records: payloadForMaster,
+              mode: 'merge',
+              clearErrorsForUpdated: true,
+              sourceTag: `excel_${file.name}`,
+            }),
+          });
+          if (masterRes.ok) {
+            const mJson = await masterRes.json();
+            updatedMasterCnt = Number(mJson.updated || 0) + Number(mJson.inserted || 0);
+            clearedErrorsCnt = Number(mJson.clearedErrors || 0);
+          }
+        } catch {}
+
+        // 2) Re-fetch submissions after clearing 'Ошибка' so edited rows are no longer marked as errored!
+        const freshSubsAfterMerge = await refreshSavedSubmissionsFromDb();
+        await refreshMasterListSummary();
+
         const { processed, validCnt, invalidCnt } = applyInitialValidationSelection(
           rawMapped,
-          freshSubs
+          freshSubsAfterMerge,
+          true
         );
-        setWorkers(processed);
-        setQueueFilter('all');
 
-        // Merge uploaded Excel records into central master list in the background (preserving statuses & clearing 'Ошибка' for updated rows)
-        const payloadForMaster = buildPayloadRecords(processed);
-        fetch('/api/gosuslugi/master-list', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            records: payloadForMaster,
-            mode: 'merge',
-            clearErrorsForUpdated: true,
-            sourceTag: `excel_${file.name}`,
-          }),
-        })
-          .then(() => refreshMasterListSummary())
-          .catch(() => {});
+        // If user already had the larger central list loaded on screen (e.g. 772 or 3088 rows) and uploaded a smaller fixed subset,
+        // update matching sicils inside the loaded list AND keep them selected; otherwise display the uploaded list directly.
+        if (workers.length > processed.length && processed.length < 600) {
+          const updatedBySicil = new Map<string, GosuslugiVksWorkerRecord>();
+          for (const pRow of processed) {
+            updatedBySicil.set(String(pRow.sicil || pRow.code).trim(), pRow);
+          }
+          setWorkers((prev) =>
+            prev.map((existingW) => {
+              const k = String(existingW.sicil || existingW.code).trim();
+              const replacement = updatedBySicil.get(k);
+              if (!replacement) return existingW;
+              return {
+                ...replacement,
+                id: existingW.id,
+              };
+            })
+          );
+        } else {
+          setWorkers(processed);
+          setQueueFilter('all');
+        }
 
         const alreadySentCnt = processed.filter((w) => isWorkerAlreadySentToGosuslugi(w)).length;
         const readyUnsentCnt = processed.filter((w) => w.selected).length;
@@ -2197,15 +2295,15 @@ export default function GosuslugiVksView() {
           showNotice(
             'info',
             lang === 'ru'
-              ? `Импортировано ${processed.length} строк из Excel (${sheetName}): уже отправлено — ${alreadySentCnt}, готовы к отправке — ${readyUnsentCnt}, пропуски/ошибки — ${invalidCnt}. Синхронизировано с сервером!`
-              : `Excel'den (${sheetName}) ${processed.length} satır yüklendi: ${alreadySentCnt} satır zaten gönderilmiş (korundu), ${readyUnsentCnt} satır gönderime hazır, ${invalidCnt} satırda eksik veri var. Merkezi sunucuyla senkronize edildi!`
+              ? `Обновлено в базе (3088): ${updatedMasterCnt || processed.length} стр. (снято Ошибка: ${clearedErrorsCnt}). Готовы к отправке: ${readyUnsentCnt}, ещё требуют правки: ${invalidCnt}.`
+              : `Merkezi 3.088 listede ${updatedMasterCnt || processed.length} kayıt güncellendi (${clearedErrorsCnt} Ошибка temizlendi). ${readyUnsentCnt} kayıt gönderime hazır seçildi, ${invalidCnt} kayıtta hala eksik veri var.`
           );
         } else {
           showNotice(
             'success',
             lang === 'ru'
-              ? `Импортировано ${processed.length} ВКС из Excel (${sheetName}): уже отправлено — ${alreadySentCnt}, готовы к отправке — ${readyUnsentCnt}!`
-              : `Excel (${sheetName}) dosyasından ${processed.length} VKS yüklendi: ${alreadySentCnt} gönderilmiş statüsü korundu, ${readyUnsentCnt} satır gönderime hazır!`
+              ? `В центральном списке (3088) успешно обновлено ${updatedMasterCnt || processed.length} записей (снято Ошибка: ${clearedErrorsCnt}) — ${readyUnsentCnt} готовы к отправке!`
+              : `Merkezi 3.088 kişilik listede ${updatedMasterCnt || processed.length} kayıt başarıyla güncellendi (${clearedErrorsCnt} Ошибка statüsü sıfırlandı, ${readyUnsentCnt} kayıt gönderime hazır seçildi)!`
           );
         }
       } catch {
@@ -3155,6 +3253,24 @@ export default function GosuslugiVksView() {
             </button>
 
             <a
+              href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
+              download
+              title={
+                lang === 'ru'
+                  ? 'Скачать записи с ошибками (Ошибка / пропуски) в формате шаблона ВКС с цветным выделением ошибочных ячеек и описанием ошибки в последнем столбце'
+                  : 'Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında, düzeltilmesi gereken hücreler KIRMIZI işaretli ve en son sütunda hata açıklamalı olarak indirir'
+              }
+              className="h-8 px-3 rounded-xl border border-rose-300 dark:border-rose-500/40 bg-rose-50/90 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-800 dark:text-rose-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+              <span>
+                {lang === 'ru'
+                  ? '🛠️ Шаблон Ошибок (Цветной)'
+                  : '🛠️ Hatalı Kayıtları Şablon İndir (Renkli)'}
+              </span>
+            </a>
+
+            <a
               href="/api/gosuslugi/pdf/zip"
               download="Pondera_VKS_Gosuslugi_PDFs_2026-3.zip"
               title={
@@ -3528,6 +3644,31 @@ export default function GosuslugiVksView() {
             >
               <Users className="w-3 h-3 text-indigo-300" />
               <span>{lang === 'ru' ? 'Поровну на 4 ПК' : 'Kalanları 4 PC Eşit Böl'}</span>
+            </button>
+            <a
+              href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
+              download
+              className="h-7 px-2.5 rounded-lg bg-rose-600/35 hover:bg-rose-600/50 border border-rose-400/60 text-rose-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition no-underline"
+              title="Hatalı (Ошибка) ve eksik verili kayıtları şablon formatında, hatalı hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak Excel'e indirir"
+            >
+              <Download className="w-3 h-3 text-rose-200" />
+              <span>
+                {lang === 'ru'
+                  ? '📥 Скачать Ошибки (Шаблон с подсветкой)'
+                  : '📥 Hatalı (Ошибка) Şablon İndir (Renkli Hücreli)'}
+              </span>
+            </a>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="h-7 px-2.5 rounded-lg bg-emerald-500/30 hover:bg-emerald-500/45 border border-emerald-400/50 text-emerald-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
+              title="Şablonda düzelttiğiniz Excel dosyasını yükleyerek 3.088 kişilik merkezi listedeki verileri günceller ve Ошибка statüsünü sıfırlar"
+            >
+              <Upload className="w-3 h-3 text-emerald-200" />
+              <span>
+                {lang === 'ru'
+                  ? '📤 Загрузить исправленный шаблон (Обновить 3088)'
+                  : '📤 Düzeltilen Şablonu Yükle (3088 Listeyi Güncelle)'}
+              </span>
             </button>
             <button
               onClick={() =>
@@ -4596,16 +4737,21 @@ export default function GosuslugiVksView() {
                           <input
                             value={w.inn}
                             onChange={(e) => handleUpdateWorkerField(w.id, 'inn', e.target.value)}
-                            placeholder="ИНН (необяз.)"
-                            className="w-28 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-mono"
+                            placeholder="12-значный ИНН"
+                            className={`w-28 px-1.5 py-0.5 rounded border text-xs font-mono ${
+                              fErr.inn
+                                ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold'
+                                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white'
+                            }`}
                           />
                         ) : (
                           <span
                             className={
-                              w.inn
-                                ? 'text-slate-800 dark:text-slate-200'
-                                : 'text-amber-600 dark:text-amber-400 font-bold'
+                              fErr.inn
+                                ? 'text-rose-600 dark:text-rose-400 font-bold underline decoration-wavy font-mono'
+                                : 'text-slate-800 dark:text-slate-200 font-mono'
                             }
+                            title={fErr.inn ? fErr.inn.join('; ') : w.inn}
                           >
                             {w.inn || 'Нет ИНН'}
                           </span>

@@ -792,7 +792,15 @@ class GosuslugiVksBot:
         logger.info(f"Step 11: Filling {len(periods)} monthly salary period(s): [{summary_str}]")
 
         p_start_first = self.page.locator("input[name*='di17_start'], input[id*='di17_start']").first
-        p_start_first.wait_for(state="visible", timeout=20000)
+        try:
+            p_start_first.wait_for(state="visible", timeout=15000)
+        except Exception:
+            self.check_and_handle_error_modal()
+            inter_btn = self.page.locator("button:has-text('Продолжить'):visible").last
+            if inter_btn.count() > 0 and inter_btn.is_enabled():
+                inter_btn.click()
+                self.page.wait_for_timeout(2000)
+            p_start_first.wait_for(state="visible", timeout=20000)
 
         for p_idx, p_item in enumerate(periods):
             # If p_idx > 0, ensure the (p_idx + 1)-th period block exists by clicking 'Добавить период'
@@ -1197,6 +1205,15 @@ class GosuslugiVksBot:
                     self.type_masked_input("#si14_issuedBy_125, input[id*='issuedBy'], input[name*='issuedBy']", clean_issued_by, delay=25)
                     repaired = True
 
+            # 3b) Step 8: Foreigner INN (#c_foreignerINN)
+            if self.page.locator("#c_foreignerINN:visible, input[name*='foreignerINN']:visible, input[id*='INN']:visible").count() > 0 or "Шаг 8" in step_name:
+                raw_inn_repair = str(row.get("ИНН", "")).strip()
+                clean_inn_repair = re.sub(r"\D+", "", raw_inn_repair)
+                if len(clean_inn_repair) == 12:
+                    logger.info(f"Auto-repair Step 8: Re-filling 12-digit ИНН ('{clean_inn_repair}')...")
+                    self.type_masked_input("#c_foreignerINN, input[name*='foreignerINN'], input[id*='INN']", clean_inn_repair, delay=40)
+                    repaired = True
+
             # 4) Step 9: Work Permit (РНР) Details
             if self.page.locator("input[id*='seriaBlank']:visible, input[name*='numberBlank']:visible").count() > 0 or "Шаг 9" in step_name:
                 if self.is_input_empty_or_invalid("#series:visible"):
@@ -1504,6 +1521,37 @@ class GosuslugiVksBot:
         # IMPORTANT: Do not change this log prefix — rpa_bridge_server.py parses it to highlight the active row in UI
         logger.info(f"=== Starting Gosuslugi VKS for: {full_name} (Код: {code}) ===")
 
+        # Pre-flight field sanitization & 12-digit INN check BEFORE opening any Gosuslugi draft
+        raw_pass_num = str(row.get("НомерПаспорта", "")).strip()
+        if raw_pass_num:
+            clean_pass = re.sub(r"(\d{2}\.\d{2}\.\d{4})$", "", raw_pass_num.replace(".0", "")).replace(" ", "")
+            cyr_to_lat = {
+                "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H", "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T", "Х": "X", "У": "Y",
+                "а": "A", "в": "B", "с": "C", "е": "E", "н": "H", "к": "K", "м": "M", "о": "O", "р": "P", "т": "T", "х": "X", "у": "Y",
+            }
+            if re.match(r"^[АВЕКМНОРСТУХавекмнорстухA-Za-z]{1,3}\d{5,9}$", clean_pass):
+                clean_pass = "".join(cyr_to_lat.get(ch, ch) for ch in clean_pass).upper()
+            row["НомерПаспорта"] = clean_pass
+
+        raw_blank_num = re.sub(r"\s+", "", str(row.get("СерийныйНомер2", "")).replace(".0", "").strip())
+        if raw_blank_num.isdigit() and len(raw_blank_num) in (5, 6):
+            raw_blank_num = raw_blank_num.zfill(7)
+        if raw_blank_num:
+            row["СерийныйНомер2"] = raw_blank_num
+
+        raw_rnr_num = re.sub(r"\s+", "", str(row.get("Номер", "")).replace(".0", "").strip())
+        if raw_rnr_num:
+            row["Номер"] = raw_rnr_num
+
+        raw_inn_check = str(row.get("ИНН", "")).replace(".0", "").strip()
+        clean_inn_digits = re.sub(r"\D+", "", raw_inn_check)
+        if len(clean_inn_digits) != 12:
+            err_inn_msg = f"Ошибка [Шаг 8: ИНН иностранца]: Не указан корректный 12-значный ИНН иностранца (сейчас: «{raw_inn_check or 'пусто'}»)"
+            logger.error(err_inn_msg)
+            self.register_worker_error(row, err_inn_msg)
+            raise RuntimeError(err_inn_msg)
+        row["ИНН"] = clean_inn_digits
+
         # Step 1: Navigate to https://www.gosuslugi.ru/600585/1/form (or reuse immediately if already open on form start/drafts modal)
         cur_url_now = self.page.url or ""
         already_on_form_modal = (
@@ -1720,40 +1768,81 @@ class GosuslugiVksBot:
                 break
             self.page.wait_for_timeout(350)
 
-        # Step 5: Verify Organization & Manager Info ('Проверьте сведения об организации и руководителе' -> 'Верно')
-        logger.info("Step 5: Confirming organization & manager info ('Верно')...")
-        for i in range(4):
+        # Step 5 -> Step 6 Smart Transition Polling Loop (prevents 25s timeout on #si13_lastNameRu when 'Верно' or 'Перейти к уведомлению' renders slowly)
+        logger.info("Step 5: Confirming organization & manager info ('Верно') and advancing to Step 6...")
+        last_name_input = self.page.locator("#si13_lastNameRu, input[name*='lastNameRu']").first
+        verno_clicks = 0
+        for wait_step6_tick in range(70):  # up to 35 seconds (70 * 500ms)
             self.check_and_handle_error_modal()
             try:
-                verno_btn = self.page.locator("button:has-text('Верно'), span:has-text('Верно')").first
-                if verno_btn.count() > 0 and verno_btn.is_visible():
-                    logger.info(f"Clicking 'Верно' (screen {i+1})...")
-                    verno_btn.click()
-                    self.page.wait_for_timeout(2000)
-                else:
+                if last_name_input.count() > 0 and last_name_input.is_visible():
                     break
             except Exception:
-                break
+                pass
 
-        # Optional Organization Status / OKVED if Gosuslugi prompts for them
-        try:
-            status_input = self.page.locator("#dic11_UL_TD:visible, input[placeholder*='Статус']:visible").first
-            if status_input.count() > 0 and status_input.is_visible():
-                logger.info("Filling Organization Status if prompted...")
-                status_input.click()
-                self.page.wait_for_timeout(500)
-                opt = self.page.locator(
-                    f".lookup-item:has-text('{self.cfg['TYPE_COMPANY']}'), span:has-text('коммерческая'), span:has-text('Юридическое')"
+            # 1) If still on Step 4 ('Перейти к уведомлению' / 'Перейти к заявлению'), click it
+            try:
+                go_btn = self.page.locator(
+                    "button:has-text('Перейти к уведомлению'):visible, "
+                    "button:has-text('Перейти к заявлению'):visible, "
+                    "span:has-text('Перейти к уведомлению'):visible"
                 ).first
-                if opt.count() > 0 and opt.is_visible():
-                    opt.click()
-                else:
-                    self.page.keyboard.press("ArrowDown")
-                    self.page.keyboard.press("Enter")
-                self.page.wait_for_timeout(800)
-                self.click_continue_strict("Статус организации")
-        except Exception:
-            pass
+                if go_btn.count() > 0 and go_btn.is_visible():
+                    logger.info("Step 5 Poll: Clicking 'Перейти к уведомлению'...")
+                    go_btn.click()
+                    self.page.wait_for_timeout(1200)
+                    continue
+            except Exception:
+                pass
+
+            # 2) If on Step 5 ('Верно'), click it
+            try:
+                verno_btn = self.page.locator("button:has-text('Верно'):visible, span:has-text('Верно'):visible").first
+                if verno_btn.count() > 0 and verno_btn.is_visible():
+                    verno_clicks += 1
+                    logger.info(f"Step 5 Poll: Clicking 'Верно' (screen {verno_clicks})...")
+                    verno_btn.click()
+                    self.page.wait_for_timeout(1400)
+                    continue
+            except Exception:
+                pass
+
+            # 3) If on Optional Organization Status / OKVED screen (#dic11_UL_TD), fill & click 'Продолжить'
+            try:
+                status_input = self.page.locator("#dic11_UL_TD:visible, input[placeholder*='Статус']:visible").first
+                if status_input.count() > 0 and status_input.is_visible():
+                    logger.info("Step 5 Poll: Filling Organization Status...")
+                    status_input.click()
+                    self.page.wait_for_timeout(450)
+                    opt = self.page.locator(
+                        f".lookup-item:has-text('{self.cfg['TYPE_COMPANY']}'), span:has-text('коммерческая'), span:has-text('Юридическое')"
+                    ).first
+                    if opt.count() > 0 and opt.is_visible():
+                        opt.click()
+                    else:
+                        self.page.keyboard.press("ArrowDown")
+                        self.page.keyboard.press("Enter")
+                    self.page.wait_for_timeout(600)
+                    cont_btn = self.page.locator("button:has-text('Продолжить'):visible").last
+                    if cont_btn.count() > 0 and cont_btn.is_enabled():
+                        cont_btn.click()
+                        self.page.wait_for_timeout(1200)
+                        continue
+            except Exception:
+                pass
+
+            # 4) If an intermediate 'Продолжить' button is visible and active (and not on Step 6 yet), click it
+            if wait_step6_tick in (12, 24, 36, 48):
+                try:
+                    cont_inter = self.page.locator("button:has-text('Продолжить'):visible").last
+                    if cont_inter.count() > 0 and cont_inter.is_enabled() and last_name_input.count() == 0:
+                        cont_inter.click()
+                        self.page.wait_for_timeout(1200)
+                        continue
+                except Exception:
+                    pass
+
+            self.page.wait_for_timeout(500)
 
         # Step 6: Personal Details (Lines 32-57 in 11.docx)
         logger.info(f"Step 6: Filling VKS Specialist Personal Info for {full_name}...")
@@ -1768,8 +1857,7 @@ class GosuslugiVksBot:
             middle_name if middle_name else "НЕТ", fallback="НЕТ", allow_digits_punct=False
         )
 
-        last_name_input = self.page.locator("#si13_lastNameRu, input[name*='lastNameRu']").first
-        last_name_input.wait_for(state="visible", timeout=25000)
+        last_name_input.wait_for(state="visible", timeout=15000)
         self.type_masked_input("#si13_lastNameRu, input[name*='lastNameRu']", clean_last_name, delay=25)
 
         # First Name & Middle Name
@@ -1822,26 +1910,57 @@ class GosuslugiVksBot:
         self.click_continue_strict("Шаг 7: Паспортные данные", 2000)
 
         # Step 8: Foreigner INN ('Укажите ИНН иностранца' -> Input 'c_foreignerINN')
-        logger.info(f"Step 8: Filling Foreigner INN: {row.get('ИНН')}...")
+        inn_val = re.sub(r"\D+", "", str(row.get("ИНН", "")).strip())
+        logger.info(f"Step 8: Filling Foreigner INN: {inn_val}...")
         self.check_and_handle_error_modal()
 
         inn_input = self.page.locator("#c_foreignerINN, input[name*='foreignerINN'], input[id*='INN']").first
         try:
             inn_input.wait_for(state="visible", timeout=12000)
-            inn_val = str(row.get("ИНН", "")).strip()
-            if inn_val and inn_val.lower() not in ("нет", "не заполнено", "-", "нет инн"):
-                self.type_masked_input("#c_foreignerINN, input[name*='foreignerINN'], input[id*='INN']", inn_val, delay=30)
-            self.page.wait_for_timeout(500)
-            self.click_continue_strict("Шаг 8: ИНН иностранца", 2000)
-        except Exception as e:
-            logger.warning(f"Step 8 INN screen note: {e}")
+        except Exception:
+            self.check_and_handle_error_modal()
+            cont_step7 = self.page.locator("button:has-text('Продолжить'):visible").last
+            if cont_step7.count() > 0 and cont_step7.is_enabled():
+                cont_step7.click()
+                self.page.wait_for_timeout(1500)
+            inn_input.wait_for(state="visible", timeout=10000)
+
+        for inn_try in range(1, 4):
+            self.type_masked_input("#c_foreignerINN, input[name*='foreignerINN'], input[id*='INN']", inn_val, delay=35)
+            self.page.wait_for_timeout(300)
+            try:
+                cur_inn_typed = re.sub(r"\D+", "", inn_input.input_value())
+                if cur_inn_typed == inn_val:
+                    break
+                logger.warning(f"Step 8: INN input has '{cur_inn_typed}' instead of '{inn_val}' (try {inn_try}/3) -> re-typing...")
+                inn_input.click()
+                self.page.wait_for_timeout(100)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(100)
+                inn_input.press_sequentially(inn_val, delay=45)
+                self.page.keyboard.press("Tab")
+                self.page.wait_for_timeout(300)
+            except Exception:
+                break
+
+        self.page.wait_for_timeout(400)
+        self.click_continue_strict("Шаг 8: ИНН иностранца", 2000)
 
         # Step 9: Work Permit Details ('Укажите данные разрешения на работу')
         logger.info(f"Step 9: Filling Work Permit (РНР) {row.get('Серия')} {row.get('Номер')}...")
         self.check_and_handle_error_modal()
 
         rnr_series = self.page.locator("#series, input[name*='series']").first
-        rnr_series.wait_for(state="visible", timeout=15000)
+        try:
+            rnr_series.wait_for(state="visible", timeout=12000)
+        except Exception:
+            self.check_and_handle_error_modal()
+            cont_step8 = self.page.locator("button:has-text('Продолжить'):visible").last
+            if cont_step8.count() > 0 and cont_step8.is_enabled():
+                cont_step8.click()
+                self.page.wait_for_timeout(1500)
+            rnr_series.wait_for(state="visible", timeout=12000)
         self.type_masked_input("#series, input[name*='series']", str(row.get("Серия", "")).strip(), delay=30)
         self.type_masked_input("#number, input[name*='number']", str(row.get("Номер", "")).strip(), delay=30)
         self.type_masked_input("#s15_dict_2_seriaBlank, #dic15_seriaBlank, input[id*='seriaBlank'], input[name*='seriaBlank']", str(row.get("СерийныйНомер1", "")).strip(), delay=30)
@@ -2143,15 +2262,37 @@ class GosuslugiVksBot:
         Fills the Step 10 work address textarea (`epgu-constructor-address-input textarea`),
         triggers the DaData/FIAS dropdown using real keystrokes, and clicks the matching suggestion item
         so Gosuslugi never complains 'Проверьте адрес'.
+        Strips floor/office details (e.g. ', этаж 10, офис 10.1') that break FIAS lookup, and falls back
+        to street-level query if building-level query returns no suggestions.
         """
         is_tobolsk_kv5 = "Восточный промышленный район" in work_addr and (
             "5-й" in work_addr or "квартал 5" in work_addr or "кв-л 5" in work_addr
         )
-        dadata_query = (
+        # Strip floor/office/room details that cause FIAS/DaData to return '.nothing-found'
+        cleaned_for_fias = re.sub(
+            r",?\s*(?:этаж|эт\.|офис|оф\.|помещ\.|пом\.|ком\.|каб\.)\s*[^,]+",
+            "",
+            work_addr,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
+        cleaned_for_fias = re.sub(r"\bзд\.?\s*", "д. ", cleaned_for_fias, flags=re.IGNORECASE)
+
+        primary_query = (
             "Тюменская обл, г Тобольск, тер Восточный промышленный район-квартал 5"
             if is_tobolsk_kv5
-            else work_addr
+            else cleaned_for_fias
         )
+        # Street-only fallback query (strips trailing ', д. ...' / ', корп. ...') in case a specific building letter isn't indexed in DaData
+        street_fallback_query = re.sub(
+            r",?\s*(?:д\.|дом|вл\.|зд\.|стр\.|корп\.|к\.)\s*[0-9].*$",
+            "",
+            cleaned_for_fias,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
+
+        queries_to_try = [primary_query]
+        if not is_tobolsk_kv5 and street_fallback_query and street_fallback_query != primary_query:
+            queries_to_try.append(street_fallback_query)
 
         addr_textarea = self.page.locator(
             "epgu-constructor-address-input textarea, "
@@ -2159,56 +2300,55 @@ class GosuslugiVksBot:
             "textarea.search-input"
         ).first
 
-        if addr_textarea.count() > 0 and addr_textarea.is_visible():
-            addr_textarea.click()
-            self.page.wait_for_timeout(150)
-            addr_textarea.fill("")
-            self.page.wait_for_timeout(150)
-            addr_textarea.fill(dadata_query)
-            self.page.wait_for_timeout(150)
-            # Trigger keystroke events so Angular DaData widget always opens the suggestion list
-            self.page.keyboard.press("Space")
-            self.page.wait_for_timeout(120)
-            self.page.keyboard.press("Backspace")
-        else:
-            self.page.keyboard.press("Tab")
-            self.page.wait_for_timeout(200)
-            self.page.keyboard.type(dadata_query, delay=25)
-
-        # Wait up to 2.4s for FIAS/DaData suggestion item to appear and click it
         lookup_selector = (
             "epgu-constructor-address-input .lookup-item:not(.nothing-found):visible, "
             "lib-dadata-widget .lookup-item:not(.nothing-found):visible, "
             "#lookup-list-wrap .lookup-item:not(.nothing-found):visible, "
             ".lookup-item:not(.nothing-found):visible"
         )
-        lookup_items = self.page.locator(lookup_selector)
-        for _ in range(8):
-            self.page.wait_for_timeout(300)
-            if lookup_items.count() > 0:
-                break
 
-        try:
-            item_count = lookup_items.count()
-            if is_tobolsk_kv5 and item_count > 0:
-                clicked_kv5 = False
-                for idx_i in range(item_count):
-                    txt_i = lookup_items.nth(idx_i).inner_text().strip()
-                    if txt_i.endswith("квартал 5") or txt_i.endswith("кв-л 5") or txt_i.endswith("5-й"):
-                        lookup_items.nth(idx_i).click()
-                        clicked_kv5 = True
-                        self.page.wait_for_timeout(800)
-                        return True
-                if not clicked_kv5:
+        for dadata_query in queries_to_try:
+            if addr_textarea.count() > 0 and addr_textarea.is_visible():
+                addr_textarea.click()
+                self.page.wait_for_timeout(150)
+                addr_textarea.fill("")
+                self.page.wait_for_timeout(150)
+                addr_textarea.fill(dadata_query)
+                self.page.wait_for_timeout(150)
+                # Trigger keystroke events so Angular DaData widget always opens the suggestion list
+                self.page.keyboard.press("Space")
+                self.page.wait_for_timeout(120)
+                self.page.keyboard.press("Backspace")
+            else:
+                self.page.keyboard.press("Tab")
+                self.page.wait_for_timeout(200)
+                self.page.keyboard.type(dadata_query, delay=25)
+
+            lookup_items = self.page.locator(lookup_selector)
+            for _ in range(8):
+                self.page.wait_for_timeout(300)
+                if lookup_items.count() > 0:
+                    break
+
+            try:
+                item_count = lookup_items.count()
+                if is_tobolsk_kv5 and item_count > 0:
+                    for idx_i in range(item_count):
+                        txt_i = lookup_items.nth(idx_i).inner_text().strip()
+                        if txt_i.endswith("квартал 5") or txt_i.endswith("кв-л 5") or txt_i.endswith("5-й"):
+                            lookup_items.nth(idx_i).click()
+                            self.page.wait_for_timeout(800)
+                            return True
                     lookup_items.first.click()
                     self.page.wait_for_timeout(800)
                     return True
-            elif item_count > 0:
-                lookup_items.first.click()
-                self.page.wait_for_timeout(800)
-                return True
-        except Exception:
-            pass
+                elif item_count > 0:
+                    lookup_items.first.click()
+                    self.page.wait_for_timeout(800)
+                    return True
+            except Exception:
+                pass
+
         return False
 
     def is_continue_button_ready(self) -> bool:
@@ -2226,15 +2366,16 @@ class GosuslugiVksBot:
 
     def parse_address_house_and_apt(self, work_addr: str):
         """
-        Extracts explicit house number (д., дом) and apartment/office number (кв., квартира, оф., офис)
-        from a Russian address string, ignoring 'кв-л' / 'квартал'.
+        Extracts explicit house number (д., дом, зд., здание, вл.) and apartment/office number (кв., квартира, оф., офис)
+        from a Russian address string, ignoring 'кв-л' / 'квартал' and 'этаж'.
         """
         clean_addr = re.sub(r"кв-л\.?\s*\d+[-йа-я]*", "", work_addr, flags=re.IGNORECASE)
         clean_addr = re.sub(r"квартал\s*\d+[-йа-я]*", "", clean_addr, flags=re.IGNORECASE)
+        clean_addr = re.sub(r",?\s*(?:этаж|эт\.)\s*[0-9а-яА-Я\-]+", "", clean_addr, flags=re.IGNORECASE)
 
         house_val = ""
         m_house = re.search(
-            r"(?:^|[\s,])(?:д\.|дом|вл\.|владение)\s*([0-9]+[а-яА-Яa-zA-Z0-9/\-]*)",
+            r"(?:^|[\s,])(?:д\.|дом|зд\.|здание|вл\.|владение)\s*([0-9]+[а-яА-Яa-zA-Z0-9/\-]*)",
             clean_addr,
             re.IGNORECASE,
         )
@@ -2427,7 +2568,7 @@ class GosuslugiVksBot:
         # Case B: Manual MVD lookup screen ('Выберите подразделение МВД, куда отправится уведомление') with #dic18_byHand
         if state.get("hasByHand") or state.get("hasMvdHeading"):
             self.enable_background_focus_emulation()
-            for mvd_try in range(1, 4):
+            for mvd_try in range(1, 7):
                 # First check if 'Продолжить' is already active (e.g. already selected)
                 if self._is_step12_continue_ready_js():
                     logger.info("Step 12: MVD department is selected and 'Продолжить' is active -> clicking 'Продолжить'...")
@@ -2437,9 +2578,14 @@ class GosuslugiVksBot:
                     return True
 
                 logger.info(
-                    f"Step 12 (Attempt {mvd_try}/3): Typing 'МОСКВЕ' in #dic18_byHand to select '{target_dept}'..."
+                    f"Step 12 (Attempt {mvd_try}/6): Typing 'МОСКВЕ' in #dic18_byHand to select '{target_dept}'..."
                 )
                 self.enable_background_focus_emulation()
+                if mvd_try >= 4:
+                    try:
+                        self.page.bring_to_front()
+                    except Exception:
+                        pass
                 # Focus and clear #dic18_byHand via JS + mouse click + background-safe native input setter
                 try:
                     inp_coords = self.page.evaluate(
@@ -2466,6 +2612,13 @@ class GosuslugiVksBot:
                         self.page.wait_for_timeout(150)
                         self.page.keyboard.type("МОСКВЕ", delay=75)
                         self.page.wait_for_timeout(150)
+                    if mvd_try >= 4:
+                        byhand_loc = self.page.locator("input#dic18_byHand:visible, lib-lookup input.search-input:visible").first
+                        if byhand_loc.count() > 0:
+                            byhand_loc.click(timeout=1500)
+                            self.page.keyboard.press("Control+A")
+                            self.page.keyboard.press("Backspace")
+                            byhand_loc.press_sequentially("МОСКВЕ", delay=85)
 
                     # Background-window guarantee: If Chrome is behind Edge and OS keystrokes didn't populate #dic18_byHand
                     # or didn't fire Angular's (input) listener, set value via native HTMLInputElement prototype setter & dispatch events!
@@ -2674,9 +2827,9 @@ class GosuslugiVksBot:
                     self.check_and_stop_if_insufficient_permissions()
                     return True
 
-                logger.warning(f"Step 12: MVD selection attempt {mvd_try}/3 did not enable 'Продолжить' yet...")
+                logger.warning(f"Step 12: MVD selection attempt {mvd_try}/6 did not enable 'Продолжить' yet...")
 
-            err_msg = "Ошибка [Шаг 12: Подразделение МВД]: Не удалось выбрать подразделение МВД по фильтру «МОСКВЕ» после 3 попыток"
+            err_msg = "Ошибка [Шаг 12: Подразделение МВД]: Не удалось выбрать подразделение МВД по фильтру «МОСКВЕ» после 6 попыток"
             self.register_worker_error(self.current_row or {}, err_msg)
             raise RuntimeError(err_msg)
 

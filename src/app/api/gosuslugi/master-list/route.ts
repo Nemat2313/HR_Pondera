@@ -4,6 +4,101 @@ import { getDb } from '@/lib/db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function sanitizeVksWorkerFields(w: Record<string, any>): {
+  changed: boolean;
+  sanitized: Record<string, any>;
+} {
+  let changed = false;
+  const out: Record<string, any> = { ...w };
+
+  // 1. Passport Number: strip trailing DD.MM.YYYY, strip spaces, convert Cyrillic lookalikes before digits to Latin
+  const rawPass = String(out.passportNumber ?? out['НомерПаспорта'] ?? '').trim();
+  if (rawPass) {
+    const cyrToLat: Record<string, string> = {
+      А: 'A', В: 'B', С: 'C', Е: 'E', Н: 'H', К: 'K', М: 'M', О: 'O', Р: 'P', Т: 'T', Х: 'X', У: 'Y',
+      а: 'A', в: 'B', с: 'C', е: 'E', н: 'H', к: 'K', м: 'M', о: 'O', р: 'P', т: 'T', х: 'X', у: 'Y',
+    };
+    let cleanPass = rawPass
+      .replace(/\.0$/, '')
+      .replace(/(\d{2}\.\d{2}\.\d{4})$/, '')
+      .replace(/\s+/g, '');
+    if (/^[АВЕКМНОРСТУХавекмнорстухA-Za-z]{1,3}\d{5,9}$/.test(cleanPass)) {
+      cleanPass = cleanPass.replace(/[АВЕКМНОРСТУХавекмнорстух]/g, (ch) => cyrToLat[ch] || ch).toUpperCase();
+    }
+    if (cleanPass !== rawPass) {
+      out.passportNumber = cleanPass;
+      if ('НомерПаспорта' in out) out['НомерПаспорта'] = cleanPass;
+      changed = true;
+    }
+  }
+
+  // 2. Blank Series (СерийныйНомер1): convert Latin lookalikes to Cyrillic uppercase
+  const rawBlank1 = String(out.blankSeries ?? out['СерийныйНомер1'] ?? '').trim();
+  if (rawBlank1) {
+    const latToCyr: Record<string, string> = {
+      A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
+    };
+    const cleanBlank1 = rawBlank1
+      .replace(/\s+/g, '')
+      .toUpperCase()
+      .replace(/[ABCEHKMOPTXY]/g, (ch) => latToCyr[ch] || ch);
+    if (cleanBlank1 !== rawBlank1) {
+      out.blankSeries = cleanBlank1;
+      if ('СерийныйНомер1' in out) out['СерийныйНомер1'] = cleanBlank1;
+      changed = true;
+    }
+  }
+
+  // 3. Blank Number (СерийныйНомер2): strip spaces, pad 6-digit number with leading zero to 7 digits
+  const rawBlank2 = String(out.blankNumber ?? out['СерийныйНомер2'] ?? '').trim();
+  if (rawBlank2) {
+    let cleanBlank2 = rawBlank2.replace(/\.0$/, '').replace(/\s+/g, '');
+    if (/^\d{5,6}$/.test(cleanBlank2)) {
+      cleanBlank2 = cleanBlank2.padStart(7, '0');
+    }
+    if (cleanBlank2 !== rawBlank2) {
+      out.blankNumber = cleanBlank2;
+      if ('СерийныйНомер2' in out) out['СерийныйНомер2'] = cleanBlank2;
+      changed = true;
+    }
+  }
+
+  // 4. RNR Series & Number: strip spaces and .0
+  const rawRnrSeries = String(out.rnrSeries ?? out['Серия'] ?? '').trim();
+  if (rawRnrSeries) {
+    const cleanRnrSeries = rawRnrSeries.replace(/\.0$/, '').replace(/\s+/g, '');
+    if (cleanRnrSeries !== rawRnrSeries) {
+      out.rnrSeries = cleanRnrSeries;
+      if ('Серия' in out) out['Серия'] = cleanRnrSeries;
+      changed = true;
+    }
+  }
+  const rawRnrNum = String(out.rnrNumber ?? out['Номер'] ?? '').trim();
+  if (rawRnrNum) {
+    const cleanRnrNum = rawRnrNum.replace(/\.0$/, '').replace(/\s+/g, '');
+    if (cleanRnrNum !== rawRnrNum) {
+      out.rnrNumber = cleanRnrNum;
+      if ('Номер' in out) out['Номер'] = cleanRnrNum;
+      changed = true;
+    }
+  }
+
+  // 5. INN: strip spaces and .0 if numeric
+  const rawInn = String(out.inn ?? out['ИНН'] ?? '').trim();
+  if (rawInn) {
+    const cleanInnCandidate = rawInn.replace(/\.0$/, '').replace(/\s+/g, '');
+    if (/^\d{10,12}$/.test(cleanInnCandidate) && cleanInnCandidate !== rawInn) {
+      out.inn = cleanInnCandidate;
+      if ('ИНН' in out) out['ИНН'] = cleanInnCandidate;
+      changed = true;
+    }
+  }
+
+  return { changed, sanitized: out };
+}
+
+let __masterListAutoHealed = false;
+
 function ensureTables(db: any) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS gosuslugi_vks_master_list (
@@ -36,6 +131,39 @@ function ensureTables(db: any) {
       UNIQUE(sicil_no, notification_type, period_code)
     );
   `);
+
+  if (!__masterListAutoHealed) {
+    __masterListAutoHealed = true;
+    try {
+      const rows = db
+        .prepare('SELECT row_key, sicil_no, worker_json FROM gosuslugi_vks_master_list')
+        .all() as Array<{ row_key: string; sicil_no: string; worker_json: string }>;
+      const updStmt = db.prepare(
+        'UPDATE gosuslugi_vks_master_list SET worker_json = ? WHERE row_key = ?'
+      );
+      const delFixedErrStmt = db.prepare(`
+        DELETE FROM gosuslugi_submissions
+        WHERE sicil_no = ? AND (application_no IS NULL OR TRIM(application_no) = '')
+          AND (gosuslugi_status LIKE '%Разрешение на работу ВКС%' OR gosuslugi_status LIKE '%Паспортные данные%')
+      `);
+      db.exec('BEGIN');
+      for (const r of rows) {
+        try {
+          const parsed = JSON.parse(r.worker_json || '{}');
+          const { changed, sanitized } = sanitizeVksWorkerFields(parsed);
+          if (changed) {
+            updStmt.run(JSON.stringify(sanitized), r.row_key);
+            delFixedErrStmt.run(r.sicil_no);
+          }
+        } catch {}
+      }
+      db.exec('COMMIT');
+    } catch {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+    }
+  }
 }
 
 function isSentSubmission(sub: any): boolean {
@@ -122,12 +250,14 @@ function normalizeIncomingWorker(raw: any, fallbackOrder: number): {
     ).trim(),
   };
 
+  const { sanitized } = sanitizeVksWorkerFields(workerObj);
+
   return {
     sicilNo,
     rowKey,
     rowOrder,
     assignedComputer,
-    workerObj,
+    workerObj: sanitized,
   };
 }
 
@@ -413,7 +543,7 @@ export async function POST(request: Request) {
 
     const clearErrorStmt = db.prepare(`
       DELETE FROM gosuslugi_submissions
-      WHERE sicil_no = ? AND application_no = '' AND gosuslugi_status LIKE 'Ошибка%'
+      WHERE sicil_no = ? AND (application_no IS NULL OR TRIM(application_no) = '') AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE '%ошибк%')
     `);
 
     let inserted = 0;

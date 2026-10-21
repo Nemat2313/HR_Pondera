@@ -494,6 +494,16 @@ export default function GosuslugiAnalyticsView() {
               </button>
             )}
 
+            <a
+              href="/api/gosuslugi/master-list/export-errors?computer=all"
+              download
+              title="Hatalı (Ошибка) ve eksik verili kayıtları VKS şablon formatında, düzeltilecek hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak indirir"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer no-underline"
+            >
+              <Download className="w-3.5 h-3.5" />
+              🛠️ Hatalı (Ошибка) Şablon İndir (Renkli)
+            </a>
+
             <button
               onClick={handleExportExcel}
               className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
