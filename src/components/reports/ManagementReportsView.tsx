@@ -10,7 +10,9 @@ import {
   Briefcase,
   CheckCircle,
   ArrowRight,
+  Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { StatsData } from '@/types';
 import {
   ResponsiveContainer,
@@ -25,6 +27,7 @@ import {
   Legend,
 } from 'recharts';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface ManagementReportsViewProps {
   stats: StatsData | null;
@@ -33,6 +36,7 @@ interface ManagementReportsViewProps {
 
 export default function ManagementReportsView({ stats, onNavigateToPersonnel }: ManagementReportsViewProps) {
   const { lang, t, translateVal } = useLanguage();
+  const { user } = useAuth();
 
   // Combine monthly in and out into a chart friendly dataset
   const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
@@ -68,6 +72,71 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
     };
   });
 
+  const handleExportReportSummary = () => {
+    const wb = XLSX.utils.book_new();
+    const trendSheet = XLSX.utils.json_to_sheet(
+      trendData.map((row) => ({
+        'Ay / Dönem': row.month,
+        'İşe Giriş (+)': row.Giris,
+        'İşten Çıkış (-)': row.Cikis,
+        'Net Değişim': row.Giris - row.Cikis,
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, trendSheet, 'Aylik_Turnover_Trendi');
+
+    const regionSheet = XLSX.utils.json_to_sheet(
+      (stats?.regionDistribution || []).map((r, i) => ({
+        Sıra: i + 1,
+        'Bölge (Region)': r.label,
+        'Aktif Personel Sayısı': r.count,
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, regionSheet, 'Bolge_Dagilimi');
+
+    const projectSheet = XLSX.utils.json_to_sheet(
+      (stats?.projectDistribution || []).map((p, i) => ({
+        Sıra: i + 1,
+        'Proje Adı': p.label,
+        'Aktif Personel Sayısı': p.count,
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, projectSheet, 'Proje_Dagilimi');
+
+    const deptSheet = XLSX.utils.json_to_sheet(
+      (stats?.departmentDistribution || []).map((d, i) => ({
+        Sıra: i + 1,
+        Departman: d.label,
+        'Aktif Personel Sayısı': d.count,
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, deptSheet, 'Departman_Dagilimi');
+
+    const scopeSuffix =
+      user?.scope_type && user.scope_type !== 'all' && user.scope_value
+        ? `_${user.scope_value.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+        : '';
+    XLSX.writeFile(
+      wb,
+      `Pondera_Yonetim_Turnover_Raporu${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
+  };
+
+  const handleExportPersonnelDetails = (statusVal: 'Mevcut' | 'Cikis') => {
+    const params = new URLSearchParams();
+    params.set('status', statusVal);
+    if (user?.scope_type === 'region' && user.scope_value) {
+      params.set('region', user.scope_value);
+    } else if (user?.scope_type === 'project' && user.scope_value) {
+      params.set('project', user.scope_value);
+    }
+    const a = document.createElement('a');
+    a.href = `/api/export?${params.toString()}`;
+    a.download = `Pondera_${statusVal}_Personel_Detay_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Title */}
@@ -88,17 +157,35 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
           </p>
         </div>
 
-        <button
-          onClick={() => onNavigateToPersonnel('status', 'Cikis')}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 transition-colors shadow-2xs"
-        >
-          <span>
-            {lang === 'ru'
-              ? 'Список уволенных сотрудников (21 389 чел.)'
-              : 'Ayrılan Personel Listesini Gör (21.389 Kişi)'}
-          </span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleExportReportSummary}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-colors shadow-2xs cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{lang === 'ru' ? 'Скачать сводный отчет (.xlsx)' : 'Rapor Özetini İndir (.xlsx)'}</span>
+          </button>
+
+          <button
+            onClick={() => handleExportPersonnelDetails('Mevcut')}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-colors shadow-2xs cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{lang === 'ru' ? 'Скачать детали штата (.xlsx)' : 'Aktif Kadro Detaylarını İndir (.xlsx)'}</span>
+          </button>
+
+          <button
+            onClick={() => onNavigateToPersonnel('status', 'Cikis')}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 transition-colors shadow-2xs cursor-pointer"
+          >
+            <span>
+              {lang === 'ru'
+                ? 'Список уволенных сотрудников'
+                : 'Ayrılan Personel Listesini Gör'}
+            </span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* KPI CARDS FOR MANAGEMENT */}

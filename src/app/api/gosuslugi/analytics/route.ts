@@ -127,8 +127,16 @@ function getMoscowCutoffString(minutesAgo: number): string {
   return `${parts.year}-${parts.month}-${parts.day} ${hh}:${parts.minute}:${parts.second}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const scopeType = (searchParams.get('scopeType') || 'all').trim();
+    const scopeValue = (searchParams.get('scopeValue') || 'all').trim();
+    const hasRlsFilter =
+      (scopeType === 'region' || scopeType === 'project') &&
+      Boolean(scopeValue) &&
+      scopeValue.toLowerCase() !== 'all';
+
     const db = getDb();
     const msk = getMoscowTimeParts();
 
@@ -287,17 +295,53 @@ export async function GET() {
       }
     > = {};
 
-    for (const [reg, targetCnt] of Object.entries(
-      gCache.__ponderaPersonnelAnalyticsCache.regionTargetMap
-    )) {
-      regionStatsMap[reg] = {
-        region: reg,
-        targetVks: targetCnt,
-        sentCount: 0,
-        pdfCount: 0,
-        errorCount: 0,
-        pendingCount: 0,
-      };
+    const matchesRls = (pInfo?: CachedPersonnelInfo): boolean => {
+      if (!hasRlsFilter) return true;
+      if (!pInfo) return false;
+      if (scopeType === 'region') {
+        return pInfo.region.toLowerCase() === scopeValue.toLowerCase();
+      }
+      if (scopeType === 'project') {
+        return pInfo.proje_adi.toLowerCase() === scopeValue.toLowerCase();
+      }
+      return true;
+    };
+
+    if (hasRlsFilter) {
+      let scopedTarget = 0;
+      for (const p of Object.values(personnelBySicil)) {
+        if (!matchesRls(p)) continue;
+        const inMaster = Object.keys(masterWorkerBySicil).length > 0 ? Boolean(masterWorkerBySicil[p.sicil_no]) : p.isVksActive;
+        if (inMaster) {
+          scopedTarget++;
+          const reg = p.region || 'Belirtilmemiş';
+          if (!regionStatsMap[reg]) {
+            regionStatsMap[reg] = {
+              region: reg,
+              targetVks: 0,
+              sentCount: 0,
+              pdfCount: 0,
+              errorCount: 0,
+              pendingCount: 0,
+            };
+          }
+          regionStatsMap[reg].targetVks++;
+        }
+      }
+      totalTargetVksPersonnel = scopedTarget;
+    } else {
+      for (const [reg, targetCnt] of Object.entries(
+        gCache.__ponderaPersonnelAnalyticsCache.regionTargetMap
+      )) {
+        regionStatsMap[reg] = {
+          region: reg,
+          targetVks: targetCnt,
+          sentCount: 0,
+          pdfCount: 0,
+          errorCount: 0,
+          pendingCount: 0,
+        };
+      }
     }
 
     // 2. Load all Gosuslugi submissions
@@ -372,6 +416,9 @@ export async function GET() {
       }
 
       const pInfo = personnelBySicil[sicil];
+      if (!matchesRls(pInfo)) {
+        continue;
+      }
       const mWorker = masterWorkerBySicil[sicil] || {};
       const region = pInfo?.region || 'Diğer / Eşleşmeyen';
       const citizenship =

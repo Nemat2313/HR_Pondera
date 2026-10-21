@@ -162,6 +162,10 @@ export default function Home() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={(tab) => {
+          if (user?.role === 'viewer' && (tab === 'gosuslugi' || tab === 'database' || tab === 'admin')) {
+            setActiveTab('overview');
+            return;
+          }
           if (tab === 'personnel') {
             setInitialFilterForPersonnel(null);
           }
@@ -184,7 +188,9 @@ export default function Home() {
         includeExits={includeExits}
         setIncludeExits={setIncludeExits}
         dataFreshness={stats?.systemInfo?.data_freshness || '03.10.2026'}
-        onOpenUpload={() => setIsUploadModalOpen(true)}
+        onOpenUpload={() => {
+          if (user?.role !== 'viewer') setIsUploadModalOpen(true);
+        }}
         onOpenLogin={() => setIsLoginModalOpen(true)}
         activeFilterCount={activeFilterCount}
         onResetFilters={handleResetFilters}
@@ -196,7 +202,8 @@ export default function Home() {
           collapsed ? 'lg:pl-20' : 'lg:pl-56'
         }`}
       >
-        {activeTab === 'overview' && (
+        {(activeTab === 'overview' ||
+          (user?.role === 'viewer' && (activeTab === 'gosuslugi' || activeTab === 'database'))) && (
           <OverviewView
             stats={stats}
             loading={loadingStats}
@@ -221,7 +228,7 @@ export default function Home() {
           />
         )}
 
-        {activeTab === 'gosuslugi' && <GosuslugiVksView />}
+        {activeTab === 'gosuslugi' && user?.role !== 'viewer' && <GosuslugiVksView />}
 
         {activeTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
 
@@ -248,7 +255,7 @@ export default function Home() {
           <ManagementReportsView stats={stats} onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
 
-        {activeTab === 'database' && (
+        {activeTab === 'database' && user?.role !== 'viewer' && (
           <DatabaseManagementView
             stats={stats}
             onOpenUpload={() => setIsUploadModalOpen(true)}
@@ -259,12 +266,14 @@ export default function Home() {
         {activeTab === 'admin' && user?.role === 'admin' && <UserManagementView />}
       </main>
 
-      {/* Excel Upload Modal */}
-      <ExcelUploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUploadSuccess={fetchStats}
-      />
+      {/* Excel Upload Modal (disabled for viewer role) */}
+      {user?.role !== 'viewer' && (
+        <ExcelUploadModal
+          isOpen={isUploadModalOpen}
+          onClose={() => setIsUploadModalOpen(false)}
+          onUploadSuccess={fetchStats}
+        />
+      )}
 
       {/* Login & Demo Account Switcher Modal */}
       <LoginModal

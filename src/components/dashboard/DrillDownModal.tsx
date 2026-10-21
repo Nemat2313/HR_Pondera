@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Download, ArrowRight, UserCheck, Building2, MapPin, Briefcase, FileSpreadsheet } from 'lucide-react';
 import { exportToExcel } from '@/lib/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface DrillDownModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export default function DrillDownModal({
   onNavigateToPersonnel,
 }: DrillDownModalProps) {
   const { lang, translateCol, translateVal } = useLanguage();
+  const { user } = useAuth();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [totalRows, setTotalRows] = useState(0);
@@ -35,8 +37,14 @@ export default function DrillDownModal({
     params.set('limit', '50'); // Preview 50 rows in drilldown
     params.set('status', 'Mevcut');
 
-    if (filterType === 'region') params.set('region', filterValue);
-    else if (filterType === 'project') params.set('project', filterValue);
+    if (user?.scope_type === 'region' && user.scope_value) {
+      params.set('region', user.scope_value);
+    } else if (user?.scope_type === 'project' && user.scope_value) {
+      params.set('project', user.scope_value);
+    }
+
+    if (filterType === 'region') params.set('region', user?.scope_type === 'region' ? user.scope_value : filterValue);
+    else if (filterType === 'project') params.set('project', user?.scope_type === 'project' ? user.scope_value : filterValue);
     else if (filterType === 'department') params.set('department', filterValue);
     else if (filterType === 'category') params.set('category', filterValue);
     else if (filterType === 'nationality') params.set('nationality', filterValue);
@@ -56,7 +64,7 @@ export default function DrillDownModal({
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [isOpen, filterType, filterValue]);
+  }, [isOpen, filterType, filterValue, user]);
 
   if (!isOpen) return null;
 
@@ -82,11 +90,17 @@ export default function DrillDownModal({
     try {
       const params = new URLSearchParams();
       params.set('status', 'Mevcut');
-      if (filterType === 'region') params.set('region', filterValue);
-      else if (filterType === 'project') params.set('project', filterValue);
+      if (user?.scope_type === 'region' && user.scope_value) {
+        params.set('region', user.scope_value);
+      } else if (user?.scope_type === 'project' && user.scope_value) {
+        params.set('project', user.scope_value);
+      }
+      if (filterType === 'region') params.set('region', user?.scope_type === 'region' ? user.scope_value : filterValue);
+      else if (filterType === 'project') params.set('project', user?.scope_type === 'project' ? user.scope_value : filterValue);
       else if (filterType === 'department') params.set('department', filterValue);
       else if (filterType === 'category') params.set('category', filterValue);
       else if (filterType === 'nationality') params.set('nationality', filterValue);
+      else if (filterType === 'permit') params.set('permit', filterValue);
       else if (filterType === 'collar') {
         const collarVal = filterValue.includes('Endirekt') ? 'Endirekt' : filterValue.includes('Direkt') ? 'Direkt' : '';
         if (collarVal) params.set('collar', collarVal);

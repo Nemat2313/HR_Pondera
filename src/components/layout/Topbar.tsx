@@ -313,15 +313,17 @@ export default function Topbar({
           <span>{dataFreshness || '03.10.2026'}</span>
         </div>
 
-        {/* Excel Upload Button */}
-        <button
-          onClick={onOpenUpload}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0"
-          title={t('btn_upload_excel')}
-        >
-          <UploadCloud className="w-4 h-4" />
-          <span className="hidden md:inline">{t('btn_upload_excel')}</span>
-        </button>
+        {/* Excel Upload Button (hidden for viewer role) */}
+        {user?.role !== 'viewer' && (
+          <button
+            onClick={onOpenUpload}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0"
+            title={t('btn_upload_excel')}
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span className="hidden md:inline">{t('btn_upload_excel')}</span>
+          </button>
+        )}
 
         {/* Notifications Popover */}
         <div className="relative" ref={notificationRef}>
@@ -394,9 +396,17 @@ export default function Topbar({
                 {user ? user.name : (lang === 'ru' ? 'Не авторизован' : 'Giriş Yapılmadı')}
               </p>
               <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
-                {user?.role === 'admin' 
-                  ? (lang === 'ru' ? '🛡️ Администратор' : '🛡️ Yönetici') 
-                  : (lang === 'ru' ? '📍 Начальник объекта' : '📍 Şantiye Sorumlusu')}
+                {user?.role === 'admin'
+                  ? lang === 'ru'
+                    ? '🛡️ Администратор'
+                    : '🛡️ Yönetici'
+                  : user?.role === 'viewer'
+                  ? lang === 'ru'
+                    ? '👁️ Наблюдатель'
+                    : '👁️ Gözlemci (Viewer)'
+                  : lang === 'ru'
+                  ? '📍 Начальник объекта'
+                  : '📍 Şantiye Sorumlusu'}
               </p>
             </div>
             <ChevronDown className="w-3 h-3 text-slate-400 hidden lg:block" />

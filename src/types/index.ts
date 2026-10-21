@@ -126,7 +126,7 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'user' | 'viewer';
   scope_type: 'all' | 'region' | 'project';
   scope_value: string;
   created_at: string;

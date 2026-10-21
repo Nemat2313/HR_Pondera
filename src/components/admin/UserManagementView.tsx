@@ -41,7 +41,15 @@ export default function UserManagementView() {
     name: '',
     email: '',
     password: '',
-    role: 'user' as 'admin' | 'user',
+    role: 'viewer' as 'admin' | 'user' | 'viewer',
+    scope_type: 'region' as 'all' | 'region' | 'project',
+    scope_value: 'Kazan',
+  });
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    password: '',
+    role: 'viewer' as 'admin' | 'user' | 'viewer',
     scope_type: 'region' as 'all' | 'region' | 'project',
     scope_value: 'Kazan',
   });
@@ -113,9 +121,9 @@ export default function UserManagementView() {
             name: '',
             email: '',
             password: '',
-            role: 'user',
+            role: 'viewer',
             scope_type: 'region',
-            scope_value: 'Kazan',
+            scope_value: filterOptions.regions[0] || 'Kazan',
           });
           fetchUsers();
         }, 1200);
@@ -124,6 +132,68 @@ export default function UserManagementView() {
       }
     } catch {
       setFormError(lang === 'ru' ? 'Ошибка соединения при выполнении операции.' : 'İşlem sırasında bağlantı hatası oluştu.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenEdit = (u: User) => {
+    setEditingUser(u);
+    setEditFormData({
+      name: u.name,
+      password: '',
+      role: u.role,
+      scope_type: u.scope_type,
+      scope_value:
+        u.scope_type === 'all'
+          ? filterOptions.regions[0] || 'Kazan'
+          : u.scope_value || filterOptions.regions[0] || 'Kazan',
+    });
+    setFormError(null);
+    setFormSuccess(null);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setFormError(null);
+    setFormSuccess(null);
+    setSubmitting(true);
+
+    try {
+      const payload = {
+        id: editingUser.id,
+        name: editFormData.name,
+        role: editFormData.role,
+        scope_type: editFormData.role === 'admin' ? 'all' : editFormData.scope_type,
+        scope_value:
+          editFormData.role === 'admin' || editFormData.scope_type === 'all'
+            ? 'all'
+            : editFormData.scope_value,
+        password: editFormData.password.trim() || undefined,
+      };
+
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFormSuccess(
+          lang === 'ru'
+            ? 'Права пользователя успешно обновлены!'
+            : 'Kullanıcı rolü ve RLS kapsamı güncellendi!'
+        );
+        setTimeout(() => {
+          setEditingUser(null);
+          fetchUsers();
+        }, 900);
+      } else {
+        setFormError(data.message || 'Güncelleme başarısız oldu.');
+      }
+    } catch {
+      setFormError('Bağlantı hatası oluştu.');
     } finally {
       setSubmitting(false);
     }
@@ -287,6 +357,8 @@ export default function UserManagementView() {
                         className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                           u.role === 'admin'
                             ? 'bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
+                            : u.role === 'viewer'
+                            ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                         }`}
                       >
@@ -294,6 +366,10 @@ export default function UserManagementView() {
                           ? lang === 'ru'
                             ? '🛡️ Администратор'
                             : '🛡️ Admin'
+                          : u.role === 'viewer'
+                          ? lang === 'ru'
+                            ? '👁️ Наблюдатель (Viewer)'
+                            : '👁️ Gözlemci (Viewer)'
                           : lang === 'ru'
                           ? '👤 Пользователь'
                           : '👤 Kullanıcı'}
@@ -322,6 +398,16 @@ export default function UserManagementView() {
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300">{u.created_at || '-'}</td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {u.id !== 1 && (
+                          <button
+                            onClick={() => handleOpenEdit(u)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/30 border border-amber-200/70 dark:border-amber-500/30 rounded-lg transition-colors cursor-pointer"
+                            title={lang === 'ru' ? 'Изменить роль или права доступа' : 'Rolü veya Şantiye/Bölge yetkisini düzenle'}
+                          >
+                            <KeyRound className="w-3 h-3" />
+                            <span>{lang === 'ru' ? 'Изменить' : 'Düzenle'}</span>
+                          </button>
+                        )}
                         {!isCurrent && (
                           <button
                             onClick={() => switchUser(u)}
@@ -428,7 +514,7 @@ export default function UserManagementView() {
                   <select
                     value={formData.role}
                     onChange={(e) => {
-                      const newRole = e.target.value as 'admin' | 'user';
+                      const newRole = e.target.value as 'admin' | 'user' | 'viewer';
                       setFormData({
                         ...formData,
                         role: newRole,
@@ -437,11 +523,14 @@ export default function UserManagementView() {
                     }}
                     className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
+                    <option value="viewer" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '👁️ Наблюдатель (Viewer)' : '👁️ Gözlemci (Viewer)'}
+                    </option>
                     <option value="user" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {lang === 'ru' ? 'Стандартный пользователь' : 'Standart Kullanıcı'}
+                      {lang === 'ru' ? '👤 Стандартный пользователь' : '👤 Standart Kullanıcı'}
                     </option>
                     <option value="admin" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {lang === 'ru' ? 'Администратор' : 'Admin (Yönetici)'}
+                      {lang === 'ru' ? '🛡️ Администратор' : '🛡️ Admin (Yönetici)'}
                     </option>
                   </select>
                 </div>
@@ -479,6 +568,21 @@ export default function UserManagementView() {
                   </select>
                 </div>
               </div>
+
+              {formData.role === 'viewer' && (
+                <div className="p-3 rounded-xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 text-[11px] text-amber-900 dark:text-amber-200 space-y-1 leading-relaxed">
+                  <p className="font-bold">👁️ Gözlemci (Viewer) Rolü Yetkileri:</p>
+                  <p>
+                    • Yetki verilen <strong>Bölge veya Şantiye (Proje)</strong> için verileri ve rapor detaylarını (Excel/PDF) indirebilir.
+                  </p>
+                  <p>
+                    • <strong>VKS İstatistik & Analiz</strong> sayfasını görebilir, ancak <strong>Gosuslugi RPA</strong> sayfasını ve <strong>Veritabanı Yönetimi</strong> ekranını göremez.
+                  </p>
+                  <p>
+                    • Silme, ekleme ve Excel yükleme yetkisi <strong>yoktur</strong>.
+                  </p>
+                </div>
+              )}
 
               {/* Scope Value Dropdown */}
               {formData.scope_type !== 'all' && (
@@ -551,6 +655,210 @@ export default function UserManagementView() {
                     : lang === 'ru'
                     ? 'Создать пользователя'
                     : 'Kullanıcıyı Oluştur'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT USER MODAL */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#131C31] rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700/80 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    {lang === 'ru' ? 'Изменить пользователя и RLS' : 'Kullanıcı Rolü & RLS Düzenle'}
+                  </h2>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">
+                    {editingUser.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                  {lang === 'ru' ? 'ФИО / Название' : 'Ad Soyad / Hesap Adı'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                  {lang === 'ru'
+                    ? 'Новый пароль (оставьте пустым, чтобы не менять)'
+                    : 'Yeni Şifre (Değiştirmek istemiyorsanız boş bırakın)'}
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={editFormData.password}
+                  onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+                  className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                    {lang === 'ru' ? 'Системная роль' : 'Sistem Rolü'}
+                  </label>
+                  <select
+                    value={editFormData.role}
+                    onChange={(e) => {
+                      const newRole = e.target.value as 'admin' | 'user' | 'viewer';
+                      setEditFormData({
+                        ...editFormData,
+                        role: newRole,
+                        scope_type: newRole === 'admin' ? 'all' : editFormData.scope_type,
+                      });
+                    }}
+                    className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    <option value="viewer" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '👁️ Наблюдатель (Viewer)' : '👁️ Gözlemci (Viewer)'}
+                    </option>
+                    <option value="user" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '👤 Стандартный пользователь' : '👤 Standart Kullanıcı'}
+                    </option>
+                    <option value="admin" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '🛡️ Администратор' : '🛡️ Admin (Yönetici)'}
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                    {lang === 'ru' ? 'Область доступа (RLS)' : 'Erişim Kapsamı (RLS)'}
+                  </label>
+                  <select
+                    value={editFormData.scope_type}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        scope_type: e.target.value as any,
+                        scope_value:
+                          e.target.value === 'region'
+                            ? filterOptions.regions[0] || 'Kazan'
+                            : e.target.value === 'project'
+                            ? filterOptions.projects[0] || 'DGP-02'
+                            : 'all',
+                      })
+                    }
+                    disabled={editFormData.role === 'admin'}
+                    className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60"
+                  >
+                    <option value="region" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? 'По региону / участку' : 'Bölge / Şantiye Bazlı'}
+                    </option>
+                    <option value="project" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? 'По проекту' : 'Proje Bazlı'}
+                    </option>
+                    <option value="all" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? 'Все (Без ограничений)' : 'Tümü (Sınırsız)'}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              {editFormData.role === 'viewer' && (
+                <div className="p-3 rounded-xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 text-[11px] text-amber-900 dark:text-amber-200 space-y-1 leading-relaxed">
+                  <p className="font-bold">👁️ Gözlemci (Viewer) Rolü Yetkileri:</p>
+                  <p>
+                    • Yetki verilen <strong>Bölge veya Şantiye (Proje)</strong> için verileri ve rapor detaylarını (Excel/PDF) indirebilir.
+                  </p>
+                  <p>
+                    • <strong>VKS İstatistik & Analiz</strong> sayfasını görebilir, ancak <strong>Gosuslugi RPA</strong> sayfasını ve <strong>Veritabanı Yönetimi</strong> ekranını göremez.
+                  </p>
+                  <p>
+                    • Silme, ekleme ve Excel yükleme yetkisi <strong>yoktur</strong>.
+                  </p>
+                </div>
+              )}
+
+              {editFormData.scope_type !== 'all' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                    {editFormData.scope_type === 'region'
+                      ? lang === 'ru'
+                        ? 'Назначаемый регион'
+                        : 'Atanacak Bölge (Region)'
+                      : lang === 'ru'
+                      ? 'Назначаемый проект'
+                      : 'Atanacak Proje'}
+                  </label>
+                  <select
+                    value={editFormData.scope_value}
+                    onChange={(e) => setEditFormData({ ...editFormData, scope_value: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-indigo-50/70 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-500/40 rounded-xl font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {editFormData.scope_type === 'region'
+                      ? filterOptions.regions.map((r) => (
+                          <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {r}
+                          </option>
+                        ))
+                      : filterOptions.projects.map((p) => (
+                          <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {p}
+                          </option>
+                        ))}
+                  </select>
+                </div>
+              )}
+
+              {formError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
+              {formSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>{formSuccess}</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                >
+                  {lang === 'ru' ? 'Отмена' : 'İptal'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {submitting
+                    ? lang === 'ru'
+                      ? 'Сохранение...'
+                      : 'Kaydediliyor...'
+                    : lang === 'ru'
+                    ? 'Сохранить изменения'
+                    : 'Değişiklikleri Kaydet'}
                 </button>
               </div>
             </form>

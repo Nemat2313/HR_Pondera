@@ -55,6 +55,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const validRole = role === 'admin' ? 'admin' : role === 'viewer' ? 'viewer' : 'user';
+    const validScopeType =
+      scope_type === 'all' || scope_type === 'region' || scope_type === 'project'
+        ? scope_type
+        : 'all';
+    const validScopeValue =
+      validScopeType === 'all' ? 'all' : (scope_value && String(scope_value).trim()) || 'all';
+
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const insertStmt = db.prepare(`
       INSERT INTO users (name, email, password, role, scope_type, scope_value, created_at)
@@ -65,9 +73,9 @@ export async function POST(request: Request) {
       name.trim(),
       cleanEmail,
       password,
-      role,
-      scope_type || 'all',
-      scope_value || 'all',
+      validRole,
+      validScopeType,
+      validScopeValue,
       now
     );
 
@@ -78,6 +86,75 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json(
       { success: false, message: 'Kullanıcı oluşturulurken bir hata meydana geldi.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, name, role, scope_type, scope_value, password } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, message: 'Güncellenecek kullanıcı kimliği (ID) gereklidir.' },
+        { status: 400 }
+      );
+    }
+
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id)) as any;
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, message: 'Kullanıcı bulunamadı.' },
+        { status: 404 }
+      );
+    }
+
+    const validRole =
+      Number(id) === 1
+        ? 'admin'
+        : role === 'admin'
+        ? 'admin'
+        : role === 'viewer'
+        ? 'viewer'
+        : role === 'user'
+        ? 'user'
+        : existing.role;
+
+    const validScopeType =
+      Number(id) === 1
+        ? 'all'
+        : scope_type === 'all' || scope_type === 'region' || scope_type === 'project'
+        ? scope_type
+        : existing.scope_type;
+
+    const validScopeValue =
+      validScopeType === 'all'
+        ? 'all'
+        : (scope_value !== undefined ? String(scope_value).trim() : existing.scope_value) || 'all';
+
+    const nextName =
+      name !== undefined && String(name).trim() ? String(name).trim() : existing.name;
+    const nextPassword =
+      password !== undefined && String(password).trim()
+        ? String(password).trim()
+        : existing.password;
+
+    db.prepare(`
+      UPDATE users
+      SET name = ?, role = ?, scope_type = ?, scope_value = ?, password = ?
+      WHERE id = ?
+    `).run(nextName, validRole, validScopeType, validScopeValue, nextPassword, Number(id));
+
+    return NextResponse.json({
+      success: true,
+      message: 'Kullanıcı yetkileri ve kapsamı başarıyla güncellendi.',
+    });
+  } catch {
+    return NextResponse.json(
+      { success: false, message: 'Kullanıcı güncellenirken bir hata meydana geldi.' },
       { status: 500 }
     );
   }

@@ -27,6 +27,7 @@ import {
   Users,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useAuth } from '@/context/AuthContext';
 
 interface ErrorCategoryItem {
   id: string;
@@ -128,6 +129,7 @@ interface AnalyticsResponse {
 }
 
 export default function GosuslugiAnalyticsView() {
+  const { user } = useAuth();
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -160,7 +162,13 @@ export default function GosuslugiAnalyticsView() {
   const fetchAnalytics = useCallback(async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
     try {
-      const res = await fetch('/api/gosuslugi/analytics', { cache: 'no-store' });
+      const params = new URLSearchParams();
+      if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
+        params.set('scopeType', user.scope_type);
+        params.set('scopeValue', user.scope_value);
+      }
+      const qs = params.toString();
+      const res = await fetch(`/api/gosuslugi/analytics${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
       const json = await res.json();
       if (json?.success) {
         setData(json);
@@ -171,7 +179,7 @@ export default function GosuslugiAnalyticsView() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.scope_type, user?.scope_value]);
 
   useEffect(() => {
     fetchAnalytics(false);
@@ -340,13 +348,21 @@ export default function GosuslugiAnalyticsView() {
   const handleDownloadPdfZip = async (onlyFiltered = false) => {
     setDownloadingZip(true);
     try {
-      if (onlyFiltered && isFilteredView && filteredPdfItems.length > 0) {
+      const isScopedUser = Boolean(user?.scope_type && user.scope_type !== 'all' && user.scope_value);
+      const allScopedPdfItems = (data?.submissions || []).filter((it) => it.hasPdf && it.pdf_filename);
+      const targetItems = onlyFiltered ? filteredPdfItems : allScopedPdfItems;
+
+      if ((onlyFiltered && isFilteredView) || isScopedUser) {
+        if (targetItems.length === 0) {
+          setTelegramFeedback('⚠️ Seçilen kapsama ait PDF dosyası bulunamadı.');
+          return;
+        }
         const res = await fetch('/api/gosuslugi/pdf/zip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            filenames: filteredPdfItems.map((it) => it.pdf_filename),
-            appNos: filteredPdfItems.map((it) => it.application_no),
+            filenames: targetItems.map((it) => it.pdf_filename),
+            appNos: targetItems.map((it) => it.application_no),
           }),
         });
         if (!res.ok) {
@@ -357,7 +373,8 @@ export default function GosuslugiAnalyticsView() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Pondera_VKS_Gosuslugi_PDFs_Filtreli_${filteredPdfItems.length}adet_${new Date().toISOString().slice(0, 10)}.zip`;
+        const scopeLabel = isScopedUser ? `_${user?.scope_value}` : onlyFiltered ? '_Filtreli' : '';
+        a.download = `Pondera_VKS_Gosuslugi_PDFs${scopeLabel}_${targetItems.length}adet_${new Date().toISOString().slice(0, 10)}.zip`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -464,14 +481,16 @@ export default function GosuslugiAnalyticsView() {
               Yenile
             </button>
 
-            <button
-              onClick={handleTriggerTelegramNow}
-              disabled={sendingTelegram}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Send className="w-3.5 h-3.5" />
-              {sendingTelegram ? 'Gönderiliyor...' : "Telegram'a Rapor Gönder"}
-            </button>
+            {user?.role !== 'viewer' && (
+              <button
+                onClick={handleTriggerTelegramNow}
+                disabled={sendingTelegram}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Send className="w-3.5 h-3.5" />
+                {sendingTelegram ? 'Gönderiliyor...' : "Telegram'a Rapor Gönder"}
+              </button>
+            )}
 
             <button
               onClick={() => handleDownloadPdfZip(false)}
@@ -494,15 +513,17 @@ export default function GosuslugiAnalyticsView() {
               </button>
             )}
 
-            <a
-              href="/api/gosuslugi/master-list/export-errors?computer=all"
-              download
-              title="Hatalı (Ошибка) ve eksik verili kayıtları VKS şablon formatında, düzeltilecek hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak indirir"
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer no-underline"
-            >
-              <Download className="w-3.5 h-3.5" />
-              🛠️ Hatalı (Ошибка) Şablon İndir (Renkli)
-            </a>
+            {user?.role !== 'viewer' && (
+              <a
+                href="/api/gosuslugi/master-list/export-errors?computer=all"
+                download
+                title="Hatalı (Ошибка) ve eksik verili kayıtları VKS şablon formatında, düzeltilecek hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak indirir"
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer no-underline"
+              >
+                <Download className="w-3.5 h-3.5" />
+                🛠️ Hatalı (Ошибка) Şablon İndir (Renkli)
+              </a>
+            )}
 
             <button
               onClick={handleExportExcel}

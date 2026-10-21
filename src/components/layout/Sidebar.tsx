@@ -91,13 +91,18 @@ export default function Sidebar({
       badge: totalActive ? `${totalActive.toLocaleString('tr-TR')}` : undefined,
       badgeColor: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
     },
-    {
-      id: 'gosuslugi',
-      label: t('nav_gosuslugi'),
-      icon: Bot,
-      badge: t('badge_rpa'),
-      badgeColor: 'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
-    },
+    ...(user?.role !== 'viewer'
+      ? [
+          {
+            id: 'gosuslugi',
+            label: t('nav_gosuslugi'),
+            icon: Bot,
+            badge: t('badge_rpa'),
+            badgeColor:
+              'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
+          },
+        ]
+      : []),
     {
       id: 'gosuslugi_analytics',
       label: lang === 'ru' ? 'ВКС Статистика' : 'VKS İstatistik & Analiz',
@@ -117,11 +122,15 @@ export default function Sidebar({
       label: t('nav_demographics'),
       icon: PieChart,
     },
-    {
-      id: 'database',
-      label: t('nav_database'),
-      icon: Database,
-    },
+    ...(user?.role !== 'viewer'
+      ? [
+          {
+            id: 'database',
+            label: t('nav_database'),
+            icon: Database,
+          },
+        ]
+      : []),
   ];
 
   // If user is admin, add User & RLS Management item
@@ -210,8 +219,24 @@ export default function Sidebar({
             <div className="mx-2 mt-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700/70 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-900 dark:text-white text-[11px] truncate">{user.name}</span>
-                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50">
-                  {user.role === 'admin' ? (lang === 'ru' ? 'Админ' : 'Admin') : (lang === 'ru' ? 'Пользователь' : 'Kullanıcı')}
+                <span
+                  className={`text-[9px] font-medium px-1.5 py-0.2 rounded border ${
+                    user.role === 'viewer'
+                      ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300/60 dark:border-amber-800/60'
+                      : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200/50 dark:border-indigo-800/50'
+                  }`}
+                >
+                  {user.role === 'admin'
+                    ? lang === 'ru'
+                      ? 'Админ'
+                      : 'Admin'
+                    : user.role === 'viewer'
+                    ? lang === 'ru'
+                      ? '👁️ Наблюдатель'
+                      : '👁️ Gözlemci'
+                    : lang === 'ru'
+                    ? 'Пользователь'
+                    : 'Kullanıcı'}
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-normal truncate">
