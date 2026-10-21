@@ -114,6 +114,7 @@ export async function POST(request: Request) {
     const pdfBase64 = String(body?.pdf_base64 || '').trim();
     const applicationNo = String(body?.application_no || '').trim();
     const sicilNo = String(body?.sicil_no || '').trim();
+    const incomingStatus = String(body?.gosuslugi_status || '').trim();
 
     if (!rawFilename || !pdfBase64) {
       return NextResponse.json(
@@ -141,27 +142,52 @@ export async function POST(request: Request) {
 
     try {
       const db = getDb();
+      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const isFinalOrAdvancedStatus = ['Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению'].includes(incomingStatus);
       if (applicationNo) {
         db.prepare(
           `UPDATE gosuslugi_submissions
            SET pdf_filename = ?,
                gosuslugi_status = CASE
+                 WHEN ? != '' THEN ?
                  WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
                  ELSE gosuslugi_status
-               END
+               END,
+               checked_at = CASE WHEN ? != '' THEN ? ELSE checked_at END,
+               updated_at = ?
            WHERE application_no = ?`
-        ).run(safeFilename, applicationNo);
+        ).run(
+          safeFilename,
+          isFinalOrAdvancedStatus ? incomingStatus : '',
+          incomingStatus,
+          isFinalOrAdvancedStatus ? nowStr : '',
+          nowStr,
+          nowStr,
+          applicationNo
+        );
       }
       if (sicilNo) {
         db.prepare(
           `UPDATE gosuslugi_submissions
            SET pdf_filename = ?,
                gosuslugi_status = CASE
+                 WHEN ? != '' THEN ?
                  WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
                  ELSE gosuslugi_status
-               END
-           WHERE sicil_no = ? AND (pdf_filename IS NULL OR pdf_filename = "")`
-        ).run(safeFilename, sicilNo);
+               END,
+               checked_at = CASE WHEN ? != '' THEN ? ELSE checked_at END,
+               updated_at = ?
+           WHERE sicil_no = ? AND (pdf_filename IS NULL OR pdf_filename = "" OR pdf_filename = ?)`
+        ).run(
+          safeFilename,
+          isFinalOrAdvancedStatus ? incomingStatus : '',
+          incomingStatus,
+          isFinalOrAdvancedStatus ? nowStr : '',
+          nowStr,
+          nowStr,
+          sicilNo,
+          safeFilename
+        );
       }
     } catch {
       // Non-fatal DB update error

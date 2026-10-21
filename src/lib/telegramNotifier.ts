@@ -220,6 +220,10 @@ interface VksSnapshotState {
   totalPdf: number;
   totalNoPdf: number;
   totalErrors: number;
+  totalServiceRendered: number;
+  totalRegistered: number;
+  totalIntermediate: number;
+  totalRefused: number;
   byKey: Record<string, { state: 'sent' | 'error' | 'other'; hasPdf: boolean; statusText: string }>;
 }
 
@@ -261,6 +265,10 @@ function computeCurrentVksState(db: any): VksSnapshotState {
   let totalPdf = 0;
   let totalNoPdf = 0;
   let totalErrors = 0;
+  let totalServiceRendered = 0;
+  let totalRegistered = 0;
+  let totalIntermediate = 0;
+  let totalRefused = 0;
   const byKey: VksSnapshotState['byKey'] = {};
 
   for (const r of rows) {
@@ -281,7 +289,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
       !isError &&
       (Boolean(appNo) ||
         hasPdf ||
-        /отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн|обработк|PDF не скачан/i.test(rawStatus));
+        /отправлен|зарегистрирован|оказан|исполнен|отказан|принят|промежуточн|обработк|PDF не скачан/i.test(rawStatus));
 
     if (isError) {
       totalErrors++;
@@ -290,6 +298,17 @@ function computeCurrentVksState(db: any): VksSnapshotState {
       totalSent++;
       if (hasPdf) totalPdf++;
       else totalNoPdf++;
+
+      if (/оказан|исполнен/i.test(rawStatus)) {
+        totalServiceRendered++;
+      } else if (/отказан|отказ/i.test(rawStatus)) {
+        totalRefused++;
+      } else if (/промежуточн/i.test(rawStatus)) {
+        totalIntermediate++;
+      } else if (/зарегистрирован|отправлено в ведомство|принят/i.test(rawStatus)) {
+        totalRegistered++;
+      }
+
       byKey[key] = { state: 'sent', hasPdf, statusText: rawStatus };
     } else {
       byKey[key] = { state: 'other', hasPdf, statusText: rawStatus };
@@ -303,6 +322,10 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     totalPdf,
     totalNoPdf,
     totalErrors,
+    totalServiceRendered,
+    totalRegistered,
+    totalIntermediate,
+    totalRefused,
     byKey,
   };
 }
@@ -319,7 +342,17 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
   deltaSent?: number;
   deltaErrors?: number;
   deltaPdfs?: number;
-  totals?: { totalSent: number; totalPdf: number; totalNoPdf: number; totalErrors: number; totalRecords: number };
+  totals?: {
+    totalSent: number;
+    totalPdf: number;
+    totalNoPdf: number;
+    totalErrors: number;
+    totalRecords: number;
+    totalServiceRendered: number;
+    totalRegistered: number;
+    totalIntermediate: number;
+    totalRefused: number;
+  };
 }> {
   const db = getDb();
   const current = computeCurrentVksState(db);
@@ -339,19 +372,29 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
   let deltaSent = 0;
   let deltaErrors = 0;
   let deltaPdfs = 0;
+  let deltaServiceRendered = 0;
+  let deltaRefused = 0;
   let statusChangedCount = 0;
 
   if (prev && prev.byKey) {
     for (const [k, curVal] of Object.entries(current.byKey)) {
       const oldVal = prev.byKey[k];
+      const curRendered = /оказан|исполнен/i.test(curVal.statusText);
+      const curRefused = /отказан|отказ/i.test(curVal.statusText);
       if (!oldVal) {
         if (curVal.state === 'sent') deltaSent++;
         if (curVal.state === 'error') deltaErrors++;
         if (curVal.hasPdf) deltaPdfs++;
+        if (curRendered) deltaServiceRendered++;
+        if (curRefused) deltaRefused++;
       } else {
+        const oldRendered = /оказан|исполнен/i.test(oldVal.statusText);
+        const oldRefused = /отказан|отказ/i.test(oldVal.statusText);
         if (oldVal.state !== 'sent' && curVal.state === 'sent') deltaSent++;
         if (oldVal.state !== 'error' && curVal.state === 'error') deltaErrors++;
         if (!oldVal.hasPdf && curVal.hasPdf) deltaPdfs++;
+        if (!oldRendered && curRendered) deltaServiceRendered++;
+        if (!oldRefused && curRefused) deltaRefused++;
         if (oldVal.statusText !== curVal.statusText) statusChangedCount++;
       }
     }
@@ -391,6 +434,8 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
       if (/^ошибк/i.test(st)) deltaErrors++;
       else deltaSent++;
       if (r.pdf_filename) deltaPdfs++;
+      if (/оказан|исполнен/i.test(st)) deltaServiceRendered++;
+      if (/отказан|отказ/i.test(st)) deltaRefused++;
     }
   }
 
@@ -398,11 +443,15 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     deltaSent > 0 ||
     deltaErrors > 0 ||
     deltaPdfs > 0 ||
+    deltaServiceRendered > 0 ||
+    deltaRefused > 0 ||
     statusChangedCount > 0 ||
     (prev !== null &&
       (current.totalSent !== prev.totalSent ||
         current.totalErrors !== prev.totalErrors ||
-        current.totalPdf !== prev.totalPdf));
+        current.totalPdf !== prev.totalPdf ||
+        current.totalServiceRendered !== (prev.totalServiceRendered ?? current.totalServiceRendered) ||
+        current.totalRefused !== (prev.totalRefused ?? current.totalRefused)));
 
   if (!force && !hasAnyChange) {
     if (!prev) {
@@ -420,11 +469,17 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
         totalNoPdf: current.totalNoPdf,
         totalErrors: current.totalErrors,
         totalRecords: current.totalRecords,
+        totalServiceRendered: current.totalServiceRendered,
+        totalRegistered: current.totalRegistered,
+        totalIntermediate: current.totalIntermediate,
+        totalRefused: current.totalRefused,
       },
     };
   }
 
   const msk = getMoscowTimeParts();
+  const deltaRenderedBadge = deltaServiceRendered > 0 ? ` <i>(+${deltaServiceRendered} yeni)</i>` : '';
+  const deltaRefusedBadge = deltaRefused > 0 ? ` <i>(+${deltaRefused} yeni)</i>` : '';
   const msg = [
     `🔔 <b>Gosuslugi VKS Bildirim Raporu (15 Dk Özeti)</b>`,
     `🕒 <i>Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay}</i>`,
@@ -433,6 +488,14 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     `• ✅ Gönderilen Bildirim: <b>+${deltaSent}</b>`,
     `• ❌ Oluşan Hata (Ошибка): <b>+${deltaErrors}</b>`,
     `• 📄 İndirilen / Eşleşen PDF: <b>+${deltaPdfs}</b>`,
+    `• 🔄 Statüsü Güncellenen (JSON): <b>+${statusChangedCount}</b>`,
+    ``,
+    `🏛 <b>Gosuslugi / МВД Başvuru Durumları (JSON Statü):</b>`,
+    `• 🟢 Услуга оказана (Tamamlanan): <b>${current.totalServiceRendered}</b>${deltaRenderedBadge}`,
+    `• 🔵 Заявление зарегистрировано (Kayıtlı): <b>${current.totalRegistered}</b>`,
+    `• 🟡 Промежуточные результаты (İşlemde): <b>${current.totalIntermediate}</b>`,
+    `• 🔴 Услуга отказана (МВД Red): <b>${current.totalRefused}</b>${deltaRefusedBadge}`,
+    `• ⏳ Отправлено (Statü / PDF Bekleyen): <b>${current.totalNoPdf}</b>`,
     ``,
     `📊 <b>Ortak Sunucu Genel Toplam (Tüm Bilgisayarlar):</b>`,
     `• ✅ Toplam Başarılı Gönderim: <b>${current.totalSent}</b>`,
@@ -461,6 +524,10 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
       totalNoPdf: current.totalNoPdf,
       totalErrors: current.totalErrors,
       totalRecords: current.totalRecords,
+      totalServiceRendered: current.totalServiceRendered,
+      totalRegistered: current.totalRegistered,
+      totalIntermediate: current.totalIntermediate,
+      totalRefused: current.totalRefused,
     },
   };
 }

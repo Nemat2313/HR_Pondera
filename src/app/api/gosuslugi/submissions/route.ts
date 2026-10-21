@@ -128,6 +128,9 @@ export async function POST(request: Request) {
           WHEN excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)')
             AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению', 'Заявление зарегистрировано')
           THEN gosuslugi_submissions.gosuslugi_status
+          WHEN excluded.gosuslugi_status = 'Заявление зарегистрировано'
+            AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению')
+          THEN gosuslugi_submissions.gosuslugi_status
           ELSE COALESCE(NULLIF(excluded.gosuslugi_status, ''), gosuslugi_submissions.gosuslugi_status)
         END,
         status_detail = COALESCE(NULLIF(excluded.status_detail, ''), gosuslugi_submissions.status_detail),

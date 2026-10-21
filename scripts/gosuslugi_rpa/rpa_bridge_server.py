@@ -295,7 +295,16 @@ class RPAState:
             ex_app = str(existing.get("application_no") or "").strip()
             ex_sicil = str(existing.get("sicil") or existing.get("sicil_no") or "").strip()
             if (app_no and ex_app == app_no) or (sicil and ex_sicil == sicil and str(existing.get("period_code") or "") == str(entry.get("period_code") or "")):
-                cls.submissions[idx] = {**existing, **entry}
+                merged = {**existing, **entry}
+                ex_st = str(existing.get("gosuslugi_status") or "").strip()
+                if ex_st in ("Услуга оказана", "Услуга отказана", "Промежуточные результаты по заявлению") and st in (
+                    "Заявление зарегистрировано",
+                    "Отправлено",
+                    "Отправлено (PDF не скачан)",
+                ):
+                    merged["gosuslugi_status"] = ex_st
+                cls.submissions[idx] = merged
+                entry = merged
                 updated = True
                 break
         if not updated:

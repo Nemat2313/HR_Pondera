@@ -223,6 +223,9 @@ def attach_feeds_network_listener(page: Page):
     makes a native request to `/api/lk/v1/feeds/` (which is NEVER blocked by Gosuslugi's 428 WAF),
     we automatically capture and parse all items into `INTERCEPTED_FEED_ORDERS`.
     """
+    if getattr(page, "_feeds_listener_attached", False):
+        return
+
     def _on_response(resp):
         try:
             u = resp.url or ""
@@ -239,6 +242,7 @@ def attach_feeds_network_listener(page: Page):
 
     try:
         page.on("response", _on_response)
+        setattr(page, "_feeds_listener_attached", True)
     except Exception:
         pass
 
@@ -323,6 +327,7 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
     3) DOM `<a href*='/order/'>` card scraping + clicking 'Показать ещё' when WAF 428 blocks direct JS fetch
     Returns a dict keyed by `application_no` (extId).
     """
+    attach_feeds_network_listener(page)
     cur_url = (page.url or "").lower()
     if "esia.gosuslugi.ru/login" in cur_url or "esia.gosuslugi.ru/idp" in cur_url:
         logger.warning(
@@ -446,8 +451,8 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
             except Exception:
                 pass
 
-            # Click 'Показать ещё' up to min(max_pages, 15) times to load recent applications in bulk
-            for _ in range(min(max_pages, 15)):
+            # Click 'Показать ещё' up to max_pages (e.g. 60 pages = 1,200 applications) to load all orders via Angular
+            for _ in range(max(max_pages, 25)):
                 show_more = page.locator(
                     "button:has-text('Показать ещё'):visible, "
                     "button:has-text('Показать еще'):visible, "
@@ -457,14 +462,14 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
                 if show_more.count() == 0 or not show_more.is_visible():
                     break
                 try:
-                    show_more.scroll_into_view_if_needed(timeout=1500)
+                    show_more.scroll_into_view_if_needed(timeout=1200)
                 except Exception:
                     pass
                 try:
-                    show_more.click(timeout=2500)
+                    show_more.click(timeout=2000)
                 except Exception:
                     break
-                page.wait_for_timeout(900)
+                page.wait_for_timeout(650)
                 orders_by_no.update(INTERCEPTED_FEED_ORDERS)
                 orders_by_no.update(extract_orders_from_dom(page))
         except Exception as dom_err:
@@ -855,7 +860,8 @@ def download_missing_pdf_for_order(
                 if p.resolve() != target_filepath.resolve():
                     os.replace(str(p), str(target_filepath))
                     logger.info(f"  -> Renamed existing PDF in Downloads: {target_filename}")
-                upload_pdf_to_central_server(target_filepath, clean_no, clean_sicil)
+                cached_st = (INTERCEPTED_FEED_ORDERS.get(clean_no) or {}).get("gosuslugi_status", "")
+                upload_pdf_to_central_server(target_filepath, clean_no, clean_sicil, gosuslugi_status=cached_st)
                 return target_filename
             except Exception:
                 upload_pdf_to_central_server(p, clean_no, clean_sicil)
@@ -865,7 +871,11 @@ def download_missing_pdf_for_order(
         return ""
 
     logger.info(f"  -> Missing PDF for № {clean_no} ({worker_name}): opening order {feed_id} & clicking 'Показать историю' -> 'Скачать'...")
-    expand_history_and_inspect_order_page(page, feed_id)
+    page_info = expand_history_and_inspect_order_page(page, feed_id)
+    inspected_status = page_info.get("gosuslugi_status") or ""
+    if inspected_status in ("Услуга оказана", "Услуга отказана", "Промежуточные результаты по заявлению"):
+        if clean_no in INTERCEPTED_FEED_ORDERS:
+            INTERCEPTED_FEED_ORDERS[clean_no]["gosuslugi_status"] = inspected_status
 
     existing_pdfs = {}
     for p in downloads_dir.iterdir():
@@ -1024,18 +1034,19 @@ def download_missing_pdf_for_order(
 
     new_filename = f"{clean_sicil}_{clean_no}_{clean_name}_{clean_period}.pdf" if clean_sicil else f"{clean_no}_{clean_name}_{clean_period}.pdf"
     new_filepath = downloads_dir / new_filename
+    final_st = inspected_status or (INTERCEPTED_FEED_ORDERS.get(clean_no) or {}).get("gosuslugi_status", "")
     try:
         if downloaded_path.resolve() != new_filepath.resolve():
             os.replace(str(downloaded_path), str(new_filepath))
         logger.info(f"  -> Downloaded & renamed missing PDF: {new_filename}")
-        upload_pdf_to_central_server(new_filepath, clean_no, clean_sicil)
+        upload_pdf_to_central_server(new_filepath, clean_no, clean_sicil, gosuslugi_status=final_st)
         return new_filename
     except Exception:
-        upload_pdf_to_central_server(downloaded_path, clean_no, clean_sicil)
+        upload_pdf_to_central_server(downloaded_path, clean_no, clean_sicil, gosuslugi_status=final_st)
         return downloaded_path.name
 
 
-def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str):
+def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str, gosuslugi_status: str = ""):
     """Uploads the downloaded PDF receipt directly to Pondera HR Central Server (/api/gosuslugi/pdf) so all 4 PCs share PDFs."""
     try:
         if not pdf_path or not pdf_path.exists():
@@ -1049,6 +1060,7 @@ def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str):
             "pdf_base64": b64_str,
             "application_no": str(app_no or "").strip(),
             "sicil_no": str(sicil_no or "").strip(),
+            "gosuslugi_status": str(gosuslugi_status or "").strip(),
         }).encode("utf-8")
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
@@ -1164,6 +1176,7 @@ def run_fast_json_status_sync_on_page(
     'Заявление зарегистрировано') on the central Pondera HR server.
     """
     try:
+        attach_feeds_network_listener(page)
         cur_url = (page.url or "").lower()
         if "gosuslugi.ru" not in cur_url or "esia.gosuslugi.ru" in cur_url:
             logger.info("Fast JSON status sync skipped: active tab is not on an authenticated gosuslugi.ru page.")
@@ -1173,19 +1186,34 @@ def run_fast_json_status_sync_on_page(
         if not target_records:
             return 0
 
-        bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
-        if not bulk_orders and "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
+        # Identify local sicils on this PC
+        local_sicils = set()
+        active_vks_q_path = os.path.join(CURRENT_DIR, "active_vks_queue.json")
+        if os.path.exists(active_vks_q_path):
+            try:
+                with open(active_vks_q_path, "r", encoding="utf-8") as qf:
+                    q_data = json.load(qf)
+                    if isinstance(q_data, list):
+                        for qr in q_data:
+                            qs = str(qr.get("Sicil") or qr.get("Код") or qr.get("sicil") or "").strip()
+                            if qs:
+                                local_sicils.add(qs)
+            except Exception:
+                pass
+
+        if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
             try:
                 logger.info("Navigating briefly to https://lk.gosuslugi.ru/orders to fetch 1,200 JSON order statuses...")
                 page.goto(
-                    "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL",
+                    ORDERS_URL,
                     wait_until="domcontentloaded",
-                    timeout=25000,
+                    timeout=30000,
                 )
                 page.wait_for_timeout(2500)
-                bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
             except Exception as nav_err:
                 logger.debug(f"Orders navigation note: {nav_err}")
+
+        bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
         if not bulk_orders:
             return 0
 
@@ -1197,12 +1225,16 @@ def run_fast_json_status_sync_on_page(
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         updated_records: List[Dict[str, Any]] = []
         assigned_app_nos_to_sicil: Dict[str, str] = {}
+        targeted_search_count = 0
+        consecutive_search_misses = 0
 
         for rec in target_records:
             raw_app_no = str(rec.get("application_no") or "").strip()
             app_no = raw_app_no if raw_app_no.isdigit() else ""
             sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
             worker_name = str(rec.get("worker_name") or "").strip()
+            prev_status = str(rec.get("gosuslugi_status") or "").strip()
+            is_local = bool(rec.get("is_local_worker")) or (sicil in local_sicils) or (not local_sicils)
 
             matched_order: Optional[Dict[str, Any]] = None
 
@@ -1225,6 +1257,21 @@ def run_fast_json_status_sync_on_page(
                         matched_order = cand
                         app_no = cand_no
                         break
+            elif (
+                app_no
+                and is_local
+                and prev_status not in ("Услуга оказана", "Услуга отказана")
+                and targeted_search_count < 80
+                and consecutive_search_misses < 12
+            ):
+                targeted_search_count += 1
+                candidate = query_single_order_by_no(page, app_no)
+                if candidate and is_valid_labor_notification_order(candidate):
+                    consecutive_search_misses = 0
+                    matched_order = candidate
+                    bulk_orders[app_no] = candidate
+                else:
+                    consecutive_search_misses += 1
 
             if not matched_order:
                 continue
@@ -1236,7 +1283,6 @@ def run_fast_json_status_sync_on_page(
             if sicil:
                 assigned_app_nos_to_sicil[final_app_no] = sicil
 
-            prev_status = str(rec.get("gosuslugi_status") or "").strip()
             new_status = str(matched_order.get("gosuslugi_status") or "").strip()
             if prev_status == new_status and raw_app_no == final_app_no:
                 continue
@@ -1254,6 +1300,7 @@ def run_fast_json_status_sync_on_page(
             }
             updated_records.append(updated_entry)
             logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated_entry, ensure_ascii=False)}")
+            sync_updates_to_pondera_api([updated_entry])
 
         if updated_records:
             sync_updates_to_pondera_api(updated_records)
@@ -1473,11 +1520,14 @@ def main():
                 sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
                 worker_name = str(rec.get("worker_name") or "").strip()
                 pdf_file = str(rec.get("pdf_filename") or "").strip()
+                cur_status = str(rec.get("gosuslugi_status") or "").strip()
+                needs_status_refresh = cur_status not in ("Услуга оказана", "Услуга отказана")
                 is_local = bool(rec.get("is_local_worker")) or (sicil in local_sicils) or (not local_sicils)
 
-                # If PDF is already downloaded and order is not in bulk_orders, skip slow search in large batches
+                # If PDF is already downloaded and order is not in bulk_orders, skip slow search only if status is already final or non-local
                 if is_large_batch and pdf_file and (not app_no or app_no not in bulk_orders):
-                    continue
+                    if not (needs_status_refresh and is_local):
+                        continue
 
                 # If worker has no application_no and is not in bulk_orders, only check citizen name against labor_orders_list
                 matched_order: Optional[Dict[str, Any]] = None
@@ -1542,8 +1592,8 @@ def main():
                             )
                             break
 
-                # 3) One-by-one search on lk.gosuslugi.ru/orders for ANY worker that has application_no and needs PDF download!
-                if not matched_order and app_no and app_no.isdigit() and (not pdf_file or not is_large_batch):
+                # 3) One-by-one search on lk.gosuslugi.ru/orders for ANY worker that has application_no and needs PDF download or status refresh!
+                if not matched_order and app_no and app_no.isdigit() and (not pdf_file or needs_status_refresh or not is_large_batch):
                     if not is_local and consecutive_nonlocal_search_misses >= 10:
                         continue
                     logger.info(

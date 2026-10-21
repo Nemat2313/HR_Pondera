@@ -133,6 +133,7 @@ export default function GosuslugiAnalyticsView() {
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [sendingTelegram, setSendingTelegram] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
 
   // Filters for Zayavka / Submission table
@@ -324,6 +325,58 @@ export default function GosuslugiAnalyticsView() {
     );
   };
 
+  const isFilteredView =
+    statusFilter !== 'all' ||
+    selectedErrorCat !== 'all' ||
+    selectedRegion !== 'all' ||
+    selectedCitizenship !== 'all' ||
+    searchQuery.trim() !== '';
+
+  const filteredPdfItems = useMemo(
+    () => filteredSubmissions.filter((item) => item.hasPdf && item.pdf_filename),
+    [filteredSubmissions]
+  );
+
+  const handleDownloadPdfZip = async (onlyFiltered = false) => {
+    setDownloadingZip(true);
+    try {
+      if (onlyFiltered && isFilteredView && filteredPdfItems.length > 0) {
+        const res = await fetch('/api/gosuslugi/pdf/zip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filenames: filteredPdfItems.map((it) => it.pdf_filename),
+            appNos: filteredPdfItems.map((it) => it.application_no),
+          }),
+        });
+        if (!res.ok) {
+          setTelegramFeedback('⚠️ Seçilen filtreye ait PDF dosyaları sunucuda bulunamadı.');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Pondera_VKS_Gosuslugi_PDFs_Filtreli_${filteredPdfItems.length}adet_${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } else {
+        const a = document.createElement('a');
+        a.href = '/api/gosuslugi/pdf/zip';
+        a.download = `Pondera_VKS_Gosuslugi_PDFs_2026-3.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch {
+      setTelegramFeedback('⚠️ PDF ZIP arşivi indirilirken hata oluştu.');
+    } finally {
+      setTimeout(() => setDownloadingZip(false), 1200);
+    }
+  };
+
   if (loading && !data) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -419,6 +472,27 @@ export default function GosuslugiAnalyticsView() {
               <Send className="w-3.5 h-3.5" />
               {sendingTelegram ? 'Gönderiliyor...' : "Telegram'a Rapor Gönder"}
             </button>
+
+            <button
+              onClick={() => handleDownloadPdfZip(false)}
+              disabled={downloadingZip || s.totalPdf === 0}
+              title="Merkezi sunucudaki tüm isimlendirilmiş VKS bildirim PDF'lerini (<Sicil>_<AppNo>_<AdSoyad>_2026-3.pdf) EBA'ya yüklemek için tek ZIP dosyası olarak indirir"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {downloadingZip ? 'ZIP Hazırlanıyor...' : `📦 Tüm PDF'leri ZIP İndir (EBA) (${s.totalPdf})`}
+            </button>
+
+            {isFilteredView && filteredPdfItems.length > 0 && filteredPdfItems.length < s.totalPdf && (
+              <button
+                onClick={() => handleDownloadPdfZip(true)}
+                disabled={downloadingZip}
+                className="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Filtreli PDF ZIP ({filteredPdfItems.length})
+              </button>
+            )}
 
             <button
               onClick={handleExportExcel}

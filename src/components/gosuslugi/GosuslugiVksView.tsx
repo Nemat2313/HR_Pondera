@@ -3154,6 +3154,22 @@ export default function GosuslugiVksView() {
               </span>
             </button>
 
+            <a
+              href="/api/gosuslugi/pdf/zip"
+              download="Pondera_VKS_Gosuslugi_PDFs_2026-3.zip"
+              title={
+                lang === 'ru'
+                  ? 'Скачать все скачанные PDF квитанции (<Таб№>_<Заявка№>_<ФИО>_2026-3.pdf) одним ZIP-архивом для загрузки в EBA'
+                  : "Merkezi sunucudaki tüm isimlendirilmiş VKS bildirim PDF'lerini (<Sicil>_<AppNo>_<AdSoyad>_2026-3.pdf) EBA'ya yüklemek için tek ZIP arşivi olarak indirir"
+              }
+              className="h-8 px-3 rounded-xl border border-violet-300 dark:border-violet-500/40 bg-violet-50/90 dark:bg-violet-950/40 hover:bg-violet-100 dark:hover:bg-violet-900/50 text-violet-800 dark:text-violet-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+            >
+              <Download className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+              <span>
+                {lang === 'ru' ? '📦 Скачать PDF (ZIP / EBA)' : '📦 PDF ZIP İndir (EBA)'}
+              </span>
+            </a>
+
             <button
               onClick={() => setShowMailRuModal(true)}
               className={`h-8 px-3 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition ${
