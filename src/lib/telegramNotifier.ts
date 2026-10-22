@@ -224,6 +224,7 @@ interface VksSnapshotState {
   totalRegistered: number;
   totalIntermediate: number;
   totalRefused: number;
+  totalSentPendingStatus: number;
   byKey: Record<string, { state: 'sent' | 'error' | 'other'; hasPdf: boolean; statusText: string }>;
 }
 
@@ -269,6 +270,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
   let totalRegistered = 0;
   let totalIntermediate = 0;
   let totalRefused = 0;
+  let totalSentPendingStatus = 0;
   const byKey: VksSnapshotState['byKey'] = {};
 
   for (const r of rows) {
@@ -303,10 +305,13 @@ function computeCurrentVksState(db: any): VksSnapshotState {
         totalServiceRendered++;
       } else if (/отказан|отказ/i.test(rawStatus)) {
         totalRefused++;
-      } else if (/промежуточн/i.test(rawStatus)) {
-        totalIntermediate++;
-      } else if (/зарегистрирован|отправлено в ведомство|принят/i.test(rawStatus)) {
+      } else if (/зарегистрирован|отправлено в ведомство|принят|промежуточн/i.test(rawStatus)) {
         totalRegistered++;
+        if (/промежуточн/i.test(rawStatus)) {
+          totalIntermediate++;
+        }
+      } else {
+        totalSentPendingStatus++;
       }
 
       byKey[key] = { state: 'sent', hasPdf, statusText: rawStatus };
@@ -326,6 +331,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     totalRegistered,
     totalIntermediate,
     totalRefused,
+    totalSentPendingStatus,
     byKey,
   };
 }
@@ -352,6 +358,7 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     totalRegistered: number;
     totalIntermediate: number;
     totalRefused: number;
+    totalSentPendingStatus: number;
   };
 }> {
   const db = getDb();
@@ -473,6 +480,7 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
         totalRegistered: current.totalRegistered,
         totalIntermediate: current.totalIntermediate,
         totalRefused: current.totalRefused,
+        totalSentPendingStatus: current.totalSentPendingStatus,
       },
     };
   }
@@ -493,9 +501,8 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     `🏛 <b>Gosuslugi / МВД Başvuru Durumları (JSON Statü):</b>`,
     `• 🟢 Услуга оказана (Tamamlanan): <b>${current.totalServiceRendered}</b>${deltaRenderedBadge}`,
     `• 🔵 Заявление зарегистрировано (Kayıtlı): <b>${current.totalRegistered}</b>`,
-    `• 🟡 Промежуточные результаты (İşlemde): <b>${current.totalIntermediate}</b>`,
     `• 🔴 Услуга отказана (МВД Red): <b>${current.totalRefused}</b>${deltaRefusedBadge}`,
-    `• ⏳ Отправлено (Statü / PDF Bekleyen): <b>${current.totalNoPdf}</b>`,
+    `• 📤 Отправлено (Bekleyen — Kuyrukta / МВД Yanıtı Bekleniyor): <b>${current.totalSentPendingStatus}</b>`,
     ``,
     `📊 <b>Ortak Sunucu Genel Toplam (Tüm Bilgisayarlar):</b>`,
     `• ✅ Toplam Başarılı Gönderim: <b>${current.totalSent}</b>`,
@@ -528,6 +535,7 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
       totalRegistered: current.totalRegistered,
       totalIntermediate: current.totalIntermediate,
       totalRefused: current.totalRefused,
+      totalSentPendingStatus: current.totalSentPendingStatus,
     },
   };
 }

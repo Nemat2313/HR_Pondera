@@ -3618,16 +3618,16 @@ export default function GosuslugiVksView() {
       )}
 
       {/* CENTRAL BACKEND MASTER LIST & 4-COMPUTER QUEUE PARTITIONING PANEL */}
-      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-[#111F38] to-slate-900 text-white border border-teal-500/30 shadow-sm space-y-3">
+      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] text-slate-900 dark:text-white border border-slate-200/90 dark:border-teal-500/30 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-extrabold">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-400/30 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold">
               <Database className="w-3.5 h-3.5" />
               {lang === 'ru'
                 ? `Единый серверный список ВКС (${masterSummary?.totalMaster || 3088} чел.)`
                 : `Merkezi Sunucu VKS Kuyruğu (${masterSummary?.totalMaster || 3088} Kayıt)`}
             </span>
-            <span className="text-[11px] text-slate-300">
+            <span className="text-[11px] text-slate-500 dark:text-slate-300">
               {lang === 'ru'
                 ? 'Без дубликатов • Сохранение статусов • Распределение на 4 компьютера (4 аккаунта Госуслуг)'
                 : 'Mükerrer Gönderim Korumalı • Statüler Kaybolmaz • 4 Bilgisayar / 4 Gosuslugi Hesabı Yönetimi'}
@@ -3639,10 +3639,10 @@ export default function GosuslugiVksView() {
             <button
               onClick={() => handleSplit4Computers('tail_transfer', 600)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 border border-amber-200 dark:border-amber-400/40 text-amber-800 dark:text-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="1. ve 2. bilgisayarların listelerinin sonundan 600'er kişiyi 3. ve 4. bilgisayarlara aktarır"
             >
-              <Zap className="w-3 h-3 text-amber-300" />
+              <Zap className="w-3 h-3 text-amber-600 dark:text-amber-300" />
               <span>
                 {lang === 'ru'
                   ? 'Передать по 600 с конца -> ПК 3 и ПК 4'
@@ -3652,10 +3652,10 @@ export default function GosuslugiVksView() {
             <button
               onClick={() => handleSplit4Computers('tail_transfer', 500)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 text-teal-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 border border-teal-200 dark:border-teal-400/40 text-teal-800 dark:text-teal-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="1. ve 2. bilgisayarların listelerinin sonundan 500'er kişiyi 3. ve 4. bilgisayarlara aktarır"
             >
-              <Zap className="w-3 h-3 text-teal-300" />
+              <Zap className="w-3 h-3 text-teal-600 dark:text-teal-300" />
               <span>
                 {lang === 'ru'
                   ? 'Передать по 500 с конца -> ПК 3 и ПК 4'
@@ -3665,19 +3665,19 @@ export default function GosuslugiVksView() {
             <button
               onClick={() => handleSplit4Computers('equal_4', 600)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 border border-indigo-200 dark:border-indigo-400/40 text-indigo-800 dark:text-indigo-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="Kalan gönderilmemiş tüm başvuruları 4 bilgisayara eşit böler"
             >
-              <Users className="w-3 h-3 text-indigo-300" />
+              <Users className="w-3 h-3 text-indigo-600 dark:text-indigo-300" />
               <span>{lang === 'ru' ? 'Поровну на 4 ПК' : 'Kalanları 4 PC Eşit Böl'}</span>
             </button>
             <a
               href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
               download
-              className="h-7 px-2.5 rounded-lg bg-rose-600/35 hover:bg-rose-600/50 border border-rose-400/60 text-rose-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition no-underline"
+              className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-600/35 dark:hover:bg-rose-600/50 border border-rose-200 dark:border-rose-400/60 text-rose-700 dark:text-rose-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition no-underline"
               title="Hatalı (Ошибка) ve eksik verili kayıtları şablon formatında, hatalı hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak Excel'e indirir"
             >
-              <Download className="w-3 h-3 text-rose-200" />
+              <Download className="w-3 h-3 text-rose-600 dark:text-rose-200" />
               <span>
                 {lang === 'ru'
                   ? '📥 Скачать Ошибки (Шаблон с подсветкой)'
@@ -3686,10 +3686,10 @@ export default function GosuslugiVksView() {
             </a>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="h-7 px-2.5 rounded-lg bg-emerald-500/30 hover:bg-emerald-500/45 border border-emerald-400/50 text-emerald-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
+              className="h-7 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/30 dark:hover:bg-emerald-500/45 border border-emerald-200 dark:border-emerald-400/50 text-emerald-800 dark:text-emerald-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
               title="Şablonda düzelttiğiniz Excel dosyasını yükleyerek 3.088 kişilik merkezi listedeki verileri günceller ve Ошибка statüsünü sıfırlar"
             >
-              <Upload className="w-3 h-3 text-emerald-200" />
+              <Upload className="w-3 h-3 text-emerald-600 dark:text-emerald-200" />
               <span>
                 {lang === 'ru'
                   ? '📤 Загрузить исправленный шаблон (Обновить 3088)'
@@ -3701,7 +3701,7 @@ export default function GosuslugiVksView() {
                 handleRetryErrors(activeComputerFilter === 'all' ? 'all' : 'computer')
               }
               disabled={isRetryingErrors}
-              className="h-7 px-2.5 rounded-lg bg-rose-500/25 hover:bg-rose-500/35 border border-rose-400/50 text-rose-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/25 dark:hover:bg-rose-500/35 border border-rose-200 dark:border-rose-400/50 text-rose-700 dark:text-rose-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="Hata (Ошибка) veren kayıtların hata statüsünü sıfırlayıp tekrar gönderim kuyruğuna alır"
             >
               <RefreshCw className={`w-3 h-3 ${isRetryingErrors ? 'animate-spin' : ''}`} />
@@ -3721,33 +3721,33 @@ export default function GosuslugiVksView() {
             disabled={isLoadingMaster}
             className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
               activeComputerFilter === 'all' && workers.length > 0
-                ? 'bg-emerald-600/25 border-emerald-400 ring-1 ring-emerald-400/50'
-                : 'bg-white/5 hover:bg-white/10 border-white/10'
+                ? 'bg-emerald-50/90 dark:bg-emerald-600/25 border-emerald-400 ring-1 ring-emerald-400/50'
+                : 'bg-slate-50/80 hover:bg-slate-100/80 dark:bg-white/5 dark:hover:bg-white/10 border-slate-200/90 dark:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-xs font-extrabold text-white">
+              <span className="text-xs font-extrabold text-slate-900 dark:text-white">
                 {lang === 'ru' ? '🌐 Весь список (1–3088)' : '🌐 Tüm Liste (1–3088)'}
               </span>
               {isLoadingMaster && activeComputerFilter === 'all' && (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 dark:text-emerald-400" />
               )}
             </div>
-            <div className="text-[10.5px] text-slate-300 mt-1 flex items-center justify-between font-mono">
+            <div className="text-[10.5px] text-slate-500 dark:text-slate-300 mt-1 flex items-center justify-between font-mono">
               <span>Top: {masterSummary?.totalMaster || 3088}</span>
-              <span className="text-emerald-300 font-bold">
+              <span className="text-emerald-600 dark:text-emerald-300 font-bold">
                 ✓{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.sent, 0)
                   : '—'}
               </span>
-              <span className="text-amber-300">
+              <span className="text-amber-600 dark:text-amber-300 font-bold">
                 ⏳{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.pending, 0)
                   : '—'}
               </span>
-              <span className="text-rose-300">
+              <span className="text-rose-600 dark:text-rose-300 font-bold">
                 ⚠{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.error, 0)
@@ -3767,23 +3767,23 @@ export default function GosuslugiVksView() {
                 key={pcNum}
                 className={`p-2.5 rounded-xl border transition flex flex-col justify-between ${
                   isSelectedPc
-                    ? 'bg-teal-600/25 border-teal-400 ring-1 ring-teal-400/50'
-                    : 'bg-white/5 hover:bg-white/10 border-white/10'
+                    ? 'bg-teal-50/90 dark:bg-teal-600/25 border-teal-400 ring-1 ring-teal-400/50'
+                    : 'bg-slate-50/80 hover:bg-slate-100/80 dark:bg-white/5 dark:hover:bg-white/10 border-slate-200/90 dark:border-white/10'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1">
                   <button
                     onClick={() => handleLoadFromMasterList(pcStr, 'all')}
                     disabled={isLoadingMaster}
-                    className="text-xs font-extrabold text-white hover:text-teal-300 cursor-pointer text-left flex-1 truncate"
+                    className="text-xs font-extrabold text-slate-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-300 cursor-pointer text-left flex-1 truncate"
                   >
                     💻 Bilgisayar {pcNum}{' '}
-                    <span className="text-[10px] font-mono text-slate-300">({rangeText})</span>
+                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-300">({rangeText})</span>
                   </button>
                   {pcStat && pcStat.error > 0 && (
                     <button
                       onClick={() => handleLoadFromMasterList(pcStr, 'error')}
-                      className="px-1.5 py-0.5 rounded bg-rose-500/30 hover:bg-rose-500/50 border border-rose-400/40 text-rose-200 text-[9.5px] font-bold cursor-pointer"
+                      className="px-1.5 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-500/30 dark:hover:bg-rose-500/50 border border-rose-300 dark:border-rose-400/40 text-rose-700 dark:text-rose-200 text-[9.5px] font-bold cursor-pointer"
                       title={`Bilgisayar ${pcNum} üzerindeki ${pcStat.error} hatalı kaydı göster`}
                     >
                       ⚠ {pcStat.error} Hata
@@ -3792,11 +3792,11 @@ export default function GosuslugiVksView() {
                 </div>
                 <div
                   onClick={() => handleLoadFromMasterList(pcStr, 'all')}
-                  className="text-[10.5px] text-slate-300 mt-1 flex items-center justify-between font-mono cursor-pointer"
+                  className="text-[10.5px] text-slate-500 dark:text-slate-300 mt-1 flex items-center justify-between font-mono cursor-pointer"
                 >
                   <span>Top: {pcStat?.total ?? '—'}</span>
-                  <span className="text-emerald-300 font-bold">✓ {pcStat?.sent ?? 0}</span>
-                  <span className="text-amber-300 font-bold">⏳ {pcStat?.pending ?? 0}</span>
+                  <span className="text-emerald-600 dark:text-emerald-300 font-bold">✓ {pcStat?.sent ?? 0}</span>
+                  <span className="text-amber-600 dark:text-amber-300 font-bold">⏳ {pcStat?.pending ?? 0}</span>
                 </div>
               </div>
             );
