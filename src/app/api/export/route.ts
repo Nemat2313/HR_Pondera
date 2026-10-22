@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSessionUserFromRequest } from '@/lib/auth';
 import * as XLSX from 'xlsx';
 
 export const runtime = 'nodejs';
@@ -203,11 +204,14 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
 
-    // Row-Level Security (RLS) Scope
+    // Row-Level Security (RLS) Scope (verified session cookie takes precedence over client headers)
+    const sessionUser = getSessionUserFromRequest(request);
     const headerScopeType = request.headers.get('x-user-scope-type');
     const headerScopeVal = request.headers.get('x-user-scope-value');
-    const scopeType = headerScopeType || searchParams.get('userScopeType') || 'all';
-    const scopeVal = headerScopeVal || searchParams.get('userScopeValue') || 'all';
+    const scopeType =
+      sessionUser?.scope_type || headerScopeType || searchParams.get('userScopeType') || 'all';
+    const scopeVal =
+      sessionUser?.scope_value || headerScopeVal || searchParams.get('userScopeValue') || 'all';
 
     const search = searchParams.get('search')?.trim() || '';
     const status = searchParams.get('status') || 'Mevcut';

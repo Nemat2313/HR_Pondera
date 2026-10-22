@@ -2,6 +2,11 @@ import sqlite3
 from datetime import datetime
 
 DB_PATH = "pondera_hr.db"
+INITIAL_ADMIN_HASH = (
+    "scrypt$3263327d30c0e3228db9676659b9c4e0$"
+    "cd10c43224bf7a3cb5843561a2d80ef417ffe362ebc6e9280123dc4fdd7388d979ae6cd1b4d136cc225d93dbb6eb4269d78b45ee2f2ae9901d70d23a468406f1"
+)
+
 
 def init_users_table():
     conn = sqlite3.connect(DB_PATH)
@@ -20,7 +25,6 @@ def init_users_table():
     );
     """)
 
-    # Seed default users if empty
     cursor.execute("SELECT COUNT(*) FROM users")
     count = cursor.fetchone()[0]
 
@@ -30,46 +34,10 @@ def init_users_table():
             (
                 "Sistem Yöneticisi (Admin)",
                 "admin@pondera.com",
-                "admin123",
+                INITIAL_ADMIN_HASH,
                 "admin",
                 "all",
                 "all",
-                now,
-            ),
-            (
-                "Kazan Şantiye Sorumlusu",
-                "kazan@pondera.com",
-                "kazan123",
-                "user",
-                "region",
-                "Kazan",
-                now,
-            ),
-            (
-                "Svobodny Şantiye Müdürü",
-                "svobodny@pondera.com",
-                "svobodny123",
-                "user",
-                "region",
-                "Svobodny-AGHK",
-                now,
-            ),
-            (
-                "Ust Luga Saha Sorumlusu",
-                "ustluga@pondera.com",
-                "ustluga123",
-                "user",
-                "region",
-                "Ust Luga",
-                now,
-            ),
-            (
-                "Tobolsk DGP-2 Proje Lideri",
-                "dgp02@pondera.com",
-                "dgp123",
-                "user",
-                "project",
-                "DGP-02",
                 now,
             ),
         ]
@@ -79,11 +47,12 @@ def init_users_table():
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """, seed_users)
         conn.commit()
-        print(f"Users table created and {len(seed_users)} default users seeded!")
+        print("Users table created and initial admin user seeded with scrypt hash.")
     else:
         print(f"Users table already has {count} users.")
 
     conn.close()
+
 
 if __name__ == "__main__":
     init_users_table()

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { hashPassword, getSessionUserFromRequest } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    if (sessionUser && sessionUser.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, message: 'Bu işlem için yönetici (Admin) yetkisi gereklidir.' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { name, email, password, role, scope_type, scope_value } = body;
 
@@ -72,7 +81,7 @@ export async function POST(request: Request) {
     insertStmt.run(
       name.trim(),
       cleanEmail,
-      password,
+      hashPassword(String(password).trim()),
       validRole,
       validScopeType,
       validScopeValue,
@@ -93,6 +102,14 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    if (sessionUser && sessionUser.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, message: 'Bu işlem için yönetici (Admin) yetkisi gereklidir.' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { id, name, role, scope_type, scope_value, password } = body;
 
@@ -139,7 +156,7 @@ export async function PATCH(request: Request) {
       name !== undefined && String(name).trim() ? String(name).trim() : existing.name;
     const nextPassword =
       password !== undefined && String(password).trim()
-        ? String(password).trim()
+        ? hashPassword(String(password).trim())
         : existing.password;
 
     db.prepare(`
@@ -162,6 +179,14 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    if (sessionUser && sessionUser.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, message: 'Bu işlem için yönetici (Admin) yetkisi gereklidir.' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

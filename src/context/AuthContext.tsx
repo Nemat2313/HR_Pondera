@@ -37,17 +37,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const BUILTIN_ADMIN_USER: User & { pass: string } = {
-  id: 1,
-  name: 'Sistem Yöneticisi (Admin)',
-  email: 'admin@pondera.com',
-  pass: 'Polo90',
-  role: 'admin',
-  scope_type: 'all',
-  scope_value: 'all',
-  created_at: '2026-10-08 19:00:00',
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setUser(null);
       localStorage.removeItem('pondera_hr_user');
+      fetch('/api/auth/login', { method: 'DELETE' }).catch(() => {});
     }, 30000);
 
     return () => {
@@ -121,27 +111,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      const isBuiltinAdmin =
-        (cleanEmail === 'admin' || cleanEmail === 'admin@pondera.com') &&
-        password === BUILTIN_ADMIN_USER.pass;
-      if (isBuiltinAdmin) {
-        const { pass: _p, ...userObj } = BUILTIN_ADMIN_USER;
-        setUser(userObj);
-        localStorage.setItem('pondera_hr_user', JSON.stringify(userObj));
-        return { success: true };
-      }
-
       return { success: false, message: data.message || 'Giriş başarısız.' };
     } catch {
-      const isBuiltinAdmin =
-        (cleanEmail === 'admin' || cleanEmail === 'admin@pondera.com') &&
-        password === BUILTIN_ADMIN_USER.pass;
-      if (isBuiltinAdmin) {
-        const { pass: _p, ...userObj } = BUILTIN_ADMIN_USER;
-        setUser(userObj);
-        localStorage.setItem('pondera_hr_user', JSON.stringify(userObj));
-        return { success: true };
-      }
       return { success: false, message: 'Bağlantı hatası oluştu.' };
     }
   };
@@ -149,6 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('pondera_hr_user');
+    fetch('/api/auth/login', { method: 'DELETE' }).catch(() => {});
   };
 
   const switchUser = (targetUser: User) => {

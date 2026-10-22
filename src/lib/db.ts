@@ -1,8 +1,19 @@
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 // Using Node 22 built-in sqlite DatabaseSync
 let dbInstance: any = null;
+
+const INITIAL_ADMIN_HASH =
+  'scrypt$3263327d30c0e3228db9676659b9c4e0$cd10c43224bf7a3cb5843561a2d80ef417ffe362ebc6e9280123dc4fdd7388d979ae6cd1b4d136cc225d93dbb6eb4269d78b45ee2f2ae9901d70d23a468406f1';
+
+function hashPlainIfNeeded(pw: string): string {
+  if (!pw || pw.startsWith('scrypt$')) return pw;
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(String(pw), salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
 
 function ensureUsersTable(db: any) {
   try {
@@ -19,7 +30,7 @@ function ensureUsersTable(db: any) {
       );
     `);
 
-    // Remove legacy demo accounts and ensure the single admin account uses password 'Polo90'
+    // Remove legacy demo accounts
     db.exec(`
       DELETE FROM users WHERE email IN (
         'kazan@pondera.com',
@@ -31,14 +42,22 @@ function ensureUsersTable(db: any) {
 
     const upsertAdmin = db.prepare(`
       INSERT INTO users (id, name, email, password, role, scope_type, scope_value, created_at)
-      VALUES (1, 'Sistem Yöneticisi (Admin)', 'admin@pondera.com', 'Polo90', 'admin', 'all', 'all', '2026-10-08 19:00:00')
+      VALUES (1, 'Sistem Yöneticisi (Admin)', 'admin@pondera.com', ?, 'admin', 'all', 'all', '2026-10-08 19:00:00')
       ON CONFLICT(email) DO UPDATE SET
-        password = CASE WHEN users.password = 'admin123' THEN 'Polo90' ELSE users.password END,
         role = 'admin',
         scope_type = 'all',
         scope_value = 'all'
     `);
-    upsertAdmin.run();
+    upsertAdmin.run(INITIAL_ADMIN_HASH);
+
+    // Automatically upgrade any existing plaintext user passwords in SQLite to salted scrypt hashes
+    const allUsers = db.prepare('SELECT id, password FROM users').all() as Array<{ id: number; password: string }>;
+    const updPw = db.prepare('UPDATE users SET password = ? WHERE id = ?');
+    for (const u of allUsers) {
+      if (u.password && !String(u.password).startsWith('scrypt$')) {
+        updPw.run(hashPlainIfNeeded(String(u.password)), u.id);
+      }
+    }
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS gosuslugi_submissions (

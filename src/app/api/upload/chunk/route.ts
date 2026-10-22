@@ -1,18 +1,34 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import util from 'util';
-import zlib from 'zlib';
 import { resetDb } from '@/lib/db';
+import { getSessionUserFromRequest } from '@/lib/auth';
 
-const execPromise = util.promisify(exec);
+const execFilePromise = util.promisify(execFile);
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const PYTHON_BUILD_INLINE = [
+  'import sys, build_db',
+  'build_db.EXCEL_PATH = sys.argv[1]',
+  'build_db.DATA_FRESHNESS = sys.argv[2]',
+  'build_db.SOURCE_FILE = sys.argv[3]',
+  'build_db.build_database()',
+].join('; ');
+
 export async function POST(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    if (sessionUser && sessionUser.role === 'viewer') {
+      return NextResponse.json(
+        { success: false, message: 'Gözlemci (Viewer) rolünün dosya yükleme yetkisi yoktur.' },
+        { status: 403 }
+      );
+    }
+
     const formData = await request.formData();
     const chunk = formData.get('chunk') as File | null;
     const uploadId = ((formData.get('uploadId') as string) || '').replace(/[^a-zA-Z0-9_-]/g, '');
@@ -111,22 +127,27 @@ export async function POST(request: Request) {
     resetDb();
     const dbPath = path.join(process.cwd(), 'pondera_hr.db');
 
-    // Process assembled file using python build_db
-    const escapedTempPath = assembledFilePath.replace(/\\/g, '\\\\');
     const safeFreshness = dataFreshness.replace(/['"\\]/g, '');
-    const safeFileName = rawFileName.replace(/['"\\]/g, '');
+    const safeFileName = path.basename(rawFileName).replace(/['"\\]/g, '');
     const primaryCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const pyArgs = ['-c', PYTHON_BUILD_INLINE, assembledFilePath, safeFreshness, safeFileName];
 
     let buildError: string | null = null;
     try {
-      const command = `${primaryCmd} -c "import build_db; build_db.EXCEL_PATH = r'${escapedTempPath}'; build_db.DATA_FRESHNESS = '${safeFreshness}'; build_db.SOURCE_FILE = '${safeFileName}'; build_db.build_database()"`;
-      await execPromise(command, { cwd: process.cwd(), timeout: 300000, maxBuffer: 20 * 1024 * 1024 });
+      await execFilePromise(primaryCmd, pyArgs, {
+        cwd: process.cwd(),
+        timeout: 300000,
+        maxBuffer: 20 * 1024 * 1024,
+      });
     } catch (err: any) {
       buildError = err?.stderr || err?.message || String(err);
       try {
         const fallbackCmd = primaryCmd === 'python3' ? 'python' : 'python3';
-        const command = `${fallbackCmd} -c "import build_db; build_db.EXCEL_PATH = r'${escapedTempPath}'; build_db.DATA_FRESHNESS = '${safeFreshness}'; build_db.SOURCE_FILE = '${safeFileName}'; build_db.build_database()"`;
-        await execPromise(command, { cwd: process.cwd(), timeout: 300000, maxBuffer: 20 * 1024 * 1024 });
+        await execFilePromise(fallbackCmd, pyArgs, {
+          cwd: process.cwd(),
+          timeout: 300000,
+          maxBuffer: 20 * 1024 * 1024,
+        });
         buildError = null;
       } catch (fallbackErr: any) {
         buildError = fallbackErr?.stderr || fallbackErr?.message || buildError;

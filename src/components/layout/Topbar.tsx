@@ -76,46 +76,7 @@ export default function Topbar({
 
     const checkTelegramCron = async () => {
       try {
-        const res = await fetch('/api/telegram/cron?relay=1', { cache: 'no-store' });
-        const data = await res.json();
-        const tgToken = data?.telegramConfig?.botToken || data?.telegramConfig?.token;
-        if (
-          data?.success &&
-          Array.isArray(data.pendingOutbox) &&
-          data.pendingOutbox.length > 0 &&
-          tgToken &&
-          data.telegramConfig?.chatId
-        ) {
-          const deliveredIds: number[] = [];
-          for (const item of data.pendingOutbox) {
-            try {
-              const tgRes = await fetch(
-                `https://api.telegram.org/bot${tgToken}/sendMessage`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json; charset=utf-8' },
-                  body: JSON.stringify({
-                    chat_id: data.telegramConfig.chatId,
-                    text: item.text || item.html_text || '',
-                    parse_mode: 'HTML',
-                    disable_web_page_preview: true,
-                  }),
-                }
-              );
-              const tgJson = await tgRes.json();
-              if (tgJson?.ok) {
-                deliveredIds.push(item.id);
-              }
-            } catch {}
-          }
-          if (deliveredIds.length > 0) {
-            await fetch('/api/telegram/cron', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ deliveredIds }),
-            });
-          }
-        }
+        await fetch('/api/telegram/cron', { cache: 'no-store' });
       } catch {}
     };
 

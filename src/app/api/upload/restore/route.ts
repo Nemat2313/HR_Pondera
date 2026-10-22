@@ -3,12 +3,21 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { resetDb } from '@/lib/db';
+import { getSessionUserFromRequest } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    if (sessionUser && sessionUser.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, message: 'Veritabanı geri yükleme işlemi için yönetici (Admin) yetkisi gereklidir.' },
+        { status: 403 }
+      );
+    }
+
     const dbPath = path.join(process.cwd(), 'pondera_hr.db');
     const dbGzPath = path.join(process.cwd(), 'pondera_hr.db.gz');
 

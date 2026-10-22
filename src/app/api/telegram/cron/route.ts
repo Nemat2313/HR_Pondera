@@ -7,7 +7,6 @@ import {
   getMoscowTimeParts,
   claimPendingOutboxMessages,
   markOutboxDelivered,
-  getTelegramConfig,
 } from '@/lib/telegramNotifier';
 
 export const runtime = 'nodejs';
@@ -39,8 +38,6 @@ export async function GET(request: Request) {
         success: true,
         mode: 'test_vks',
         vksRes,
-        pendingOutbox: claimPendingOutboxMessages(db),
-        telegramConfig: getTelegramConfig(),
       });
     }
     if (testMode === 'compliance') {
@@ -49,8 +46,6 @@ export async function GET(request: Request) {
         success: true,
         mode: 'test_compliance',
         compRes,
-        pendingOutbox: claimPendingOutboxMessages(db),
-        telegramConfig: getTelegramConfig(),
       });
     }
     if (testMode === 'both') {
@@ -61,8 +56,6 @@ export async function GET(request: Request) {
         mode: 'test_both',
         vksRes,
         compRes,
-        pendingOutbox: claimPendingOutboxMessages(db),
-        telegramConfig: getTelegramConfig(),
       });
     }
 
@@ -86,33 +79,26 @@ export async function GET(request: Request) {
     const complianceResult = await sendDailyCompliance915Report(false);
 
     // 3. Server-side outbox flush: try delivering any previously queued messages directly from the server
-    const isRelay = searchParams.get('relay') === '1';
-    if (!isRelay) {
-      const queuedOnServer = claimPendingOutboxMessages(db);
-      if (queuedOnServer.length > 0) {
-        const flushedIds: number[] = [];
-        for (const item of queuedOnServer) {
-          const sendRes = await sendTelegramMessage(item.text || item.html_text);
-          if (sendRes.ok) {
-            flushedIds.push(item.id);
-          }
-        }
-        if (flushedIds.length > 0) {
-          markOutboxDelivered(db, flushedIds);
+    const queuedOnServer = claimPendingOutboxMessages(db);
+    if (queuedOnServer.length > 0) {
+      const flushedIds: number[] = [];
+      for (const item of queuedOnServer) {
+        const sendRes = await sendTelegramMessage(item.text || item.html_text);
+        if (sendRes.ok) {
+          flushedIds.push(item.id);
         }
       }
+      if (flushedIds.length > 0) {
+        markOutboxDelivered(db, flushedIds);
+      }
     }
-
-    // 4. Return any still-undelivered outbox messages when ?relay=1 is passed by a client
-    const pendingOutbox = isRelay ? claimPendingOutboxMessages(db) : [];
 
     return NextResponse.json({
       success: true,
       moscowTime: `${msk.dateDisplay} ${msk.timeDisplay}`,
       vksResult,
       complianceResult,
-      pendingOutbox,
-      telegramConfig: pendingOutbox.length > 0 ? getTelegramConfig() : undefined,
+      pendingOutbox: [],
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -125,14 +111,32 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const db = getDb();
+
+    // Optional secure configuration of Telegram Bot Token & Chat ID in SQLite system_info
+    const incomingToken = String(body?.botToken || '').trim();
+    const incomingChatId = String(body?.chatId || '').trim();
+    let configUpdated = false;
+    if (incomingToken && /^\d{8,12}:[A-Za-z0-9_-]{30,50}$/.test(incomingToken)) {
+      setSystemVal(db, 'telegram_bot_token', incomingToken);
+      configUpdated = true;
+    }
+    if (incomingChatId && /^-?\d{5,20}$/.test(incomingChatId)) {
+      setSystemVal(db, 'telegram_chat_id', incomingChatId);
+      configUpdated = true;
+    }
+
     const deliveredIds: number[] = Array.isArray(body?.deliveredIds)
       ? body.deliveredIds.map((x: any) => Number(x)).filter((n: number) => !isNaN(n))
       : [];
     if (deliveredIds.length > 0) {
-      const db = getDb();
       markOutboxDelivered(db, deliveredIds);
     }
-    return NextResponse.json({ success: true, deliveredCount: deliveredIds.length });
+    return NextResponse.json({
+      success: true,
+      deliveredCount: deliveredIds.length,
+      configUpdated,
+    });
   } catch (err: any) {
     return NextResponse.json(
       { success: false, message: err?.message || 'Telegram outbox update error' },
