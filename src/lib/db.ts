@@ -5,8 +5,7 @@ import crypto from 'crypto';
 // Using Node 22 built-in sqlite DatabaseSync
 let dbInstance: any = null;
 
-const INITIAL_ADMIN_HASH =
-  'scrypt$3263327d30c0e3228db9676659b9c4e0$cd10c43224bf7a3cb5843561a2d80ef417ffe362ebc6e9280123dc4fdd7388d979ae6cd1b4d136cc225d93dbb6eb4269d78b45ee2f2ae9901d70d23a468406f1';
+const INITIAL_ADMIN_HASH = (process.env.ADMIN_PASSWORD_HASH || '').trim();
 
 function hashPlainIfNeeded(pw: string): string {
   if (!pw || pw.startsWith('scrypt$')) return pw;

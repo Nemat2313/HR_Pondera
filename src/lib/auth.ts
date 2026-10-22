@@ -4,9 +4,8 @@ import { getDb } from '@/lib/db';
 export const SESSION_COOKIE_NAME = 'pondera_session';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
-// Pre-computed salted scrypt hash for initial admin account (no plaintext password in code)
-export const INITIAL_ADMIN_PASSWORD_HASH =
-  'scrypt$3263327d30c0e3228db9676659b9c4e0$cd10c43224bf7a3cb5843561a2d80ef417ffe362ebc6e9280123dc4fdd7388d979ae6cd1b4d136cc225d93dbb6eb4269d78b45ee2f2ae9901d70d23a468406f1';
+// Read fallback admin password hash strictly from environment variable (never hardcoded in git)
+export const INITIAL_ADMIN_PASSWORD_HASH = (process.env.ADMIN_PASSWORD_HASH || '').trim();
 
 export interface SessionUser {
   id: number;
