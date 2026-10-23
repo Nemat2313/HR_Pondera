@@ -185,11 +185,11 @@ function ensureTables(db: any) {
 
 function isSentSubmission(sub: any): boolean {
   if (!sub) return false;
+  const status = String(sub.gosuslugi_status || '').trim();
+  if (/^ошибк/i.test(status)) return false;
   const appNo = String(sub.application_no || '').trim();
   const pdf = String(sub.pdf_filename || '').trim();
-  const status = String(sub.gosuslugi_status || '').trim();
   if (appNo !== '' || pdf !== '') return true;
-  if (/^ошибк/i.test(status)) return false;
   if (/отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн|обработк|PDF не скачан/i.test(status)) {
     return true;
   }
@@ -574,7 +574,7 @@ export async function POST(request: Request) {
 
     const clearErrorStmt = db.prepare(`
       DELETE FROM gosuslugi_submissions
-      WHERE sicil_no = ? AND (application_no IS NULL OR TRIM(application_no) = '') AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE '%ошибк%')
+      WHERE sicil_no = ? AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%' OR gosuslugi_status LIKE '%ошибк%')
     `);
 
     const archiveRefusedBySicilStmt = db.prepare(`
@@ -586,7 +586,7 @@ export async function POST(request: Request) {
         sicil_no, worker_name, citizenship, notification_type, period_code,
         application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
       FROM gosuslugi_submissions
-      WHERE sicil_no = ? AND gosuslugi_status LIKE '%отказан%'
+      WHERE sicil_no = ? AND (gosuslugi_status LIKE '%отказан%' OR (application_no != '' AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')))
     `);
 
     const clearRefusedBySicilStmt = db.prepare(`
@@ -669,9 +669,9 @@ export async function POST(request: Request) {
           updated++;
 
           if (clearErrorsForUpdated) {
+            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
             const delRes = clearErrorStmt.run(norm.sicilNo);
             clearedErrors += Number(delRes.changes || 0);
-            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
             const refRes = clearRefusedBySicilStmt.run(norm.sicilNo);
             reopenedRefused += Number(refRes.changes || 0);
           }
@@ -704,9 +704,9 @@ export async function POST(request: Request) {
           inserted++;
 
           if (clearErrorsForUpdated) {
+            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
             const delRes = clearErrorStmt.run(norm.sicilNo);
             clearedErrors += Number(delRes.changes || 0);
-            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
             const refRes = clearRefusedBySicilStmt.run(norm.sicilNo);
             reopenedRefused += Number(refRes.changes || 0);
           }
@@ -878,22 +878,34 @@ export async function PATCH(request: Request) {
           .prepare(
             `SELECT m.sicil_no FROM gosuslugi_vks_master_list m
              INNER JOIN gosuslugi_submissions s ON s.sicil_no = m.sicil_no
-             WHERE m.assigned_computer = ? AND s.application_no = '' AND s.gosuslugi_status LIKE 'Ошибка%'`
+             WHERE m.assigned_computer = ? AND (s.gosuslugi_status LIKE 'Ошибка%' OR s.gosuslugi_status LIKE 'ошибка%')`
           )
           .all(computer) as Array<{ sicil_no: string }>;
         targetSicils = compRows.map((r) => r.sicil_no);
       } else {
         const errRows = db
           .prepare(
-            `SELECT sicil_no FROM gosuslugi_submissions WHERE application_no = '' AND gosuslugi_status LIKE 'Ошибка%'`
+            `SELECT sicil_no FROM gosuslugi_submissions WHERE gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%'`
           )
           .all() as Array<{ sicil_no: string }>;
         targetSicils = errRows.map((r) => r.sicil_no);
       }
 
+      const archiveErrorAppNoStmt = db.prepare(`
+        INSERT INTO gosuslugi_refused_archive (
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+        )
+        SELECT
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
+        FROM gosuslugi_submissions
+        WHERE sicil_no = ? AND application_no != '' AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')
+      `);
+
       const delErrorStmt = db.prepare(`
         DELETE FROM gosuslugi_submissions
-        WHERE sicil_no = ? AND application_no = '' AND gosuslugi_status LIKE 'Ошибка%'
+        WHERE sicil_no = ? AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')
       `);
 
       const reassignCompStmt = db.prepare(`
@@ -907,6 +919,7 @@ export async function PATCH(request: Request) {
       try {
         for (const sic of targetSicils) {
           if (clearFromDb) {
+            archiveErrorAppNoStmt.run(nowStr, sic);
             const res = delErrorStmt.run(sic);
             resetCount += Number(res.changes || 0);
           } else {

@@ -746,8 +746,12 @@ export async function GET(request: Request) {
       amberCols: Set<number>;
       sortPriority: number;
     }> = [];
+    const seenExportSicils = new Set<string>();
 
     for (const m of combinedRows) {
+      if ((mode === 'only_oshibka' || mode === 'refused') && seenExportSicils.has(m.sicil_no)) {
+        continue;
+      }
       if (computerFilter !== 'all' && String(m.assigned_computer) !== String(computerFilter)) {
         continue;
       }
@@ -982,6 +986,7 @@ export async function GET(request: Request) {
         ];
 
         const sortPriority = redCols.size > 0 ? 0 : amberCols.size > 0 ? 1 : 2;
+        seenExportSicils.add(m.sicil_no);
         exportRows.push({
           values: rowValues,
           redCols,
@@ -993,10 +998,10 @@ export async function GET(request: Request) {
 
       const isSent = Boolean(
         sub &&
+          !/^ошибк/i.test(gosStatus) &&
           (String(sub.application_no || '').trim() !== '' ||
             String(sub.pdf_filename || '').trim() !== '' ||
-            (/отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн/i.test(gosStatus) &&
-              !/^ошибк/i.test(gosStatus)))
+            /отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн/i.test(gosStatus))
       );
       if (isSent) continue;
 
@@ -1011,6 +1016,8 @@ export async function GET(request: Request) {
         const catId = classifyGosuslugiErrorId(gosStatus, statusDetail);
         if (catId !== errorCategoryFilter) continue;
       }
+
+      seenExportSicils.add(m.sicil_no);
 
       const explanationText = diag.explanations.join(' | ');
 

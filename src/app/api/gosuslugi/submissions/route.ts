@@ -183,6 +183,10 @@ export async function POST(request: Request) {
           ELSE gosuslugi_submissions.application_no
         END,
         gosuslugi_status = CASE
+          WHEN excluded.gosuslugi_status LIKE 'Ошибка%'
+            AND gosuslugi_submissions.application_no != ''
+            AND gosuslugi_submissions.gosuslugi_status NOT LIKE 'Ошибка%'
+          THEN gosuslugi_submissions.gosuslugi_status
           WHEN excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)')
             AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению', 'Заявление зарегистрировано')
           THEN gosuslugi_submissions.gosuslugi_status
