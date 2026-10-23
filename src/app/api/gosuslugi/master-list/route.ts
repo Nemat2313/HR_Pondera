@@ -431,10 +431,15 @@ export async function GET(request: Request) {
       });
     }
 
+    const archivedRows = db
+      .prepare(`SELECT DISTINCT application_no FROM gosuslugi_refused_archive WHERE application_no != ''`)
+      .all() as Array<{ application_no: string }>;
+
     return NextResponse.json({
       success: true,
       totalMaster: masterRows.length,
       computers: computersSummary,
+      archivedAppNos: archivedRows.map((r) => r.application_no),
       summary: {
         total: masterRows.length,
         sent: totalSent,

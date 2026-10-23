@@ -944,6 +944,7 @@ export default function GosuslugiVksView() {
   const [savedSubmissions, setSavedSubmissions] = useState<Record<string, GosuslugiSubmissionEntry>>({});
   const syncedAppsRef = useRef<Set<string>>(new Set());
   const uploadedPdfsRef = useRef<Set<string>>(new Set());
+  const archivedAppsRef = useRef<Set<string>>(new Set());
 
   // Central Backend Master VKS List (3,088 records & 4-Computer Queue Partitioning)
   const [masterSummary, setMasterSummary] = useState<{
@@ -1012,6 +1013,9 @@ export default function GosuslugiVksView() {
       const res = await fetch('/api/gosuslugi/submissions?type=VKS_SALARY');
       if (!res.ok) return savedSubmissions;
       const json = await res.json();
+      if (Array.isArray(json.archivedAppNos)) {
+        archivedAppsRef.current = new Set(json.archivedAppNos.map((a: any) => String(a || '').trim()).filter(Boolean));
+      }
       if (json.success && Array.isArray(json.data)) {
         const bySicil: Record<string, GosuslugiSubmissionEntry> = {};
         for (const rawRow of json.data as GosuslugiSubmissionEntry[]) {
@@ -1022,8 +1026,9 @@ export default function GosuslugiVksView() {
           if (row.sicil_no) {
             const key = String(row.sicil_no).trim();
             const existing = bySicil[key];
-            // Prefer entry that has application_no or keep the newest one (first in DESC order)
-            if (!existing || (!existing.application_no && row.application_no)) {
+            const exNum = existing?.application_no && /^\d+$/.test(existing.application_no) ? Number(existing.application_no) : 0;
+            const rowNum = row.application_no && /^\d+$/.test(row.application_no) ? Number(row.application_no) : 0;
+            if (!existing || rowNum > exNum || (!existing.application_no && row.application_no)) {
               bySicil[key] = row;
             }
           }
@@ -1036,16 +1041,19 @@ export default function GosuslugiVksView() {
         setWorkers((prev) =>
           prev.map((w) => {
             const codeKey = String(w.code || w.sicil || '').trim();
-            const subByApp = w.applicationNo ? bySicil[`app:${w.applicationNo}`] : undefined;
             const subByCode = codeKey ? bySicil[codeKey] : undefined;
+            const subByApp =
+              w.applicationNo && !archivedAppsRef.current.has(w.applicationNo)
+                ? bySicil[`app:${w.applicationNo}`]
+                : undefined;
             const matchedSub =
-              subByApp || (doesSubMatchWorker(subByCode, w) ? subByCode : undefined);
+              (doesSubMatchWorker(subByCode, w) ? subByCode : undefined) || subByApp;
             if (!matchedSub) return w;
-            const nextAppNo = w.applicationNo || matchedSub.application_no;
+            const nextAppNo = matchedSub.application_no || '';
             const nextGosStatus = normalizeSentGosuslugiStatus(
               matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено'
             );
-            const nextPdf = w.pdfFilename || matchedSub.pdf_filename;
+            const nextPdf = matchedSub.pdf_filename || '';
             const alreadySent = isWorkerAlreadySentToGosuslugi({
               status: w.status === 'success' ? 'success' : undefined,
               applicationNo: nextAppNo,
@@ -1349,11 +1357,29 @@ export default function GosuslugiVksView() {
               setBridgeStatus(data);
 
               // Sync any newly registered applications or updated statuses from RPA bridge to Pondera DB
-              if (data.submissions && Object.keys(data.submissions).length > 0) {
-                const subValues = Object.values(data.submissions).map((s) => ({
-                  ...s,
-                  gosuslugi_status: normalizeSentGosuslugiStatus(s.gosuslugi_status),
-                }));
+              const validBridgeSubs =
+                data.submissions && Object.keys(data.submissions).length > 0
+                  ? Object.values(data.submissions)
+                      .map((s) => ({
+                        ...s,
+                        gosuslugi_status: normalizeSentGosuslugiStatus(s.gosuslugi_status),
+                      }))
+                      .filter((s) => {
+                        const appNo = String(s.application_no || '').trim();
+                        const st = String(s.gosuslugi_status || '').trim();
+                        if (appNo && archivedAppsRef.current.has(appNo)) return false;
+                        if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
+                        return true;
+                      })
+                      .sort((a, b) => {
+                        const na = /^\d+$/.test(String(a.application_no || '')) ? Number(a.application_no) : 0;
+                        const nb = /^\d+$/.test(String(b.application_no || '')) ? Number(b.application_no) : 0;
+                        return nb - na;
+                      })
+                  : [];
+
+              if (validBridgeSubs.length > 0) {
+                const subValues = validBridgeSubs;
                 const unsynced = subValues.filter((s) => {
                   const keyId = s.application_no || s.sicil_no || '';
                   if (!keyId) return false;
@@ -1367,7 +1393,15 @@ export default function GosuslugiVksView() {
                   setSavedSubmissions((prev) => {
                     const next = { ...prev };
                     for (const s of unsynced) {
-                      if (s.sicil_no) next[String(s.sicil_no)] = s;
+                      if (s.sicil_no) {
+                        const k = String(s.sicil_no);
+                        const ex = next[k];
+                        const exN = ex?.application_no && /^\d+$/.test(ex.application_no) ? Number(ex.application_no) : 0;
+                        const sN = s.application_no && /^\d+$/.test(s.application_no) ? Number(s.application_no) : 0;
+                        if (!ex || sN >= exN) {
+                          next[k] = s;
+                        }
+                      }
                       if (s.application_no) next[`app:${s.application_no}`] = s;
                     }
                     return next;
@@ -1413,15 +1447,25 @@ export default function GosuslugiVksView() {
                     data.error_codes && codeKey && data.error_codes.includes(codeKey)
                   );
 
-                  if (data.submissions) {
-                    const matchedSub = Object.values(data.submissions).find((s) =>
+                  if (validBridgeSubs.length > 0) {
+                    const matchedSub = validBridgeSubs.find((s) =>
                       doesSubMatchWorker(s, w)
                     );
                     if (matchedSub) {
-                      const nextAppNo = matchedSub.application_no || w.applicationNo;
+                      const wAppNum = w.applicationNo && /^\d+$/.test(w.applicationNo) ? Number(w.applicationNo) : 0;
+                      const mAppNum = matchedSub.application_no && /^\d+$/.test(matchedSub.application_no) ? Number(matchedSub.application_no) : 0;
+                      if (wAppNum > 0 && mAppNum > 0 && mAppNum < wAppNum) {
+                        return nextW;
+                      }
+                      const nextAppNo =
+                        mAppNum >= wAppNum
+                          ? matchedSub.application_no || w.applicationNo
+                          : w.applicationNo;
                       const nextGosStatus =
-                        pickBetterGosuslugiStatus(w.gosuslugiStatus, matchedSub.gosuslugi_status) ||
-                        (isErrored ? '' : 'Отправлено');
+                        mAppNum > wAppNum
+                          ? matchedSub.gosuslugi_status || 'Отправлено'
+                          : pickBetterGosuslugiStatus(w.gosuslugiStatus, matchedSub.gosuslugi_status) ||
+                            (isErrored ? '' : 'Отправлено');
                       const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
                       const alreadySent = isWorkerAlreadySentToGosuslugi({
                         applicationNo: nextAppNo,

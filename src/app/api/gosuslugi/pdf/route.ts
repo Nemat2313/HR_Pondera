@@ -144,50 +144,69 @@ export async function POST(request: Request) {
       const db = getDb();
       const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
       const isFinalOrAdvancedStatus = ['Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению'].includes(incomingStatus);
+
+      let isArchivedApp = false;
       if (applicationNo) {
-        db.prepare(
-          `UPDATE gosuslugi_submissions
-           SET pdf_filename = ?,
-               gosuslugi_status = CASE
-                 WHEN ? != '' THEN ?
-                 WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
-                 ELSE gosuslugi_status
-               END,
-               checked_at = CASE WHEN ? != '' THEN ? ELSE checked_at END,
-               updated_at = ?
-           WHERE application_no = ?`
-        ).run(
-          safeFilename,
-          isFinalOrAdvancedStatus ? incomingStatus : '',
-          incomingStatus,
-          isFinalOrAdvancedStatus ? nowStr : '',
-          nowStr,
-          nowStr,
-          applicationNo
-        );
+        try {
+          const archRow = db
+            .prepare('SELECT id FROM gosuslugi_refused_archive WHERE application_no = ? LIMIT 1')
+            .get(applicationNo);
+          if (archRow) isArchivedApp = true;
+        } catch {}
       }
-      if (sicilNo) {
-        db.prepare(
-          `UPDATE gosuslugi_submissions
-           SET pdf_filename = ?,
-               gosuslugi_status = CASE
-                 WHEN ? != '' THEN ?
-                 WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
-                 ELSE gosuslugi_status
-               END,
-               checked_at = CASE WHEN ? != '' THEN ? ELSE checked_at END,
-               updated_at = ?
-           WHERE sicil_no = ? AND (pdf_filename IS NULL OR pdf_filename = "" OR pdf_filename = ?)`
-        ).run(
-          safeFilename,
-          isFinalOrAdvancedStatus ? incomingStatus : '',
-          incomingStatus,
-          isFinalOrAdvancedStatus ? nowStr : '',
-          nowStr,
-          nowStr,
-          sicilNo,
-          safeFilename
-        );
+
+      if (!isArchivedApp) {
+        if (applicationNo) {
+          db.prepare(
+            `UPDATE gosuslugi_submissions
+             SET pdf_filename = ?,
+                 gosuslugi_status = CASE
+                   WHEN ? != '' THEN ?
+                   WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
+                   ELSE gosuslugi_status
+                 END,
+                 checked_at = CASE WHEN ? != '' THEN ? ELSE checked_at END,
+                 updated_at = ?
+             WHERE application_no = ?`
+          ).run(
+            safeFilename,
+            isFinalOrAdvancedStatus ? incomingStatus : '',
+            incomingStatus,
+            isFinalOrAdvancedStatus ? nowStr : '',
+            nowStr,
+            nowStr,
+            applicationNo
+          );
+        }
+        if (sicilNo) {
+          db.prepare(
+            `UPDATE gosuslugi_submissions
+             SET pdf_filename = ?,
+                 gosuslugi_status = CASE
+                   WHEN ? != '' THEN ?
+                   WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
+                   ELSE gosuslugi_status
+                 END,
+                 checked_at = CASE WHEN ? != '' THEN ? ELSE checked_at END,
+                 updated_at = ?
+             WHERE sicil_no = ?
+               AND (application_no = '' OR application_no = ?)
+               AND NOT (? != '' AND CAST(? AS INTEGER) < 8300000000 AND submitted_at >= '2026-10-21 21:00:00')
+               AND (pdf_filename IS NULL OR pdf_filename = "" OR pdf_filename = ?)`
+          ).run(
+            safeFilename,
+            isFinalOrAdvancedStatus ? incomingStatus : '',
+            incomingStatus,
+            isFinalOrAdvancedStatus ? nowStr : '',
+            nowStr,
+            nowStr,
+            sicilNo,
+            applicationNo,
+            applicationNo,
+            applicationNo,
+            safeFilename
+          );
+        }
       }
     } catch {
       // Non-fatal DB update error

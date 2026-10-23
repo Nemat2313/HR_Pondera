@@ -89,9 +89,14 @@ export async function GET(request: Request) {
       .prepare(`SELECT * FROM gosuslugi_submissions ${whereClause} ORDER BY submitted_at DESC, id DESC`)
       .all(...params);
 
+    const archivedRows = db
+      .prepare(`SELECT DISTINCT application_no FROM gosuslugi_refused_archive WHERE application_no != ''`)
+      .all() as Array<{ application_no: string }>;
+
     return NextResponse.json({
       success: true,
       data: rows,
+      archivedAppNos: archivedRows.map((r) => r.application_no),
     });
   } catch {
     return NextResponse.json(
@@ -132,6 +137,36 @@ export async function POST(request: Request) {
       SELECT id FROM gosuslugi_refused_archive
       WHERE application_no = ? AND application_no != ''
       LIMIT 1
+    `);
+
+    const getExistingBySicilStmt = db.prepare(`
+      SELECT id, sicil_no, worker_name, citizenship, notification_type, period_code,
+             application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, checked_at
+      FROM gosuslugi_submissions
+      WHERE sicil_no = ? AND notification_type = ? AND period_code = ?
+      LIMIT 1
+    `);
+
+    const archiveSingleRowStmt = db.prepare(`
+      INSERT INTO gosuslugi_refused_archive (
+        sicil_no, worker_name, citizenship, notification_type, period_code,
+        application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const forceUpdateSupersedingStmt = db.prepare(`
+      UPDATE gosuslugi_submissions
+      SET worker_name = COALESCE(NULLIF(?, ''), worker_name),
+          citizenship = COALESCE(NULLIF(?, ''), citizenship),
+          application_no = ?,
+          gosuslugi_status = ?,
+          status_detail = ?,
+          pdf_filename = ?,
+          submitted_at = ?,
+          checked_at = ?,
+          updated_at = ?
+      WHERE id = ?
     `);
 
     const stmt = db.prepare(`
@@ -187,10 +222,24 @@ export async function POST(request: Request) {
 
       if (!sicil && !appNo) continue;
 
-      // Skip old refused application_no that was explicitly archived/re-opened for re-sending
+      // 1. Skip old refused application_no that was explicitly archived/re-opened for re-sending
       if (appNo && checkArchivedRefusalStmt.get(appNo)) {
         continue;
       }
+
+      // 2. Skip Oct 21 morning MVD outage refusals (8295xxxxxx - 8297xxxxxx) that were already re-submitted
+      if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(normalizedStatus)) {
+        continue;
+      }
+
+      const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
+      const periodCode = String(item.period_code || item.periodCode || '').trim();
+      const workerName = String(item.worker_name || item.workerName || '').trim();
+      const citizenship = String(item.citizenship || '').trim();
+      const statusDetail = String(item.status_detail || item.statusDetail || '').trim();
+      let pdfFilename = String(item.pdf_filename || item.pdfFilename || '').trim();
+      const submittedAt = String(item.submitted_at || item.submittedAt || nowStr).trim();
+      const checkedAt = String(item.checked_at || item.checkedAt || '').trim();
 
       // Prevent linking the same Gosuslugi application_no to two different workers across multiple computers
       if (appNo && sicil) {
@@ -201,18 +250,148 @@ export async function POST(request: Request) {
         }
       }
 
+      const existingRow = sicil
+        ? (getExistingBySicilStmt.get(sicil, notifType, periodCode) as
+            | {
+                id: number;
+                sicil_no: string;
+                worker_name: string;
+                citizenship: string;
+                notification_type: string;
+                period_code: string;
+                application_no: string;
+                gosuslugi_status: string;
+                status_detail: string;
+                pdf_filename: string;
+                submitted_at: string;
+                checked_at: string;
+              }
+            | undefined)
+        : undefined;
+
+      if (existingRow) {
+        const exAppNo = String(existingRow.application_no || '').trim();
+        const exStatus = String(existingRow.gosuslugi_status || '').trim();
+        const exSubAt = String(existingRow.submitted_at || '').trim();
+
+        // 3. Never downgrade to an older (smaller integer) Gosuslugi application_no
+        if (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo)) {
+          if (Number(appNo) < Number(exAppNo)) {
+            continue;
+          }
+        }
+
+        // 4. If worker was submitted/re-submitted on or after 2026-10-21 21:00:00, its Gosuslugi application_no must be >= 8300000000.
+        // Do not let stale local ledgers or old PDFs attach a pre-outage (< 8300000000) application_no unless it is already 'Услуга оказана'.
+        if (
+          exSubAt >= '2026-10-21 21:00:00' &&
+          /^\d{10}$/.test(appNo) &&
+          Number(appNo) < 8300000000 &&
+          normalizedStatus !== 'Услуга оказана'
+        ) {
+          continue;
+        }
+
+        // 5. Never let a stale refusal checked BEFORE the row's submitted_at overwrite a newer re-submission
+        if (checkedAt && exSubAt && checkedAt < exSubAt && /отказан/i.test(normalizedStatus)) {
+          continue;
+        }
+
+        // 6. If incoming has a strictly NEWER (larger integer) application_no than existingRow, supersede existingRow completely
+        if (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo) && Number(appNo) > Number(exAppNo)) {
+          if (/отказан/i.test(exStatus) && !checkArchivedRefusalStmt.get(exAppNo)) {
+            archiveSingleRowStmt.run(
+              existingRow.sicil_no,
+              existingRow.worker_name,
+              existingRow.citizenship,
+              existingRow.notification_type,
+              existingRow.period_code,
+              exAppNo,
+              exStatus,
+              existingRow.status_detail,
+              existingRow.pdf_filename,
+              exSubAt,
+              nowStr
+            );
+          }
+          const validNewPdf = pdfFilename && pdfFilename.includes(appNo) ? pdfFilename : '';
+          forceUpdateSupersedingStmt.run(
+            workerName,
+            citizenship,
+            appNo,
+            normalizedStatus,
+            statusDetail,
+            validNewPdf,
+            submittedAt > exSubAt ? submittedAt : exSubAt,
+            checkedAt || nowStr,
+            nowStr,
+            existingRow.id
+          );
+          upserted++;
+          continue;
+        }
+
+        // 7. If existingRow is 'Услуга отказана' and a fresh re-submission arrives (empty appNo, fresh submittedAt > exSubAt, no checkedAt)
+        if (
+          /отказан/i.test(exStatus) &&
+          !appNo &&
+          !checkedAt &&
+          ['Отправлено', 'Отправлено (PDF не скачан)', 'Заявление зарегистрировано'].includes(normalizedStatus) &&
+          submittedAt > exSubAt
+        ) {
+          if (exAppNo && !checkArchivedRefusalStmt.get(exAppNo)) {
+            archiveSingleRowStmt.run(
+              existingRow.sicil_no,
+              existingRow.worker_name,
+              existingRow.citizenship,
+              existingRow.notification_type,
+              existingRow.period_code,
+              exAppNo,
+              exStatus,
+              existingRow.status_detail,
+              existingRow.pdf_filename,
+              exSubAt,
+              nowStr
+            );
+          }
+          forceUpdateSupersedingStmt.run(
+            workerName,
+            citizenship,
+            '',
+            normalizedStatus,
+            '',
+            '',
+            submittedAt,
+            '',
+            nowStr,
+            existingRow.id
+          );
+          upserted++;
+          continue;
+        }
+
+        // Ensure pdfFilename does not carry an old application_no different from the row's application_no
+        const effectiveAppNo = appNo || exAppNo;
+        if (pdfFilename && effectiveAppNo) {
+          const pdfAppMatch = pdfFilename.match(/([789]\d{9})/);
+          if (pdfAppMatch && pdfAppMatch[1] !== effectiveAppNo) {
+            pdfFilename = '';
+          }
+        }
+      }
+
       stmt.run(
         sicil,
-        String(item.worker_name || item.workerName || '').trim(),
-        String(item.citizenship || '').trim(),
-        String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase(),
-        String(item.period_code || item.periodCode || '').trim(),
+        workerName,
+        citizenship,
+        notifType,
+        periodCode,
         appNo,
         normalizedStatus,
-        String(item.status_detail || item.statusDetail || '').trim(),
-        String(item.pdf_filename || item.pdfFilename || '').trim(),
-        String(item.submitted_at || item.submittedAt || nowStr).trim(),
-        String(item.checked_at || item.checkedAt || '').trim(),
+        statusDetail,
+        pdfFilename,
+        submittedAt,
+        checkedAt,
         nowStr
       );
       upserted++;
@@ -256,6 +435,11 @@ export async function PATCH(request: Request) {
           application_no = COALESCE(NULLIF(?, ''), application_no),
           checked_at = ?
       WHERE sicil_no = ?
+        AND (
+          application_no = ''
+          OR ? = ''
+          OR CAST(? AS INTEGER) >= CAST(application_no AS INTEGER)
+        )
     `);
 
     const checkArchivedRefusalStmt = db.prepare(`
@@ -272,6 +456,7 @@ export async function PATCH(request: Request) {
       const detail = String(u.status_detail || u.statusDetail || '').trim();
       if (!status) continue;
       if (appNo && checkArchivedRefusalStmt.get(appNo)) continue;
+      if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(status)) continue;
 
       if (appNo) {
         const res = byAppNoStmt.run(status, detail, nowStr, appNo);
@@ -281,7 +466,7 @@ export async function PATCH(request: Request) {
         }
       }
       if (sicil) {
-        const res = bySicilStmt.run(status, detail, appNo, nowStr, sicil);
+        const res = bySicilStmt.run(status, detail, appNo, nowStr, sicil, appNo, appNo);
         updated += res.changes;
       }
     }

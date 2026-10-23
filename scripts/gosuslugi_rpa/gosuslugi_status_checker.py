@@ -1085,6 +1085,36 @@ def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str, gos
         pass
 
 
+CENTRAL_ARCHIVED_APP_NOS = set()
+
+
+def is_superseded_or_archived_order(app_no: str, status: str = "", submitted_at: str = "") -> bool:
+    """
+    Returns True if `app_no` belongs to:
+    1) `gosuslugi_refused_archive` (`CENTRAL_ARCHIVED_APP_NOS`)
+    2) The Oct 21 Morning MVD System Outage (03:27-11:25 MSK, application_no 8295xxxxxx-8297xxxxxx) with refusal status
+    3) An older pre-Oct-21-night application (< 8300000000) when the worker was re-submitted on/after 2026-10-21 21:00:00
+    """
+    clean_no = str(app_no or "").strip()
+    if not clean_no:
+        return False
+    if clean_no in CENTRAL_ARCHIVED_APP_NOS:
+        return True
+    st_lower = str(status or "").strip().lower()
+    if re.match(r"^829[567]\d{6}$", clean_no) and "отказан" in st_lower:
+        return True
+    sub_at = str(submitted_at or "").strip()
+    if (
+        sub_at >= "2026-10-21 21:00:00"
+        and clean_no.isdigit()
+        and len(clean_no) == 10
+        and int(clean_no) < 8300000000
+        and str(status or "").strip() != "Услуга оказана"
+    ):
+        return True
+    return False
+
+
 def fetch_central_master_list_records() -> List[Dict[str, Any]]:
     """Fetches the unified 3,088-worker master list + submissions from https://hr.pondera.network/api/gosuslugi/master-list."""
     import urllib.request
@@ -1101,6 +1131,12 @@ def fetch_central_master_list_records() -> List[Dict[str, Any]]:
             with urllib.request.urlopen(req, timeout=8.0, context=ctx if api_url.startswith("https") else None) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
+                    arch_list = data.get("archivedAppNos") or []
+                    if isinstance(arch_list, list):
+                        for a_no in arch_list:
+                            s_no = str(a_no or "").strip()
+                            if s_no:
+                                CENTRAL_ARCHIVED_APP_NOS.add(s_no)
                     rows = data.get("data") or []
                     if isinstance(rows, list) and len(rows) > 0:
                         mapped = []
@@ -1118,6 +1154,7 @@ def fetch_central_master_list_records() -> List[Dict[str, Any]]:
                                 "application_no": str(w.get("applicationNo") or "").strip(),
                                 "gosuslugi_status": str(w.get("gosuslugiStatus") or "").strip(),
                                 "pdf_filename": str(w.get("pdfFilename") or "").strip(),
+                                "submitted_at": str(w.get("submittedAt") or "").strip(),
                             })
                         return mapped
         except Exception:
@@ -1150,6 +1187,83 @@ def sync_updates_to_pondera_api(updates: List[Dict[str, Any]]):
                 break
         except Exception:
             pass
+
+
+def is_local_bridge_up_to_date() -> bool:
+    import urllib.request
+    try:
+        req = urllib.request.Request("http://127.0.0.1:8088/health")
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return str(data.get("bridge_version") or "") >= "2.6.61"
+    except Exception:
+        pass
+    return False
+
+
+def update_local_applications_ledger(updates: List[Dict[str, Any]]):
+    if not updates:
+        return
+    ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+    try:
+        existing_list = []
+        if os.path.exists(ledger_path):
+            with open(ledger_path, "r", encoding="utf-8") as lf:
+                raw = json.load(lf)
+                if isinstance(raw, list):
+                    existing_list = [
+                        it for it in raw
+                        if isinstance(it, dict)
+                        and not is_superseded_or_archived_order(
+                            str(it.get("application_no") or ""),
+                            str(it.get("gosuslugi_status") or ""),
+                            str(it.get("submitted_at") or ""),
+                        )
+                    ]
+        by_key = {}
+        for idx, it in enumerate(existing_list):
+            s = str(it.get("sicil") or it.get("sicil_no") or "").strip()
+            p = str(it.get("period_code") or "2026-3").strip()
+            if s:
+                by_key[(s, p)] = idx
+        for up in updates:
+            s = str(up.get("sicil") or up.get("sicil_no") or "").strip()
+            p = str(up.get("period_code") or "2026-3").strip()
+            if s and (s, p) in by_key:
+                existing_list[by_key[(s, p)]] = {**existing_list[by_key[(s, p)]], **up}
+            else:
+                if s:
+                    by_key[(s, p)] = len(existing_list)
+                existing_list.append(up)
+        with open(ledger_path, "w", encoding="utf-8") as lf:
+            json.dump(existing_list, lf, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def restart_local_bridge_if_outdated():
+    if is_local_bridge_up_to_date():
+        return
+    bridge_script = os.path.join(CURRENT_DIR, "rpa_bridge_server.py")
+    if not os.path.exists(bridge_script):
+        return
+    try:
+        import subprocess
+        flags = 0
+        if sys.platform == "win32":
+            flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        subprocess.Popen(
+            [sys.executable, bridge_script],
+            cwd=CURRENT_DIR,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            creationflags=flags,
+        )
+    except Exception:
+        pass
 
 
 def prevent_windows_sleep():
@@ -1217,14 +1331,31 @@ def run_fast_json_status_sync_on_page(
         if not bulk_orders:
             return 0
 
-        labor_orders_list = [
-            ord_item for ord_item in bulk_orders.values()
-            if is_valid_labor_notification_order(ord_item)
-        ]
+        # Always sort labor orders descending by integer application_no so the MOST RECENT application wins!
+        labor_orders_list = sorted(
+            [
+                ord_item for ord_item in bulk_orders.values()
+                if is_valid_labor_notification_order(ord_item)
+                and not is_superseded_or_archived_order(
+                    ord_item.get("application_no", ""),
+                    ord_item.get("gosuslugi_status", ""),
+                )
+            ],
+            key=lambda x: int(x["application_no"]) if str(x.get("application_no") or "").isdigit() else 0,
+            reverse=True,
+        )
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         updated_records: List[Dict[str, Any]] = []
         assigned_app_nos_to_sicil: Dict[str, str] = {}
+        for r_pre in target_records:
+            p_sic = str(r_pre.get("sicil") or r_pre.get("sicil_no") or "").strip()
+            p_app = str(r_pre.get("application_no") or "").strip()
+            p_st = str(r_pre.get("gosuslugi_status") or "").strip()
+            p_sub = str(r_pre.get("submitted_at") or "").strip()
+            if p_sic and p_app and p_app.isdigit() and not is_superseded_or_archived_order(p_app, p_st, p_sub):
+                assigned_app_nos_to_sicil[p_app] = p_sic
+
         targeted_search_count = 0
         consecutive_search_misses = 0
 
@@ -1234,31 +1365,45 @@ def run_fast_json_status_sync_on_page(
             sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
             worker_name = str(rec.get("worker_name") or "").strip()
             prev_status = str(rec.get("gosuslugi_status") or "").strip()
+            submitted_at = str(rec.get("submitted_at") or "").strip()
             is_local = bool(rec.get("is_local_worker")) or (sicil in local_sicils) or (not local_sicils)
+
+            if app_no and is_superseded_or_archived_order(app_no, prev_status, submitted_at):
+                app_no = ""
 
             matched_order: Optional[Dict[str, Any]] = None
 
-            if app_no and app_no in bulk_orders:
+            # 1) First check labor_orders_list (sorted newest application_no first) by citizen name
+            # so if the worker was re-submitted and has a NEWER application_no on Gosuslugi, we always pick the latest one!
+            if worker_name:
+                for cand in labor_orders_list:
+                    cand_no = cand["application_no"]
+                    if is_superseded_or_archived_order(cand_no, cand.get("gosuslugi_status", ""), submitted_at):
+                        continue
+                    owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
+                    if owner_sicil and sicil and owner_sicil != sicil:
+                        continue
+                    if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
+                        if not app_no or (cand_no.isdigit() and app_no.isdigit() and int(cand_no) >= int(app_no)):
+                            matched_order = cand
+                            app_no = cand_no
+                        break
+
+            # 2) If not matched by citizen name (or citizen name snippet was omitted), check app_no in bulk_orders
+            if not matched_order and app_no and app_no in bulk_orders:
                 candidate = bulk_orders[app_no]
-                if is_valid_labor_notification_order(candidate):
+                if is_valid_labor_notification_order(candidate) and not is_superseded_or_archived_order(
+                    app_no, candidate.get("gosuslugi_status", ""), submitted_at
+                ):
                     if not (
                         worker_name
                         and candidate.get("citizen_name")
                         and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name)
                     ):
                         matched_order = candidate
-            elif worker_name and not app_no:
-                for cand in labor_orders_list:
-                    cand_no = cand["application_no"]
-                    owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
-                    if owner_sicil and sicil and owner_sicil != sicil:
-                        continue
-                    if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
-                        matched_order = cand
-                        app_no = cand_no
-                        break
             elif (
-                app_no
+                not matched_order
+                and app_no
                 and is_local
                 and prev_status not in ("Услуга оказана", "Услуга отказана")
                 and targeted_search_count < 80
@@ -1266,7 +1411,11 @@ def run_fast_json_status_sync_on_page(
             ):
                 targeted_search_count += 1
                 candidate = query_single_order_by_no(page, app_no)
-                if candidate and is_valid_labor_notification_order(candidate):
+                if (
+                    candidate
+                    and is_valid_labor_notification_order(candidate)
+                    and not is_superseded_or_archived_order(app_no, candidate.get("gosuslugi_status", ""), submitted_at)
+                ):
                     consecutive_search_misses = 0
                     matched_order = candidate
                     bulk_orders[app_no] = candidate
@@ -1287,22 +1436,30 @@ def run_fast_json_status_sync_on_page(
             if prev_status == new_status and raw_app_no == final_app_no:
                 continue
 
+            prev_pdf = str(rec.get("pdf_filename") or "").strip()
+            if prev_pdf and final_app_no and final_app_no not in prev_pdf and re.search(r"[789]\d{9}", prev_pdf):
+                prev_pdf = ""
+
             updated_entry = {
                 **rec,
                 "sicil": sicil,
                 "sicil_no": sicil,
                 "worker_name": worker_name or matched_order.get("citizen_name") or "",
                 "application_no": final_app_no,
-                "pdf_filename": str(rec.get("pdf_filename") or "").strip(),
+                "pdf_filename": prev_pdf,
                 "gosuslugi_status": new_status,
                 "status_detail": matched_order.get("status_detail", ""),
                 "checked_at": now_str,
             }
             updated_records.append(updated_entry)
-            logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated_entry, ensure_ascii=False)}")
+            if is_local_bridge_up_to_date():
+                logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated_entry, ensure_ascii=False)}")
+            else:
+                logger.info(f"APPLICATION_SYNCED_CENTRAL: {json.dumps(updated_entry, ensure_ascii=False)}")
             sync_updates_to_pondera_api([updated_entry])
 
         if updated_records:
+            update_local_applications_ledger(updated_records)
             sync_updates_to_pondera_api(updated_records)
             logger.info(
                 f">>> Fast 30-Min JSON Status Sync: Scanned {len(bulk_orders)} orders on this Gosuslugi account, "
@@ -1313,6 +1470,7 @@ def run_fast_json_status_sync_on_page(
                 f">>> Fast 30-Min JSON Status Sync: Scanned {len(bulk_orders)} orders on this Gosuslugi account "
                 f"(all statuses already up to date). <<<"
             )
+        restart_local_bridge_if_outdated()
         return len(updated_records)
     except Exception as e:
         logger.warning(f"Fast JSON status sync note: {e}")
@@ -1329,35 +1487,75 @@ def main():
     parser.add_argument("--status-only", action="store_true", help="Fast JSON-only status check without downloading PDFs or opening individual order pages")
     args = parser.parse_args()
 
-    records: List[Dict[str, Any]] = []
-    json_candidates = [
-        args.json,
-        os.path.join(CURRENT_DIR, "active_status_check_queue.json"),
-        os.path.join(CURRENT_DIR, "gosuslugi_applications.json"),
-    ]
-    for jpath in json_candidates:
-        if jpath and os.path.exists(jpath):
-            try:
-                with open(jpath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, list) and len(data) > 0:
-                    records = data
-                    logger.info(f"Loaded {len(records)} records from {jpath}")
-                    break
-            except Exception as e:
-                logger.warning(f"Could not read {jpath}: {e}")
-
-    # Always merge with the central 3,088-worker master list from https://hr.pondera.network so all 4 Gosuslugi accounts
-    # can match orders by application_no or Гражданин name and skip orders whose PDF is already downloaded centrally!
+    # 1. Always fetch the authoritative Central Master List FIRST so CENTRAL_ARCHIVED_APP_NOS and central statuses are loaded!
     central_records = fetch_central_master_list_records()
+
+    # Clean up local gosuslugi_applications.json if it contains any archived or Oct 21 morning outage refused application_no
+    local_ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+    if os.path.exists(local_ledger_path):
+        try:
+            with open(local_ledger_path, "r", encoding="utf-8") as lf:
+                local_ledger_data = json.load(lf)
+            if isinstance(local_ledger_data, list):
+                cleaned_ledger = [
+                    it for it in local_ledger_data
+                    if isinstance(it, dict)
+                    and not is_superseded_or_archived_order(
+                        str(it.get("application_no") or "").strip(),
+                        str(it.get("gosuslugi_status") or "").strip(),
+                    )
+                ]
+                if len(cleaned_ledger) != len(local_ledger_data):
+                    with open(local_ledger_path, "w", encoding="utf-8") as lfw:
+                        json.dump(cleaned_ledger, lfw, ensure_ascii=False, indent=2)
+                    logger.info(
+                        f"Purged {len(local_ledger_data) - len(cleaned_ledger)} archived/outage-refused records from local gosuslugi_applications.json"
+                    )
+        except Exception:
+            pass
+
+    records: List[Dict[str, Any]] = []
+    if args.json and os.path.exists(args.json):
+        try:
+            with open(args.json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list) and len(data) > 0:
+                records = [
+                    r for r in data
+                    if isinstance(r, dict)
+                    and not is_superseded_or_archived_order(
+                        str(r.get("application_no") or "").strip(),
+                        str(r.get("gosuslugi_status") or "").strip(),
+                        str(r.get("submitted_at") or "").strip(),
+                    )
+                ]
+                logger.info(f"Loaded {len(records)} records from {args.json}")
+        except Exception as e:
+            logger.warning(f"Could not read {args.json}: {e}")
+
+    # Merge with the central 3,088-worker master list from https://hr.pondera.network (Central Server is authoritative!)
     if central_records:
         by_sicil = {str(r.get("sicil") or r.get("sicil_no") or "").strip(): r for r in records if str(r.get("sicil") or r.get("sicil_no") or "").strip()}
         for cr in central_records:
             csic = cr["sicil_no"]
+            c_app = str(cr.get("application_no") or "").strip()
+            c_sub = str(cr.get("submitted_at") or "").strip()
             if csic in by_sicil:
                 existing_r = by_sicil[csic]
-                if not existing_r.get("application_no") and cr.get("application_no"):
-                    existing_r["application_no"] = cr["application_no"]
+                ex_app = str(existing_r.get("application_no") or "").strip()
+                existing_r["submitted_at"] = c_sub or str(existing_r.get("submitted_at") or "").strip()
+                if ex_app and is_superseded_or_archived_order(
+                    ex_app,
+                    str(existing_r.get("gosuslugi_status") or "").strip(),
+                    existing_r["submitted_at"],
+                ):
+                    existing_r["application_no"] = c_app
+                    existing_r["pdf_filename"] = str(cr.get("pdf_filename") or "").strip()
+                    existing_r["gosuslugi_status"] = str(cr.get("gosuslugi_status") or "").strip()
+                elif c_app:
+                    if not ex_app or (c_app.isdigit() and ex_app.isdigit() and int(c_app) >= int(ex_app)):
+                        existing_r["application_no"] = c_app
+                        existing_r["gosuslugi_status"] = str(cr.get("gosuslugi_status") or existing_r.get("gosuslugi_status") or "").strip()
                 if not existing_r.get("pdf_filename") and cr.get("pdf_filename"):
                     existing_r["pdf_filename"] = cr["pdf_filename"]
                 if not existing_r.get("worker_name") and cr.get("worker_name"):
@@ -1367,13 +1565,26 @@ def main():
                 by_sicil[csic] = cr
         logger.info(f"Synced with Central Master List: {len(records)} total VKS workers ready for multi-account status/PDF check.")
 
-    # Also merge any PDFs found in ~/Downloads that have Gosuslugi application numbers
+    # Also merge any PDFs found in ~/Downloads that have non-archived Gosuslugi application numbers
     discovered_pdfs = scan_downloads_for_applications()
+    by_sicil_map = {str(r.get("sicil") or r.get("sicil_no") or "").strip(): r for r in records if str(r.get("sicil") or r.get("sicil_no") or "").strip()}
     existing_app_nos = {str(r.get("application_no") or "").strip() for r in records if str(r.get("application_no") or "").strip()}
     for d_item in discovered_pdfs:
-        if d_item["application_no"] not in existing_app_nos:
+        d_app = str(d_item.get("application_no") or "").strip()
+        d_sic = str(d_item.get("sicil") or d_item.get("sicil_no") or "").strip()
+        if not d_app or is_superseded_or_archived_order(d_app):
+            continue
+        if d_sic and d_sic in by_sicil_map:
+            r_sic = by_sicil_map[d_sic]
+            r_sub = str(r_sic.get("submitted_at") or "").strip()
+            r_app = str(r_sic.get("application_no") or "").strip()
+            if is_superseded_or_archived_order(d_app, "", r_sub):
+                continue
+            if r_app and r_app.isdigit() and d_app.isdigit() and int(d_app) < int(r_app):
+                continue
+        if d_app not in existing_app_nos:
             records.append(d_item)
-            existing_app_nos.add(d_item["application_no"])
+            existing_app_nos.add(d_app)
             logger.info(f"APPLICATION_REGISTERED: {json.dumps(d_item, ensure_ascii=False)}")
 
     if args.limit > 0 and records:
@@ -1467,15 +1678,30 @@ def main():
         # TIER 1: Bulk fetch orders via Gosuslugi API / Network Interceptor / DOM + 'Показать ещё'
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=args.max_pages)
 
-        # Filter labor notification orders for citizen lookup
-        labor_orders_list = [
-            ord_item for ord_item in bulk_orders.values()
-            if is_valid_labor_notification_order(ord_item)
-        ]
+        # Filter labor notification orders for citizen lookup (sorted newest application_no first!)
+        labor_orders_list = sorted(
+            [
+                ord_item for ord_item in bulk_orders.values()
+                if is_valid_labor_notification_order(ord_item)
+                and not is_superseded_or_archived_order(
+                    ord_item.get("application_no", ""),
+                    ord_item.get("gosuslugi_status", ""),
+                )
+            ],
+            key=lambda x: int(x["application_no"]) if str(x.get("application_no") or "").isdigit() else 0,
+            reverse=True,
+        )
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         updated_records: List[Dict[str, Any]] = []
         assigned_app_nos_to_sicil: Dict[str, str] = {}
+        for r_pre in records:
+            p_sic = str(r_pre.get("sicil") or r_pre.get("sicil_no") or "").strip()
+            p_app = str(r_pre.get("application_no") or "").strip()
+            p_st = str(r_pre.get("gosuslugi_status") or "").strip()
+            p_sub = str(r_pre.get("submitted_at") or "").strip()
+            if p_sic and p_app and p_app.isdigit() and not is_superseded_or_archived_order(p_app, p_st, p_sub):
+                assigned_app_nos_to_sicil[p_app] = p_sic
 
         # Log top recent applications found on the account so user always sees immediate feedback
         if bulk_orders:
@@ -1521,19 +1747,45 @@ def main():
                 worker_name = str(rec.get("worker_name") or "").strip()
                 pdf_file = str(rec.get("pdf_filename") or "").strip()
                 cur_status = str(rec.get("gosuslugi_status") or "").strip()
+                submitted_at = str(rec.get("submitted_at") or "").strip()
                 needs_status_refresh = cur_status not in ("Услуга оказана", "Услуга отказана")
                 is_local = bool(rec.get("is_local_worker")) or (sicil in local_sicils) or (not local_sicils)
+
+                if app_no and is_superseded_or_archived_order(app_no, cur_status, submitted_at):
+                    app_no = ""
+                    pdf_file = ""
 
                 # If PDF is already downloaded and order is not in bulk_orders, skip slow search only if status is already final or non-local
                 if is_large_batch and pdf_file and (not app_no or app_no not in bulk_orders):
                     if not (needs_status_refresh and is_local):
                         continue
 
-                # If worker has no application_no and is not in bulk_orders, only check citizen name against labor_orders_list
                 matched_order: Optional[Dict[str, Any]] = None
 
-                # 1) Match by application_no in bulk feed (with citizen & service validation!)
-                if app_no and app_no in bulk_orders:
+                # 1) First check labor_orders_list (sorted newest application_no first) by Citizen Name ('Гражданин')
+                # so if a worker was re-submitted and has a NEWER application_no on Gosuslugi, the newest order wins!
+                if worker_name:
+                    for cand in labor_orders_list:
+                        cand_no = cand["application_no"]
+                        if is_superseded_or_archived_order(cand_no, cand.get("gosuslugi_status", ""), submitted_at):
+                            continue
+                        owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
+                        if owner_sicil and sicil and owner_sicil != sicil:
+                            continue
+                        if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
+                            if not app_no or (cand_no.isdigit() and app_no.isdigit() and int(cand_no) >= int(app_no)):
+                                matched_order = cand
+                                if cand_no != app_no:
+                                    logger.info(
+                                        f"  -> Matched '{worker_name}' by Гражданин ('{cand.get('citizen_name')}') -> NEWEST № {cand_no} (was № {app_no or '—'}): {matched_order['gosuslugi_status']}"
+                                    )
+                                    if pdf_file and cand_no not in pdf_file and re.search(r"[789]\d{9}", pdf_file):
+                                        pdf_file = ""
+                                app_no = cand_no
+                            break
+
+                # 2) Match by application_no in bulk feed if not matched above (with citizen & service validation!)
+                if not matched_order and app_no and app_no in bulk_orders:
                     logger.info(
                         f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
                         f"(Код: {sicil or '—'}, № Заявления: {app_no})"
@@ -1542,6 +1794,10 @@ def main():
                     if not is_valid_labor_notification_order(candidate):
                         logger.warning(
                             f"  -> Rejecting № {app_no} for {worker_name}: wrong service ('{candidate.get('service_title')}') or draft!"
+                        )
+                    elif is_superseded_or_archived_order(app_no, candidate.get("gosuslugi_status", ""), submitted_at):
+                        logger.info(
+                            f"  -> Skipping archived/outage № {app_no} for {worker_name}"
                         )
                     elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
                         logger.warning(
@@ -1552,21 +1808,6 @@ def main():
                         logger.info(
                             f"  -> Matched № {app_no} in bulk feed: {matched_order['gosuslugi_status']}"
                         )
-
-                # 2) Match by Citizen Name ('Гражданин') in labor_orders_list if application_no not matched
-                if not matched_order and worker_name and not app_no:
-                    for cand in labor_orders_list:
-                        cand_no = cand["application_no"]
-                        owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
-                        if owner_sicil and sicil and owner_sicil != sicil:
-                            continue
-                        if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
-                            matched_order = cand
-                            app_no = cand_no
-                            logger.info(
-                                f"  -> Matched '{worker_name}' by Гражданин ('{cand.get('citizen_name')}') -> № {app_no}: {matched_order['gosuslugi_status']}"
-                            )
-                            break
 
                 # 2.5) Only for small targeted batches (<= 50 records): inspect recent unassigned labor orders
                 if not matched_order and not is_large_batch and worker_name and not app_no:
@@ -1604,9 +1845,11 @@ def main():
                     if candidate:
                         if not is_local:
                             consecutive_nonlocal_search_misses = 0
-                        if not is_valid_labor_notification_order(candidate):
+                        if not is_valid_labor_notification_order(candidate) or is_superseded_or_archived_order(
+                            app_no, candidate.get("gosuslugi_status", ""), submitted_at
+                        ):
                             logger.warning(
-                                f"  -> Rejecting targeted № {app_no}: wrong service ('{candidate.get('service_title')}') or draft!"
+                                f"  -> Rejecting targeted № {app_no}: wrong service, draft, or archived!"
                             )
                         elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
                             logger.warning(
@@ -1661,7 +1904,10 @@ def main():
                         "checked_at": now_str,
                     }
                     updated_records.append(updated_entry)
-                    logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated_entry, ensure_ascii=False)}")
+                    if is_local_bridge_up_to_date():
+                        logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated_entry, ensure_ascii=False)}")
+                    else:
+                        logger.info(f"APPLICATION_SYNCED_CENTRAL: {json.dumps(updated_entry, ensure_ascii=False)}")
                     # Immediately sync this updated record (with its new PDF filename & status) to central backend!
                     sync_updates_to_pondera_api([updated_entry])
                     logger.info(
@@ -1693,14 +1939,20 @@ def main():
                     "checked_at": now_str,
                 }
                 updated_records.append(entry)
-                logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(entry, ensure_ascii=False)}")
+                if is_local_bridge_up_to_date():
+                    logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(entry, ensure_ascii=False)}")
+                else:
+                    logger.info(f"APPLICATION_SYNCED_CENTRAL: {json.dumps(entry, ensure_ascii=False)}")
                 logger.info(
                     f"SUCCESS: Status checked for {entry['worker_name']} "
                     f"(№ {entry['application_no']}: {entry['gosuslugi_status']})!"
                 )
 
         if updated_records:
+            update_local_applications_ledger(updated_records)
             sync_updates_to_pondera_api(updated_records)
+
+        restart_local_bridge_if_outdated()
 
         logger.info(
             f"\n=== Status Check Complete ===\n"

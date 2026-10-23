@@ -22,9 +22,11 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
+BRIDGE_VERSION = "2.6.61"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+CENTRAL_ARCHIVED_APP_NOS = set()
 
 
 def prevent_windows_sleep():
@@ -84,6 +86,19 @@ def is_browser_closed_error_text(st: str) -> bool:
     )
 
 
+def is_outage_or_archived_app(app_no: str, status: str = "") -> bool:
+    import re
+    a = str(app_no or "").strip()
+    if not a:
+        return False
+    if a in CENTRAL_ARCHIVED_APP_NOS:
+        return True
+    st_low = str(status or "").lower()
+    if re.match(r"^829[567]\d{6}$", a) and "отказан" in st_low:
+        return True
+    return False
+
+
 def load_saved_applications():
     items = []
     if os.path.exists(APPLICATIONS_LEDGER):
@@ -98,6 +113,9 @@ def load_saved_applications():
                             st = str(it.get("gosuslugi_status") or "")
                             app_no = str(it.get("application_no") or "").strip()
                             if not app_no and is_browser_closed_error_text(st):
+                                changed = True
+                                continue
+                            if is_outage_or_archived_app(app_no, st):
                                 changed = True
                                 continue
                             if "GosuslugiVksBot" in st or "Step 16" in st:
@@ -129,13 +147,16 @@ def scan_downloads_pdfs():
         return found
     period_re = re.compile(r"^20\d{2}-[1-4]$")
     app_no_re = re.compile(r"^[789]\d{9}$")
+    raw_found = []
     for pdf_path in downloads_dir.glob("*.pdf"):
         stem = pdf_path.stem
         if stem.startswith("tmp_"):
             continue
         parts = stem.split("_")
         if len(parts) >= 4 and parts[0].isdigit() and app_no_re.match(parts[1]) and period_re.match(parts[-1]):
-            found.append({
+            if parts[1] in CENTRAL_ARCHIVED_APP_NOS:
+                continue
+            raw_found.append({
                 "sicil": parts[0],
                 "sicil_no": parts[0],
                 "application_no": parts[1],
@@ -146,7 +167,9 @@ def scan_downloads_pdfs():
                 "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pdf_path.stat().st_mtime)),
             })
         elif len(parts) >= 3 and app_no_re.match(parts[0]) and period_re.match(parts[-1]):
-            found.append({
+            if parts[0] in CENTRAL_ARCHIVED_APP_NOS:
+                continue
+            raw_found.append({
                 "sicil": "",
                 "sicil_no": "",
                 "application_no": parts[0],
@@ -156,7 +179,17 @@ def scan_downloads_pdfs():
                 "gosuslugi_status": "Заявление зарегистрировано",
                 "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pdf_path.stat().st_mtime)),
             })
-    return found
+    # Sort ascending by application_no so higher application_no is processed last and wins
+    raw_found.sort(key=lambda x: int(x["application_no"]) if str(x.get("application_no") or "").isdigit() else 0)
+    by_key = {}
+    for item in raw_found:
+        s_key = str(item.get("sicil") or "").strip()
+        p_key = str(item.get("period_code") or "").strip()
+        if s_key:
+            by_key[(s_key, p_key)] = item
+        else:
+            by_key[(item.get("application_no"), p_key)] = item
+    return list(by_key.values())
 
 
 UPLOADED_PDFS_SET = set()
@@ -268,7 +301,7 @@ class RPAState:
     last_json_status_sync_ts = 0.0
 
     @classmethod
-    def upsert_submission(cls, entry: dict):
+    def upsert_submission(cls, entry: dict, sync_central: bool = True):
         if not entry or not isinstance(entry, dict):
             return
         app_no = str(entry.get("application_no") or "").strip()
@@ -277,6 +310,8 @@ class RPAState:
         if not app_no and is_browser_closed_error_text(st):
             return
         if not app_no and not sicil:
+            return
+        if is_outage_or_archived_app(app_no, st):
             return
         # Guard against multi-computer / cross-worker application_no collision
         if app_no:
@@ -295,9 +330,36 @@ class RPAState:
             ex_app = str(existing.get("application_no") or "").strip()
             ex_sicil = str(existing.get("sicil") or existing.get("sicil_no") or "").strip()
             if (app_no and ex_app == app_no) or (sicil and ex_sicil == sicil and str(existing.get("period_code") or "") == str(entry.get("period_code") or "")):
-                merged = {**existing, **entry}
                 ex_st = str(existing.get("gosuslugi_status") or "").strip()
-                if ex_st in ("Услуга оказана", "Услуга отказана", "Промежуточные результаты по заявлению") and st in (
+                ex_sub_at = str(existing.get("submitted_at") or "").strip()
+                in_sub_at = str(entry.get("submitted_at") or "").strip()
+                # Never downgrade a higher integer application_no to an older (smaller integer) application_no
+                if ex_app.isdigit() and app_no.isdigit() and len(ex_app) >= 9 and len(app_no) >= 9:
+                    if int(app_no) < int(ex_app):
+                        return
+                    if int(app_no) > int(ex_app):
+                        # Newer application supersedes older one completely
+                        merged = {**existing, **entry}
+                        if "pdf_filename" not in entry:
+                            merged["pdf_filename"] = ""
+                        if "status_detail" not in entry:
+                            merged["status_detail"] = ""
+                        cls.submissions[idx] = merged
+                        entry = merged
+                        updated = True
+                        break
+                # Never attach a pre-Oct-21-night (< 8300000000) order to a worker re-submitted after Oct 21 21:00
+                if not ex_app and ex_sub_at >= "2026-10-21 21:00:00" and app_no.isdigit() and len(app_no) >= 9 and int(app_no) < 8300000000 and "оказана" not in st.lower():
+                    return
+                # Fresh re-submission (app_no == '') after an older refusal clears old application_no
+                if not app_no and ex_app and in_sub_at > ex_sub_at and "отказан" in ex_st.lower():
+                    merged = {**existing, **entry, "application_no": "", "pdf_filename": "", "status_detail": ""}
+                    cls.submissions[idx] = merged
+                    entry = merged
+                    updated = True
+                    break
+                merged = {**existing, **entry}
+                if ex_app == app_no and ex_st in ("Услуга оказана", "Услуга отказана", "Промежуточные результаты по заявлению") and st in (
                     "Заявление зарегистрировано",
                     "Отправлено",
                     "Отправлено (PDF не скачан)",
@@ -310,9 +372,10 @@ class RPAState:
         if not updated:
             cls.submissions.append(entry)
         save_applications_ledger(cls.submissions)
-        sync_submission_to_central_server_async(entry)
-        if entry.get("pdf_filename"):
-            upload_pdf_to_central_server_async(entry)
+        if sync_central:
+            sync_submission_to_central_server_async(entry)
+            if entry.get("pdf_filename"):
+                upload_pdf_to_central_server_async(entry)
 
     @classmethod
     def add_log(cls, msg: str):
@@ -521,6 +584,7 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
 
                 if "FAST_JSON_STATUS_SYNC:" in clean_line:
                     RPAState.last_json_status_sync_ts = time.time()
+                    RPAState.submissions = load_saved_applications()
 
                 # Detect MVD Service Outage -> Automatic switch to PDF Download & Status Checker mode
                 if "MVD_SERVICE_DOWN:" in clean_line:
@@ -627,6 +691,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             chrome_ready = is_port_open(CHROME_CDP_PORT)
             data = {
                 "status": "online",
+                "bridge_version": BRIDGE_VERSION,
                 "running": RPAState.is_running,
                 "waiting_for_manual": RPAState.waiting_for_manual,
                 "manual_message": RPAState.manual_message,
@@ -959,9 +1024,9 @@ def main():
     start_telegram_outbox_relay_thread()
     # Start background 30-min fast JSON Gosuslugi status sync (1,200 Zayavkas, no PDF download)
     start_auto_30min_gosuslugi_status_sync_thread()
-    # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts
+    # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts locally
     for d in scan_downloads_pdfs():
-        RPAState.upsert_submission(d)
+        RPAState.upsert_submission(d, sync_central=False)
     # If an active VKS queue (> 1 record) exists on this computer, merge it into the central master list
     try:
         active_q_path = os.path.join(CURRENT_DIR, "active_vks_queue.json")
