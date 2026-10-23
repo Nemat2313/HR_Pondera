@@ -1048,7 +1048,19 @@ export default function GosuslugiVksView() {
                 : undefined;
             const matchedSub =
               (doesSubMatchWorker(subByCode, w) ? subByCode : undefined) || subByApp;
-            if (!matchedSub) return w;
+            if (!matchedSub) {
+              if (w.status === 'error' || /^ошибк|отказан/i.test(w.gosuslugiStatus || '')) {
+                return {
+                  ...w,
+                  applicationNo: '',
+                  gosuslugiStatus: undefined,
+                  pdfFilename: undefined,
+                  status: 'pending',
+                  selected: true,
+                };
+              }
+              return w;
+            }
             const nextAppNo = matchedSub.application_no || '';
             const nextGosStatus = normalizeSentGosuslugiStatus(
               matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено'
@@ -1369,6 +1381,7 @@ export default function GosuslugiVksView() {
                         const st = String(s.gosuslugi_status || '').trim();
                         if (appNo && archivedAppsRef.current.has(appNo)) return false;
                         if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
+                        if (!data.running && !appNo && /^ошибк/i.test(st)) return false;
                         return true;
                       })
                       .sort((a, b) => {

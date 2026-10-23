@@ -535,12 +535,57 @@ function buildStyledXlsxBuffer(
   ]);
 }
 
+function classifyGosuslugiErrorId(statusText: string, detailText = ''): string {
+  const combined = `${statusText || ''} ${detailText || ''}`;
+  if (/Шаг 12|Подразделение МВД|подразделение МВД/i.test(combined)) {
+    return 'mvd_step12';
+  }
+  if (/lastNameRu|si13_lastNameRu|Шаг 6/i.test(combined)) {
+    return 'personal_step6_timeout';
+  }
+  if (/Шаг 7|Паспортные данные/i.test(combined)) {
+    return 'passport_step7';
+  }
+  if (/Шаг 9|Разрешение на работу ВКС/i.test(combined)) {
+    return 'rnr_step9';
+  }
+  if (/#series|input\[name\*='series'\]/i.test(combined)) {
+    return 'series_timeout';
+  }
+  if (/О выплате|epgu-cf-ui-long-button|Шаг 1:|Шаг 2:|Шаг 3:|Шаг 4:|Шаг 5:/i.test(combined)) {
+    return 'portal_entry_timeout';
+  }
+  if (/Шаг 10|Шаг 11|Шаг 13|Шаг 14|Шаг 15|договор|выплат|професси/i.test(combined)) {
+    return 'contract_salary_step10_15';
+  }
+  return 'other_error';
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const computerFilter = searchParams.get('computer') || 'all';
-    const mode = searchParams.get('mode') || 'all_errors'; // 'all_errors' | 'only_oshibka' | 'only_data_errors' | 'refused'
+    const errorCategoryFilter = (searchParams.get('errorCategory') || 'all').trim();
     const refusalCategoryFilter = (searchParams.get('refusalCategory') || 'all').trim();
+    const regionFilter = (searchParams.get('region') || 'all').trim();
+    const citizenshipFilter = (searchParams.get('citizenship') || 'all').trim();
+    const searchQuery = (searchParams.get('q') || '').trim().toLowerCase();
+    const scopeType = (searchParams.get('scopeType') || 'all').trim();
+    const scopeValue = (searchParams.get('scopeValue') || 'all').trim();
+    const rawSicilsParam = (searchParams.get('sicils') || '').trim();
+    const explicitSicilSet = rawSicilsParam
+      ? new Set(
+          rawSicilsParam
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        )
+      : null;
+
+    let mode = searchParams.get('mode') || 'all_errors'; // 'all_errors' | 'only_oshibka' | 'only_data_errors' | 'refused'
+    if (errorCategoryFilter !== 'all' && mode === 'all_errors') {
+      mode = 'only_oshibka';
+    }
 
     const db = getDb();
 
@@ -556,26 +601,72 @@ export async function GET(request: Request) {
 
     const subRows = db
       .prepare(
-        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, submitted_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
+        `SELECT sicil_no, worker_name, citizenship, application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
       )
       .all() as Array<{
       sicil_no: string;
+      worker_name: string;
+      citizenship: string;
       application_no: string;
       gosuslugi_status: string;
+      status_detail: string;
       pdf_filename: string;
       submitted_at: string;
     }>;
 
-    // Load HR database passport numbers to detect renewed passports
+    // Load HR database info for passport numbers, region, project, citizenship, and fallback fields
     const hrPassportBySicil = new Map<string, string>();
+    const hrInfoBySicil = new Map<
+      string,
+      {
+        ad_soyad: string;
+        tam_adi_kiril: string;
+        uyruk: string;
+        region: string;
+        proje_adi: string;
+        gorevi: string;
+        pasaport_no: string;
+        rawJson: Record<string, any>;
+      }
+    >();
     try {
       const pRows = db
-        .prepare('SELECT sicil_no, pasaport_no FROM personnel WHERE sicil_no IS NOT NULL AND sicil_no != ""')
-        .all() as Array<{ sicil_no: string; pasaport_no: string }>;
+        .prepare(
+          'SELECT sicil_no, ad_soyad, tam_adi_kiril, uyruk, region, proje_adi, gorevi, pasaport_no, all_data_json FROM personnel WHERE sicil_no IS NOT NULL AND sicil_no != ""'
+        )
+        .all() as Array<{
+        sicil_no: string;
+        ad_soyad: string;
+        tam_adi_kiril: string;
+        uyruk: string;
+        region: string;
+        proje_adi: string;
+        gorevi: string;
+        pasaport_no: string;
+        all_data_json: string;
+      }>;
       for (const pr of pRows) {
         const s = String(pr.sicil_no || '').trim();
         const p = String(pr.pasaport_no || '').trim();
         if (s && p) hrPassportBySicil.set(s, p);
+        if (s) {
+          let rawJson: Record<string, any> = {};
+          if (pr.all_data_json) {
+            try {
+              rawJson = JSON.parse(pr.all_data_json);
+            } catch {}
+          }
+          hrInfoBySicil.set(s, {
+            ad_soyad: String(pr.ad_soyad || '').trim(),
+            tam_adi_kiril: String(pr.tam_adi_kiril || '').trim(),
+            uyruk: String(pr.uyruk || '').trim(),
+            region: String(pr.region || 'Belirtilmemiş').trim() || 'Belirtilmemiş',
+            proje_adi: String(pr.proje_adi || '').trim(),
+            gorevi: String(pr.gorevi || '').trim(),
+            pasaport_no: p,
+            rawJson,
+          });
+        }
       }
     } catch {}
 
@@ -589,6 +680,66 @@ export async function GET(request: Request) {
       }
     }
 
+    // Also include any submission row whose sicil_no is missing from gosuslugi_vks_master_list
+    // so that export-errors NEVER misses any errored/refused submission!
+    const masterSicilSet = new Set(masterRows.map((m) => String(m.sicil_no || '').trim()));
+    const combinedRows: Array<{
+      row_key: string;
+      sicil_no: string;
+      row_order: number;
+      assigned_computer: number;
+      worker_json: string;
+    }> = [...masterRows];
+
+    let syntheticOrder = masterRows.length + 1;
+    for (const [sic, sub] of subBySicil.entries()) {
+      if (masterSicilSet.has(sic)) continue;
+      const pInfo = hrInfoBySicil.get(sic);
+      const rj = pInfo?.rawJson || {};
+      const fullCyr = String(sub.worker_name || pInfo?.tam_adi_kiril || '').trim();
+      const nameParts = fullCyr.split(/\s+/).filter(Boolean);
+      const synthWorker = {
+        sicil: sic,
+        code: sic,
+        lastName: nameParts.length >= 2 ? nameParts[0] : 'Нет',
+        firstName: nameParts.length >= 2 ? nameParts.slice(1).join(' ') : fullCyr,
+        middleName: 'НЕТ',
+        birthDate: String(rj['Doğum Tarihi'] || rj['ДатаРождения'] || '').trim(),
+        gender: String(rj['Cinsiyet'] || '').toLowerCase().includes('kad') ? 'Женский' : 'Мужской',
+        citizenship: String(pInfo?.uyruk || sub.citizenship || 'Турция').trim(),
+        placeOfBirth: String(rj['Doğum Yeri'] || rj['МестоРождения'] || pInfo?.uyruk || '').trim(),
+        passportSeries: '',
+        passportNumber: String(pInfo?.pasaport_no || rj['Pasaport No'] || '').trim(),
+        passportIssueDate: String(rj['Pasaport Veriliş Tarihi'] || rj['ДатаВыдачи'] || '').trim(),
+        passportIssuedBy: String(rj['Pasaportu Veren Makam'] || 'МВД').trim(),
+        inn: String(rj['ИНН'] || rj['Vergi No (ИНН)'] || rj['INN'] || '').trim(),
+        rnrSeries: String(rj['Çalışma Kart Seri No'] || '').trim(),
+        rnrNumber: String(rj['Çalışma Kart No'] || '').trim(),
+        rnrIssueDate: String(rj['Çalışma Kart Alış Tarihi'] || rj['Çalışma Kart Başlangıç Tarihi'] || '').trim(),
+        blankSeries: String(rj['Patent Form Seri No'] || '').trim(),
+        blankNumber: String(rj['Patent Form No'] || '').trim(),
+        contractDate: String(rj['Sözleşme Tarihi'] || rj['İşe Giriş Tarihi'] || '').trim(),
+        contractStartDate: String(rj['Sözleşme Başlangıç Tarihi'] || rj['İşe Giriş Tarihi'] || '').trim(),
+        contractEndDate: String(rj['İşten Çıkış Tarihi'] || '').trim(),
+        periodStart: '01.07.2026',
+        periodEnd: '30.09.2026',
+        month1Salary: '',
+        month2Salary: '',
+        month3Salary: '',
+        salaryAmount: '',
+        position: String(pInfo?.gorevi || 'СПЕЦИАЛИСТ').trim(),
+        workAddress: String(rj['Çalışma Adresi'] || '').trim(),
+        postalCode: '626150',
+      };
+      combinedRows.push({
+        row_key: sic,
+        sicil_no: sic,
+        row_order: syntheticOrder++,
+        assigned_computer: 1,
+        worker_json: JSON.stringify(synthWorker),
+      });
+    }
+
     const exportRows: Array<{
       values: string[];
       redCols: Set<number>;
@@ -596,14 +747,44 @@ export async function GET(request: Request) {
       sortPriority: number;
     }> = [];
 
-    for (const m of masterRows) {
+    for (const m of combinedRows) {
       if (computerFilter !== 'all' && String(m.assigned_computer) !== String(computerFilter)) {
+        continue;
+      }
+      if (explicitSicilSet && !explicitSicilSet.has(m.sicil_no)) {
+        continue;
+      }
+
+      const pInfo = hrInfoBySicil.get(m.sicil_no);
+      const empRegion = pInfo?.region || 'Diğer / Eşleşmeyen';
+      if (
+        (scopeType === 'region' || scopeType === 'project') &&
+        scopeValue &&
+        scopeValue.toLowerCase() !== 'all'
+      ) {
+        if (!pInfo) continue;
+        if (scopeType === 'region' && pInfo.region.toLowerCase() !== scopeValue.toLowerCase()) continue;
+        if (scopeType === 'project' && pInfo.proje_adi.toLowerCase() !== scopeValue.toLowerCase()) continue;
+      }
+      if (regionFilter !== 'all' && empRegion !== regionFilter) {
         continue;
       }
 
       const sub = subBySicil.get(m.sicil_no);
       const gosStatus = String(sub?.gosuslugi_status || '').trim();
+      const statusDetail = String(sub?.status_detail || '').trim();
       const isRefused = Boolean(sub && !/^ошибк/i.test(gosStatus) && /отказан/i.test(gosStatus));
+
+      // Skip browser-closed pseudo errors
+      if (
+        sub &&
+        !sub.application_no &&
+        /Target page, context or browser has been closed|Browser has been closed|Context or browser has been closed/i.test(
+          gosStatus
+        )
+      ) {
+        continue;
+      }
 
       let w: Record<string, any> = {};
       try {
@@ -614,6 +795,36 @@ export async function GET(request: Request) {
 
       const getField = (k: string, alt?: string, def = '') =>
         String(w[k] ?? (alt ? w[alt] : '') ?? def).trim();
+
+      const empCitizenship =
+        pInfo?.uyruk || String(sub?.citizenship || '').trim() || getField('citizenship', 'ТекущееГражданство') || 'BELİRTİLMEMİŞ';
+      if (citizenshipFilter !== 'all' && empCitizenship !== citizenshipFilter) {
+        continue;
+      }
+
+      if (searchQuery) {
+        const hay = [
+          sub?.application_no,
+          m.sicil_no,
+          sub?.worker_name,
+          getField('lastName', 'Фамилия'),
+          getField('firstName', 'Имя'),
+          pInfo?.ad_soyad,
+          empRegion,
+          pInfo?.proje_adi,
+          empCitizenship,
+          getField('passportNumber', 'НомерПаспорта'),
+          getField('rnrNumber', 'Номер'),
+          gosStatus,
+          statusDetail,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(searchQuery)) {
+          continue;
+        }
+      }
 
       if (mode === 'refused') {
         if (!isRefused) continue;
@@ -795,6 +1006,12 @@ export async function GET(request: Request) {
       if (mode === 'only_data_errors' && !diag.hasDataError) continue;
       if (!diag.hasGosuslugiError && !diag.hasDataError) continue;
 
+      if (errorCategoryFilter !== 'all') {
+        if (!diag.hasGosuslugiError) continue;
+        const catId = classifyGosuslugiErrorId(gosStatus, statusDetail);
+        if (catId !== errorCategoryFilter) continue;
+      }
+
       const explanationText = diag.explanations.join(' | ');
 
       const rowValues: string[] = [
@@ -847,8 +1064,9 @@ export async function GET(request: Request) {
 
     const xlsxBuffer = buildStyledXlsxBuffer(exportRows);
     const dateTag = new Date().toISOString().slice(0, 10);
+    const catSuffix = errorCategoryFilter !== 'all' ? `_${errorCategoryFilter}` : refusalCategoryFilter !== 'all' ? `_${refusalCategoryFilter}` : '';
     const prefix = mode === 'refused' ? 'Pondera_VKS_Red_Otkazano_Sablon' : 'Pondera_VKS_Hatali_Kayitlar_Sablon';
-    const fileName = `${prefix}_${exportRows.length}_Kayit_${dateTag}.xlsx`;
+    const fileName = `${prefix}${catSuffix}_${exportRows.length}_Kayit_${dateTag}.xlsx`;
 
     return new NextResponse(new Uint8Array(xlsxBuffer), {
       status: 200,

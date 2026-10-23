@@ -141,6 +141,7 @@ export default function GosuslugiAnalyticsView() {
   const [sendingTelegram, setSendingTelegram] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [reopeningRefused, setReopeningRefused] = useState<string | null>(null);
+  const [reopeningError, setReopeningError] = useState<string | null>(null);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
 
   // Filters for Zayavka / Submission table
@@ -386,6 +387,44 @@ export default function GosuslugiAnalyticsView() {
     }
   };
 
+  const handleReopenErrorGroup = async (sicilList: string[], label: string) => {
+    if (!sicilList.length) return;
+    if (
+      !window.confirm(
+        `«${label}» grubundaki ${sicilList.length} adet hatalı (Ошибка) kaydı veri değişikliği yapmadan doğrudan tekrar gönderim kuyruğuna (Bekleyen) açmak istediğinize emin misiniz?\n\nBu personellerin hata durumu temizlenecek ve Gosuslugi robotunda tekrar gönderilebilir (Bekleyen) durumuna geçecektir.`
+      )
+    ) {
+      return;
+    }
+    setReopeningError(label);
+    try {
+      const res = await fetch('/api/gosuslugi/master-list', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'retry_errors',
+          scope: 'selected',
+          clearFromDb: true,
+          sicils: sicilList,
+        }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        setTelegramFeedback(
+          `✅ ${json.resetCount || sicilList.length} adet hatalı (Ошибка) kayıt tekrar gönderim kuyruğuna (Bekleyen) açıldı!`
+        );
+        fetchAnalytics(false);
+      } else {
+        setTelegramFeedback(`⚠️ İşlem tamamlanamadı: ${json?.message || ''}`);
+      }
+    } catch {
+      setTelegramFeedback('⚠️ Hatalı kayıtlar tekrar gönderime açılırken bağlantı hatası oluştu.');
+    } finally {
+      setReopeningError(null);
+      setTimeout(() => setTelegramFeedback(null), 6000);
+    }
+  };
+
   const isFilteredView =
     statusFilter !== 'all' ||
     selectedErrorCat !== 'all' ||
@@ -393,6 +432,40 @@ export default function GosuslugiAnalyticsView() {
     selectedRegion !== 'all' ||
     selectedCitizenship !== 'all' ||
     searchQuery.trim() !== '';
+
+  const filteredErrorItems = useMemo(() => {
+    const errInFiltered = filteredSubmissions.filter((item) => item.state === 'error');
+    if (errInFiltered.length > 0) return errInFiltered;
+    return (data?.submissions || []).filter((item) => {
+      if (item.state !== 'error') return false;
+      if (selectedErrorCat !== 'all' && item.errorCategoryId !== selectedErrorCat) return false;
+      if (selectedRegion !== 'all' && item.region !== selectedRegion) return false;
+      if (selectedCitizenship !== 'all' && item.citizenship !== selectedCitizenship) return false;
+      return true;
+    });
+  }, [filteredSubmissions, data?.submissions, selectedErrorCat, selectedRegion, selectedCitizenship]);
+
+  const errorTemplateExportUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('computer', 'all');
+    params.set('mode', 'only_oshibka');
+    if (selectedErrorCat !== 'all') params.set('errorCategory', selectedErrorCat);
+    if (selectedRegion !== 'all') params.set('region', selectedRegion);
+    if (selectedCitizenship !== 'all') params.set('citizenship', selectedCitizenship);
+    if (searchQuery.trim()) params.set('q', searchQuery.trim());
+    if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
+      params.set('scopeType', user.scope_type);
+      params.set('scopeValue', user.scope_value);
+    }
+    return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
+  }, [
+    selectedErrorCat,
+    selectedRegion,
+    selectedCitizenship,
+    searchQuery,
+    user?.scope_type,
+    user?.scope_value,
+  ]);
 
   const filteredPdfItems = useMemo(
     () => filteredSubmissions.filter((item) => item.hasPdf && item.pdf_filename),
@@ -569,13 +642,13 @@ export default function GosuslugiAnalyticsView() {
 
             {user?.role !== 'viewer' && (
               <a
-                href="/api/gosuslugi/master-list/export-errors?computer=all"
+                href={errorTemplateExportUrl}
                 download
-                title="Hatalı (Ошибка) ve eksik verili kayıtları VKS şablon formatında, düzeltilecek hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak indirir"
+                title="Aktif filtreye (veya tümüne) ait hatalı (Ошибка) kayıtları 32 sütunlu VKS şablon formatında, düzeltilecek hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak indirir"
                 className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer no-underline"
               >
                 <Download className="w-3.5 h-3.5" />
-                🛠️ Hatalı (Ошибка) Şablon İndir (Renkli)
+                🛠️ {selectedErrorCat !== 'all' ? 'Filtreli Hatalı' : 'Hatalı (Ошибка)'} Şablon İndir (Renkli) ({filteredErrorItems.length})
               </a>
             )}
 
@@ -1184,28 +1257,73 @@ export default function GosuslugiAnalyticsView() {
 
       {/* SECTION 1: Error Breakdown by Type (Hata Çeşitlerine Göre Detaylı Kırılım) */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-500" />
               Hata Çeşitlerine Göre Kırılım ({s.totalErrors} Hatalı Kayıt)
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Bir hata türüne tıklayarak o hatayı alan personelleri ve detaylarını görebilir veya aşağıdaki listeyi filtreleyebilirsiniz
+              Teknik zaman aşımı veya sistem gecikmesi kaynaklı hataları veri değiştirmeden doğrudan «Tekrar Gönderime Aç» butonuyla bekleyen kuyruğuna alabilirsiniz
             </p>
           </div>
-          {selectedErrorCat !== 'all' && (
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedErrorCat !== 'all' && (
+              <button
+                onClick={() => {
+                  setSelectedErrorCat('all');
+                  setStatusFilter('all');
+                }}
+                className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Hata Filtresini Temizle
+              </button>
+            )}
+
             <button
-              onClick={() => {
-                setSelectedErrorCat('all');
-                setStatusFilter('all');
-              }}
-              className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              onClick={() =>
+                exportItemsToExcel(
+                  filteredErrorItems,
+                  selectedErrorCat !== 'all'
+                    ? `Pondera_VKS_Hata_${selectedErrorCat}_Detayli_Rapor`
+                    : 'Pondera_VKS_Tum_Hatalar_Detayli_Rapor'
+                )
+              }
+              disabled={filteredErrorItems.length === 0}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              <XCircle className="w-3.5 h-3.5" />
-              Hata Filtresini Temizle
+              <Download className="w-3.5 h-3.5" />
+              {selectedErrorCat !== 'all' ? 'Filtreli Hatalıları' : 'Tüm Hatalıları'} Detaylı Excel İndir ({filteredErrorItems.length})
             </button>
-          )}
+
+            <a
+              href={errorTemplateExportUrl}
+              download
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 no-underline"
+            >
+              <Download className="w-3.5 h-3.5" />
+              🛠️ {selectedErrorCat !== 'all' ? 'Filtreli Hatalıları' : 'Tüm Hatalıları'} Şablon İndir (Renkli) ({filteredErrorItems.length})
+            </a>
+
+            {user?.role !== 'viewer' && filteredErrorItems.length > 0 && (
+              <button
+                onClick={() =>
+                  handleReopenErrorGroup(
+                    filteredErrorItems.map((it) => it.sicil_no),
+                    selectedErrorCat !== 'all' ? 'Seçili Hata Grubu' : 'Tüm Hatalı Kayıtlar'
+                  )
+                }
+                disabled={reopeningError !== null}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${reopeningError !== null ? 'animate-spin' : ''}`}
+                />
+                {selectedErrorCat !== 'all' ? 'Filtreli Grubu' : 'Tüm Hatalıları'} Tekrar Gönderime Aç ({filteredErrorItems.length})
+              </button>
+            )}
+          </div>
         </div>
 
         {!data?.errorCategories || data.errorCategories.length === 0 ? (
@@ -1236,7 +1354,7 @@ export default function GosuslugiAnalyticsView() {
                       : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
                   }`}
                 >
-                  <div className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
                     <div className="space-y-1 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span
@@ -1254,7 +1372,7 @@ export default function GosuslugiAnalyticsView() {
                       <p className="text-xs text-slate-600 dark:text-slate-300">{cat.hintTr}</p>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
                       <div className="text-right mr-2">
                         <div className="text-lg font-extrabold text-rose-600 dark:text-rose-400 leading-none">
                           {cat.count} kayıt
@@ -1282,6 +1400,48 @@ export default function GosuslugiAnalyticsView() {
                       >
                         {isSelected ? 'Filtrelendi ✓' : 'Tabloda Filtrele'}
                       </button>
+
+                      <button
+                        onClick={() =>
+                          exportItemsToExcel(cat.items, `Pondera_VKS_Hata_${cat.id}`)
+                        }
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1 cursor-pointer"
+                        title="Bu gruptaki hatalı kayıtları detaylı analiz sütunlarıyla Excel olarak indir"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Detaylı Excel ({cat.count})
+                      </button>
+
+                      <a
+                        href={`/api/gosuslugi/master-list/export-errors?mode=only_oshibka&errorCategory=${encodeURIComponent(cat.id)}&computer=all`}
+                        download
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1 no-underline"
+                        title="Bu gruptaki kayıtları 32 sütunlu VKS şablon formatında (hatalı hücreler renkli ve son sütunda açıklamalı) indir"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Şablon İndir (Renkli) ({cat.count})
+                      </a>
+
+                      {user?.role !== 'viewer' && (
+                        <button
+                          onClick={() =>
+                            handleReopenErrorGroup(
+                              cat.items.map((it) => it.sicil_no),
+                              cat.titleTr
+                            )
+                          }
+                          disabled={reopeningError !== null}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          title="Bu gruptaki kişilerin hata (Ошибка) durumunu temizleyip veri değiştirmeden doğrudan tekrar gönderilebilir (Bekleyen) duruma açar"
+                        >
+                          <RefreshCw
+                            className={`w-3.5 h-3.5 ${
+                              reopeningError === cat.titleTr ? 'animate-spin' : ''
+                            }`}
+                          />
+                          Tekrar Gönderime Aç ({cat.count})
+                        </button>
+                      )}
 
                       <button
                         onClick={() => setExpandedErrorCatId(isExpanded ? null : cat.id)}
