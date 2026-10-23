@@ -1111,22 +1111,18 @@ export default function GosuslugiVksView() {
   // Load saved Gosuslugi application numbers and Mail.ru config from Pondera HR DB,
   // and poll every 15 seconds so multiple computers see newly submitted applications in real time
   useEffect(() => {
+    let initialComp: 'all' | '1' | '2' | '3' | '4' = 'all';
     try {
       const savedComp = localStorage.getItem('pondera_vks_computer_filter_v1');
       if (savedComp && ['all', '1', '2', '3', '4'].includes(savedComp)) {
-        setActiveComputerFilter(savedComp as 'all' | '1' | '2' | '3' | '4');
+        initialComp = savedComp as 'all' | '1' | '2' | '3' | '4';
+        setActiveComputerFilter(initialComp);
       }
-      const savedWorkersRaw = localStorage.getItem('pondera_vks_active_workers_v1');
-      if (savedWorkersRaw) {
-        const parsed = JSON.parse(savedWorkersRaw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setWorkers((prev) => (prev.length === 0 ? parsed : prev));
-        }
-      }
+      localStorage.removeItem('pondera_vks_active_workers_v1');
     } catch {
       // Ignore localStorage quota/parse issues
     }
-    refreshSavedSubmissionsFromDb();
+    handleLoadFromMasterList(initialComp, 'all', true);
     refreshMasterListSummary();
     fetch('/api/gosuslugi/mail-sync')
       .then((r) => (r.ok ? r.json() : null))
@@ -1206,17 +1202,14 @@ export default function GosuslugiVksView() {
     }
   };
 
-  // Persist active workers list & computer filter in localStorage so browser refresh (F5) never loses the computer's active queue
+  // Persist active computer filter in localStorage so browser refresh (F5) remembers which PC tab is active
   useEffect(() => {
     try {
       localStorage.setItem('pondera_vks_computer_filter_v1', activeComputerFilter);
-      if (workers.length > 0) {
-        localStorage.setItem('pondera_vks_active_workers_v1', JSON.stringify(workers));
-      }
     } catch {
       // Ignore storage quota warnings
     }
-  }, [workers, activeComputerFilter]);
+  }, [activeComputerFilter]);
 
   // Automatic background Mail.ru check every 3 minutes when configured and enabled
   useEffect(() => {
@@ -1722,7 +1715,8 @@ export default function GosuslugiVksView() {
   // Load directly from Central Backend Master VKS List (3,088 records partitioned across 4 Computers)
   const handleLoadFromMasterList = async (
     computerFilter: 'all' | '1' | '2' | '3' | '4' = 'all',
-    statusFilter: 'all' | 'pending' | 'error' = 'all'
+    statusFilter: 'all' | 'pending' | 'error' = 'all',
+    silent: boolean = false
   ) => {
     setIsLoadingMaster(true);
     setActiveComputerFilter(computerFilter);
@@ -1733,12 +1727,14 @@ export default function GosuslugiVksView() {
       );
       const json = await res.json();
       if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
-        showNotice(
-          'info',
-          lang === 'ru'
-            ? 'В центральном списке ВКС нет записей по выбранному фильтру.'
-            : 'Merkezi VKS listesinde seçili filtreye uygun kayıt bulunamadı.'
-        );
+        if (!silent) {
+          showNotice(
+            'info',
+            lang === 'ru'
+              ? 'В центральном списке ВКС нет записей по выбранному фильтру.'
+              : 'Merkezi VKS listesinde seçili filtreye uygun kayıt bulunamadı.'
+          );
+        }
         return;
       }
 
@@ -1834,23 +1830,27 @@ export default function GosuslugiVksView() {
             : 'Tüm Liste (4 Bilgisayar)'
           : `Bilgisayar ${computerFilter}`;
 
-      showNotice(
-        'success',
-        statusFilter === 'error'
-          ? lang === 'ru'
-            ? `${pcLabel}: в очередь загружено ${processed.length} записей с ошибкой (Ошибка) — отмечено для повторной отправки: ${readyUnsent} (требуют правки данных: ${invalidCnt}).`
-            : `${pcLabel}: Hata (Ошибка) veren ${processed.length} kayıt tabloya yüklendi ve tekrar gönderim için seçildi (${readyUnsent} hazır seçili, ${invalidCnt} veri düzeltmesi bekliyor)!`
-          : lang === 'ru'
-          ? `${pcLabel}: загружено ${processed.length} ВКС (Отправлено: ${sentInSlice}, Готовы к отправке: ${readyUnsent}, Ошибки ГУ: ${errInSlice}, Пропуски данных: ${invalidCnt}).`
-          : `${pcLabel}: ${processed.length} VKS yüklendi (Gönderilmiş: ${sentInSlice}, Gönderime Hazır Seçili: ${readyUnsent}, Gosuslugi Hatası: ${errInSlice}, Eksik Veri: ${invalidCnt}).`
-      );
+      if (!silent) {
+        showNotice(
+          'success',
+          statusFilter === 'error'
+            ? lang === 'ru'
+              ? `${pcLabel}: в очередь загружено ${processed.length} записей с ошибкой (Ошибка) — отмечено для повторной отправки: ${readyUnsent} (требуют правки данных: ${invalidCnt}).`
+              : `${pcLabel}: Hata (Ошибка) veren ${processed.length} kayıt tabloya yüklendi ve tekrar gönderim için seçildi (${readyUnsent} hazır seçili, ${invalidCnt} veri düzeltmesi bekliyor)!`
+            : lang === 'ru'
+            ? `${pcLabel}: загружено ${processed.length} ВКС (Отправлено: ${sentInSlice}, Готовы к отправке: ${readyUnsent}, Ошибки ГУ: ${errInSlice}, Пропуски данных: ${invalidCnt}).`
+            : `${pcLabel}: ${processed.length} VKS yüklendi (Gönderilmiş: ${sentInSlice}, Gönderime Hazır Seçili: ${readyUnsent}, Gosuslugi Hatası: ${errInSlice}, Eksik Veri: ${invalidCnt}).`
+        );
+      }
     } catch {
-      showNotice(
-        'error',
-        lang === 'ru'
-          ? 'Ошибка загрузки центрального списка ВКС.'
-          : 'Merkezi VKS listesi yüklenirken hata oluştu.'
-      );
+      if (!silent) {
+        showNotice(
+          'error',
+          lang === 'ru'
+            ? 'Ошибка загрузки центрального списка ВКС.'
+            : 'Merkezi VKS listesi yüklenirken hata oluştu.'
+        );
+      }
     } finally {
       setIsLoadingMaster(false);
     }
