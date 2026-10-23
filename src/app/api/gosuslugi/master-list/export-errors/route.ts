@@ -692,7 +692,7 @@ export async function GET(request: Request) {
     }> = [...masterRows];
 
     let syntheticOrder = masterRows.length + 1;
-    for (const [sic, sub] of subBySicil.entries()) {
+    for (const [sic, sub] of Array.from(subBySicil.entries())) {
       if (masterSicilSet.has(sic)) continue;
       const pInfo = hrInfoBySicil.get(sic);
       const rj = pInfo?.rawJson || {};
