@@ -883,6 +883,7 @@ function isWorkerAlreadySentToGosuslugi(w: {
   pdfFilename?: string;
 }): boolean {
   const normStatus = normalizeSentGosuslugiStatus(w.gosuslugiStatus);
+  if (w.status === 'error' || /^ошибк/i.test(normStatus)) return false;
   if (w.status === 'success') return true;
   if (w.applicationNo && String(w.applicationNo).trim() !== '') return true;
   if (w.pdfFilename && String(w.pdfFilename).trim() !== '') return true;
@@ -890,8 +891,7 @@ function isWorkerAlreadySentToGosuslugi(w: {
     normStatus &&
     /отправлен|зарегистрирован|оказан|исполнен|принят|промежуточн|обработк|PDF не скачан/i.test(
       normStatus
-    ) &&
-    !/^ошибк/i.test(normStatus)
+    )
   ) {
     return true;
   }
@@ -1374,7 +1374,7 @@ export default function GosuslugiVksView() {
                         const st = String(s.gosuslugi_status || '').trim();
                         if (appNo && archivedAppsRef.current.has(appNo)) return false;
                         if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
-                        if (!data.running && !appNo && /^ошибк/i.test(st)) return false;
+                        if (/^ошибк/i.test(st)) return false;
                         return true;
                       })
                       .sort((a, b) => {
@@ -1450,7 +1450,11 @@ export default function GosuslugiVksView() {
                   const codeKey = w.code || w.sicil;
                   let nextW = w;
                   const isErrored = Boolean(
-                    data.error_codes && codeKey && data.error_codes.includes(codeKey)
+                    data.running &&
+                      (!data.mode || data.mode === 'vks') &&
+                      data.error_codes &&
+                      codeKey &&
+                      data.error_codes.includes(codeKey)
                   );
 
                   if (validBridgeSubs.length > 0) {
@@ -1947,6 +1951,40 @@ export default function GosuslugiVksView() {
         );
       } else {
         showNotice('error', json.message || 'Hatalı kayıt sıfırlanamadı.');
+      }
+    } catch {
+      showNotice('error', 'Sunucu bağlantı hatası.');
+    } finally {
+      setIsRetryingErrors(false);
+    }
+  };
+
+  // Reopen 'Услуга отказана' (Refused) records and load them directly into the queue table checked & ready to re-send
+  const handleReopenRefused = async (scope: 'all' | 'computer' = 'all') => {
+    setIsRetryingErrors(true);
+    try {
+      const res = await fetch('/api/gosuslugi/master-list', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reopen_refused',
+          scope,
+          computer: activeComputerFilter !== 'all' ? Number(activeComputerFilter) : 0,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await refreshSavedSubmissionsFromDb();
+        await refreshMasterListSummary();
+        await handleLoadFromMasterList(activeComputerFilter, 'pending', true);
+        setQueueFilter('ready');
+        showNotice(
+          'success',
+          json.message ||
+            `${json.reopenedCount || 0} Red (Услуга отказана) kaydı tekrar gönderime açıldı ve kuyruğa seçili olarak yüklendi!`
+        );
+      } else {
+        showNotice('error', json.message || 'Red kayıtları tekrar gönderime açılamadı.');
       }
     } catch {
       showNotice('error', 'Sunucu bağlantı hatası.');
@@ -2690,15 +2728,32 @@ export default function GosuslugiVksView() {
         return;
       }
 
-      const isRetryErrorRun = Boolean(
-        singleWorker ||
-          queueFilter === 'error' ||
-          recordsToSend.every((r) => r.status === 'error')
-      );
+      const erroredSicilsToReset = recordsToSend
+        .filter((r) => r.status === 'error' || /^ошибк/i.test(r.gosuslugiStatus || ''))
+        .map((r) => String(r.sicil || r.code || '').trim())
+        .filter(Boolean);
+      if (erroredSicilsToReset.length > 0) {
+        try {
+          await fetch('/api/gosuslugi/master-list', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'retry_errors',
+              scope: 'selected',
+              clearFromDb: true,
+              sicils: erroredSicilsToReset,
+            }),
+          });
+        } catch {}
+      }
 
       const targetIds = new Set(recordsToSend.map((r) => r.id));
       setWorkers((prev) =>
-        prev.map((w) => (targetIds.has(w.id) ? { ...w, status: 'pending' } : w))
+        prev.map((w) =>
+          targetIds.has(w.id)
+            ? { ...w, status: 'pending', gosuslugiStatus: undefined, applicationNo: undefined }
+            : w
+        )
       );
 
       const payload = {
@@ -2714,7 +2769,7 @@ export default function GosuslugiVksView() {
           PERIOD_END: periodEnd,
           PERIOD_CODE: periodCode,
           SKIP_STEP16_PDF: skipPdfDownload,
-          RETRY_ERRORS: isRetryErrorRun,
+          RETRY_ERRORS: true,
         },
       };
 
@@ -3766,6 +3821,21 @@ export default function GosuslugiVksView() {
                 {lang === 'ru'
                   ? 'Сбросить ошибки (Повторить)'
                   : '🔄 Hatalıları (Ошибка) Tekrar Sıraya Al'}
+              </span>
+            </button>
+            <button
+              onClick={() =>
+                handleReopenRefused(activeComputerFilter === 'all' ? 'all' : 'computer')
+              }
+              disabled={isRetryingErrors}
+              className="h-7 px-2.5 rounded-lg bg-orange-50 hover:bg-orange-100 dark:bg-orange-500/25 dark:hover:bg-orange-500/35 border border-orange-200 dark:border-orange-400/50 text-orange-700 dark:text-orange-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              title="Red (Услуга отказана) alan kayıtların eski red başvurusunu arşivleyip tekrar gönderim kuyruğuna seçili olarak alır"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRetryingErrors ? 'animate-spin' : ''}`} />
+              <span>
+                {lang === 'ru'
+                  ? '🔄 Повторить Отказы (Услуга отказана)'
+                  : '🔄 Redleri (Отказ) Tekrar Sıraya Al'}
               </span>
             </button>
           </div>

@@ -900,7 +900,7 @@ export async function PATCH(request: Request) {
           sicil_no, worker_name, citizenship, notification_type, period_code,
           application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
         FROM gosuslugi_submissions
-        WHERE sicil_no = ? AND application_no != '' AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')
+        WHERE sicil_no = ? AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')
       `);
 
       const delErrorStmt = db.prepare(`

@@ -821,6 +821,24 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                     json.dump(records, f, ensure_ascii=False, indent=2)
                 RPAState.total = len(records)
                 RPAState.add_log(f"Получено {len(records)} записей напрямую из Pondera HR UI ({mode.upper()}).")
+                # Purge any stale 'Ошибка' or 'Услуга отказана' entries for these queued sicils from local bridge state
+                queued_sicils = {
+                    str(r.get("Sicil") or r.get("Код") or "").strip()
+                    for r in records
+                    if isinstance(r, dict) and str(r.get("Sicil") or r.get("Код") or "").strip()
+                }
+                if queued_sicils and isinstance(RPAState.submissions, dict):
+                    keys_to_del = []
+                    for k, v in list(RPAState.submissions.items()):
+                        if isinstance(v, dict):
+                            v_sic = str(v.get("sicil_no") or "").strip()
+                            v_st = str(v.get("gosuslugi_status") or "").strip().lower()
+                            if v_sic in queued_sicils and (v_st.startswith("ошибк") or "отказ" in v_st):
+                                keys_to_del.append(k)
+                    if keys_to_del:
+                        for k in keys_to_del:
+                            RPAState.submissions.pop(k, None)
+                        save_applications_to_disk(RPAState.submissions)
                 if mode == "vks" and len(records) > 1:
                     sync_vks_queue_to_central_master_list_async(records)
 

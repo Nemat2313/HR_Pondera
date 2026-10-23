@@ -237,7 +237,10 @@ interface VksSnapshotState {
   totalIntermediate: number;
   totalRefused: number;
   totalSentPendingStatus: number;
-  byKey: Record<string, { state: 'sent' | 'error' | 'other'; hasPdf: boolean; statusText: string }>;
+  byKey: Record<
+    string,
+    { state: 'sent' | 'error' | 'other'; hasPdf: boolean; statusText: string; submittedAt?: string }
+  >;
 }
 
 function computeCurrentVksState(db: any): VksSnapshotState {
@@ -262,7 +265,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
 
   const rows = db
     .prepare(
-      `SELECT sicil_no, period_code, application_no, gosuslugi_status, pdf_filename
+      `SELECT sicil_no, period_code, application_no, gosuslugi_status, pdf_filename, submitted_at
        FROM gosuslugi_submissions
        WHERE LOWER(notification_type) = 'vks_salary'`
     )
@@ -272,6 +275,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     application_no: string;
     gosuslugi_status: string;
     pdf_filename: string;
+    submitted_at: string;
   }>;
 
   let totalSent = 0;
@@ -291,6 +295,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     const appNo = String(r.application_no || '').trim();
     const rawStatus = String(r.gosuslugi_status || '').trim();
     const pdf = String(r.pdf_filename || '').trim();
+    const submittedAt = String(r.submitted_at || '').trim();
     const key = `${sicil}::${period}`;
 
     if (!appNo && /Target page, context or browser has been closed|Browser has been closed|Context or browser has been closed/i.test(rawStatus)) {
@@ -307,7 +312,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
 
     if (isError) {
       totalErrors++;
-      byKey[key] = { state: 'error', hasPdf, statusText: rawStatus };
+      byKey[key] = { state: 'error', hasPdf, statusText: rawStatus, submittedAt };
     } else if (isSent) {
       totalSent++;
       if (hasPdf) totalPdf++;
@@ -326,9 +331,9 @@ function computeCurrentVksState(db: any): VksSnapshotState {
         totalSentPendingStatus++;
       }
 
-      byKey[key] = { state: 'sent', hasPdf, statusText: rawStatus };
+      byKey[key] = { state: 'sent', hasPdf, statusText: rawStatus, submittedAt };
     } else {
-      byKey[key] = { state: 'other', hasPdf, statusText: rawStatus };
+      byKey[key] = { state: 'other', hasPdf, statusText: rawStatus, submittedAt };
     }
   }
 
@@ -395,22 +400,49 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
   let deltaRefused = 0;
   let statusChangedCount = 0;
 
+  const recentCutoffDate = new Date(Date.now() - 25 * 60 * 1000);
+  const cutoffUtc = recentCutoffDate.toISOString().replace('T', ' ').slice(0, 19);
+  const fmtRecentMsk = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const mskRecentParts: Record<string, string> = {};
+  for (const p of fmtRecentMsk.formatToParts(recentCutoffDate)) {
+    if (p.type !== 'literal') mskRecentParts[p.type] = p.value;
+  }
+  const cutoffMskRecent = `${mskRecentParts.year}-${mskRecentParts.month}-${mskRecentParts.day} ${
+    mskRecentParts.hour === '24' ? '00' : mskRecentParts.hour
+  }:${mskRecentParts.minute}:${mskRecentParts.second}`;
+
+  const isRecentSubmission = (subAt?: string) => {
+    const s = String(subAt || '').trim();
+    if (!s) return false;
+    return s >= cutoffUtc;
+  };
+
   if (prev && prev.byKey) {
     for (const [k, curVal] of Object.entries(current.byKey)) {
       const oldVal = prev.byKey[k];
       const curRendered = /оказан|исполнен/i.test(curVal.statusText);
       const curRefused = /отказан|отказ/i.test(curVal.statusText);
+      const recentSub = isRecentSubmission(curVal.submittedAt);
       if (!oldVal) {
-        if (curVal.state === 'sent') deltaSent++;
-        if (curVal.state === 'error') deltaErrors++;
-        if (curVal.hasPdf) deltaPdfs++;
+        if (curVal.state === 'sent' && recentSub) deltaSent++;
+        if (curVal.state === 'error' && recentSub) deltaErrors++;
+        if (curVal.hasPdf && recentSub) deltaPdfs++;
         if (curRendered) deltaServiceRendered++;
-        if (curRefused) deltaRefused++;
+        if (curRefused && recentSub) deltaRefused++;
       } else {
         const oldRendered = /оказан|исполнен/i.test(oldVal.statusText);
         const oldRefused = /отказан|отказ/i.test(oldVal.statusText);
-        if (oldVal.state !== 'sent' && curVal.state === 'sent') deltaSent++;
-        if (oldVal.state !== 'error' && curVal.state === 'error') deltaErrors++;
+        if (oldVal.state !== 'sent' && curVal.state === 'sent' && recentSub) deltaSent++;
+        if (oldVal.state !== 'error' && curVal.state === 'error' && recentSub) deltaErrors++;
         if (!oldVal.hasPdf && curVal.hasPdf) deltaPdfs++;
         if (!oldRendered && curRendered) deltaServiceRendered++;
         if (!oldRefused && curRefused) deltaRefused++;
@@ -418,24 +450,6 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
       }
     }
   } else {
-    // First-time baseline: count rows submitted/checked in the last 15 minutes (in Moscow time)
-    const mskCutoff = new Date(Date.now() - 15 * 60 * 1000);
-    const fmt = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Moscow',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-    const parts: Record<string, string> = {};
-    for (const p of fmt.formatToParts(mskCutoff)) {
-      if (p.type !== 'literal') parts[p.type] = p.value;
-    }
-    const cutoffMsk = `${parts.year}-${parts.month}-${parts.day} ${parts.hour === '24' ? '00' : parts.hour}:${parts.minute}:${parts.second}`;
-
     const recentRows = db
       .prepare(
         `SELECT application_no, gosuslugi_status, pdf_filename
@@ -443,7 +457,7 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
          WHERE LOWER(notification_type) = 'vks_salary'
            AND (submitted_at >= ? OR checked_at >= ?)`
       )
-      .all(cutoffMsk, cutoffMsk) as Array<{
+      .all(cutoffMskRecent, cutoffMskRecent) as Array<{
       application_no: string;
       gosuslugi_status: string;
       pdf_filename: string;
@@ -464,18 +478,10 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     deltaPdfs > 0 ||
     deltaServiceRendered > 0 ||
     deltaRefused > 0 ||
-    statusChangedCount > 0 ||
-    (prev !== null &&
-      (current.totalSent !== prev.totalSent ||
-        current.totalErrors !== prev.totalErrors ||
-        current.totalPdf !== prev.totalPdf ||
-        current.totalServiceRendered !== (prev.totalServiceRendered ?? current.totalServiceRendered) ||
-        current.totalRefused !== (prev.totalRefused ?? current.totalRefused)));
+    statusChangedCount > 0;
 
   if (!force && !hasAnyChange) {
-    if (!prev) {
-      setSystemInfoValue(db, 'telegram_vks_last_snapshot', JSON.stringify(current));
-    }
+    setSystemInfoValue(db, 'telegram_vks_last_snapshot', JSON.stringify(current));
     return {
       sent: false,
       reason: 'Son 15 dakikada VKS bildirimlerinde değişiklik yok.',

@@ -1446,13 +1446,8 @@ class GosuslugiVksBot:
                         app_no = str(s.get("application_no") or "").strip()
                         st = str(s.get("gosuslugi_status") or "").strip()
                         st_low = st.lower()
-                        if st_low.startswith("ошибк"):
-                            if not self.cfg.get("RETRY_ERRORS"):
-                                logger.info(
-                                    f"SKIP_PREVIOUS_ERROR: Сотрудник {full_name} (Код: {clean_sicil}) ранее завершился с ошибкой "
-                                    f"({st}) — автоматический пропуск (ошибки обрабатываются отдельно в конце)!"
-                                )
-                                return True
+                        if st_low.startswith("ошибк") or "отказ" in st_low:
+                            # Never skip errored ('Ошибка') or refused ('Услуга отказана') rows that were placed in the active send queue
                             continue
                         if app_no or any(
                             k in st_low

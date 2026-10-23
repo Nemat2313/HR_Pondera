@@ -139,6 +139,12 @@ export async function POST(request: Request) {
       LIMIT 1
     `);
 
+    const checkArchivedSicilStmt = db.prepare(`
+      SELECT MAX(archived_at) AS max_archived_at, MAX(submitted_at) AS max_submitted_at
+      FROM gosuslugi_refused_archive
+      WHERE sicil_no = ?
+    `);
+
     const getExistingBySicilStmt = db.prepare(`
       SELECT id, sicil_no, worker_name, citizenship, notification_type, period_code,
              application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, checked_at
@@ -229,6 +235,23 @@ export async function POST(request: Request) {
       // 1. Skip old refused application_no that was explicitly archived/re-opened for re-sending
       if (appNo && checkArchivedRefusalStmt.get(appNo)) {
         continue;
+      }
+
+      // 1b. Skip old errored/refused record from a PC's local bridge state if this sicil was already archived/re-opened
+      if (sicil && (/^ошибк/i.test(normalizedStatus) || /отказан/i.test(normalizedStatus))) {
+        const archInfo = checkArchivedSicilStmt.get(sicil) as
+          | { max_archived_at?: string; max_submitted_at?: string }
+          | undefined;
+        const rawIncomingSubAt = String(item.submitted_at || item.submittedAt || '').trim();
+        if (archInfo?.max_archived_at) {
+          if (
+            !rawIncomingSubAt ||
+            rawIncomingSubAt <= archInfo.max_archived_at ||
+            (archInfo.max_submitted_at && rawIncomingSubAt <= archInfo.max_submitted_at)
+          ) {
+            continue;
+          }
+        }
       }
 
       // 2. Skip Oct 21 morning MVD outage refusals (8295xxxxxx - 8297xxxxxx) that were already re-submitted
@@ -450,6 +473,12 @@ export async function PATCH(request: Request) {
       SELECT id FROM gosuslugi_refused_archive
       WHERE application_no = ? AND application_no != ''
       LIMIT 1
+    `);
+
+    const checkArchivedSicilStmt = db.prepare(`
+      SELECT MAX(archived_at) AS max_archived_at, MAX(submitted_at) AS max_submitted_at
+      FROM gosuslugi_refused_archive
+      WHERE sicil_no = ?
     `);
 
     let updated = 0;
