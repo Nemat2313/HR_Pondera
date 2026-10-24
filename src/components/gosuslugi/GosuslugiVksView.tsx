@@ -3078,159 +3078,111 @@ export default function GosuslugiVksView() {
 
       {/* PAGE-CONNECTED TAB BAR + TOP HEADER SECTION */}
       <div>
-        {/* Connected Folder/Page Tabs Row */}
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-slate-200/90 dark:border-slate-800 pr-2">
-          <div className="flex items-end gap-1 overflow-x-auto no-scrollbar">
-            {/* Tab 1: VKS Salary Notification */}
-            <button
-              type="button"
-              onClick={() => setServiceTab('vks')}
-              className={`group relative px-4 rounded-t-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border border-b-0 select-none whitespace-nowrap ${
-                serviceTab === 'vks'
-                  ? 'bg-white dark:bg-[#111F38] text-emerald-700 dark:text-emerald-400 border-slate-200/90 dark:border-slate-800 -mb-px z-10 pt-2.5 pb-[11px] shadow-[0_-2px_6px_rgba(15,23,42,0.03)]'
-                  : 'bg-slate-100/90 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200/70 dark:border-slate-800/70 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-200 py-2'
-              }`}
-            >
-              <span
-                className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
-                  serviceTab === 'vks' ? 'bg-emerald-600 dark:bg-emerald-500 opacity-100' : 'opacity-0'
-                }`}
-              />
+        {/* WINDOWS MULTI-TAB FORM HEADER (3 EQUAL-WIDTH TABS) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 px-1 pt-1 bg-slate-200/70 dark:bg-slate-900/90 rounded-t-2xl border border-b-0 border-slate-300/80 dark:border-slate-800">
+          {/* Tab 1: VKS Salary Notification */}
+          <button
+            type="button"
+            onClick={() => setServiceTab('vks')}
+            className={`group relative h-11 px-4 rounded-t-xl text-xs font-extrabold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+              serviceTab === 'vks'
+                ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
+                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
               <Bot
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'vks'
-                    ? 'text-emerald-600 dark:text-emerald-400'
+                    ? 'text-indigo-600 dark:text-indigo-400'
                     : 'text-slate-400 dark:text-slate-500'
                 }`}
               />
-              <span>
-                {lang === 'ru'
-                  ? '1. ВКС — Выплата ЗП (МВД)'
-                  : '1. VKS Maaş Bildirimi (MVD)'}
+              <span className="truncate">
+                {lang === 'ru' ? '1. ВКС — Выплата ЗП' : '1. VKS Maaş Bildirimi'}
               </span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                  serviceTab === 'vks'
-                    ? 'bg-emerald-100 dark:bg-emerald-950/90 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/80'
-                    : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                }`}
-              >
-                600585/1
-              </span>
-            </button>
-
-            {/* Tab 2: Hiring Notification (In Progress) */}
-            <button
-              type="button"
-              onClick={() => setServiceTab('hiring')}
-              className={`group relative px-4 rounded-t-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border border-b-0 select-none whitespace-nowrap ${
-                serviceTab === 'hiring'
-                  ? 'bg-white dark:bg-[#111F38] text-amber-700 dark:text-amber-400 border-slate-200/90 dark:border-slate-800 -mb-px z-10 pt-2.5 pb-[11px] shadow-[0_-2px_6px_rgba(15,23,42,0.03)]'
-                  : 'bg-slate-100/90 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200/70 dark:border-slate-800/70 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-200 py-2'
+            </span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0 ${
+                serviceTab === 'vks'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
+                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
               }`}
             >
-              <span
-                className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
-                  serviceTab === 'hiring' ? 'bg-amber-500 opacity-100' : 'opacity-0'
-                }`}
-              />
+              600585/1
+            </span>
+          </button>
+
+          {/* Tab 2: Hiring Notification */}
+          <button
+            type="button"
+            onClick={() => setServiceTab('hiring')}
+            className={`group relative h-11 px-4 rounded-t-xl text-xs font-extrabold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+              serviceTab === 'hiring'
+                ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
+                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
               <UserPlus
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'hiring'
-                    ? 'text-amber-600 dark:text-amber-400'
+                    ? 'text-indigo-600 dark:text-indigo-400'
                     : 'text-slate-400 dark:text-slate-500'
                 }`}
               />
-              <span>
-                {lang === 'ru'
-                  ? '2. Прием на работу (Заключение ТД)'
-                  : '2. İşe Alım Bildirimi (MVD)'}
+              <span className="truncate">
+                {lang === 'ru' ? '2. Прием на работу' : '2. İşe Alım Bildirimi'}
               </span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                  serviceTab === 'hiring'
-                    ? 'bg-amber-100 dark:bg-amber-950/90 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80'
-                    : 'bg-amber-100/70 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400'
-                }`}
-              >
-                {lang === 'ru' ? 'В работе' : 'İşlemde'}
-              </span>
-            </button>
-
-            {/* Tab 3: Dismissal Notification (Powerise Port) */}
-            <button
-              type="button"
-              onClick={() => setServiceTab('dismissal')}
-              className={`group relative px-4 rounded-t-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border border-b-0 select-none whitespace-nowrap ${
-                serviceTab === 'dismissal'
-                  ? 'bg-white dark:bg-[#111F38] text-rose-700 dark:text-rose-400 border-slate-200/90 dark:border-slate-800 -mb-px z-10 pt-2.5 pb-[11px] shadow-[0_-2px_6px_rgba(15,23,42,0.03)]'
-                  : 'bg-slate-100/90 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200/70 dark:border-slate-800/70 hover:bg-slate-200/60 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-200 py-2'
+            </span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0 ${
+                serviceTab === 'hiring'
+                  ? 'bg-amber-50 dark:bg-amber-950/90 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80'
+                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
               }`}
             >
-              <span
-                className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
-                  serviceTab === 'dismissal' ? 'bg-rose-600 dark:bg-rose-500 opacity-100' : 'opacity-0'
-                }`}
-              />
+              {lang === 'ru' ? 'В работе' : 'İşlemde'}
+            </span>
+          </button>
+
+          {/* Tab 3: Dismissal Notification */}
+          <button
+            type="button"
+            onClick={() => setServiceTab('dismissal')}
+            className={`group relative h-11 px-4 rounded-t-xl text-xs font-extrabold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+              serviceTab === 'dismissal'
+                ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
+                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
               <UserMinus
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'dismissal'
-                    ? 'text-rose-600 dark:text-rose-400'
+                    ? 'text-indigo-600 dark:text-indigo-400'
                     : 'text-slate-400 dark:text-slate-500'
                 }`}
               />
-              <span>
-                {lang === 'ru'
-                  ? '3. Увольнение (Расторжение ТД)'
-                  : '3. İşten Çıkış Bildirimi (MVD)'}
+              <span className="truncate">
+                {lang === 'ru' ? '3. Увольнение (МВД)' : '3. İşten Çıkış Bildirimi'}
               </span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                  serviceTab === 'dismissal'
-                    ? 'bg-rose-100 dark:bg-rose-950/90 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/80'
-                    : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                }`}
-              >
-                600585/1
-              </span>
-            </button>
-          </div>
-
-          {/* Shared RPA Agent Status Indicator + Official Blue/Red Gosuslugi Logo in Top Right Corner */}
-          <div className="flex items-center gap-2.5 pb-1.5">
-            {isOnline ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                {lang === 'ru' ? 'RPA Агент Онлайн (8088)' : 'RPA Ajanı Aktif (8088)'}
-              </span>
-            ) : (
-              <button
-                onClick={() => setShowAgentGuide(!showAgentGuide)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 cursor-pointer transition"
-              >
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>{lang === 'ru' ? 'Агент не запущен (8088)' : 'Ajan Kapalı (8088)'}</span>
-                <HelpCircle className="w-3 h-3 opacity-75" />
-              </button>
-            )}
-
-            {/* OFFICIAL GOSUSLUGI BLUE & RED LOGO BADGE */}
-            <div
-              className="inline-flex items-center px-3 py-1 rounded-xl bg-white dark:bg-white/95 border border-slate-200/90 dark:border-slate-300 shadow-2xs select-none"
-              title="Госуслуги (ЕПГУ 600585/1)"
+            </span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0 ${
+                serviceTab === 'dismissal'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
+                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
             >
-              <img
-                src="/gosuslugi-logo.png"
-                alt="госуслуги"
-                className="h-4.5 sm:h-5 w-auto object-contain block"
-              />
-            </div>
-          </div>
+              600585/1
+            </span>
+          </button>
         </div>
 
         {/* TAB 2: HIRING NOTIFICATION (CONNECTED TO TAB BAR) */}
         {serviceTab === 'hiring' && (
-          <div className="p-12 bg-white dark:bg-[#111F38] rounded-b-2xl border border-t-0 border-slate-200/90 dark:border-slate-800 text-center space-y-4 shadow-xs">
+          <div className="p-12 bg-white dark:bg-[#111F38] rounded-b-2xl border border-slate-300/80 dark:border-slate-800 text-center space-y-4 shadow-xs">
             <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-xs">
               <Clock className="w-8 h-8 animate-pulse" />
             </div>
@@ -3245,7 +3197,7 @@ export default function GosuslugiVksView() {
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                 {lang === 'ru'
-                  ? 'Автоматическое заполнение формы Госуслуг 600585/1 («О заключении трудового договора с иностранным гражданином») в данный момент находится в разработке. Используйте вкладки «1. ВКС — Выплата ЗП» или «3. Увольнение (Расторжение ТД)».'
+                  ? 'Автоматическое заполнение формы Госуслуг 600585/1 («О заключении трудового договора с иностранным гражданином») в данный момент находится в разработке. Используйте вкладки «1. ВКС — Выплата ЗП» или «3. Увольнение».'
                   : 'Yabancı personelin işe giriş / iş sözleşmesi bildirimi (Gosuslugi 600585/1 — О заключении трудового договора) otomasyon modülü şu anda işlemde. Aktif bildirimler için «1. VKS Maaş Bildirimi» veya «3. İşten Çıkış Bildirimi» sekmelerini kullanabilirsiniz.'}
               </p>
             </div>
@@ -3279,32 +3231,39 @@ export default function GosuslugiVksView() {
       />
 
       {/* COMPACT TOP HEADER BAR (CONNECTED DIRECTLY TO TAB BAR ABOVE) */}
-      <div className="-mt-4 bg-white dark:bg-[#111F38] rounded-b-2xl border border-t-0 border-slate-200/90 dark:border-slate-800 px-4 py-3.5 text-slate-900 dark:text-white shadow-xs relative">
+      <div className="-mt-4 bg-white dark:bg-[#111F38] rounded-b-2xl border border-slate-300/80 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white shadow-xs relative">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Left: Icon + Title + Hover Tooltip + Status Badges */}
           <div className="flex flex-wrap items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-xs shrink-0">
-              <Bot className="w-5 h-5 rpa-robot-float" />
+            <div
+              className="inline-flex items-center px-2.5 py-1 rounded-lg bg-white dark:bg-white/95 border border-slate-200/90 dark:border-slate-300 shadow-2xs select-none"
+              title="Госуслуги (ЕПГУ 600585/1)"
+            >
+              <img
+                src="/gosuslugi-logo.png"
+                alt="госуслуги"
+                className="h-4 w-auto object-contain block"
+              />
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
+              <h1 className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
                 {lang === 'ru'
-                  ? 'Уведомление МВД о выплате ЗП ВКС (Госуслуги)'
-                  : 'Gosuslugi VKS Maaş & Çalışma Bildirimi (МВД)'}
+                  ? 'Уведомление МВД о выплате ЗП ВКС'
+                  : 'VKS Maaş Bildirimi (МВД)'}
               </h1>
 
               {/* Hover Tooltip Icon for Description */}
               <div className="relative group inline-flex items-center">
                 <button
                   type="button"
-                  className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/80 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-700 flex items-center justify-center transition cursor-help"
+                  className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 flex items-center justify-center transition cursor-help"
                   aria-label="Info"
                 >
-                  <Info className="w-3.5 h-3.5" />
+                  <Info className="w-3 h-3" />
                 </button>
-                <div className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute left-0 top-8 z-50 w-80 sm:w-96 p-3 rounded-xl bg-slate-900 text-white text-xs leading-relaxed shadow-xl border border-slate-700">
-                  <div className="font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
+                <div className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute left-0 top-7 z-50 w-80 sm:w-96 p-3 rounded-xl bg-slate-900 text-white text-xs leading-relaxed shadow-xl border border-slate-700">
+                  <div className="font-bold text-indigo-400 mb-1 flex items-center gap-1.5">
                     <Bot className="w-3.5 h-3.5" />
                     <span>Pondera Playwright RPA (Форма ЕПГУ 600585/1)</span>
                   </div>
@@ -3312,24 +3271,19 @@ export default function GosuslugiVksView() {
                 </div>
               </div>
 
-              {/* Live Agent Status Pill */}
+              {/* Single Live Agent Status Pill */}
               {isOnline ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  {lang === 'ru' ? 'RPA Агент Онлайн' : 'RPA Ajanı Aktif'}
+                  {lang === 'ru' ? 'RPA Онлайн (8088)' : 'RPA Aktif (8088)'}
                 </span>
               ) : (
                 <button
                   onClick={() => setShowAgentGuide(!showAgentGuide)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/25 cursor-pointer transition"
-                  title={
-                    lang === 'ru'
-                      ? 'Нажмите, чтобы скачать агент для ПК'
-                      : 'Bilgisayarınıza RPA ajanını indirmek için tıklayın'
-                  }
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 cursor-pointer transition"
                 >
                   <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span>{lang === 'ru' ? 'Агент не запущен (8088)' : 'Ajan Kapalı (8088)'}</span>
+                  <span>{lang === 'ru' ? 'Агент выкл. (8088)' : 'Ajan Kapalı (8088)'}</span>
                   <HelpCircle className="w-3 h-3 opacity-75" />
                 </button>
               )}
@@ -3343,114 +3297,75 @@ export default function GosuslugiVksView() {
             </div>
           </div>
 
-          {/* Right: Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Right: Clean Consolidated Toolbar */}
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="h-8 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
+              className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
+              title="Yeni VKS listesi veya düzeltilmiş şablon Excel dosyasını yükle"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Загрузить Excel (ВКС)' : 'Excel Yükle (VKS)'}</span>
+              <span>{lang === 'ru' ? 'Загрузить Excel' : 'Excel Yükle'}</span>
             </button>
 
             <button
               onClick={handleLoadFromDatabase}
               disabled={isLoadingDb}
-              className="h-8 px-3 rounded-xl border border-teal-200 dark:border-teal-500/40 bg-teal-50/80 dark:bg-teal-950/40 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-teal-800 dark:text-teal-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
+              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
             >
               {isLoadingDb ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-600" />
               ) : (
-                <Database className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                <Database className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
               )}
-              <span>{lang === 'ru' ? 'Загрузить ВКС из базы' : 'Sistemden VKS Çek'}</span>
+              <span>{lang === 'ru' ? 'Из базы' : 'Sistemden Çek'}</span>
             </button>
 
             <button
               onClick={handleExportExcel}
-              className="h-8 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>
-                {workers.length > 0
-                  ? lang === 'ru'
-                    ? 'Экспорт Excel'
-                    : 'Excel İndir'
-                  : lang === 'ru'
-                  ? 'Шаблон Excel'
-                  : 'Örnek Şablon'}
-              </span>
+              <Download className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+              <span>{lang === 'ru' ? 'Экспорт' : 'Excel İndir'}</span>
             </button>
 
             <a
               href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
               download
-              title={
-                lang === 'ru'
-                  ? 'Скачать записи с ошибками (Ошибка / пропуски) в формате шаблона ВКС с цветным выделением ошибочных ячеек и описанием ошибки в последнем столбце'
-                  : 'Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında, düzeltilmesi gereken hücreler KIRMIZI işaretli ve en son sütunda hata açıklamalı olarak indirir'
-              }
-              className="h-8 px-3 rounded-xl border border-rose-300 dark:border-rose-500/40 bg-rose-50/90 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-800 dark:text-rose-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+              title="Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında indir"
+              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-              <span>
-                {lang === 'ru'
-                  ? '🛠️ Шаблон Ошибок (Цветной)'
-                  : '🛠️ Hatalı (Ошибка) Şablon İndir'}
-              </span>
+              <span>{lang === 'ru' ? 'Шаблон Ошибок' : 'Hatalı Şablon'}</span>
             </a>
 
             <a
               href={`/api/gosuslugi/master-list/export-errors?mode=refused&computer=${activeComputerFilter}`}
               download
-              title={
-                lang === 'ru'
-                  ? 'Скачать записи со статусом «Услуга отказана» в формате шаблона ВКС (с цветным выделением подозрительных ячеек и причиной отказа в последнем столбце). После правки загрузите через «Загрузить Excel» для повторной отправки!'
-                  : 'Услуга отказана (МВД Red) alan kayıtları şablon formatında (şüpheli hücreler KIRMIZI/SARI işaretli ve son sütunda red açıklamalı) indirir. Düzenleyip «Excel Yükle (VKS)» ile yüklediğinizde merkezi liste güncellenir ve tekrar gönderime açılır!'
-              }
-              className="h-8 px-3 rounded-xl border border-orange-300 dark:border-orange-500/40 bg-orange-50/90 dark:bg-orange-950/40 hover:bg-orange-100 dark:hover:bg-orange-900/50 text-orange-800 dark:text-orange-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+              title="Услуга отказана (МВД Red) alan kayıtları şablon formatında indir"
+              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-              <span>
-                {lang === 'ru'
-                  ? '🚫 Шаблон Отказов (Услуга отказана)'
-                  : '🚫 Red (Услуга отказана) Şablon İndir'}
-              </span>
+              <span>{lang === 'ru' ? 'Шаблон Отказов' : 'Red Şablon'}</span>
             </a>
 
             <a
               href="/api/gosuslugi/pdf/zip"
               download="Pondera_VKS_Gosuslugi_PDFs_2026-3.zip"
-              title={
-                lang === 'ru'
-                  ? 'Скачать все скачанные PDF квитанции (<Таб№>_<Заявка№>_<ФИО>_2026-3.pdf) одним ZIP-архивом для загрузки в EBA'
-                  : "Merkezi sunucudaki tüm isimlendirilmiş VKS bildirim PDF'lerini (<Sicil>_<AppNo>_<AdSoyad>_2026-3.pdf) EBA'ya yüklemek için tek ZIP arşivi olarak indirir"
-              }
-              className="h-8 px-3 rounded-xl border border-violet-300 dark:border-violet-500/40 bg-violet-50/90 dark:bg-violet-950/40 hover:bg-violet-100 dark:hover:bg-violet-900/50 text-violet-800 dark:text-violet-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+              title="İndirilen tüm VKS bildirim PDF'lerini tek ZIP arşivi olarak indir"
+              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
-              <Download className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
-              <span>
-                {lang === 'ru' ? '📦 Скачать PDF (ZIP / EBA)' : '📦 PDF ZIP İndir (EBA)'}
-              </span>
+              <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>{lang === 'ru' ? 'PDF (ZIP)' : 'PDF ZIP'}</span>
             </a>
 
             <button
               onClick={() => setShowMailRuModal(true)}
-              className={`h-8 px-3 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition ${
-                mailRuHasPassword
-                  ? 'border-blue-300 dark:border-blue-500/50 bg-blue-50 dark:bg-blue-500/20 text-blue-800 dark:text-blue-300 hover:bg-blue-100'
-                  : 'border-indigo-200 dark:border-indigo-500/40 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-100'
-              }`}
-              title={
-                lang === 'ru'
-                  ? 'Автоматическая проверка статусов заявлений Госуслуг через почту Mail.ru (Входящие + Спам) без входа в Госуслуги'
-                  : 'Gosuslugi veya Mail açmadan arka planda Mail.ru (Gelen Kutusu + Spam) üzerinden otomatik başvuru durumu kontrolü'
-              }
+              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+              title="Mail.ru üzerinden otomatik başvuru durumu kontrolü"
             >
               <Mail className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>
-                {lang === 'ru' ? 'Почта Mail.ru (Авто-Статус)' : 'Mail.ru (Otomatik Statü)'}
-              </span>
+              <span>Mail.ru</span>
               {mailRuHasPassword && (
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               )}
@@ -3458,14 +3373,14 @@ export default function GosuslugiVksView() {
 
             <button
               onClick={() => setShowConfigPanel(!showConfigPanel)}
-              className={`h-8 px-3 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
+              className={`h-8 px-2.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition ${
                 showConfigPanel
-                  ? 'border-amber-300 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300'
+                  ? 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300'
                   : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <Settings2 className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Параметры формы' : 'Form Ayarları'}</span>
+              <span>{lang === 'ru' ? 'Параметры' : 'Ayarlar'}</span>
             </button>
           </div>
         </div>
@@ -3740,113 +3655,72 @@ export default function GosuslugiVksView() {
       )}
 
       {/* CENTRAL BACKEND MASTER LIST & 4-COMPUTER QUEUE PARTITIONING PANEL */}
-      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] text-slate-900 dark:text-white border border-slate-200/90 dark:border-teal-500/30 shadow-xs space-y-3">
+      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] text-slate-900 dark:text-white border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-400/30 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-extrabold">
               <Database className="w-3.5 h-3.5" />
               {lang === 'ru'
-                ? `Единый серверный список ВКС (${masterSummary?.totalMaster || 3088} чел.)`
-                : `Merkezi Sunucu VKS Kuyruğu (${masterSummary?.totalMaster || 3088} Kayıt)`}
+                ? `Серверная очередь ВКС (${masterSummary?.totalMaster || 0})`
+                : `Merkezi VKS Kuyruğu (${masterSummary?.totalMaster || 0})`}
             </span>
-            <span className="text-[11px] text-slate-500 dark:text-slate-300">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
               {lang === 'ru'
-                ? 'Без дубликатов • Сохранение статусов • Распределение на 4 компьютера (4 аккаунта Госуслуг)'
-                : 'Mükerrer Gönderim Korumalı • Statüler Kaybolmaz • 4 Bilgisayar / 4 Gosuslugi Hesabı Yönetimi'}
+                ? 'Распределение на 4 ПК • Защита от дублей'
+                : '4 Bilgisayar Dağılımı • Mükerrer Korumalı'}
             </span>
           </div>
 
-          {/* Partitioning & Error Retry Controls */}
+          {/* Clean Partitioning & Retry Controls (No Duplicate Download/Upload Buttons) */}
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => handleSplit4Computers('tail_transfer', 600)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 border border-amber-200 dark:border-amber-400/40 text-amber-800 dark:text-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="1. ve 2. bilgisayarların listelerinin sonundan 600'er kişiyi 3. ve 4. bilgisayarlara aktarır"
             >
-              <Zap className="w-3 h-3 text-amber-600 dark:text-amber-300" />
-              <span>
-                {lang === 'ru'
-                  ? 'Передать по 600 с конца -> ПК 3 и ПК 4'
-                  : "Sondan 600'er Kaydı -> PC 3 & PC 4'e Aktar"}
-              </span>
+              <Zap className="w-3 h-3 text-amber-500" />
+              <span>{lang === 'ru' ? 'По 600 -> ПК 3-4' : '600 Aktar (PC 3-4)'}</span>
             </button>
             <button
               onClick={() => handleSplit4Computers('tail_transfer', 500)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 border border-teal-200 dark:border-teal-400/40 text-teal-800 dark:text-teal-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="1. ve 2. bilgisayarların listelerinin sonundan 500'er kişiyi 3. ve 4. bilgisayarlara aktarır"
             >
-              <Zap className="w-3 h-3 text-teal-600 dark:text-teal-300" />
-              <span>
-                {lang === 'ru'
-                  ? 'Передать по 500 с конца -> ПК 3 и ПК 4'
-                  : "Sondan 500'er Kaydı -> PC 3 & PC 4'e Aktar"}
-              </span>
+              <Zap className="w-3 h-3 text-teal-500" />
+              <span>{lang === 'ru' ? 'По 500 -> ПК 3-4' : '500 Aktar (PC 3-4)'}</span>
             </button>
             <button
               onClick={() => handleSplit4Computers('equal_4', 600)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 border border-indigo-200 dark:border-indigo-400/40 text-indigo-800 dark:text-indigo-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="Kalan gönderilmemiş tüm başvuruları 4 bilgisayara eşit böler"
             >
-              <Users className="w-3 h-3 text-indigo-600 dark:text-indigo-300" />
-              <span>{lang === 'ru' ? 'Поровну на 4 ПК' : 'Kalanları 4 PC Eşit Böl'}</span>
-            </button>
-            <a
-              href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
-              download
-              className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-600/35 dark:hover:bg-rose-600/50 border border-rose-200 dark:border-rose-400/60 text-rose-700 dark:text-rose-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition no-underline"
-              title="Hatalı (Ошибка) ve eksik verili kayıtları şablon formatında, hatalı hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak Excel'e indirir"
-            >
-              <Download className="w-3 h-3 text-rose-600 dark:text-rose-200" />
-              <span>
-                {lang === 'ru'
-                  ? '📥 Скачать Ошибки (Шаблон с подсветкой)'
-                  : '📥 Hatalı (Ошибка) Şablon İndir (Renkli Hücreli)'}
-              </span>
-            </a>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="h-7 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/30 dark:hover:bg-emerald-500/45 border border-emerald-200 dark:border-emerald-400/50 text-emerald-800 dark:text-emerald-100 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
-              title="Şablonda düzelttiğiniz Excel dosyasını yükleyerek 3.088 kişilik merkezi listedeki verileri günceller ve Ошибка statüsünü sıfırlar"
-            >
-              <Upload className="w-3 h-3 text-emerald-600 dark:text-emerald-200" />
-              <span>
-                {lang === 'ru'
-                  ? '📤 Загрузить исправленный шаблон (Обновить 3088)'
-                  : '📤 Düzeltilen Şablonu Yükle (3088 Listeyi Güncelle)'}
-              </span>
+              <Users className="w-3 h-3 text-indigo-500" />
+              <span>{lang === 'ru' ? 'Поровну (4 ПК)' : '4 PC Eşit Böl'}</span>
             </button>
             <button
               onClick={() =>
                 handleRetryErrors(activeComputerFilter === 'all' ? 'all' : 'computer')
               }
               disabled={isRetryingErrors}
-              className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/25 dark:hover:bg-rose-500/35 border border-rose-200 dark:border-rose-400/50 text-rose-700 dark:text-rose-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 border border-rose-200 dark:border-rose-400/40 text-rose-700 dark:text-rose-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="Hata (Ошибка) veren kayıtların hata statüsünü sıfırlayıp tekrar gönderim kuyruğuna alır"
             >
               <RefreshCw className={`w-3 h-3 ${isRetryingErrors ? 'animate-spin' : ''}`} />
-              <span>
-                {lang === 'ru'
-                  ? 'Сбросить ошибки (Повторить)'
-                  : '🔄 Hatalıları (Ошибка) Tekrar Sıraya Al'}
-              </span>
+              <span>{lang === 'ru' ? 'Повторить ошибки' : 'Hatalıları Sıraya Al'}</span>
             </button>
             <button
               onClick={() =>
                 handleReopenRefused(activeComputerFilter === 'all' ? 'all' : 'computer')
               }
               disabled={isRetryingErrors}
-              className="h-7 px-2.5 rounded-lg bg-orange-50 hover:bg-orange-100 dark:bg-orange-500/25 dark:hover:bg-orange-500/35 border border-orange-200 dark:border-orange-400/50 text-orange-700 dark:text-orange-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
-              title="Red (Услуга отказана) alan kayıtların eski red başvurusunu arşivleyip tekrar gönderim kuyruğuna seçili olarak alır"
+              className="h-7 px-2.5 rounded-lg bg-orange-50 hover:bg-orange-100 dark:bg-orange-500/20 dark:hover:bg-orange-500/30 border border-orange-200 dark:border-orange-400/40 text-orange-700 dark:text-orange-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              title="Red (Услуга отказана) alan kayıtları tekrar gönderim kuyruğuna alır"
             >
               <RefreshCw className={`w-3 h-3 ${isRetryingErrors ? 'animate-spin' : ''}`} />
-              <span>
-                {lang === 'ru'
-                  ? '🔄 Повторить Отказы (Услуга отказана)'
-                  : '🔄 Redleri (Отказ) Tekrar Sıraya Al'}
-              </span>
+              <span>{lang === 'ru' ? 'Повторить отказы' : 'Redleri Sıraya Al'}</span>
             </button>
           </div>
         </div>
@@ -3858,20 +3732,20 @@ export default function GosuslugiVksView() {
             disabled={isLoadingMaster}
             className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
               activeComputerFilter === 'all' && workers.length > 0
-                ? 'bg-emerald-50/90 dark:bg-emerald-600/25 border-emerald-400 ring-1 ring-emerald-400/50'
+                ? 'bg-indigo-50/90 dark:bg-indigo-600/25 border-indigo-400 ring-1 ring-indigo-400/50'
                 : 'bg-slate-50/80 hover:bg-slate-100/80 dark:bg-white/5 dark:hover:bg-white/10 border-slate-200/90 dark:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between gap-1">
               <span className="text-xs font-extrabold text-slate-900 dark:text-white">
-                {lang === 'ru' ? '🌐 Весь список (1–3088)' : '🌐 Tüm Liste (1–3088)'}
+                {lang === 'ru' ? '🌐 Весь список' : '🌐 Tüm Liste'}
               </span>
               {isLoadingMaster && activeComputerFilter === 'all' && (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 dark:text-emerald-400" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
               )}
             </div>
             <div className="text-[10.5px] text-slate-500 dark:text-slate-300 mt-1 flex items-center justify-between font-mono">
-              <span>Top: {masterSummary?.totalMaster || 3088}</span>
+              <span>Top: {masterSummary?.totalMaster || '—'}</span>
               <span className="text-emerald-600 dark:text-emerald-300 font-bold">
                 ✓{' '}
                 {masterSummary
@@ -3904,7 +3778,7 @@ export default function GosuslugiVksView() {
                 key={pcNum}
                 className={`p-2.5 rounded-xl border transition flex flex-col justify-between ${
                   isSelectedPc
-                    ? 'bg-teal-50/90 dark:bg-teal-600/25 border-teal-400 ring-1 ring-teal-400/50'
+                    ? 'bg-indigo-50/90 dark:bg-indigo-600/25 border-indigo-400 ring-1 ring-indigo-400/50'
                     : 'bg-slate-50/80 hover:bg-slate-100/80 dark:bg-white/5 dark:hover:bg-white/10 border-slate-200/90 dark:border-white/10'
                 }`}
               >
@@ -3912,18 +3786,18 @@ export default function GosuslugiVksView() {
                   <button
                     onClick={() => handleLoadFromMasterList(pcStr, 'all')}
                     disabled={isLoadingMaster}
-                    className="text-xs font-extrabold text-slate-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-300 cursor-pointer text-left flex-1 truncate"
+                    className="text-xs font-extrabold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer text-left flex-1 truncate"
                   >
-                    💻 Bilgisayar {pcNum}{' '}
+                    💻 PC {pcNum}{' '}
                     <span className="text-[10px] font-mono text-slate-500 dark:text-slate-300">({rangeText})</span>
                   </button>
                   {pcStat && pcStat.error > 0 && (
                     <button
                       onClick={() => handleLoadFromMasterList(pcStr, 'error')}
                       className="px-1.5 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-500/30 dark:hover:bg-rose-500/50 border border-rose-300 dark:border-rose-400/40 text-rose-700 dark:text-rose-200 text-[9.5px] font-bold cursor-pointer"
-                      title={`Bilgisayar ${pcNum} üzerindeki ${pcStat.error} hatalı kaydı göster`}
+                      title={`PC ${pcNum} üzerindeki ${pcStat.error} hatalı kaydı göster`}
                     >
-                      ⚠ {pcStat.error} Hata
+                      ⚠ {pcStat.error}
                     </button>
                   )}
                 </div>
@@ -3941,212 +3815,10 @@ export default function GosuslugiVksView() {
         </div>
       </div>
 
-      {/* 5 KPI SUMMARY CARDS (Including Ready vs Blocked/Invalid Data Stats) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {/* Card 1: Total Loaded */}
-        <div
-          onClick={() => setQueueFilter('all')}
-          className={`p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border shadow-xs flex items-center justify-between cursor-pointer transition ${
-            queueFilter === 'all'
-              ? 'border-emerald-400 dark:border-emerald-500/60 ring-2 ring-emerald-500/15'
-              : 'border-slate-200/80 dark:border-slate-800 hover:border-slate-300'
-          }`}
-        >
-          <div>
-            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-              {lang === 'ru' ? 'Всего в списке' : 'Toplam VKS Listesi'}
-            </span>
-            <div className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
-              {workers.length}
-              <span className="text-xs font-normal text-slate-400 ml-1.5">
-                ({lang === 'ru' ? `выбр. ${selectedValidCount}` : `${selectedValidCount} seçili`})
-              </span>
-            </div>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700">
-            <Users className="w-4 h-4" />
-          </div>
-        </div>
-
-        {/* Card 2: Ready to Process (Valid Data) */}
-        <div
-          onClick={() => setQueueFilter(queueFilter === 'ready' ? 'all' : 'ready')}
-          className={`p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border shadow-xs flex items-center justify-between cursor-pointer transition ${
-            queueFilter === 'ready'
-              ? 'border-emerald-500 ring-2 ring-emerald-500/20'
-              : 'border-slate-200/80 dark:border-slate-800 hover:border-emerald-300'
-          }`}
-        >
-          <div>
-            <span className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              {lang === 'ru' ? 'Готовы к отправке' : 'İşleme Hazır (Tam)'}
-            </span>
-            <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-              {validCount}
-              <span className="text-[11px] font-semibold text-slate-400 ml-1.5">
-                {lang === 'ru' ? 'проверено' : 'doğrulandı'}
-              </span>
-            </div>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50">
-            <CheckCircle2 className="w-4 h-4" />
-          </div>
-        </div>
-
-        {/* Card 3: Blocked / Missing or Invalid Dates (Cannot be processed until fixed) */}
-        <div
-          onClick={() => setQueueFilter(queueFilter === 'invalid' ? 'all' : 'invalid')}
-          className={`p-3.5 rounded-2xl border shadow-xs flex items-center justify-between cursor-pointer transition ${
-            invalidCount > 0
-              ? queueFilter === 'invalid'
-                ? 'bg-rose-50/90 dark:bg-rose-950/50 border-rose-500 ring-2 ring-rose-500/25'
-                : 'bg-rose-50/50 dark:bg-rose-950/25 border-rose-200 dark:border-rose-800/70 hover:border-rose-400'
-              : 'bg-white dark:bg-[#131C31] border-slate-200/80 dark:border-slate-800'
-          }`}
-          title={
-            lang === 'ru'
-              ? 'Нажмите, чтобы отфильтровать строки с ошибками дат или пропущенными полями'
-              : 'Eksik verisi veya tarih hatası olan (işleme alınamayacak) satırları filtrelemek için tıklayın'
-          }
-        >
-          <div>
-            <span
-              className={`text-[10.5px] font-bold uppercase tracking-wider ${
-                invalidCount > 0
-                  ? 'text-rose-600 dark:text-rose-400'
-                  : 'text-slate-400'
-              }`}
-            >
-              {lang === 'ru' ? 'Предупреждения данных' : 'Veri Uyarısı (Gönderime Açık)'}
-            </span>
-            <div
-              className={`text-xl font-black mt-0.5 ${
-                invalidCount > 0
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-slate-400 dark:text-slate-500'
-              }`}
-            >
-              {invalidCount}
-              <span className="text-[10.5px] font-semibold ml-1.5">
-                {invalidCount > 0
-                  ? lang === 'ru'
-                    ? 'не заблокировано (активны)'
-                    : 'bloke edilmedi (tik aktif)'
-                  : lang === 'ru'
-                  ? 'нет ошибок'
-                  : 'hata yok'}
-              </span>
-            </div>
-          </div>
-          <div
-            className={`w-9 h-9 rounded-xl flex items-center justify-center border ${
-              invalidCount > 0
-                ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-700'
-                : 'bg-slate-50 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4" />
-          </div>
-        </div>
-
-        {/* Card 4: Active Row */}
-        <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-              {lang === 'ru' ? 'Текущая строка' : 'Aktif İşlenen Satır'}
-            </span>
-            <div className="text-xs sm:text-sm font-extrabold text-teal-700 dark:text-teal-300 mt-1 truncate max-w-[160px]">
-              {activeWorkerObj
-                ? `${activeWorkerObj.lastName} ${activeWorkerObj.firstName}`
-                : isRunning
-                ? lang === 'ru'
-                  ? 'Заполнение...'
-                  : 'İşleniyor...'
-                : lang === 'ru'
-                ? 'Ожидание старта'
-                : 'Başlatılmadı'}
-            </div>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-600 dark:text-teal-400 flex items-center justify-center border border-teal-100 dark:border-teal-800/50">
-            <Activity className="w-4 h-4" />
-          </div>
-        </div>
-
-        {/* Card 5: Sent to Gosuslugi */}
-        <div
-          onClick={() => setQueueFilter(queueFilter === 'sent' ? 'all' : 'sent')}
-          className={`p-3.5 rounded-2xl bg-white dark:bg-[#131C31] border shadow-xs flex items-center justify-between cursor-pointer transition ${
-            queueFilter === 'sent'
-              ? 'border-emerald-500 ring-2 ring-emerald-500/20'
-              : 'border-slate-200/80 dark:border-slate-800 hover:border-emerald-300'
-          }`}
-        >
-          <div>
-            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-              {lang === 'ru' ? 'Отправлено в МВД' : 'Gosuslugi Gönderilen'}
-            </span>
-            <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-              {completedCount}
-              {errorCount > 0 && (
-                <span className="text-xs font-bold text-rose-500 ml-2">
-                  ({errorCount} {lang === 'ru' ? 'ош.' : 'hata'})
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50">
-            <ShieldCheck className="w-4 h-4" />
-          </div>
-        </div>
-      </div>
-
-      {/* Warning Banner when list contains blocked rows with missing data or date errors */}
-      {invalidCount > 0 && (
-        <div className="p-3 rounded-2xl bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5 text-rose-900 dark:text-rose-200">
-            <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-            <span>
-              {lang === 'ru' ? (
-                <>
-                  <strong>Примечание: в {invalidCount} неотправленных строках есть предупреждения по полям, но они НЕ заблокированы (галочка активна)!</strong>{' '}
-                  Вы можете отправить их напрямую или при необходимости отредактировать карандашом (✏️).
-                </>
-              ) : (
-                <>
-                  <strong>Bilgi: Gönderilmemiş {invalidCount} satırda alan uyarısı var ancak bloke edilmedi (aktif tiki seçili)!</strong>{' '}
-                  Bu kayıtları doğrudan tekrar gönderebilir veya dilerseniz satırdaki düzenle (✏️) ikonuyla güncelleyebilirsiniz.
-                </>
-              )}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setQueueFilter(queueFilter === 'invalid' ? 'all' : 'invalid')}
-              className={`h-8 px-3 rounded-xl font-bold text-[11px] inline-flex items-center gap-1.5 cursor-pointer transition ${
-                queueFilter === 'invalid'
-                  ? 'bg-rose-700 text-white'
-                  : 'bg-rose-600 hover:bg-rose-700 text-white'
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5" />
-              <span>
-                {queueFilter === 'invalid'
-                  ? lang === 'ru'
-                    ? `Показать все (${workers.length})`
-                    : `Tümünü Göster (${workers.length})`
-                  : lang === 'ru'
-                  ? `Показать проблемные (${invalidCount})`
-                  : `Sadece Hatalıları Göster (${invalidCount})`}
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Control Bar: Search, Filter Pills & Robot Launch Controls */}
+      {/* Unified Control Bar: Search, Single Status Filter Strip & Robot Launch Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#131C31] p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
@@ -4154,14 +3826,14 @@ export default function GosuslugiVksView() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={
                 lang === 'ru'
-                  ? 'Поиск по ФИО, табельному, паспорту, ИНН, РНР...'
-                  : 'Ad Soyad, Sicil, Pasaport, INN veya RNR ara...'
+                  ? 'Поиск по ФИО, табельному, ИНН...'
+                  : 'Ad Soyad, Sicil, Pasaport, INN ara...'
               }
-              className="w-full h-9 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              className="w-full h-9 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
             />
           </div>
 
-          {/* Filter Tabs */}
+          {/* Single Unified Filter & Count Tabs (No Duplicate KPI Cards Above) */}
           {workers.length > 0 && (
             <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-[11px] font-bold gap-1">
               <button
@@ -4169,7 +3841,7 @@ export default function GosuslugiVksView() {
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition ${
                   queueFilter === 'all'
                     ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 {lang === 'ru' ? `Все (${workers.length})` : `Tümü (${workers.length})`}
@@ -4178,23 +3850,21 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('ready')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'ready'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
                 }`}
               >
                 <CheckCircle2 className="w-3 h-3" />
                 <span>
-                  {lang === 'ru'
-                    ? `Ожидают (${selectedValidCount})`
-                    : `Gönderime Hazır (${selectedValidCount})`}
+                  {lang === 'ru' ? `Готовы (${selectedValidCount})` : `Hazır (${selectedValidCount})`}
                 </span>
               </button>
               <button
                 onClick={() => setQueueFilter('sent')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'sent'
-                    ? 'bg-teal-600 text-white shadow-2xs'
-                    : 'text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
                 }`}
               >
                 <ShieldCheck className="w-3 h-3" />
@@ -4206,198 +3876,136 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('error')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'error'
-                    ? 'bg-amber-600 text-white shadow-2xs'
+                    ? 'bg-rose-600 text-white shadow-2xs'
                     : errorCount > 0
-                    ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
+                    ? 'text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
                 <AlertCircle className="w-3 h-3" />
                 <span>
-                  {lang === 'ru'
-                    ? `Ошибки ГУ (${errorCount})`
-                    : `Gosuslugi Hatası (${errorCount})`}
+                  {lang === 'ru' ? `Ошибки (${errorCount})` : `Hata (${errorCount})`}
                 </span>
               </button>
               <button
                 onClick={() => setQueueFilter('invalid')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'invalid'
-                    ? 'bg-rose-600 text-white shadow-2xs'
+                    ? 'bg-amber-600 text-white shadow-2xs'
                     : invalidCount > 0
-                    ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
+                    ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
                 <AlertTriangle className="w-3 h-3" />
                 <span>
-                  {lang === 'ru'
-                    ? `Пропуск данных (${invalidCount})`
-                    : `Eksik Veri (${invalidCount})`}
+                  {lang === 'ru' ? `Пропуски (${invalidCount})` : `Eksik Veri (${invalidCount})`}
                 </span>
               </button>
             </div>
           )}
 
           {workers.length > 0 && (
-            <>
-              <button
-                onClick={handleSaveQueueJson}
-                className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition"
-              >
-                <Download className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                <span>{lang === 'ru' ? 'Очередь JSON' : 'JSON Kuyruk'}</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setWorkers([]);
-                  setQueueFilter('all');
-                }}
-                className="h-9 px-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs inline-flex items-center gap-1 cursor-pointer transition"
-                title={lang === 'ru' ? 'Очистить список' : 'Listeyi Temizle'}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </>
+            <button
+              onClick={() => {
+                setWorkers([]);
+                setQueueFilter('all');
+              }}
+              className="h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs inline-flex items-center gap-1 cursor-pointer transition"
+              title={lang === 'ru' ? 'Очистить список' : 'Listeyi Temizle'}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
 
-        {/* Chrome & Robot Start/Stop Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Clean Streamlined Robot Action Buttons */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={handleOpenChrome}
             disabled={isLaunchingChrome}
-            className="h-9 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+            className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
           >
-            <Globe className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+            <Globe className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
             <span>
               {bridgeStatus.chrome_ready
                 ? lang === 'ru'
-                  ? 'Chrome Готов (9222)'
-                  : 'Chrome Hazır (9222)'
+                  ? 'Chrome Готов'
+                  : 'Chrome Hazır'
                 : lang === 'ru'
-                ? '1. Открыть Chrome (Госуслуги)'
-                : '1. Chrome Aç (Gosuslugi)'}
+                ? '1. Открыть Chrome'
+                : '1. Chrome Aç'}
             </span>
           </button>
 
           {isRunning ? (
             <button
               onClick={handleStopRobot}
-              className="h-9 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm shadow-rose-600/20 cursor-pointer"
+              className="h-9 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <Square className="w-3.5 h-3.5 fill-white" />
-              <span>{lang === 'ru' ? 'Остановить робота' : 'Robotu Durdur'}</span>
+              <span>{lang === 'ru' ? 'Стоп' : 'Durdur'}</span>
             </button>
           ) : (
             <>
               <button
                 onClick={() => handleStartRobot(1)}
                 disabled={isStartingRobot || selectedValidCount === 0}
-                className="h-9 px-3.5 rounded-xl border border-teal-200 dark:border-teal-500/40 bg-teal-50 dark:bg-teal-500/10 hover:bg-teal-100 dark:hover:bg-teal-500/20 text-teal-800 dark:text-teal-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>{lang === 'ru' ? 'Тест (1 строка)' : 'Test Et (1 Satır)'}</span>
+                <Play className="w-3.5 h-3.5" />
+                <span>{lang === 'ru' ? 'Тест (1)' : 'Test (1 Satır)'}</span>
               </button>
 
               <button
                 onClick={() => handleStartRobot(0, undefined, false)}
                 disabled={isStartingRobot || selectedValidCount === 0}
-                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
               >
                 <Play className="w-3.5 h-3.5 fill-white" />
                 <span>
                   {lang === 'ru'
-                    ? `2. Отправить в Госуслуги (${selectedValidCount})`
-                    : `2. Seçilenleri Gosuslugi'ye Gönder (${selectedValidCount})`}
+                    ? `2. Отправить (${selectedValidCount})`
+                    : `2. Gönder (${selectedValidCount})`}
                 </span>
               </button>
 
               <button
                 onClick={() => handleStartRobot(0, undefined, true)}
                 disabled={isStartingRobot || selectedValidCount === 0}
-                title={
-                  lang === 'ru'
-                    ? 'Быстрая отправка уведомлений без ожидания скачивания PDF: сразу после «Отправить» (Шаг 15) робот сохраняет № заявления и переходит к следующему сотруднику. PDF можно скачать позже кнопкой 3.'
-                    : 'PDF beklemeksizin hızlı gönderim: «Отправить» (Adım 15) sonrası PDF indirmeden doğrudan sıradaki kişiye geçer. Başvuru No formdan/mailden alınır, PDF sonradan 3. butonla indirilir.'
-                }
-                className="h-9 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm shadow-amber-500/20 cursor-pointer disabled:opacity-40 transition"
+                title="PDF beklemeksizin hızlı gönderim"
+                className="h-9 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
               >
                 <Zap className="w-3.5 h-3.5 fill-white" />
                 <span>
                   {lang === 'ru'
-                    ? `Быстрая отправка без PDF (${selectedValidCount})`
-                    : `PDF siz Hızlı Gönderim (${selectedValidCount})`}
+                    ? `Быстро без PDF (${selectedValidCount})`
+                    : `Hızlı Gönder (${selectedValidCount})`}
                 </span>
               </button>
 
               <button
                 onClick={() => handleCheckGosuslugiStatuses(true)}
                 disabled={isCheckingStatuses}
-                title={
-                  lang === 'ru'
-                    ? 'Быстрая JSON-проверка 1200 заявлений без скачивания PDF (также выполняется автоматически каждые 30 минут)'
-                    : 'PDF indirmeden Gosuslugi JSON üzerinden 1.200 başvurunun statüsünü 3 saniyede güncelle (Ayrıca her 30 dakikada bir otomatik çalışır)'
-                }
-                className="h-9 px-3.5 rounded-xl border border-violet-200 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-500/15 hover:bg-violet-100 dark:hover:bg-violet-500/25 text-violet-800 dark:text-violet-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                title="PDF indirmeden Gosuslugi JSON üzerinden statüleri hızlıca sorgula"
+                className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
-                <Zap className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
-                <span>
-                  {lang === 'ru'
-                    ? '⚡ Быстрый JSON-статус (1200 без PDF)'
-                    : "⚡ Hızlı Statü (1200 JSON / PDF'siz)"}
-                </span>
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>{lang === 'ru' ? 'Быстрый статус' : 'Hızlı Statü'}</span>
               </button>
 
               <button
                 onClick={() => handleCheckGosuslugiStatuses(false)}
                 disabled={isCheckingStatuses}
-                title={
-                  lang === 'ru'
-                    ? 'Проверить статусы отправленных заявлений и скачать PDF-квитанции на Госуслугах'
-                    : 'Kaydedilen başvuru numaralarından Gosuslugi durumlarını sorgula ve PDF makbuzlarını indir'
-                }
-                className="h-9 px-3.5 rounded-xl border border-indigo-200 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-800 dark:text-indigo-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                title="Gosuslugi durumlarını sorgula ve PDF makbuzlarını indir"
+                className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 ${
                     isCheckingStatuses ? 'animate-spin' : ''
                   }`}
                 />
-                <span>
-                  {lang === 'ru'
-                    ? '3. Скачать PDF и проверить статусы'
-                    : '3. PDF İndir & Statü Sorgula'}
-                </span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (mailRuHasPassword) {
-                    handleSyncMailRu(false);
-                  } else {
-                    setShowMailRuModal(true);
-                  }
-                }}
-                disabled={isSyncingMailRu}
-                title={
-                  lang === 'ru'
-                    ? 'Проверить статусы заявлений в фоновом режиме через почту Mail.ru (Входящие + Спам) без открытия браузера и Госуслуг'
-                    : 'Tarayıcı veya Mail.ru açmadan arka planda Mail.ru (Gelen Kutusu + Spam) üzerinden tüm Zayavka statülerini otomatik kontrol et'
-                }
-                className="h-9 px-3.5 rounded-xl border border-blue-200 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-800 dark:text-blue-300 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
-              >
-                {isSyncingMailRu ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 dark:text-blue-400" />
-                ) : (
-                  <Mail className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                )}
-                <span>
-                  {lang === 'ru'
-                    ? '4. Почта Mail.ru (Авто-Статус)'
-                    : '4. Mail.ru (Arka Plan Statü)'}
-                </span>
+                <span>{lang === 'ru' ? '3. PDF и Статус' : '3. PDF & Statü'}</span>
               </button>
             </>
           )}

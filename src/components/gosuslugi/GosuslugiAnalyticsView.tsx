@@ -9,7 +9,6 @@ import {
   Zap,
   RefreshCw,
   Search,
-  Filter,
   Copy,
   Check,
   ChevronDown,
@@ -18,14 +17,20 @@ import {
   Clock,
   MapPin,
   Globe,
-  ShieldCheck,
   BarChart3,
   Download,
   XCircle,
-  ExternalLink,
-  Layers,
   Users,
+  Info,
+  ArrowRight,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+} from 'recharts';
 import * as XLSX from 'xlsx';
 import { useAuth } from '@/context/AuthContext';
 
@@ -89,11 +94,18 @@ interface MasterList3088Item {
   pasaport_no: string;
   rnr_no: string;
   contract_date: string;
+  period_code?: string;
   application_no: string;
   gosuslugi_status: string;
   status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' | 'not_sent';
   status_detail: string;
   refusalHint: string;
+  refusalCategoryId?: string | null;
+  refusalCategoryTitle?: string | null;
+  refusalStepLabel?: string | null;
+  errorCategoryId?: string | null;
+  errorCategoryTitle?: string | null;
+  errorStepLabel?: string | null;
   pdf_filename: string;
   hasPdf: boolean;
   submitted_at: string;
@@ -174,6 +186,8 @@ interface AnalyticsResponse {
   masterList3088?: MasterList3088Item[];
 }
 
+type MainTabType = 'analytics' | 'master3088' | 'refusals' | 'errors';
+
 export default function GosuslugiAnalyticsView() {
   const { user } = useAuth();
   const [data, setData] = useState<AnalyticsResponse | null>(null);
@@ -185,37 +199,17 @@ export default function GosuslugiAnalyticsView() {
   const [reopeningRefused, setReopeningRefused] = useState<string | null>(null);
   const [reopeningError, setReopeningError] = useState<string | null>(null);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
+  const [showRefusalFindings, setShowRefusalFindings] = useState<boolean>(false);
 
-  // Top-level tab switcher: 'analytics' vs 'master3088'
-  const [activeMainTab, setActiveMainTab] = useState<'analytics' | 'master3088'>('analytics');
+  // 4 Equal-Width Window Tabs: 'analytics' | 'master3088' | 'refusals' | 'errors'
+  const [activeMainTab, setActiveMainTab] = useState<MainTabType>('analytics');
 
-  // Filters for Zayavka / Submission table (Tab 1)
-  const [statusFilter, setStatusFilter] = useState<
-    | 'all'
-    | 'sent'
-    | 'error'
-    | 'no_pdf'
-    | 'has_pdf'
-    | 'registered_mvd'
-    | 'service_rendered'
-    | 'registered_only'
-    | 'refused_mvd'
-    | 'sent_pending'
-  >('all');
-  const [selectedErrorCat, setSelectedErrorCat] = useState<string>('all');
-  const [selectedRefusalCat, setSelectedRefusalCat] = useState<string>('all');
-  const [selectedRegion, setSelectedRegion] = useState<string>('all');
-  const [selectedCitizenship, setSelectedCitizenship] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [subDateQuick, setSubDateQuick] = useState<string>('all');
-  const [subDateFrom, setSubDateFrom] = useState<string>('');
-  const [subDateTo, setSubDateTo] = useState<string>('');
+  // Expanded accordions in Refusal & Error tabs
   const [expandedErrorCatId, setExpandedErrorCatId] = useState<string | null>(null);
   const [expandedRefusalCatId, setExpandedRefusalCatId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState<number>(100);
 
-  // Filters for Full 3,088 VKS Master List & History (Tab 2)
+  // Unified filters for "Tüm VKS Listesi" (Tab 2)
   const [masterSearch, setMasterSearch] = useState<string>('');
   const [masterStatusFilter, setMasterStatusFilter] = useState<
     | 'all'
@@ -225,8 +219,12 @@ export default function GosuslugiAnalyticsView() {
     | 'refused_mvd'
     | 'error'
     | 'not_sent'
+    | 'has_pdf'
+    | 'no_pdf'
     | 'resent_with_history'
   >('all');
+  const [masterRefusalCatFilter, setMasterRefusalCatFilter] = useState<string>('all');
+  const [masterErrorCatFilter, setMasterErrorCatFilter] = useState<string>('all');
   const [masterComputerFilter, setMasterComputerFilter] = useState<string>('all');
   const [masterRegionFilter, setMasterRegionFilter] = useState<string>('all');
   const [masterCitizenshipFilter, setMasterCitizenshipFilter] = useState<string>('all');
@@ -297,105 +295,6 @@ export default function GosuslugiAnalyticsView() {
     }
   };
 
-  const filteredSubmissions = useMemo(() => {
-    if (!data?.submissions) return [];
-    const q = searchQuery.trim().toLowerCase();
-
-    return data.submissions.filter((item) => {
-      if (statusFilter === 'sent' && item.state !== 'sent') return false;
-      if (statusFilter === 'error' && item.state !== 'error') return false;
-      if (statusFilter === 'no_pdf' && (item.state !== 'sent' || item.hasPdf)) return false;
-      if (statusFilter === 'has_pdf' && !item.hasPdf) return false;
-      if (statusFilter === 'registered_mvd' && !item.isRegisteredMvd) return false;
-      if (
-        statusFilter === 'service_rendered' &&
-        !item.isServiceRendered &&
-        item.gosuslugiStatusKey !== 'service_rendered'
-      ) {
-        return false;
-      }
-      if (statusFilter === 'registered_only' && item.gosuslugiStatusKey !== 'registered_mvd') {
-        return false;
-      }
-      if (
-        statusFilter === 'refused_mvd' &&
-        !item.isRefusedMvd &&
-        item.gosuslugiStatusKey !== 'refused_mvd'
-      ) {
-        return false;
-      }
-      if (statusFilter === 'sent_pending' && item.gosuslugiStatusKey !== 'sent_pending') {
-        return false;
-      }
-
-      if (selectedErrorCat !== 'all' && item.errorCategoryId !== selectedErrorCat) {
-        return false;
-      }
-      if (selectedRefusalCat !== 'all' && item.refusalCategoryId !== selectedRefusalCat) {
-        return false;
-      }
-      if (selectedRegion !== 'all' && item.region !== selectedRegion) {
-        return false;
-      }
-      if (selectedCitizenship !== 'all' && item.citizenship !== selectedCitizenship) {
-        return false;
-      }
-
-      if (subDateQuick !== 'all') {
-        const subDay = (item.submitted_at || '').slice(0, 10);
-        if (subDay !== subDateQuick) return false;
-      }
-      if (subDateFrom) {
-        const normFrom = subDateFrom.replace('T', ' ');
-        if (!item.submitted_at || item.submitted_at < normFrom) return false;
-      }
-      if (subDateTo) {
-        const normTo = subDateTo.length === 10 ? `${subDateTo} 23:59:59` : subDateTo.replace('T', ' ') + ':59';
-        if (!item.submitted_at || item.submitted_at > normTo) return false;
-      }
-
-      if (q) {
-        const histText = (item.history || [])
-          .map((h) => `${h.application_no} ${h.status} ${h.detail}`)
-          .join(' ');
-        const hay = [
-          item.application_no,
-          item.sicil_no,
-          item.worker_name,
-          item.ad_soyad_tr,
-          item.region,
-          item.proje_adi,
-          item.citizenship,
-          item.pasaport_no,
-          item.rnr_no,
-          item.gosuslugi_status,
-          item.status_detail,
-          item.refusalHint,
-          item.refusalCategoryTitle,
-          item.errorCategoryTitle,
-          histText,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-
-      return true;
-    });
-  }, [
-    data?.submissions,
-    statusFilter,
-    selectedErrorCat,
-    selectedRefusalCat,
-    selectedRegion,
-    selectedCitizenship,
-    subDateQuick,
-    subDateFrom,
-    subDateTo,
-    searchQuery,
-  ]);
-
   const formatHistorySummaryText = (history?: HistoryStepItem[]) => {
     if (!history || history.length === 0) return 'Henüz başvuru geçmişi yok';
     return history
@@ -416,6 +315,8 @@ export default function GosuslugiAnalyticsView() {
     let refused = 0;
     let error = 0;
     let notSent = 0;
+    let hasPdf = 0;
+    let noPdf = 0;
     let withHistory = 0;
     for (const m of list) {
       if (m.status_key === 'service_rendered') rendered++;
@@ -424,6 +325,10 @@ export default function GosuslugiAnalyticsView() {
       else if (m.status_key === 'refused_mvd') refused++;
       else if (m.status_key === 'error') error++;
       else notSent++;
+
+      if (m.hasPdf) hasPdf++;
+      else if (m.status_key !== 'not_sent' && m.status_key !== 'error') noPdf++;
+
       if (m.had_previous_failure || m.attempt_count > 1 || (m.history && m.history.length > 1)) {
         withHistory++;
       }
@@ -436,6 +341,8 @@ export default function GosuslugiAnalyticsView() {
       refused,
       error,
       notSent,
+      hasPdf,
+      noPdf,
       withHistory,
     };
   }, [data?.masterList3088]);
@@ -452,6 +359,13 @@ export default function GosuslugiAnalyticsView() {
       if (masterStatusFilter === 'refused_mvd' && item.status_key !== 'refused_mvd') return false;
       if (masterStatusFilter === 'error' && item.status_key !== 'error') return false;
       if (masterStatusFilter === 'not_sent' && item.status_key !== 'not_sent') return false;
+      if (masterStatusFilter === 'has_pdf' && !item.hasPdf) return false;
+      if (
+        masterStatusFilter === 'no_pdf' &&
+        (item.hasPdf || item.status_key === 'not_sent' || item.status_key === 'error')
+      ) {
+        return false;
+      }
       if (
         masterStatusFilter === 'resent_with_history' &&
         !item.had_previous_failure &&
@@ -461,6 +375,12 @@ export default function GosuslugiAnalyticsView() {
         return false;
       }
 
+      if (masterRefusalCatFilter !== 'all' && item.refusalCategoryId !== masterRefusalCatFilter) {
+        return false;
+      }
+      if (masterErrorCatFilter !== 'all' && item.errorCategoryId !== masterErrorCatFilter) {
+        return false;
+      }
       if (masterComputerFilter !== 'all' && String(item.computer_no) !== masterComputerFilter) {
         return false;
       }
@@ -471,7 +391,6 @@ export default function GosuslugiAnalyticsView() {
         return false;
       }
 
-      // Date / Time Filtering (by submitted_at, response_at, or any history timestamp)
       if (masterDateQuick !== 'all' || masterDateFrom || masterDateTo) {
         const candidateTimes: string[] = [];
         if (masterDateField === 'submitted_at') {
@@ -524,6 +443,8 @@ export default function GosuslugiAnalyticsView() {
           item.gosuslugi_status,
           item.status_detail,
           item.refusalHint,
+          item.refusalCategoryTitle,
+          item.errorCategoryTitle,
           `pc ${item.computer_no}`,
           histText,
         ]
@@ -539,6 +460,8 @@ export default function GosuslugiAnalyticsView() {
     data?.masterList3088,
     masterSearch,
     masterStatusFilter,
+    masterRefusalCatFilter,
+    masterErrorCatFilter,
     masterComputerFilter,
     masterRegionFilter,
     masterCitizenshipFilter,
@@ -548,9 +471,10 @@ export default function GosuslugiAnalyticsView() {
     masterDateTo,
   ]);
 
-  const exportMaster3088ToExcel = () => {
-    if (!filteredMaster3088.length) return;
-    const rows = filteredMaster3088.map((item) => ({
+  const exportMasterListToExcel = (customList?: MasterList3088Item[], filePrefix = 'Pondera_VKS_Listesi') => {
+    const targetList = customList || filteredMaster3088;
+    if (!targetList.length) return;
+    const rows = targetList.map((item) => ({
       'Sıra No': item.row_index,
       'Bilgisayar (PC)': `PC ${item.computer_no}`,
       'Sicil No (Код)': item.sicil_no,
@@ -576,6 +500,7 @@ export default function GosuslugiAnalyticsView() {
           : item.status_key === 'error'
           ? 'Hatalı (Ошибка)'
           : 'Henüz Gönderilmedi (Kuyrukta)',
+      'Hata / Red Kategorisi': item.refusalCategoryTitle || item.errorCategoryTitle || '-',
       'Gosuslugi Gönderildiği Vakit (MSK)': item.submitted_at || '-',
       'Cevap Geldiği / Son Kontrol Vakti (MSK)': item.response_at || '-',
       'Toplam İşlem / Deneme Adımı': item.history?.length || 0,
@@ -586,14 +511,14 @@ export default function GosuslugiAnalyticsView() {
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'VKS_3088_Tam_Liste');
+    XLSX.utils.book_append_sheet(wb, ws, 'VKS_Listesi');
     XLSX.writeFile(
       wb,
-      `Pondera_VKS_Tum_Liste_ve_Gecmis_${filteredMaster3088.length}_Kisi_${new Date().toISOString().slice(0, 10)}.xlsx`
+      `${filePrefix}_${targetList.length}_Kayit_${new Date().toISOString().slice(0, 10)}.xlsx`
     );
   };
 
-  const exportItemsToExcel = (itemsToExport: EnrichedSubmission[], filePrefix = 'Gosuslugi_VKS_Analitik_Rapor') => {
+  const exportItemsToExcel = (itemsToExport: EnrichedSubmission[], filePrefix = 'Gosuslugi_VKS_Rapor') => {
     if (!itemsToExport.length) return;
     const rows = itemsToExport.map((item, idx) => ({
       'Sıra': idx + 1,
@@ -632,10 +557,6 @@ export default function GosuslugiAnalyticsView() {
       wb,
       `${filePrefix}_${itemsToExport.length}_Kayit_${new Date().toISOString().slice(0, 10)}.xlsx`
     );
-  };
-
-  const handleExportExcel = () => {
-    exportItemsToExcel(filteredSubmissions, 'Gosuslugi_VKS_Analitik_Rapor');
   };
 
   const handleReopenRefusedGroup = async (sicilList: string[], label: string) => {
@@ -713,61 +634,55 @@ export default function GosuslugiAnalyticsView() {
     }
   };
 
-  const isFilteredView =
-    statusFilter !== 'all' ||
-    selectedErrorCat !== 'all' ||
-    selectedRefusalCat !== 'all' ||
-    selectedRegion !== 'all' ||
-    selectedCitizenship !== 'all' ||
-    searchQuery.trim() !== '';
+  const allErrorItems = useMemo(
+    () => (data?.submissions || []).filter((item) => item.state === 'error'),
+    [data?.submissions]
+  );
 
-  const filteredErrorItems = useMemo(() => {
-    const errInFiltered = filteredSubmissions.filter((item) => item.state === 'error');
-    if (errInFiltered.length > 0) return errInFiltered;
-    return (data?.submissions || []).filter((item) => {
-      if (item.state !== 'error') return false;
-      if (selectedErrorCat !== 'all' && item.errorCategoryId !== selectedErrorCat) return false;
-      if (selectedRegion !== 'all' && item.region !== selectedRegion) return false;
-      if (selectedCitizenship !== 'all' && item.citizenship !== selectedCitizenship) return false;
-      return true;
-    });
-  }, [filteredSubmissions, data?.submissions, selectedErrorCat, selectedRegion, selectedCitizenship]);
+  const allRefusedItems = useMemo(
+    () =>
+      (data?.submissions || []).filter(
+        (item) => item.isRefusedMvd || item.gosuslugiStatusKey === 'refused_mvd'
+      ),
+    [data?.submissions]
+  );
 
   const errorTemplateExportUrl = useMemo(() => {
     const params = new URLSearchParams();
     params.set('computer', 'all');
     params.set('mode', 'only_oshibka');
-    if (selectedErrorCat !== 'all') params.set('errorCategory', selectedErrorCat);
-    if (selectedRegion !== 'all') params.set('region', selectedRegion);
-    if (selectedCitizenship !== 'all') params.set('citizenship', selectedCitizenship);
-    if (searchQuery.trim()) params.set('q', searchQuery.trim());
     if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
       params.set('scopeType', user.scope_type);
       params.set('scopeValue', user.scope_value);
     }
     return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
-  }, [
-    selectedErrorCat,
-    selectedRegion,
-    selectedCitizenship,
-    searchQuery,
-    user?.scope_type,
-    user?.scope_value,
-  ]);
+  }, [user?.scope_type, user?.scope_value]);
 
-  const filteredPdfItems = useMemo(
-    () => filteredSubmissions.filter((item) => item.hasPdf && item.pdf_filename),
-    [filteredSubmissions]
+  const filteredMasterPdfItems = useMemo(
+    () => filteredMaster3088.filter((item) => item.hasPdf && item.pdf_filename),
+    [filteredMaster3088]
   );
+
+  const isMasterFiltered =
+    masterSearch.trim() !== '' ||
+    masterStatusFilter !== 'all' ||
+    masterRefusalCatFilter !== 'all' ||
+    masterErrorCatFilter !== 'all' ||
+    masterComputerFilter !== 'all' ||
+    masterRegionFilter !== 'all' ||
+    masterCitizenshipFilter !== 'all' ||
+    masterDateQuick !== 'all' ||
+    masterDateFrom !== '' ||
+    masterDateTo !== '';
 
   const handleDownloadPdfZip = async (onlyFiltered = false) => {
     setDownloadingZip(true);
     try {
       const isScopedUser = Boolean(user?.scope_type && user.scope_type !== 'all' && user.scope_value);
       const allScopedPdfItems = (data?.submissions || []).filter((it) => it.hasPdf && it.pdf_filename);
-      const targetItems = onlyFiltered ? filteredPdfItems : allScopedPdfItems;
+      const targetItems = onlyFiltered ? filteredMasterPdfItems : allScopedPdfItems;
 
-      if ((onlyFiltered && isFilteredView) || isScopedUser) {
+      if ((onlyFiltered && isMasterFiltered) || isScopedUser) {
         if (targetItems.length === 0) {
           setTelegramFeedback('⚠️ Seçilen kapsama ait PDF dosyası bulunamadı.');
           return;
@@ -809,12 +724,28 @@ export default function GosuslugiAnalyticsView() {
     }
   };
 
+  // Navigate to Tab 2 (Tüm VKS Listesi) with specific filters applied
+  const jumpToMasterListWithFilter = (opts: {
+    status?: typeof masterStatusFilter;
+    refusalCat?: string;
+    errorCat?: string;
+    region?: string;
+    citizenship?: string;
+  }) => {
+    setMasterStatusFilter(opts.status || 'all');
+    setMasterRefusalCatFilter(opts.refusalCat || 'all');
+    setMasterErrorCatFilter(opts.errorCat || 'all');
+    if (opts.region !== undefined) setMasterRegionFilter(opts.region);
+    if (opts.citizenship !== undefined) setMasterCitizenshipFilter(opts.citizenship);
+    setActiveMainTab('master3088');
+  };
+
   if (loading && !data) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-          Gosuslugi VKS Analitik Raporu yükleniyor...
+          Gosuslugi VKS Analitik verileri yükleniyor...
         </p>
       </div>
     );
@@ -846,37 +777,114 @@ export default function GosuslugiAnalyticsView() {
       ? (s.remainingTarget / s.last60mSent).toFixed(1)
       : null;
 
+  // Chart Data for Donut & Unified Status Breakdown
+  const totalVksCount = masterSummaryCounts.total || s.totalTargetVksPersonnel || 1;
+  const statusChartRows = [
+    {
+      id: 'service_rendered',
+      label: 'Onaylanan (Услуга оказана)',
+      shortLabel: 'Onaylanan',
+      value: s.totalServiceRendered ?? 0,
+      color: '#10b981', // emerald-500
+      dotClass: 'bg-emerald-500',
+      pct: Math.round(((s.totalServiceRendered ?? 0) / totalVksCount) * 100),
+      filterStatus: 'service_rendered' as const,
+      actionType: 'excel_rendered' as const,
+    },
+    {
+      id: 'registered_mvd',
+      label: 'МВД Kaydında (Зарегистрировано)',
+      shortLabel: 'МВД Kaydında',
+      value: s.totalRegisteredOnly ?? 0,
+      color: '#0d9488', // teal-600
+      dotClass: 'bg-teal-600',
+      pct: Math.round(((s.totalRegisteredOnly ?? 0) / totalVksCount) * 100),
+      filterStatus: 'registered_mvd' as const,
+      actionType: 'none' as const,
+    },
+    {
+      id: 'sent_pending',
+      label: 'Yanıt Bekleyen (Отправлено)',
+      shortLabel: 'Yanıt Bekleyen',
+      value: s.totalSentPendingStatus ?? 0,
+      color: '#f59e0b', // amber-500
+      dotClass: 'bg-amber-500',
+      pct: Math.round(((s.totalSentPendingStatus ?? 0) / totalVksCount) * 100),
+      filterStatus: 'sent_pending' as const,
+      actionType: 'none' as const,
+    },
+    {
+      id: 'refused_mvd',
+      label: 'МВД Red (Услуга отказана)',
+      shortLabel: 'МВД Red',
+      value: s.totalRefusedMvd ?? 0,
+      color: '#ea580c', // orange-600
+      dotClass: 'bg-orange-600',
+      pct: Math.round(((s.totalRefusedMvd ?? 0) / totalVksCount) * 100),
+      filterStatus: 'refused_mvd' as const,
+      actionType: 'refused_template' as const,
+    },
+    {
+      id: 'error',
+      label: 'Form / Sistem Hatası (Ошибка)',
+      shortLabel: 'Hatalı (Ошибка)',
+      value: s.totalErrors,
+      color: '#e11d48', // rose-600
+      dotClass: 'bg-rose-600',
+      pct: Math.round((s.totalErrors / totalVksCount) * 100),
+      filterStatus: 'error' as const,
+      actionType: 'error_template' as const,
+    },
+    {
+      id: 'not_sent',
+      label: 'Henüz Gönderilmedi (Kuyrukta)',
+      shortLabel: 'Kuyrukta',
+      value: masterSummaryCounts.notSent,
+      color: '#64748b', // slate-500
+      dotClass: 'bg-slate-400',
+      pct: Math.round((masterSummaryCounts.notSent / totalVksCount) * 100),
+      filterStatus: 'not_sent' as const,
+      actionType: 'none' as const,
+    },
+  ];
+
+  const pieData = statusChartRows.filter((r) => r.value > 0);
+
   return (
-    <div className="p-3 sm:p-6 space-y-5 max-w-[1600px] mx-auto">
-      {/* Top Header Banner */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="space-y-1">
+    <div className="p-3 sm:p-6 space-y-4 max-w-[1600px] mx-auto">
+      {/* COMPACT CLEAN HEADER */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:px-5 sm:py-4 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="space-y-0.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
-                <Activity className="w-3.5 h-3.5 animate-pulse" />
-                Canlı VKS Bildirim İstatistikleri
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800">
+                <Activity className="w-3 h-3 animate-pulse" />
+                Canlı VKS Analitiği
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" />
                 Moskova Saati: <strong className="text-slate-700 dark:text-slate-200">{data?.moscowTime || '-'}</strong>
               </span>
+              {(s.last15mSent > 0 || s.last60mSent > 0) && (
+                <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline-flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
+                  Son 1 Saat: <strong className="text-emerald-600 dark:text-emerald-400">+{s.last60mSent} gönderim</strong>
+                  {s.last15mSent > 0 && <span>(15dk: +{s.last15mSent})</span>}
+                </span>
+              )}
             </div>
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Gosuslugi VKS Bildirim & Hata Analitik Merkezi
+            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+              Gosuslugi VKS Bildirim & Analitik Merkezi
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Tüm bilgisayarlardan ortak sunucuya iletilen canlı bildirimler, hata çeşitleri ve Заявка № kırılımı
-            </p>
           </div>
 
+          {/* Clean Neutral Utility Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer ${
                 autoRefresh
-                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                  ? 'bg-emerald-50/80 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
               }`}
             >
               <span
@@ -884,13 +892,13 @@ export default function GosuslugiAnalyticsView() {
                   autoRefresh ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'
                 }`}
               />
-              {autoRefresh ? 'Oto-Yenileme (15 sn)' : 'Oto-Yenileme Kapalı'}
+              {autoRefresh ? 'Oto-Yenileme (15sn)' : 'Oto-Yenileme Kapalı'}
             </button>
 
             <button
               onClick={() => fetchAnalytics(false)}
               disabled={refreshing}
-              className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               Yenile
@@ -900,95 +908,46 @@ export default function GosuslugiAnalyticsView() {
               <button
                 onClick={handleTriggerTelegramNow}
                 disabled={sendingTelegram}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white border border-slate-800 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Send className="w-3.5 h-3.5" />
-                {sendingTelegram ? 'Gönderiliyor...' : "Telegram'a Rapor Gönder"}
+                <Send className="w-3.5 h-3.5 text-sky-400" />
+                {sendingTelegram ? 'Gönderiliyor...' : 'Telegram Raporu'}
               </button>
             )}
-
-            <button
-              onClick={() => handleDownloadPdfZip(false)}
-              disabled={downloadingZip || s.totalPdf === 0}
-              title="Merkezi sunucudaki tüm isimlendirilmiş VKS bildirim PDF'lerini (<Sicil>_<AppNo>_<AdSoyad>_2026-3.pdf) EBA'ya yüklemek için tek ZIP dosyası olarak indirir"
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              {downloadingZip ? 'ZIP Hazırlanıyor...' : `📦 Tüm PDF'leri ZIP İndir (EBA) (${s.totalPdf})`}
-            </button>
-
-            {isFilteredView && filteredPdfItems.length > 0 && filteredPdfItems.length < s.totalPdf && (
-              <button
-                onClick={() => handleDownloadPdfZip(true)}
-                disabled={downloadingZip}
-                className="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Filtreli PDF ZIP ({filteredPdfItems.length})
-              </button>
-            )}
-
-            {user?.role !== 'viewer' && (
-              <a
-                href={errorTemplateExportUrl}
-                download
-                title="Aktif filtreye (veya tümüne) ait hatalı (Ошибка) kayıtları 32 sütunlu VKS şablon formatında, düzeltilecek hücreler KIRMIZI işaretli ve son sütunda hata açıklamalı olarak indirir"
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer no-underline"
-              >
-                <Download className="w-3.5 h-3.5" />
-                🛠️ {selectedErrorCat !== 'all' ? 'Filtreli Hatalı' : 'Hatalı (Ошибка)'} Şablon İndir (Renkli) ({filteredErrorItems.length})
-              </a>
-            )}
-
-            <a
-              href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
-              download
-              title="Услуга отказана (МВД Red) alan tüm kayıtları 32 sütunlu VKS şablon formatında, şüpheli hücreler KIRMIZI/SARI işaretli ve son sütunda detaylı red analiziyle indirir"
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer no-underline"
-            >
-              <Download className="w-3.5 h-3.5" />
-              🚫 Red (Услуга отказана) Şablon İndir ({s.totalRefusedMvd ?? 0})
-            </a>
-
-            <button
-              onClick={handleExportExcel}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Excel İndir ({filteredSubmissions.length})
-            </button>
           </div>
         </div>
 
         {telegramFeedback && (
-          <div className="mt-3 px-3 py-2 rounded-xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-xs text-sky-700 dark:text-sky-300 font-medium">
+          <div className="mt-3 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 font-medium">
             {telegramFeedback}
           </div>
         )}
 
-        {/* Overall Progress Bar */}
-        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+        {/* Slim Overall Progress Bar */}
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5">
-            <span className="font-semibold text-slate-700 dark:text-slate-200">
-              Genel VKS Bildirim İlerlemesi ({s.totalSent.toLocaleString('tr-TR')} /{' '}
-              {s.totalTargetVksPersonnel.toLocaleString('tr-TR')} Aktif VKS Personeli)
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              Genel Bildirim İlerlemesi:{' '}
+              <strong className="text-slate-900 dark:text-white">
+                {s.totalSent.toLocaleString('tr-TR')} / {s.totalTargetVksPersonnel.toLocaleString('tr-TR')}
+              </strong>{' '}
+              VKS Personeli
             </span>
             <div className="flex items-center gap-3">
               {estimatedHoursLeft && (
                 <span className="text-slate-500 dark:text-slate-400">
-                  Tahmini Kalan Süre: <strong>~{estimatedHoursLeft} saat</strong> ({s.last60mSent}/saat hızla)
+                  Tahmini Kalan: <strong>~{estimatedHoursLeft} saat</strong>
                 </span>
               )}
-              <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold">
+              <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200/60 dark:border-emerald-800/60">
                 %{s.overallCompletionPct} Tamamlandı
               </span>
             </div>
           </div>
-          <div className="w-full h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
+          <div className="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500"
+              className="h-full bg-emerald-500 transition-all duration-500"
               style={{ width: `${Math.min(100, s.overallCompletionPct)}%` }}
-              title={`Başarılı: ${s.totalSent}`}
             />
             {s.totalErrors > 0 && s.totalTargetVksPersonnel > 0 && (
               <div
@@ -999,286 +958,696 @@ export default function GosuslugiAnalyticsView() {
                     Math.max(1, Math.round((s.totalErrors / s.totalTargetVksPersonnel) * 100))
                   )}%`,
                 }}
-                title={`Hatalı: ${s.totalErrors}`}
               />
             )}
           </div>
         </div>
-
-        {/* Main View Tab Bar */}
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setActiveMainTab('analytics')}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                activeMainTab === 'analytics'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              📊 Analitik Özet & Hata/Red Kırılımı ({s.totalRecords.toLocaleString('tr-TR')})
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('master3088')}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                activeMainTab === 'master3088'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              📋 Tüm 3.088 VKS Listesi & Başvuru Geçmişi (History) ({masterSummaryCounts.total.toLocaleString('tr-TR')})
-              {masterSummaryCounts.withHistory > 0 && (
-                <span className="px-1.5 py-0.5 rounded-md bg-amber-400/90 text-slate-950 text-[10px] font-extrabold">
-                  {masterSummaryCounts.withHistory} Geçmişli
-                </span>
-              )}
-            </button>
-          </div>
-
-          {activeMainTab === 'master3088' && (
-            <button
-              onClick={exportMaster3088ToExcel}
-              disabled={filteredMaster3088.length === 0}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              📥 3.088 VKS Listesi & Geçmişi Excel&apos;e İndir ({filteredMaster3088.length})
-            </button>
-          )}
-        </div>
       </div>
 
-      {activeMainTab === 'master3088' ? (
-        <div className="space-y-4">
-          {/* KPI Summary Strip for All 3,088 VKS Personnel */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2.5">
-            {[
-              {
-                id: 'all',
-                label: '📋 Tüm VKS Listesi',
-                count: masterSummaryCounts.total,
-                sub: 'Tam 3.088 Liste',
-                activeCls: 'bg-slate-900 text-white border-slate-900 dark:bg-slate-800',
-                idleCls: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800',
-              },
-              {
-                id: 'service_rendered',
-                label: '✅ Услуга оказана',
-                count: masterSummaryCounts.rendered,
-                sub: 'МВД Onayladı',
-                activeCls: 'bg-emerald-600 text-white border-emerald-600',
-                idleCls: 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60',
-              },
-              {
-                id: 'registered_mvd',
-                label: '🏛 Зарегистрировано',
-                count: masterSummaryCounts.registered,
-                sub: 'МВД Kaydında',
-                activeCls: 'bg-teal-600 text-white border-teal-600',
-                idleCls: 'bg-teal-50/60 dark:bg-teal-950/30 border-teal-200 dark:border-teal-900/60',
-              },
-              {
-                id: 'sent_pending',
-                label: '📤 Отправлено',
-                count: masterSummaryCounts.pending,
-                sub: 'Yanıt Bekleyen',
-                activeCls: 'bg-amber-500 text-white border-amber-500',
-                idleCls: 'bg-amber-50/60 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60',
-              },
-              {
-                id: 'refused_mvd',
-                label: '🚫 Услуга отказана',
-                count: masterSummaryCounts.refused,
-                sub: 'МВД Reddetti',
-                activeCls: 'bg-orange-600 text-white border-orange-600',
-                idleCls: 'bg-orange-50/60 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900/60',
-              },
-              {
-                id: 'error',
-                label: '❌ Ошибка',
-                count: masterSummaryCounts.error,
-                sub: 'Form / Sistem Hatası',
-                activeCls: 'bg-rose-600 text-white border-rose-600',
-                idleCls: 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60',
-              },
-              {
-                id: 'not_sent',
-                label: '⏳ Henüz Gönderilmedi',
-                count: masterSummaryCounts.notSent,
-                sub: 'Kuyrukta Bekleyen',
-                activeCls: 'bg-slate-700 text-white border-slate-700',
-                idleCls: 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800',
-              },
-              {
-                id: 'resent_with_history',
-                label: '🔄 Tekrar Gönderilen',
-                count: masterSummaryCounts.withHistory,
-                sub: 'Geçmişi / >1 Adımı Olan',
-                activeCls: 'bg-indigo-600 text-white border-indigo-600',
-                idleCls: 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900/60',
-              },
-            ].map((card) => {
-              const isAct = masterStatusFilter === card.id;
-              return (
-                <button
-                  key={card.id}
-                  onClick={() => setMasterStatusFilter(card.id as any)}
-                  className={`text-left p-3 rounded-2xl border transition-all cursor-pointer ${
-                    isAct ? card.activeCls : card.idleCls
-                  }`}
-                >
-                  <div className="text-[11px] font-bold opacity-90 truncate">{card.label}</div>
-                  <div className="text-xl font-extrabold mt-0.5">
-                    {card.count.toLocaleString('tr-TR')}
+      {/* WINDOWS MULTI-TAB FORM CONTAINER (4 Equal-Width Tabs Connected to Window Body) */}
+      <div>
+        {/* Equal-Width Window Tabs Strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 px-2 pt-2 bg-slate-200/70 dark:bg-slate-950/80 rounded-t-2xl border border-b-0 border-slate-200/90 dark:border-slate-800">
+          {/* Tab 1: Genel Analitik */}
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('analytics')}
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+              activeMainTab === 'analytics'
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <span
+              className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
+                activeMainTab === 'analytics' ? 'bg-emerald-600 opacity-100' : 'opacity-0'
+              }`}
+            />
+            <BarChart3
+              className={`w-4 h-4 shrink-0 ${
+                activeMainTab === 'analytics' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'
+              }`}
+            />
+            <span className="truncate">Genel Analitik</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                activeMainTab === 'analytics'
+                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              %{s.overallCompletionPct}
+            </span>
+          </button>
+
+          {/* Tab 2: Tüm VKS Listesi */}
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('master3088')}
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+              activeMainTab === 'master3088'
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <span
+              className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
+                activeMainTab === 'master3088' ? 'bg-indigo-600 opacity-100' : 'opacity-0'
+              }`}
+            />
+            <Users
+              className={`w-4 h-4 shrink-0 ${
+                activeMainTab === 'master3088' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
+              }`}
+            />
+            <span className="truncate">Tüm VKS Listesi</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                activeMainTab === 'master3088'
+                  ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {masterSummaryCounts.total.toLocaleString('tr-TR')}
+            </span>
+          </button>
+
+          {/* Tab 3: МВД Red Analizi */}
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('refusals')}
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+              activeMainTab === 'refusals'
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <span
+              className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
+                activeMainTab === 'refusals' ? 'bg-orange-600 opacity-100' : 'opacity-0'
+              }`}
+            />
+            <XCircle
+              className={`w-4 h-4 shrink-0 ${
+                activeMainTab === 'refusals' ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400'
+              }`}
+            />
+            <span className="truncate">МВД Red Analizi</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                activeMainTab === 'refusals'
+                  ? 'bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {s.totalRefusedMvd ?? 0}
+            </span>
+          </button>
+
+          {/* Tab 4: Hata Analizi */}
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('errors')}
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+              activeMainTab === 'errors'
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <span
+              className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-xl transition-opacity ${
+                activeMainTab === 'errors' ? 'bg-rose-600 opacity-100' : 'opacity-0'
+              }`}
+            />
+            <AlertTriangle
+              className={`w-4 h-4 shrink-0 ${
+                activeMainTab === 'errors' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'
+              }`}
+            />
+            <span className="truncate">Hata Analizi</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                activeMainTab === 'errors'
+                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {s.totalErrors}
+            </span>
+          </button>
+        </div>
+
+        {/* CONNECTED TAB WINDOW CONTENT PANEL */}
+        <div className="bg-white dark:bg-slate-900 rounded-b-2xl border border-slate-200/90 dark:border-slate-800 p-4 sm:p-6 shadow-xs">
+          {/* =====================================================================
+              TAB 1: GENEL ANALİTİK (UNIFIED CHART + INLINE DOWNLOADS + REGIONS)
+          ===================================================================== */}
+          {activeMainTab === 'analytics' && (
+            <div className="space-y-6">
+              {/* UNIFIED VISUAL STATUS CHART & INLINE EXPORT PANEL */}
+              <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/50 p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-200/70 dark:border-slate-800">
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      Gosuslugi Portal Resmi Statü Dağılımı & İndirme Merkezi
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Her statünün yanındaki indirme butonlarıyla ilgili kayıtları doğrudan indirebilir veya satıra tıklayarak listeyi açabilirsiniz
+                    </p>
                   </div>
-                  <div className="text-[10px] opacity-80 truncate">{card.sub}</div>
-                </button>
-              );
-            })}
-          </div>
 
-          {/* Search, Status, Computer, Region & Date/Time Filter Box */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Users className="w-4 h-4 text-indigo-500" />
-                  <span>
-                    Tüm 3.088 VKS Personeli Başvuru Durumu, Заявка №, Gönderim/Cevap Vakti ve Başvuru Geçmişi ({filteredMaster3088.length.toLocaleString('tr-TR')} / {masterSummaryCounts.total.toLocaleString('tr-TR')} Kişi)
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  İlk gönderimde hata/red alıp sonrasında tekrar gönderilen ve onaylanan başvuruların tüm geçmişini (History), gönderildiği vakti ve cevap geldiği vakti buradan inceleyebilir, filtreleyebilir ve Excel&apos;e indirebilirsiniz.
-                </p>
+                  {/* Primary Totals & Master Downloads */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs">
+                      <span className="text-slate-500 dark:text-slate-400">Toplam Liste:</span>
+                      <strong className="font-mono text-sm text-slate-900 dark:text-white">
+                        {masterSummaryCounts.total.toLocaleString('tr-TR')}
+                      </strong>
+                      <button
+                        onClick={() => exportMasterListToExcel()}
+                        className="ml-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Tüm VKS Listesini Excel olarak indir"
+                      >
+                        <Download className="w-3 h-3" />
+                        Excel
+                      </button>
+                    </div>
+
+                    <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs">
+                      <span className="text-slate-500 dark:text-slate-400">EBA PDF:</span>
+                      <strong className="font-mono text-sm text-teal-600 dark:text-teal-400">
+                        {s.totalPdf.toLocaleString('tr-TR')}
+                      </strong>
+                      <button
+                        onClick={() => handleDownloadPdfZip(false)}
+                        disabled={downloadingZip || s.totalPdf === 0}
+                        className="ml-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                        title="İndirilen tüm PDF makbuzlarını tek ZIP arşivi olarak indir"
+                      >
+                        <Download className="w-3 h-3" />
+                        {downloadingZip ? 'ZIP...' : 'ZIP İndir'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chart Grid: Left Donut Chart + Right Interactive Visual Bars with Inline Downloads */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                  {/* Left: Donut Chart (4 cols) */}
+                  <div className="lg:col-span-4 flex flex-col items-center justify-center bg-white dark:bg-slate-900 rounded-xl border border-slate-200/70 dark:border-slate-800 p-4">
+                    <div className="relative w-full h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            dataKey="value"
+                            nameKey="shortLabel"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={62}
+                            outerRadius={88}
+                            paddingAngle={2}
+                          >
+                            {pieData.map((entry) => (
+                              <Cell key={entry.id} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(val: any, name: any) => [
+                              `${Number(val).toLocaleString('tr-TR')} kişi`,
+                              name,
+                            ]}
+                            contentStyle={{
+                              borderRadius: '12px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* Center Donut Label */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                          Gönderilen
+                        </span>
+                        <span className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+                          {s.totalSent.toLocaleString('tr-TR')}
+                        </span>
+                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                          %{s.successRatePct} Başarı
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="w-full pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <span>İşlenen: <strong className="text-slate-800 dark:text-slate-200">{s.totalRecords.toLocaleString('tr-TR')}</strong></span>
+                      <span>PDF Bekleyen: <strong className="text-amber-600 dark:text-amber-400">{s.totalNoPdf.toLocaleString('tr-TR')}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Right: Horizontal Visual Bars + Contextual Download Buttons Next to Numbers (8 cols) */}
+                  <div className="lg:col-span-8 space-y-2.5">
+                    {statusChartRows.map((row) => (
+                      <div
+                        key={row.id}
+                        className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                          <button
+                            type="button"
+                            onClick={() => jumpToMasterListWithFilter({ status: row.filterStatus })}
+                            className="flex items-center gap-2 text-left group cursor-pointer"
+                          >
+                            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${row.dotClass}`} />
+                            <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                              {row.label}
+                            </span>
+                          </button>
+
+                          {/* Number + Contextual Download & Detail Buttons right next to the number */}
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
+                              {row.value.toLocaleString('tr-TR')}
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-400 w-9 text-right">
+                              %{row.pct}
+                            </span>
+
+                            {row.actionType === 'excel_rendered' && row.value > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const list = (data?.masterList3088 || []).filter(
+                                    (m) => m.status_key === 'service_rendered'
+                                  );
+                                  exportMasterListToExcel(list, 'Pondera_VKS_Onaylananlar');
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Onaylanan (Услуга оказана) kayıtları Excel olarak indir"
+                              >
+                                <Download className="w-3 h-3" />
+                                İndir
+                              </button>
+                            )}
+
+                            {row.actionType === 'refused_template' && (
+                              <div className="flex items-center gap-1.5">
+                                <a
+                                  href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
+                                  download
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 no-underline transition-colors"
+                                  title="МВД Red (Услуга отказана) kayıtlarını renkli VKS şablonu olarak indir"
+                                >
+                                  <Download className="w-3 h-3 text-orange-600" />
+                                  Şablon İndir
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveMainTab('refusals')}
+                                  className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/80 flex items-center gap-1 cursor-pointer"
+                                >
+                                  Analiz <ArrowRight className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+
+                            {row.actionType === 'error_template' && (
+                              <div className="flex items-center gap-1.5">
+                                {user?.role !== 'viewer' && (
+                                  <a
+                                    href={errorTemplateExportUrl}
+                                    download
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 no-underline transition-colors"
+                                    title="Hatalı (Ошибка) kayıtları renkli VKS şablonu olarak indir"
+                                  >
+                                    <Download className="w-3 h-3 text-rose-600" />
+                                    Şablon İndir
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveMainTab('errors')}
+                                  className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 flex items-center gap-1 cursor-pointer"
+                                >
+                                  Analiz <ArrowRight className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+
+                            {row.actionType === 'none' && (
+                              <button
+                                type="button"
+                                onClick={() => jumpToMasterListWithFilter({ status: row.filterStatus })}
+                                className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center gap-1 cursor-pointer"
+                              >
+                                Listele <ArrowRight className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Horizontal Visual Progress Bar */}
+                        <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.max(row.value > 0 ? 1.5 : 0, Math.min(100, row.pct))}%`,
+                              backgroundColor: row.color,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {(masterSearch.trim() !== '' ||
-                  masterStatusFilter !== 'all' ||
-                  masterComputerFilter !== 'all' ||
-                  masterRegionFilter !== 'all' ||
-                  masterCitizenshipFilter !== 'all' ||
-                  masterDateQuick !== 'all' ||
-                  masterDateFrom !== '' ||
-                  masterDateTo !== '') && (
+              {/* REGION BREAKDOWN & HOURLY / CITIZENSHIP ROW */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* Region Breakdown (2 cols) */}
+                <div className="lg:col-span-2 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-emerald-600" />
+                        Bölge / Şantiye Bazlı Bildirim Durumu
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Şantiyeye tıklayarak Tüm VKS Listesi sekmesinde ilgili bölgeyi filtreleyebilirsiniz
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
+                          <th className="py-2 pr-2 font-semibold">Bölge / Şantiye</th>
+                          <th className="py-2 px-2 text-right font-semibold">Hedef VKS</th>
+                          <th className="py-2 px-2 text-right font-semibold text-emerald-600">Gönderilen</th>
+                          <th className="py-2 px-2 text-right font-semibold text-rose-600">Hatalı</th>
+                          <th className="py-2 px-2 text-right font-semibold">Kalan</th>
+                          <th className="py-2 pl-2 text-right font-semibold">İlerleme</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
+                        {data?.regionBreakdown.map((reg) => (
+                          <tr
+                            key={reg.region}
+                            onClick={() => jumpToMasterListWithFilter({ region: reg.region })}
+                            className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                          >
+                            <td className="py-2.5 pr-2 font-medium text-slate-900 dark:text-white">
+                              {reg.region}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono">{reg.targetVks}</td>
+                            <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              {reg.sentCount}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                              {reg.errorCount}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono text-slate-500">
+                              {reg.pendingCount}
+                            </td>
+                            <td className="py-2.5 pl-2 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="w-16 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden hidden sm:block">
+                                  <div
+                                    className="h-full bg-emerald-500"
+                                    style={{ width: `${reg.completionPct}%` }}
+                                  />
+                                </div>
+                                <span className="font-mono font-bold text-[11px] w-9 text-right">
+                                  %{reg.completionPct}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Hourly Speed & Citizenship Breakdown (1 col) */}
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-3">
+                      <BarChart3 className="w-4 h-4 text-indigo-500" />
+                      Saatlik Gönderim Hızı (MSK)
+                    </h3>
+                    {!data?.hourlyTimeline || data.hourlyTimeline.length === 0 ? (
+                      <p className="text-xs text-slate-500">Henüz saatlik veri yok.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {data.hourlyTimeline.map((h) => {
+                          const maxVal = Math.max(...data.hourlyTimeline.map((x) => x.total), 1);
+                          const sentPct = Math.round((h.sent / maxVal) * 100);
+                          const errPct = Math.round((h.errors / maxVal) * 100);
+                          return (
+                            <div key={h.hourSlot} className="text-xs space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                                  {h.hourSlot}
+                                </span>
+                                <span className="font-mono text-[11px]">
+                                  <strong className="text-emerald-600 dark:text-emerald-400">
+                                    +{h.sent} başarılı
+                                  </strong>
+                                  {h.errors > 0 && (
+                                    <span className="text-rose-500 ml-1.5">+{h.errors} hata</span>
+                                  )}
+                                </span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
+                                <div
+                                  className="h-full bg-emerald-500"
+                                  style={{ width: `${sentPct}%` }}
+                                />
+                                {h.errors > 0 && (
+                                  <div
+                                    className="h-full bg-rose-500"
+                                    style={{ width: `${errPct}%` }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2.5">
+                      <Globe className="w-4 h-4 text-teal-600" />
+                      Uyruk Dağılımı
+                    </h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {data?.citizenshipBreakdown.map((c) => (
+                        <button
+                          key={c.citizenship}
+                          onClick={() => jumpToMasterListWithFilter({ citizenship: c.citizenship })}
+                          className="px-2.5 py-1 rounded-lg text-xs border bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/70 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer flex items-center gap-1.5"
+                        >
+                          <span>{c.citizenship}</span>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {c.sent}✓
+                          </span>
+                          {c.errors > 0 && (
+                            <span className="font-mono font-bold text-rose-500">{c.errors}✗</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              TAB 2: TÜM VKS LİSTESİ (MERGED MASTER LIST + ZAYAVKA DRILL-DOWN)
+          ===================================================================== */}
+          {activeMainTab === 'master3088' && (
+            <div className="space-y-4">
+              {/* Header + Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-indigo-600" />
+                    <span>
+                      Tüm VKS Listesi, Заявка № ve Başvuru Geçmişi ({filteredMaster3088.length.toLocaleString('tr-TR')} / {masterSummaryCounts.total.toLocaleString('tr-TR')})
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Personel bazlı başvuru numarası (Заявка №), Gosuslugi statüsü, hata/red teşhisi, PDF makbuzu ve tüm işlem geçmişi
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {isMasterFiltered && (
+                    <button
+                      onClick={() => {
+                        setMasterSearch('');
+                        setMasterStatusFilter('all');
+                        setMasterRefusalCatFilter('all');
+                        setMasterErrorCatFilter('all');
+                        setMasterComputerFilter('all');
+                        setMasterRegionFilter('all');
+                        setMasterCitizenshipFilter('all');
+                        setMasterDateQuick('all');
+                        setMasterDateFrom('');
+                        setMasterDateTo('');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                      Filtreleri Sıfırla
+                    </button>
+                  )}
+
+                  {filteredMasterPdfItems.length > 0 && (
+                    <button
+                      onClick={() => handleDownloadPdfZip(true)}
+                      disabled={downloadingZip}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Download className="w-3.5 h-3.5 text-teal-600" />
+                      PDF ZIP İndir ({filteredMasterPdfItems.length})
+                    </button>
+                  )}
+
                   <button
-                    onClick={() => {
-                      setMasterSearch('');
-                      setMasterStatusFilter('all');
-                      setMasterComputerFilter('all');
-                      setMasterRegionFilter('all');
-                      setMasterCitizenshipFilter('all');
-                      setMasterDateQuick('all');
-                      setMasterDateFrom('');
-                      setMasterDateTo('');
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-xs font-semibold text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => exportMasterListToExcel()}
+                    disabled={filteredMaster3088.length === 0}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    <XCircle className="w-3.5 h-3.5" />
-                    Filtreleri Sıfırla
+                    <Download className="w-3.5 h-3.5" />
+                    Excel İndir ({filteredMaster3088.length})
                   </button>
-                )}
-
-                <button
-                  onClick={exportMaster3088ToExcel}
-                  disabled={filteredMaster3088.length === 0}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Excel&apos;e İndir ({filteredMaster3088.length})
-                </button>
-              </div>
-            </div>
-
-            {/* Row 1 Filters: Search + Status + PC + Region + Citizenship */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-              <div className="relative min-w-0">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={masterSearch}
-                  onChange={(e) => setMasterSearch(e.target.value)}
-                  placeholder="Sicil, Заявка №, Ad Soyad, Pasaport, RNR, Geçmiş ara..."
-                  className="w-full pl-9 pr-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                />
+                </div>
               </div>
 
-              <select
-                value={masterStatusFilter}
-                onChange={(e) => setMasterStatusFilter(e.target.value as any)}
-                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
-              >
-                <option value="all">Tüm Durumlar ({masterSummaryCounts.total})</option>
-                <option value="service_rendered">✅ Услуга оказана ({masterSummaryCounts.rendered})</option>
-                <option value="registered_mvd">🏛 Заявление зарегистрировано ({masterSummaryCounts.registered})</option>
-                <option value="sent_pending">📤 Отправлено - Bekleyen ({masterSummaryCounts.pending})</option>
-                <option value="refused_mvd">🚫 Услуга отказана - МВД Red ({masterSummaryCounts.refused})</option>
-                <option value="error">❌ Ошибка - Hatalı ({masterSummaryCounts.error})</option>
-                <option value="not_sent">⏳ Henüz Gönderilmedi ({masterSummaryCounts.notSent})</option>
-                <option value="resent_with_history">🔄 Tekrar Gönderilen / Geçmişi Olanlar ({masterSummaryCounts.withHistory})</option>
-              </select>
-
-              <select
-                value={masterComputerFilter}
-                onChange={(e) => setMasterComputerFilter(e.target.value)}
-                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">Tüm Bilgisayarlar (PC 1–4)</option>
-                <option value="1">💻 Bilgisayar 1 (PC 1)</option>
-                <option value="2">💻 Bilgisayar 2 (PC 2)</option>
-                <option value="3">💻 Bilgisayar 3 (PC 3)</option>
-                <option value="4">💻 Bilgisayar 4 (PC 4)</option>
-              </select>
-
-              <select
-                value={masterRegionFilter}
-                onChange={(e) => setMasterRegionFilter(e.target.value)}
-                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">Tüm Bölgeler / Şantiyeler</option>
-                {data?.regionBreakdown.map((r) => (
-                  <option key={r.region} value={r.region}>
-                    {r.region} ({r.targetVks})
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={masterCitizenshipFilter}
-                onChange={(e) => setMasterCitizenshipFilter(e.target.value)}
-                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">Tüm Uyruklar</option>
-                {data?.citizenshipBreakdown.map((c) => (
-                  <option key={c.citizenship} value={c.citizenship}>
-                    {c.citizenship} ({c.total})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Row 2 Filters: Başvuru / Cevap Zamanına Göre Filtre */}
-            <div className="p-3 rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                  Zamana Göre Filtre:
-                </span>
+              {/* Filter Grid: Search + Status + Error/Refusal Sub-Category + PC + Region + Citizenship */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
+                <div className="relative min-w-0 lg:col-span-2">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={masterSearch}
+                    onChange={(e) => setMasterSearch(e.target.value)}
+                    placeholder="Sicil, Заявка №, Ad Soyad, Pasaport, RNR, Hata/Red ara..."
+                    className="w-full pl-9 pr-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
 
                 <select
-                  value={masterDateField}
-                  onChange={(e) => setMasterDateField(e.target.value as any)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
+                  value={masterStatusFilter}
+                  onChange={(e) => {
+                    const val = e.target.value as any;
+                    setMasterStatusFilter(val);
+                    if (val !== 'refused_mvd' && val !== 'all') setMasterRefusalCatFilter('all');
+                    if (val !== 'error' && val !== 'all') setMasterErrorCatFilter('all');
+                  }}
+                  className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
                 >
-                  <option value="submitted_at">📤 Gönderildiği Vakte Göre</option>
-                  <option value="response_at">🔔 Cevap Geldiği Vakte Göre</option>
-                  <option value="any">🕒 Herhangi Bir İşlem / Geçmiş Vaktine Göre</option>
+                  <option value="all">Tüm Durumlar ({masterSummaryCounts.total})</option>
+                  <option value="service_rendered">✅ Услуга оказана ({masterSummaryCounts.rendered})</option>
+                  <option value="registered_mvd">🏛 Зарегистрировано ({masterSummaryCounts.registered})</option>
+                  <option value="sent_pending">📤 Отправлено - Bekleyen ({masterSummaryCounts.pending})</option>
+                  <option value="refused_mvd">🚫 Услуга отказана - Red ({masterSummaryCounts.refused})</option>
+                  <option value="error">❌ Ошибка - Hatalı ({masterSummaryCounts.error})</option>
+                  <option value="not_sent">⏳ Henüz Gönderilmedi ({masterSummaryCounts.notSent})</option>
+                  <option value="has_pdf">📄 PDF İndirilen ({masterSummaryCounts.hasPdf})</option>
+                  <option value="no_pdf">⚡ PDF Bekleyen ({masterSummaryCounts.noPdf})</option>
+                  <option value="resent_with_history">🔄 Tekrar Gönderilen ({masterSummaryCounts.withHistory})</option>
                 </select>
 
-                <div className="flex flex-wrap items-center gap-1">
+                <select
+                  value={masterComputerFilter}
+                  onChange={(e) => setMasterComputerFilter(e.target.value)}
+                  className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                >
+                  <option value="all">Tüm Bilgisayarlar (PC 1–4)</option>
+                  <option value="1">💻 Bilgisayar 1 (PC 1)</option>
+                  <option value="2">💻 Bilgisayar 2 (PC 2)</option>
+                  <option value="3">💻 Bilgisayar 3 (PC 3)</option>
+                  <option value="4">💻 Bilgisayar 4 (PC 4)</option>
+                </select>
+
+                <select
+                  value={masterRegionFilter}
+                  onChange={(e) => setMasterRegionFilter(e.target.value)}
+                  className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                >
+                  <option value="all">Tüm Bölgeler / Şantiyeler</option>
+                  {data?.regionBreakdown.map((r) => (
+                    <option key={r.region} value={r.region}>
+                      {r.region} ({r.targetVks})
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={masterCitizenshipFilter}
+                  onChange={(e) => setMasterCitizenshipFilter(e.target.value)}
+                  className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                >
+                  <option value="all">Tüm Uyruklar</option>
+                  {data?.citizenshipBreakdown.map((c) => (
+                    <option key={c.citizenship} value={c.citizenship}>
+                      {c.citizenship} ({c.total})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Active Sub-Category Filter Pill (when navigated from Red or Hata tab) */}
+              {(masterRefusalCatFilter !== 'all' || masterErrorCatFilter !== 'all') && (
+                <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs">
+                  <span className="font-semibold text-slate-600 dark:text-slate-300">Alt Kırılım Filtresi:</span>
+                  {masterRefusalCatFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 font-bold">
+                      Red Grubu: {data?.refusalCategories?.find((c) => c.id === masterRefusalCatFilter)?.titleTr || masterRefusalCatFilter}
+                      <button
+                        onClick={() => setMasterRefusalCatFilter('all')}
+                        className="hover:text-orange-950 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                  {masterErrorCatFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 font-bold">
+                      Hata Grubu: {data?.errorCategories?.find((c) => c.id === masterErrorCatFilter)?.titleTr || masterErrorCatFilter}
+                      <button
+                        onClick={() => setMasterErrorCatFilter('all')}
+                        className="hover:text-rose-950 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Compact Time Filter Bar */}
+              <div className="p-2.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <select
+                    value={masterDateField}
+                    onChange={(e) => setMasterDateField(e.target.value as any)}
+                    className="px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
+                  >
+                    <option value="submitted_at">📤 Gönderim Vakti</option>
+                    <option value="response_at">🔔 Cevap Vakti</option>
+                    <option value="any">🕒 Tüm İşlem Vakitleri</option>
+                  </select>
+
                   {[
                     { id: 'all', label: 'Tüm Günler' },
                     { id: '2026-10-24', label: 'Bugün (24.10)' },
@@ -1297,1765 +1666,702 @@ export default function GosuslugiAnalyticsView() {
                       }}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                         masterDateQuick === dBtn.id && !masterDateFrom && !masterDateTo
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                          ? 'bg-slate-900 text-white dark:bg-indigo-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-400'
                       }`}
                     >
                       {dBtn.label}
                     </button>
                   ))}
                 </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="text-slate-500">Tarih Aralığı:</span>
+                  <input
+                    type="datetime-local"
+                    value={masterDateFrom}
+                    onChange={(e) => {
+                      setMasterDateFrom(e.target.value);
+                      if (e.target.value) setMasterDateQuick('all');
+                    }}
+                    className="px-2 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                  />
+                  <span className="text-slate-400">—</span>
+                  <input
+                    type="datetime-local"
+                    value={masterDateTo}
+                    onChange={(e) => {
+                      setMasterDateTo(e.target.value);
+                      if (e.target.value) setMasterDateQuick('all');
+                    }}
+                    className="px-2 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                  />
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-slate-500 font-medium">Tarih/Saat Aralığı:</span>
-                <input
-                  type="datetime-local"
-                  value={masterDateFrom}
-                  onChange={(e) => {
-                    setMasterDateFrom(e.target.value);
-                    if (e.target.value) setMasterDateQuick('all');
-                  }}
-                  className="px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-                />
-                <span className="text-slate-400">—</span>
-                <input
-                  type="datetime-local"
-                  value={masterDateTo}
-                  onChange={(e) => {
-                    setMasterDateTo(e.target.value);
-                    if (e.target.value) setMasterDateQuick('all');
-                  }}
-                  className="px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-                />
-              </div>
-            </div>
+              {/* Unified Master VKS & Zayavka Table */}
+              <div className="overflow-x-auto border border-slate-200/80 dark:border-slate-800 rounded-xl">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-50/90 dark:bg-slate-800/60">
+                      <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sıra / PC</th>
+                      <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sicil No</th>
+                      <th className="py-2.5 px-3 font-semibold">Personel & Belgeler</th>
+                      <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Bölge & Uyruk</th>
+                      <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Заявка № & PDF</th>
+                      <th className="py-2.5 px-3 font-semibold">Gosuslugi Statüsü & Teşhis</th>
+                      <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Gönderim & Cevap</th>
+                      <th className="py-2.5 px-3 font-semibold min-w-[260px]">Başvuru Geçmişi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
+                    {filteredMaster3088.slice(0, masterVisibleCount).map((item) => {
+                      const isExpandedHist = expandedHistorySicil === item.sicil_no;
+                      const histList = item.history || [];
+                      return (
+                        <tr
+                          key={`m3088-${item.row_index}-${item.sicil_no}`}
+                          className={`transition-colors align-top ${
+                            item.status_key === 'error'
+                              ? 'bg-rose-50/20 dark:bg-rose-950/10 hover:bg-rose-50/40'
+                              : item.status_key === 'refused_mvd'
+                              ? 'bg-orange-50/25 dark:bg-orange-950/15 hover:bg-orange-50/50'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                          }`}
+                        >
+                          <td className="py-2.5 px-2.5 whitespace-nowrap">
+                            <div className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                              #{item.row_index}
+                            </div>
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                              PC {item.computer_no}
+                            </span>
+                          </td>
 
-            {/* 3,088 Master List Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/50">
-                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sıra / PC</th>
-                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sicil No</th>
-                    <th className="py-2.5 px-3 font-semibold">Personel (Rusça / Türkçe) & Belgeler</th>
-                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Bölge & Uyruk</th>
-                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Güncel Заявка №</th>
-                    <th className="py-2.5 px-3 font-semibold">Güncel Gosuslugi Statüsü</th>
-                    <th className="py-2.5 px-3 font-semibold whitespace-nowrap">
-                      Gönderim Vakti & Cevap Vakti
-                    </th>
-                    <th className="py-2.5 px-3 font-semibold min-w-[290px]">
-                      Başvuru Geçmişi (History)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
-                  {filteredMaster3088.slice(0, masterVisibleCount).map((item) => {
-                    const isExpandedHist = expandedHistorySicil === item.sicil_no;
-                    const histList = item.history || [];
-                    return (
-                      <tr
-                        key={`m3088-${item.row_index}-${item.sicil_no}`}
-                        className={`transition-colors align-top ${
-                          item.status_key === 'error'
-                            ? 'bg-rose-50/20 dark:bg-rose-950/10 hover:bg-rose-50/40'
-                            : item.status_key === 'refused_mvd'
-                            ? 'bg-orange-50/25 dark:bg-orange-950/15 hover:bg-orange-50/50'
-                            : item.status_key === 'not_sent'
-                            ? 'bg-slate-50/40 dark:bg-slate-900/40 hover:bg-slate-100/60'
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                        }`}
-                      >
-                        <td className="py-2.5 px-2.5 whitespace-nowrap">
-                          <div className="font-mono font-bold text-slate-700 dark:text-slate-300">
-                            #{item.row_index}
-                          </div>
-                          <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
-                            PC {item.computer_no}
-                          </span>
-                        </td>
+                          <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                            {item.sicil_no}
+                          </td>
 
-                        <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                          {item.sicil_no}
-                        </td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-bold text-slate-900 dark:text-white">
+                              {item.worker_name}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              {item.ad_soyad_tr || '-'}
+                            </div>
+                            <div className="text-[10.5px] text-slate-400 font-mono mt-0.5">
+                              {item.pasaport_no ? `Pasaport: ${item.pasaport_no}` : ''}
+                              {item.rnr_no ? ` • RNR: ${item.rnr_no}` : ''}
+                            </div>
+                          </td>
 
-                        <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-900 dark:text-white">
-                            {item.worker_name}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {item.ad_soyad_tr || '-'}
-                          </div>
-                          <div className="text-[10.5px] text-slate-400 font-mono mt-0.5">
-                            {item.pasaport_no ? `Pasaport: ${item.pasaport_no}` : ''}
-                            {item.rnr_no ? ` • RNR: ${item.rnr_no}` : ''}
-                          </div>
-                        </td>
+                          <td className="py-2.5 px-2.5 whitespace-nowrap">
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                              {item.region}
+                            </div>
+                            <div className="text-[11px] text-slate-500">{item.citizenship}</div>
+                          </td>
 
-                        <td className="py-2.5 px-2.5 whitespace-nowrap">
-                          <div className="font-semibold text-indigo-700 dark:text-indigo-300">
-                            {item.region}
-                          </div>
-                          <div className="text-[11px] text-slate-500">{item.citizenship}</div>
-                        </td>
-
-                        <td className="py-2.5 px-2.5 whitespace-nowrap">
-                          {item.application_no ? (
-                            <div className="space-y-1">
-                              <button
-                                onClick={() =>
-                                  handleCopyText(item.application_no, `m3088-${item.sicil_no}`)
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-mono font-bold flex items-center gap-1.5 hover:bg-emerald-100 cursor-pointer"
-                                title="Заявка № kopyala"
-                              >
-                                <span>№ {item.application_no}</span>
-                                {copiedId === `m3088-${item.sicil_no}` ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3.5 h-3.5 opacity-60" />
-                                )}
-                              </button>
-                              {item.hasPdf && item.pdf_filename && (
-                                <a
-                                  href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(
-                                    item.pdf_filename
-                                  )}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-[10.5px] text-teal-600 dark:text-teal-400 font-semibold hover:underline"
+                          <td className="py-2.5 px-2.5 whitespace-nowrap">
+                            {item.application_no ? (
+                              <div className="space-y-1">
+                                <button
+                                  onClick={() =>
+                                    handleCopyText(item.application_no, `m3088-${item.sicil_no}`)
+                                  }
+                                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-mono font-bold flex items-center gap-1.5 cursor-pointer"
+                                  title="Заявка № kopyala"
                                 >
-                                  <FileText className="w-3 h-3" />
-                                  PDF Aç
-                                </a>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 font-mono text-[11px]">Henüz Yok</span>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-3 max-w-[260px]">
-                          {item.status_key === 'service_rendered' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold">
-                              <CheckCircle2 className="w-3 h-3" />
-                              ✅ {item.gosuslugi_status}
-                            </span>
-                          ) : item.status_key === 'registered_mvd' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-[11px] font-bold">
-                              🏛 {item.gosuslugi_status}
-                            </span>
-                          ) : item.status_key === 'sent_pending' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[11px] font-bold">
-                              📤 {item.gosuslugi_status}
-                            </span>
-                          ) : item.status_key === 'refused_mvd' ? (
-                            <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-800 text-[11px] font-bold">
-                                🚫 {item.gosuslugi_status}
-                              </span>
-                              {item.refusalHint && (
-                                <div className="text-[10.5px] text-orange-700 dark:text-orange-300 line-clamp-2">
-                                  🔍 {item.refusalHint}
-                                </div>
-                              )}
-                            </div>
-                          ) : item.status_key === 'error' ? (
-                            <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 text-[11px] font-bold">
-                                ❌ Ошибка
-                              </span>
-                              <div className="text-[10.5px] font-mono text-rose-700 dark:text-rose-300 line-clamp-2">
-                                {item.gosuslugi_status}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-semibold">
-                              ⏳ {item.gosuslugi_status}
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap">
-                          {item.submitted_at ? (
-                            <div className="space-y-1">
-                              <div className="text-slate-700 dark:text-slate-200" title="Gosuslugi'ye Gönderildiği Vakit">
-                                <span className="text-[10px] font-sans font-semibold text-slate-400 mr-1">
-                                  Gönderim:
-                                </span>
-                                {item.submitted_at}
-                              </div>
-                              <div
-                                className={
-                                  item.response_at
-                                    ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                                    : 'text-slate-400'
-                                }
-                                title="Cevap Geldiği / Son Statü Kontrol Vakti"
-                              >
-                                <span className="text-[10px] font-sans font-semibold text-slate-400 mr-1">
-                                  Cevap/Kontrol:
-                                </span>
-                                {item.response_at || 'Bekleniyor'}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-3">
-                          {histList.length === 0 ? (
-                            <span className="text-[11px] text-slate-400">Henüz işlem yapılmadı</span>
-                          ) : (
-                            <div className="space-y-1.5">
-                              <div className="flex flex-wrap items-center gap-1">
-                                {item.had_previous_failure && (
-                                  <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 text-[10px] font-bold">
-                                    🔄 Tekrar Gönderildi ({histList.length} Adım)
+                                  <span>№ {item.application_no}</span>
+                                  {copiedId === `m3088-${item.sicil_no}` ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5 opacity-60" />
+                                  )}
+                                </button>
+                                {item.hasPdf && item.pdf_filename ? (
+                                  <a
+                                    href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(
+                                      item.pdf_filename
+                                    )}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10.5px] text-teal-600 dark:text-teal-400 font-semibold hover:underline"
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                    PDF Aç
+                                  </a>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                                    <Zap className="w-2.5 h-2.5" />
+                                    Hızlı Gönderim
                                   </span>
                                 )}
-                                {histList.slice(0, isExpandedHist ? histList.length : 2).map((h) => {
-                                  const stepCls =
-                                    h.status_key === 'service_rendered'
-                                      ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                      : h.status_key === 'registered_mvd'
-                                      ? 'bg-teal-50 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
-                                      : h.status_key === 'refused_mvd'
-                                      ? 'bg-orange-50 dark:bg-orange-950/70 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800'
-                                      : h.status_key === 'error'
-                                      ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                                      : 'bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-                                  return (
-                                    <div
-                                      key={`h-${item.sicil_no}-${h.stepNo}`}
-                                      className={`px-2 py-0.5 rounded border text-[10.5px] font-medium flex items-center gap-1 ${stepCls}`}
-                                    >
-                                      <span className="font-bold">#{h.stepNo}</span>
-                                      {h.application_no && (
-                                        <span className="font-mono font-bold">№{h.application_no}</span>
-                                      )}
-                                      <span className="truncate max-w-[150px]">
-                                        {h.status_key === 'error' ? 'Ошибка' : h.status}
-                                      </span>
-                                      <span className="font-mono text-[9.5px] opacity-75">
-                                        ({(h.event_at || h.submitted_at || '').slice(5, 16)})
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                                {histList.length > 1 && (
-                                  <button
-                                    onClick={() =>
-                                      setExpandedHistorySicil(isExpandedHist ? null : item.sicil_no)
-                                    }
-                                    className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
-                                  >
-                                    {isExpandedHist ? 'Gizle ▲' : `Detay (${histList.length}) ▼`}
-                                  </button>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-[11px]">Henüz Yok</span>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3 max-w-[300px]">
+                            {item.status_key === 'service_rendered' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold">
+                                <CheckCircle2 className="w-3 h-3" />
+                                {item.gosuslugi_status}
+                              </span>
+                            ) : item.status_key === 'registered_mvd' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-[11px] font-bold">
+                                🏛 {item.gosuslugi_status}
+                              </span>
+                            ) : item.status_key === 'sent_pending' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[11px] font-bold">
+                                📤 {item.gosuslugi_status}
+                              </span>
+                            ) : item.status_key === 'refused_mvd' ? (
+                              <div className="space-y-0.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-800 text-[11px] font-bold">
+                                  🚫 {item.gosuslugi_status}
+                                </span>
+                                {item.refusalHint && (
+                                  <div className="text-[10.5px] text-orange-700 dark:text-orange-300 line-clamp-2">
+                                    🔍 {item.refusalHint}
+                                  </div>
                                 )}
                               </div>
+                            ) : item.status_key === 'error' ? (
+                              <div className="space-y-0.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 text-[11px] font-bold">
+                                  ❌ {item.errorStepLabel || 'Ошибка'}
+                                </span>
+                                <div className="text-[10.5px] font-mono text-rose-700 dark:text-rose-300 line-clamp-2">
+                                  {item.gosuslugi_status}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-semibold">
+                                ⏳ {item.gosuslugi_status}
+                              </span>
+                            )}
+                          </td>
 
-                              {isExpandedHist && (
-                                <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-1 text-[11px]">
-                                  {histList.map((h) => (
-                                    <div
-                                      key={`hdet-${item.sicil_no}-${h.stepNo}`}
-                                      className="flex flex-col border-b last:border-b-0 border-slate-200/60 dark:border-slate-700/60 pb-1 last:pb-0"
-                                    >
-                                      <div className="flex flex-wrap items-center justify-between gap-1">
-                                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                                          {h.stepNo}. Adım:{' '}
-                                          {h.application_no ? `Заявка № ${h.application_no} — ` : ''}
-                                          {h.status}
-                                        </span>
-                                        <span className="font-mono text-[10px] text-slate-500">
-                                          {h.event_at || h.submitted_at}
+                          <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap">
+                            {item.submitted_at ? (
+                              <div className="space-y-0.5">
+                                <div className="text-slate-700 dark:text-slate-200">
+                                  <span className="text-[10px] font-sans text-slate-400 mr-1">Gön:</span>
+                                  {item.submitted_at}
+                                </div>
+                                <div
+                                  className={
+                                    item.response_at
+                                      ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                                      : 'text-slate-400'
+                                  }
+                                >
+                                  <span className="text-[10px] font-sans text-slate-400 mr-1">Cvp:</span>
+                                  {item.response_at || 'Bekleniyor'}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3">
+                            {histList.length === 0 ? (
+                              <span className="text-[11px] text-slate-400">Henüz işlem yok</span>
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {item.had_previous_failure && (
+                                    <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 text-[10px] font-bold">
+                                      🔄 {histList.length} Adım
+                                    </span>
+                                  )}
+                                  {histList.slice(0, isExpandedHist ? histList.length : 2).map((h) => {
+                                    const stepCls =
+                                      h.status_key === 'service_rendered'
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                        : h.status_key === 'registered_mvd'
+                                        ? 'bg-teal-50 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                                        : h.status_key === 'refused_mvd'
+                                        ? 'bg-orange-50 dark:bg-orange-950/70 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800'
+                                        : h.status_key === 'error'
+                                        ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                        : 'bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+                                    return (
+                                      <div
+                                        key={`h-${item.sicil_no}-${h.stepNo}`}
+                                        className={`px-2 py-0.5 rounded border text-[10.5px] font-medium flex items-center gap-1 ${stepCls}`}
+                                      >
+                                        <span className="font-bold">#{h.stepNo}</span>
+                                        {h.application_no && (
+                                          <span className="font-mono font-bold">№{h.application_no}</span>
+                                        )}
+                                        <span className="truncate max-w-[140px]">
+                                          {h.status.replace(/^Ошибка:\s*/i, 'Ошибка')}
                                         </span>
                                       </div>
-                                      {h.detail && (
-                                        <div className="text-[10px] text-slate-500 dark:text-slate-400 break-all">
-                                          {h.detail}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
+                                  {histList.length > 2 && (
+                                    <button
+                                      onClick={() =>
+                                        setExpandedHistorySicil(isExpandedHist ? null : item.sicil_no)
+                                      }
+                                      className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 cursor-pointer"
+                                    >
+                                      {isExpandedHist ? 'Gizle' : `+${histList.length - 2} Adım`}
+                                    </button>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {filteredMaster3088.length > masterVisibleCount && (
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                <button
-                  onClick={() => setMasterVisibleCount((prev) => prev + 250)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
-                >
-                  +250 Kayıt Daha Göster ({masterVisibleCount} / {filteredMaster3088.length})
-                </button>
-                <button
-                  onClick={() => setMasterVisibleCount(filteredMaster3088.length)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 cursor-pointer"
-                >
-                  Tümünü Göster ({filteredMaster3088.length})
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <>
-
-      {/* 6 KPI Cards (Mobile 2-col, Desktop 6-col) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-        {/* Card 1: Total Processed */}
-        <button
-          onClick={() => {
-            setStatusFilter('all');
-            setSelectedErrorCat('all');
-          }}
-          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            statusFilter === 'all' && selectedErrorCat === 'all'
-              ? 'bg-slate-900 text-white dark:bg-slate-800 border-slate-900 dark:border-emerald-500/60 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-slate-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium opacity-80">Toplam İşlenen</span>
-            <Layers className="w-4 h-4 text-sky-400" />
-          </div>
-          <div className="text-2xl font-extrabold mt-1">
-            {s.totalRecords.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] mt-1 opacity-75">
-            Kalan Hedef: <strong>{s.remainingTarget.toLocaleString('tr-TR')}</strong>
-          </div>
-        </button>
-
-        {/* Card 2: Total Sent */}
-        <button
-          onClick={() => {
-            setStatusFilter('sent');
-            setSelectedErrorCat('all');
-          }}
-          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            statusFilter === 'sent'
-              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-emerald-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium opacity-80">Başarılı Gönderim</span>
-            <CheckCircle2
-              className={`w-4 h-4 ${statusFilter === 'sent' ? 'text-white' : 'text-emerald-500'}`}
-            />
-          </div>
-          <div className="text-2xl font-extrabold mt-1">
-            {s.totalSent.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] mt-1 opacity-80">
-            Başarı Oranı: <strong>%{s.successRatePct}</strong>
-          </div>
-        </button>
-
-        {/* Card 3: Fast Mode (No PDF yet) */}
-        <button
-          onClick={() => {
-            setStatusFilter('no_pdf');
-            setSelectedErrorCat('all');
-          }}
-          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            statusFilter === 'no_pdf'
-              ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-amber-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium opacity-80">Hızlı Gönderim (PDF Bekleyen)</span>
-            <Zap
-              className={`w-4 h-4 ${statusFilter === 'no_pdf' ? 'text-white' : 'text-amber-500'}`}
-            />
-          </div>
-          <div className="text-2xl font-extrabold mt-1">
-            {s.totalNoPdf.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] mt-1 opacity-80">
-            PDF İndirilen: <strong>{s.totalPdf}</strong>
-          </div>
-        </button>
-
-        {/* Card 4: PDF Downloaded / MVD Registered */}
-        <button
-          onClick={() => {
-            setStatusFilter('has_pdf');
-            setSelectedErrorCat('all');
-          }}
-          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            statusFilter === 'has_pdf'
-              ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-teal-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium opacity-80">PDF İndirilen / МВД</span>
-            <FileText
-              className={`w-4 h-4 ${statusFilter === 'has_pdf' ? 'text-white' : 'text-teal-500'}`}
-            />
-          </div>
-          <div className="text-2xl font-extrabold mt-1">
-            {s.totalPdf.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] mt-1 opacity-80">
-            МВД Kayıtlı: <strong>{s.totalRegisteredMvd}</strong>
-          </div>
-        </button>
-
-        {/* Card 5: Total Errors */}
-        <button
-          onClick={() => {
-            setStatusFilter('error');
-          }}
-          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            statusFilter === 'error'
-              ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-rose-200 dark:border-rose-900/60 hover:border-rose-400'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium opacity-80">Hatalı Kayıt (Ошибка)</span>
-            <AlertTriangle
-              className={`w-4 h-4 ${statusFilter === 'error' ? 'text-white' : 'text-rose-500'}`}
-            />
-          </div>
-          <div
-            className={`text-2xl font-extrabold mt-1 ${
-              statusFilter === 'error' ? 'text-white' : 'text-rose-600 dark:text-rose-400'
-            }`}
-          >
-            {s.totalErrors.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] mt-1 opacity-80">
-            {data?.errorCategories.length || 0} farklı hata türü
-          </div>
-        </button>
-
-        {/* Card 6: Last 15m & 60m Speed */}
-        <div className="p-3.5 rounded-2xl border bg-gradient-to-br from-indigo-50/90 to-sky-50/90 dark:from-indigo-950/40 dark:to-sky-950/40 border-indigo-200/70 dark:border-indigo-800/60">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-indigo-800 dark:text-indigo-300">
-              Son 15 Dk / 1 Saat
-            </span>
-            <Clock className="w-4 h-4 text-indigo-500" />
-          </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-xl font-extrabold text-emerald-700 dark:text-emerald-400">
-              +{s.last15mSent}
-            </span>
-            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-              +{s.last15mErrors} hata
-            </span>
-            <span className="text-[10px] text-slate-500">(15dk)</span>
-          </div>
-          <div className="text-[11px] mt-1 text-slate-600 dark:text-slate-300">
-            Son 1 Saat: <strong>+{s.last60mSent} gönderim</strong> / {s.last60mErrors} hata
-          </div>
-        </div>
-      </div>
-
-      {/* GOSUSLUGI PORTAL STATUS BREAKDOWN STRIP */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Filter className="w-4 h-4 text-emerald-500" />
-              Gosuslugi Portal Resmi Durum Dağılımı (JSON Senkronizasyon)
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Kartlara tıklayarak doğrudan o Gosuslugi statüsündeki başvuruları filtreleyebilirsiniz
-            </p>
-          </div>
-          {['service_rendered', 'registered_only', 'refused_mvd', 'sent_pending'].includes(statusFilter) && (
-            <button
-              onClick={() => setStatusFilter('all')}
-              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1 cursor-pointer"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              Statü Filtresini Kaldır
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-          <button
-            onClick={() => {
-              setStatusFilter(statusFilter === 'service_rendered' ? 'all' : 'service_rendered');
-              setSelectedErrorCat('all');
-            }}
-            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
-              statusFilter === 'service_rendered'
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400'
-            }`}
-          >
-            <div className="text-[11px] font-bold opacity-90">✅ Услуга оказана</div>
-            <div className="text-xl font-extrabold mt-0.5">
-              {(s.totalServiceRendered ?? 0).toLocaleString('tr-TR')}
-            </div>
-            <div className="text-[10px] opacity-80">МВД Tarafından Onaylandı</div>
-          </button>
-
-          <button
-            onClick={() => {
-              setStatusFilter(statusFilter === 'registered_only' ? 'all' : 'registered_only');
-              setSelectedErrorCat('all');
-            }}
-            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
-              statusFilter === 'registered_only'
-                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                : 'bg-teal-50/60 dark:bg-teal-950/30 border-teal-200 dark:border-teal-900/60 hover:border-teal-400'
-            }`}
-          >
-            <div className="text-[11px] font-bold opacity-90">🏛 Заявление зарегистрировано</div>
-            <div className="text-xl font-extrabold mt-0.5">
-              {(s.totalRegisteredOnly ?? 0).toLocaleString('tr-TR')}
-            </div>
-            <div className="text-[10px] opacity-80">МВД Kaydında (İncelemede)</div>
-          </button>
-
-          <button
-            onClick={() => {
-              setStatusFilter(statusFilter === 'refused_mvd' ? 'all' : 'refused_mvd');
-              setSelectedErrorCat('all');
-            }}
-            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
-              statusFilter === 'refused_mvd'
-                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
-                : 'bg-orange-50/70 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900/60 hover:border-orange-400'
-            }`}
-          >
-            <div className="text-[11px] font-bold opacity-90">🚫 Услуга отказана</div>
-            <div className="text-xl font-extrabold mt-0.5">
-              {(s.totalRefusedMvd ?? 0).toLocaleString('tr-TR')}
-            </div>
-            <div className="text-[10px] opacity-80">МВД Reddetti (Detaylı Teşhis)</div>
-          </button>
-
-          <button
-            onClick={() => {
-              setStatusFilter(statusFilter === 'sent_pending' ? 'all' : 'sent_pending');
-              setSelectedErrorCat('all');
-            }}
-            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
-              statusFilter === 'sent_pending'
-                ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
-                : 'bg-amber-50/60 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60 hover:border-amber-400'
-            }`}
-          >
-            <div className="text-[11px] font-bold opacity-90">📤 Отправлено (Bekleyen)</div>
-            <div className="text-xl font-extrabold mt-0.5">
-              {(s.totalSentPendingStatus ?? 0).toLocaleString('tr-TR')}
-            </div>
-            <div className="text-[10px] opacity-80">Kuyrukta / МВД Yanıtı Bekleniyor</div>
-          </button>
-
-          <button
-            onClick={() => {
-              setStatusFilter(statusFilter === 'error' ? 'all' : 'error');
-            }}
-            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
-              statusFilter === 'error'
-                ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                : 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60 hover:border-rose-400'
-            }`}
-          >
-            <div className="text-[11px] font-bold opacity-90">❌ Ошибка (Form Hatası)</div>
-            <div className="text-xl font-extrabold mt-0.5">
-              {s.totalErrors.toLocaleString('tr-TR')}
-            </div>
-            <div className="text-[10px] opacity-80">Gönderilemeyen / Veri Hatası</div>
-          </button>
-        </div>
-      </div>
-
-      {/* SECTION 0.5: MVD Refusal (Услуга отказана) Root-Cause Grouping & Action Center */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-orange-200 dark:border-orange-900/60 p-4 sm:p-5 shadow-xs space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-orange-600" />
-              🚫 МВД Red («Услуга отказана») Nedenlerine Göre Gruplama ve Çözüm Merkezi ({s.totalRefusedMvd ?? 0} Red Kaydı)
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              МВД ЦБДУИГ (ГИСМУ) veritabanı ve canlı başvuru saatleri analiz edilerek tespit edilen red nedenleri, grup bazlı detaylı Excel/Şablon indirme ve tekrar gönderime açma merkezi
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {selectedRefusalCat !== 'all' && (
-              <button
-                onClick={() => {
-                  setSelectedRefusalCat('all');
-                  setStatusFilter('all');
-                }}
-                className="px-3 py-1.5 rounded-lg bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                Red Grubu Filtresini Temizle
-              </button>
-            )}
-
-            <button
-              onClick={() => {
-                const allRefused = (data?.submissions || []).filter(
-                  (it) => it.isRefusedMvd || it.gosuslugiStatusKey === 'refused_mvd'
-                );
-                exportItemsToExcel(allRefused, 'Pondera_VKS_Usluga_Otkazana_Detayli_Rapor');
-              }}
-              disabled={!s.totalRefusedMvd}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Tüm Redleri Detaylı Excel İndir ({s.totalRefusedMvd ?? 0})
-            </button>
-
-            <a
-              href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
-              download
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1.5 no-underline"
-            >
-              <Download className="w-3.5 h-3.5" />
-              🛠️ Tüm Redleri VKS Şablon İndir (Renkli)
-            </a>
-          </div>
-        </div>
-
-        {/* Empirical Root-Cause Summary Box */}
-        <div className="p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 text-xs text-slate-700 dark:text-slate-200 space-y-1.5">
-          <div className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
-            <span>📌 Canlı Veritabanı ve МВД (ЦБДУИГ) Analiz Bulguları:</span>
-          </div>
-          <ul className="list-disc pl-5 space-y-1 text-[11.5px] leading-relaxed">
-            <li>
-              <strong>1. Pasaport Seri ve Numarası Birleşik Yazımı HATA DEĞİLDİR (%100 Doğrulandı):</strong> МВД tarafından onaylanan{' '}
-              <strong className="text-emerald-700 dark:text-emerald-400">
-                {(s.totalServiceRendered ?? 1126).toLocaleString('tr-TR')} adet «Услуга оказана»
-              </strong>{' '}
-              başvurunun tamamında (%100) <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-slate-800">Серия паспорта</code> alanı boş bırakılmış ve harf+rakam birleşik olarak{' '}
-              <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-slate-800">Номер паспорта</code> alanında (örn. Hindistan: <code className="font-mono">V0399684</code>, Türkiye: <code className="font-mono">U26532222</code>, Türkmenistan: <code className="font-mono">A1234567</code>) gönderilmiştir. Rusya МВД ЦБДУИГ veritabanında vizeli ülke yabancı pasaportları serisiz (birleşik numara) olarak kayıtlıdır.
-            </li>
-            <li>
-              <strong>2. Redlerin %96,8&apos;inin (572 Kayıt) Nedeni — 21 Ekim Sabahı МВД Sistem Çöküşü (03:27–11:25 MSK):</strong> 19–20 Ekim tarihlerinde gönderilen 1.144 başvurunun{' '}
-              <strong className="text-emerald-700 dark:text-emerald-400">1.125&apos;i (%98,3) onaylanmış</strong>, sadece 19&apos;u reddedilmiştir. Ancak{' '}
-              <strong>21 Ekim 03:27–11:25 MSK</strong> saatleri arasında МВД СМЭВ-3 veritabanı çöktüğü (saat 11:25&apos;te Gosuslugi&apos;nin «Сервис МВД не отвечает» ekranıyla sistemi tamamen durdurduğu) sırada robot «Данные не найдены в базе МВД» uyarısına «Продолжить» diyerek gönderime devam ettiği için bu aralıktaki 573 başvurunun 572&apos;si otomatik reddedilmiştir. <strong>Robot artık üst üste 3 kez «Данные не найдены в базе МВД» uyarısı gördüğünde gönderimi anında durdurup PDF/Statü moduna geçecek şekilde korumaya alınmıştır.</strong>
-            </li>
-            <li>
-              <strong>3. Çıkışlı Personellerde Sözleşme Bitiş Tarihi (Дата окончания) Yazılması Red Sebebi midir? — HAYIR (%98,5 Onaylandı):</strong> 19–20 Ekim&apos;de МВД sistemi normalken sözleşme bitiş tarihine çıkış tarihi yazılan{' '}
-              <strong className="text-emerald-700 dark:text-emerald-400">338 başvurunun 333&apos;ü (%98,5) ONAYLANMIŞTIR («Услуга оказана»)</strong>, yalnızca 5&apos;i reddedilmiştir! Üstelik 3. çeyrek ortasında işten çıktığı için 3 aylık toplam ödemesi 750.000 ₽ altında kalan (örn. Temmuz&apos;da çıkıp 160.000 ₽ alan) personellerde çıkış tarihinin yazılmış olması, çalışanın tam çeyrek çalışmadığını gösterdiği için 333 kişinin onaylanmasını sağlamıştır. Reddedilen 5 çıkışlı kayıtta (<code className="font-mono">931408, 901327, 920404, 939777, 926653</code>) ise İK veritabanındaki resmi çıkış tarihi ile şablondaki bitiş tarihi arasında 1–10 gün fark olduğu veya çalışanın 2. çeyrek sonunda (<code className="font-mono">30.06.2026</code>) çıktığı tespit edilmiştir.
-            </li>
-            <li>
-              <strong>4. Kalan Diğer Kayıtların Gerçek Veri Red Nedenleri:</strong> (a) РНР Blank numarasının 7 hane yerine 8 haneli yazılması (örn. Sicil <code className="font-mono">927442</code>), (b) Yenilenmiş pasaportun İK veritabanında güncellenip VKS şablonunda eski pasaport kalması ve ara ay maaş boşluğu (örn. Sicil <code className="font-mono">900256</code>).
-            </li>
-          </ul>
-        </div>
-
-        {!data?.refusalCategories || data.refusalCategories.length === 0 ? (
-          <div className="p-5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-center">
-            <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto mb-1.5" />
-            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-              Şu anda aktif «Услуга отказана» (Red) kaydı bulunmuyor!
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {data.refusalCategories.map((cat) => {
-              const isExpanded = expandedRefusalCatId === cat.id;
-              const isSelected = selectedRefusalCat === cat.id;
-              const badgeColors =
-                cat.id === 'mvd_outage_21oct'
-                  ? 'bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-800'
-                  : cat.severity === 'high'
-                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
-                  : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800';
-
-              return (
-                <div
-                  key={cat.id}
-                  className={`rounded-xl border transition-all overflow-hidden ${
-                    isSelected
-                      ? 'border-orange-500 dark:border-orange-500 bg-orange-50/30 dark:bg-orange-950/20'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
-                  }`}
-                >
-                  <div className="p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                    <div className="space-y-1 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColors}`}
-                        >
-                          {cat.stepLabel}
-                        </span>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                          {cat.titleTr}
-                        </h3>
-                        <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
-                          ({cat.titleRu})
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-300">{cat.hintTr}</p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
-                      <div className="text-right mr-2">
-                        <div className="text-lg font-extrabold text-orange-600 dark:text-orange-400 leading-none">
-                          {cat.count} kayıt
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          Redlerin %{cat.percentage}&apos;i
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedRefusalCat('all');
-                            setStatusFilter('all');
-                          } else {
-                            setSelectedRefusalCat(cat.id);
-                            setSelectedErrorCat('all');
-                            setStatusFilter('refused_mvd');
-                          }
-                        }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-orange-600 text-white border-orange-600'
-                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-orange-400'
-                        }`}
-                      >
-                        {isSelected ? 'Filtrelendi ✓' : 'Tabloda Filtrele'}
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          exportItemsToExcel(cat.items, `Pondera_VKS_Red_${cat.id}`)
-                        }
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1 cursor-pointer"
-                        title="Bu gruptaki red kayıtlarını detaylı analiz sütunlarıyla Excel olarak indir"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Detaylı Excel ({cat.count})
-                      </button>
-
-                      <a
-                        href={`/api/gosuslugi/master-list/export-errors?mode=refused&refusalCategory=${encodeURIComponent(cat.id)}&computer=all`}
-                        download
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1 no-underline"
-                        title="Bu gruptaki kayıtları 32 sütunlu VKS şablon formatında (hatalı/şüpheli hücreler renkli ve son sütunda açıklamalı) indir"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Şablon İndir (Renkli)
-                      </a>
-
-                      {user?.role !== 'viewer' && (
-                        <button
-                          onClick={() =>
-                            handleReopenRefusedGroup(
-                              cat.items.map((it) => it.sicil_no),
-                              cat.titleTr
-                            )
-                          }
-                          disabled={reopeningRefused !== null}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                          title="Bu gruptaki kişilerin eski red statüsünü arşivleyip Gosuslugi robotunda tekrar gönderilebilir (Bekleyen) duruma açar"
-                        >
-                          <RefreshCw
-                            className={`w-3.5 h-3.5 ${
-                              reopeningRefused === cat.titleTr ? 'animate-spin' : ''
-                            }`}
-                          />
-                          Tekrar Gönderime Aç ({cat.count})
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => setExpandedRefusalCatId(isExpanded ? null : cat.id)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-200/70 dark:bg-slate-700/70 text-slate-800 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
-                      >
-                        {isExpanded ? (
-                          <>
-                            Gizle <ChevronUp className="w-3.5 h-3.5" />
-                          </>
-                        ) : (
-                          <>
-                            Kişileri Gör ({cat.count}) <ChevronDown className="w-3.5 h-3.5" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="border-t border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 p-3 space-y-2 max-h-80 overflow-y-auto">
-                      {cat.items.map((emp) => (
-                        <div
-                          key={`ref-${emp.sicil_no}-${emp.id}`}
-                          className="p-2.5 rounded-lg border border-orange-100 dark:border-orange-950/60 bg-orange-50/30 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                        >
-                          <div className="space-y-0.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                                Sicil: {emp.sicil_no}
-                              </span>
-                              {emp.application_no && (
-                                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300">
-                                  № {emp.application_no}
-                                </span>
-                              )}
-                              <span className="font-bold text-slate-900 dark:text-white">
-                                {emp.worker_name}
-                              </span>
-                              {emp.ad_soyad_tr && (
-                                <span className="text-slate-500">({emp.ad_soyad_tr})</span>
-                              )}
-                              <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-medium">
-                                {emp.region}
-                              </span>
-                              <span className="text-slate-500">{emp.citizenship}</span>
-                            </div>
-                            {emp.refusalHint && (
-                              <div className="text-[11px] text-orange-800 dark:text-orange-300 font-medium">
-                                🔎 {emp.refusalHint}
                               </div>
                             )}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500">
-                            {emp.pasaport_no && <span>Pasaport: {emp.pasaport_no}</span>}
-                            {emp.rnr_no && <span>RNR: {emp.rnr_no}</span>}
-                            <span>{emp.submitted_at}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* SECTION 1: Error Breakdown by Type (Hata Çeşitlerine Göre Detaylı Kırılım) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-500" />
-              Hata Çeşitlerine Göre Kırılım ({s.totalErrors} Hatalı Kayıt)
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Teknik zaman aşımı veya sistem gecikmesi kaynaklı hataları veri değiştirmeden doğrudan «Tekrar Gönderime Aç» butonuyla bekleyen kuyruğuna alabilirsiniz
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {selectedErrorCat !== 'all' && (
-              <button
-                onClick={() => {
-                  setSelectedErrorCat('all');
-                  setStatusFilter('all');
-                }}
-                className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                Hata Filtresini Temizle
-              </button>
-            )}
-
-            <button
-              onClick={() =>
-                exportItemsToExcel(
-                  filteredErrorItems,
-                  selectedErrorCat !== 'all'
-                    ? `Pondera_VKS_Hata_${selectedErrorCat}_Detayli_Rapor`
-                    : 'Pondera_VKS_Tum_Hatalar_Detayli_Rapor'
-                )
-              }
-              disabled={filteredErrorItems.length === 0}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              {selectedErrorCat !== 'all' ? 'Filtreli Hatalıları' : 'Tüm Hatalıları'} Detaylı Excel İndir ({filteredErrorItems.length})
-            </button>
-
-            <a
-              href={errorTemplateExportUrl}
-              download
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 no-underline"
-            >
-              <Download className="w-3.5 h-3.5" />
-              🛠️ {selectedErrorCat !== 'all' ? 'Filtreli Hatalıları' : 'Tüm Hatalıları'} Şablon İndir (Renkli) ({filteredErrorItems.length})
-            </a>
-
-            {user?.role !== 'viewer' && filteredErrorItems.length > 0 && (
-              <button
-                onClick={() =>
-                  handleReopenErrorGroup(
-                    filteredErrorItems.map((it) => it.sicil_no),
-                    selectedErrorCat !== 'all' ? 'Seçili Hata Grubu' : 'Tüm Hatalı Kayıtlar'
-                  )
-                }
-                disabled={reopeningError !== null}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${reopeningError !== null ? 'animate-spin' : ''}`}
-                />
-                {selectedErrorCat !== 'all' ? 'Filtreli Grubu' : 'Tüm Hatalıları'} Tekrar Gönderime Aç ({filteredErrorItems.length})
-              </button>
-            )}
-          </div>
-        </div>
-
-        {!data?.errorCategories || data.errorCategories.length === 0 ? (
-          <div className="p-6 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-center">
-            <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-              Şu anda kayıtlı hiçbir hata (Ошибка) bulunmuyor!
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {data.errorCategories.map((cat) => {
-              const isExpanded = expandedErrorCatId === cat.id;
-              const isSelected = selectedErrorCat === cat.id;
-              const badgeColors =
-                cat.severity === 'high'
-                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
-                  : cat.severity === 'medium'
-                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
-                  : 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-800';
-
-              return (
-                <div
-                  key={cat.id}
-                  className={`rounded-xl border transition-all overflow-hidden ${
-                    isSelected
-                      ? 'border-rose-500 dark:border-rose-500 bg-rose-50/30 dark:bg-rose-950/20'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
-                  }`}
-                >
-                  <div className="p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                    <div className="space-y-1 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColors}`}
-                        >
-                          {cat.stepLabel}
-                        </span>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                          {cat.titleTr}
-                        </h3>
-                        <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
-                          ({cat.titleRu})
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-300">{cat.hintTr}</p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
-                      <div className="text-right mr-2">
-                        <div className="text-lg font-extrabold text-rose-600 dark:text-rose-400 leading-none">
-                          {cat.count} kayıt
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          Hataların %{cat.percentage}&apos;i
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedErrorCat('all');
-                            setStatusFilter('all');
-                          } else {
-                            setSelectedErrorCat(cat.id);
-                            setStatusFilter('error');
-                          }
-                        }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-rose-600 text-white border-rose-600'
-                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-rose-400'
-                        }`}
-                      >
-                        {isSelected ? 'Filtrelendi ✓' : 'Tabloda Filtrele'}
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          exportItemsToExcel(cat.items, `Pondera_VKS_Hata_${cat.id}`)
-                        }
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1 cursor-pointer"
-                        title="Bu gruptaki hatalı kayıtları detaylı analiz sütunlarıyla Excel olarak indir"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Detaylı Excel ({cat.count})
-                      </button>
-
-                      <a
-                        href={`/api/gosuslugi/master-list/export-errors?mode=only_oshibka&errorCategory=${encodeURIComponent(cat.id)}&computer=all`}
-                        download
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1 no-underline"
-                        title="Bu gruptaki kayıtları 32 sütunlu VKS şablon formatında (hatalı hücreler renkli ve son sütunda açıklamalı) indir"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Şablon İndir (Renkli) ({cat.count})
-                      </a>
-
-                      {user?.role !== 'viewer' && (
-                        <button
-                          onClick={() =>
-                            handleReopenErrorGroup(
-                              cat.items.map((it) => it.sicil_no),
-                              cat.titleTr
-                            )
-                          }
-                          disabled={reopeningError !== null}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                          title="Bu gruptaki kişilerin hata (Ошибка) durumunu temizleyip veri değiştirmeden doğrudan tekrar gönderilebilir (Bekleyen) duruma açar"
-                        >
-                          <RefreshCw
-                            className={`w-3.5 h-3.5 ${
-                              reopeningError === cat.titleTr ? 'animate-spin' : ''
-                            }`}
-                          />
-                          Tekrar Gönderime Aç ({cat.count})
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => setExpandedErrorCatId(isExpanded ? null : cat.id)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-200/70 dark:bg-slate-700/70 text-slate-800 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
-                      >
-                        {isExpanded ? (
-                          <>
-                            Gizle <ChevronUp className="w-3.5 h-3.5" />
-                          </>
-                        ) : (
-                          <>
-                            Kişileri Gör ({cat.count}) <ChevronDown className="w-3.5 h-3.5" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="border-t border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 p-3 space-y-2 max-h-80 overflow-y-auto">
-                      {cat.items.map((emp) => (
-                        <div
-                          key={`${emp.sicil_no}-${emp.id}`}
-                          className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                        >
-                          <div className="space-y-0.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                                Sicil: {emp.sicil_no}
-                              </span>
-                              <span className="font-bold text-slate-900 dark:text-white">
-                                {emp.worker_name}
-                              </span>
-                              {emp.ad_soyad_tr && (
-                                <span className="text-slate-500">({emp.ad_soyad_tr})</span>
-                              )}
-                              <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-medium">
-                                {emp.region}
-                              </span>
-                              <span className="text-slate-500">{emp.citizenship}</span>
-                            </div>
-                            <div className="text-[11px] text-rose-600 dark:text-rose-400 font-mono break-all">
-                              {emp.gosuslugi_status}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500">
-                            {emp.pasaport_no && <span>Pasaport: {emp.pasaport_no}</span>}
-                            {emp.rnr_no && <span>RNR: {emp.rnr_no}</span>}
-                            <span>{emp.submitted_at}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* SECTION 2: Region (Şantiye) Breakdown & Hourly Speed Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Region Breakdown (2 cols) */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-emerald-500" />
-                Bölge / Şantiye Bazlı VKS Bildirim Durumu
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Şantiyeye tıklayarak aşağıdaki başvuru listesini o bölgeye göre filtreleyebilirsiniz
-              </p>
-            </div>
-            {selectedRegion !== 'all' && (
-              <button
-                onClick={() => setSelectedRegion('all')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
-              >
-                Tüm Bölgeler
-              </button>
-            )}
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
-                  <th className="py-2 pr-2 font-semibold">Bölge / Şantiye</th>
-                  <th className="py-2 px-2 text-right font-semibold">Hedef VKS</th>
-                  <th className="py-2 px-2 text-right font-semibold text-emerald-600">Gönderilen</th>
-                  <th className="py-2 px-2 text-right font-semibold text-rose-600">Hatalı</th>
-                  <th className="py-2 px-2 text-right font-semibold">Kalan</th>
-                  <th className="py-2 pl-2 text-right font-semibold">İlerleme</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
-                {data?.regionBreakdown.map((reg) => {
-                  const isSel = selectedRegion === reg.region;
-                  return (
-                    <tr
-                      key={reg.region}
-                      onClick={() => setSelectedRegion(isSel ? 'all' : reg.region)}
-                      className={`cursor-pointer transition-colors ${
-                        isSel
-                          ? 'bg-emerald-50/80 dark:bg-emerald-950/40 font-semibold'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                      }`}
-                    >
-                      <td className="py-2.5 pr-2 font-medium text-slate-900 dark:text-white">
-                        {reg.region}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono">{reg.targetVks}</td>
-                      <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                        {reg.sentCount}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
-                        {reg.errorCount}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono text-slate-500">
-                        {reg.pendingCount}
-                      </td>
-                      <td className="py-2.5 pl-2 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-16 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden hidden sm:block">
-                            <div
-                              className="h-full bg-emerald-500"
-                              style={{ width: `${reg.completionPct}%` }}
-                            />
-                          </div>
-                          <span className="font-mono font-bold text-[11px] w-9 text-right">
-                            %{reg.completionPct}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Hourly Timeline & Citizenship Breakdown (1 col) */}
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-3">
-              <BarChart3 className="w-4 h-4 text-indigo-500" />
-              Saatlik Gönderim Hızı (Moskova Saati)
-            </h2>
-            {!data?.hourlyTimeline || data.hourlyTimeline.length === 0 ? (
-              <p className="text-xs text-slate-500">Henüz saatlik veri yok.</p>
-            ) : (
-              <div className="space-y-2">
-                {data.hourlyTimeline.map((h) => {
-                  const maxVal = Math.max(...data.hourlyTimeline.map((x) => x.total), 1);
-                  const sentPct = Math.round((h.sent / maxVal) * 100);
-                  const errPct = Math.round((h.errors / maxVal) * 100);
-                  return (
-                    <div key={h.hourSlot} className="text-xs space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                          {h.hourSlot}
-                        </span>
-                        <span className="font-mono text-[11px]">
-                          <strong className="text-emerald-600 dark:text-emerald-400">
-                            +{h.sent} başarılı
-                          </strong>
-                          {h.errors > 0 && (
-                            <span className="text-rose-500 ml-1.5">+{h.errors} hata</span>
-                          )}
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
-                        <div
-                          className="h-full bg-emerald-500"
-                          style={{ width: `${sentPct}%` }}
-                        />
-                        {h.errors > 0 && (
-                          <div
-                            className="h-full bg-rose-500"
-                            style={{ width: `${errPct}%` }}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2.5">
-              <Globe className="w-4 h-4 text-teal-500" />
-              Uyruk Bazlı İşlenen Kayıtlar
-            </h2>
-            <div className="flex flex-wrap gap-1.5">
-              {data?.citizenshipBreakdown.map((c) => {
-                const isSel = selectedCitizenship === c.citizenship;
-                return (
+              {filteredMaster3088.length > masterVisibleCount && (
+                <div className="pt-2 text-center flex items-center justify-center gap-2">
                   <button
-                    key={c.citizenship}
-                    onClick={() => setSelectedCitizenship(isSel ? 'all' : c.citizenship)}
-                    className={`px-2.5 py-1 rounded-lg text-xs border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                      isSel
-                        ? 'bg-teal-600 text-white border-teal-600 font-semibold'
-                        : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
-                    }`}
+                    onClick={() => setMasterVisibleCount((prev) => prev + 250)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
                   >
-                    <span>{c.citizenship}</span>
-                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                      {c.sent}✓
-                    </span>
-                    {c.errors > 0 && (
-                      <span className="font-mono font-bold text-rose-500">{c.errors}✗</span>
-                    )}
+                    +250 Kayıt Daha Göster ({masterVisibleCount} / {filteredMaster3088.length})
                   </button>
-                );
-              })}
+                  <button
+                    onClick={() => setMasterVisibleCount(filteredMaster3088.length)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                  >
+                    Tümünü Göster ({filteredMaster3088.length})
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
-      </div>
+          )}
 
-      {/* SECTION 3: Drill-down to Individual Заявка № (Application No) & Worker Records */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-3.5 overflow-hidden">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>
-                  Заявка № ve Personel Bazlı Detaylı Kayıt Kırılımı ({filteredSubmissions.length} Kayıt)
-                </span>
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Başvuru numarası (Заявка №), sicil no, personel adı, şantiye ve tam hata/durum mesajı bazında en alt kırılım
-              </p>
-            </div>
-            {(statusFilter !== 'all' ||
-              selectedErrorCat !== 'all' ||
-              selectedRefusalCat !== 'all' ||
-              selectedRegion !== 'all' ||
-              selectedCitizenship !== 'all' ||
-              searchQuery.trim() !== '') && (
-              <button
-                onClick={() => {
-                  setStatusFilter('all');
-                  setSelectedErrorCat('all');
-                  setSelectedRefusalCat('all');
-                  setSelectedRegion('all');
-                  setSelectedCitizenship('all');
-                  setSearchQuery('');
-                }}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 cursor-pointer shrink-0"
-              >
-                <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                Tüm Filtreleri Sıfırla
-              </button>
-            )}
-          </div>
+          {/* =====================================================================
+              TAB 3: МВД RED ANALİZİ («Услуга отказана»)
+          ===================================================================== */}
+          {activeMainTab === 'refusals' && (
+            <div className="space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <XCircle className="w-4 h-4 text-orange-600" />
+                    МВД Red («Услуга отказана») Nedenleri ve Çözüm Merkezi ({s.totalRefusedMvd ?? 0} Kayıt)
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    МВД ЦБДУИГ (ГИСМУ) veritabanı analizine göre gruplanmış red nedenleri, şablon indirme ve tekrar gönderime açma
+                  </p>
+                </div>
 
-          {/* Search & Dropdown Filters in a Clean Bounded Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-            <div className="relative min-w-0">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Заявка №, Sicil, İsim, Pasaport, Hata ara..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowRefusalFindings(!showRefusalFindings)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                    {showRefusalFindings ? 'Analiz Bulgularını Gizle' : 'МВД Analiz Bulguları'}
+                  </button>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                const val = e.target.value as any;
-                setStatusFilter(val);
-                if (val !== 'error' && val !== 'all') setSelectedErrorCat('all');
-                if (val !== 'refused_mvd' && val !== 'all') setSelectedRefusalCat('all');
-              }}
-              className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
-            >
-              <option value="all">Tüm Gosuslugi Statüleri ({s.totalRecords})</option>
-              <option value="service_rendered">✅ Услуга оказана ({s.totalServiceRendered ?? 0})</option>
-              <option value="registered_only">🏛 Заявление зарегистрировано ({s.totalRegisteredOnly ?? 0})</option>
-              <option value="refused_mvd">🚫 Услуга отказана ({s.totalRefusedMvd ?? 0})</option>
-              <option value="sent_pending">📤 Отправлено - Bekleyen ({s.totalSentPendingStatus ?? 0})</option>
-              <option value="error">❌ Ошибка - Form Hatası ({s.totalErrors})</option>
-              <option value="has_pdf">📄 PDF İndirilen ({s.totalPdf})</option>
-              <option value="no_pdf">⚡ PDF Bekleyen ({s.totalNoPdf})</option>
-            </select>
+                  <button
+                    onClick={() =>
+                      exportItemsToExcel(allRefusedItems, 'Pondera_VKS_Usluga_Otkazana_Detayli_Rapor')
+                    }
+                    disabled={!s.totalRefusedMvd}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Detaylı Excel İndir ({s.totalRefusedMvd ?? 0})
+                  </button>
 
-            <select
-              value={selectedRefusalCat}
-              onChange={(e) => {
-                setSelectedRefusalCat(e.target.value);
-                if (e.target.value !== 'all') {
-                  setStatusFilter('refused_mvd');
-                  setSelectedErrorCat('all');
-                }
-              }}
-              className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-            >
-              <option value="all">Tüm Red (Услуга отказана) Nedenleri</option>
-              {data?.refusalCategories?.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.stepLabel} — {cat.titleTr.slice(0, 50)} ({cat.count})
-                </option>
-              ))}
-            </select>
+                  <a
+                    href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
+                    download
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1.5 no-underline"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Renkli VKS Şablon İndir ({s.totalRefusedMvd ?? 0})
+                  </a>
+                </div>
+              </div>
 
-            <select
-              value={selectedErrorCat}
-              onChange={(e) => {
-                setSelectedErrorCat(e.target.value);
-                if (e.target.value !== 'all') {
-                  setStatusFilter('error');
-                  setSelectedRefusalCat('all');
-                }
-              }}
-              className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-            >
-              <option value="all">Tüm Hata (Ошибка) Çeşitleri</option>
-              {data?.errorCategories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.stepLabel} — {cat.titleTr.slice(0, 55)} ({cat.count})
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedRegion}
-              onChange={(e) => setSelectedRegion(e.target.value)}
-              className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-            >
-              <option value="all">Tüm Bölgeler</option>
-              {data?.regionBreakdown.map((r) => (
-                <option key={r.region} value={r.region}>
-                  {r.region} ({r.sentCount}✓ / {r.errorCount}✗)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Başvuru Zamanı Filtresi (Tab 1) */}
-          <div className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-emerald-500" />
-                Başvuru Zamanı:
-              </span>
-              {[
-                { id: 'all', label: 'Tümü' },
-                { id: '2026-10-24', label: 'Bugün (24.10)' },
-                { id: '2026-10-23', label: 'Dün (23.10)' },
-                { id: '2026-10-22', label: '22.10' },
-                { id: '2026-10-21', label: '21.10' },
-                { id: '2026-10-20', label: '20.10' },
-                { id: '2026-10-19', label: '19.10' },
-              ].map((dBtn) => (
-                <button
-                  key={dBtn.id}
-                  onClick={() => {
-                    setSubDateQuick(dBtn.id);
-                    setSubDateFrom('');
-                    setSubDateTo('');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                    subDateQuick === dBtn.id && !subDateFrom && !subDateTo
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-400'
-                  }`}
-                >
-                  {dBtn.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-slate-500">Aralık:</span>
-              <input
-                type="datetime-local"
-                value={subDateFrom}
-                onChange={(e) => {
-                  setSubDateFrom(e.target.value);
-                  if (e.target.value) setSubDateQuick('all');
-                }}
-                className="px-2 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-              />
-              <span className="text-slate-400">—</span>
-              <input
-                type="datetime-local"
-                value={subDateTo}
-                onChange={(e) => {
-                  setSubDateTo(e.target.value);
-                  if (e.target.value) setSubDateQuick('all');
-                }}
-                className="px-2 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Status Quick Tabs */}
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {[
-            { id: 'all', label: `Tümü (${s.totalRecords})` },
-            { id: 'service_rendered', label: `✅ Услуга оказана (${s.totalServiceRendered ?? 0})` },
-            { id: 'registered_only', label: `🏛 Заявление зарегистрировано (${s.totalRegisteredOnly ?? 0})` },
-            { id: 'refused_mvd', label: `🚫 Услуга отказана (${s.totalRefusedMvd ?? 0})` },
-            { id: 'sent_pending', label: `📤 Отправлено (${s.totalSentPendingStatus ?? 0})` },
-            { id: 'error', label: `❌ Ошибка (${s.totalErrors})` },
-            { id: 'has_pdf', label: `📄 PDF İndirilen (${s.totalPdf})` },
-            { id: 'no_pdf', label: `⚡ PDF Bekleyen (${s.totalNoPdf})` },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setStatusFilter(tab.id as any);
-                if (tab.id !== 'error' && tab.id !== 'all') {
-                  setSelectedErrorCat('all');
-                }
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                statusFilter === tab.id
-                  ? tab.id === 'refused_mvd'
-                    ? 'bg-orange-600 text-white shadow-2xs'
-                    : tab.id === 'error'
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'bg-emerald-600 text-white shadow-2xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Mobile Cards View (< md) */}
-        <div className="grid grid-cols-1 gap-2.5 md:hidden">
-          {filteredSubmissions.slice(0, visibleCount).map((item) => {
-            const isRefused = item.isRefusedMvd || item.gosuslugiStatusKey === 'refused_mvd';
-            return (
-              <div
-                key={`${item.id}-${item.sicil_no}`}
-                className={`p-3.5 rounded-xl border space-y-2 ${
-                  item.state === 'error'
-                    ? 'border-rose-200 dark:border-rose-900/70 bg-rose-50/20 dark:bg-rose-950/15'
-                    : isRefused
-                    ? 'border-orange-300 dark:border-orange-900/70 bg-orange-50/25 dark:bg-orange-950/15'
-                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white">
-                        #{item.sicil_no}
-                      </span>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">
-                        {item.worker_name}
-                      </span>
-                    </div>
-                    {item.ad_soyad_tr && (
-                      <div className="text-[11px] text-slate-500 mt-0.5">{item.ad_soyad_tr}</div>
-                    )}
+              {showRefusalFindings && (
+                <div className="p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 text-xs text-slate-700 dark:text-slate-200 space-y-1.5">
+                  <div className="font-bold text-amber-900 dark:text-amber-300">
+                    📌 Canlı Veritabanı ve МВД (ЦБДУИГ) Analiz Bulguları:
                   </div>
+                  <ul className="list-disc pl-5 space-y-1 text-[11.5px] leading-relaxed">
+                    <li>
+                      <strong>Pasaport Seri ve Numarası Birleşik Yazımı Hata Değildir:</strong> МВД tarafından onaylanan{' '}
+                      <strong>{(s.totalServiceRendered ?? 0).toLocaleString('tr-TR')} adet «Услуга оказана»</strong>{' '}
+                      başvurunun tamamında <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-slate-800">Серия паспорта</code> boş bırakılmış ve harf+rakam birleşik olarak <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-slate-800">Номер паспорта</code> alanında gönderilmiştir.
+                    </li>
+                    <li>
+                      <strong>21 Ekim Sabahı МВД Sistem Çöküşü (03:27–11:25 MSK):</strong> МВД СМЭВ-3 servisi yanıt vermediği sırada gönderilen başvurular veri hatası olmaksızın otomatik red almıştır; doğrudan tekrar gönderime açılabilir.
+                    </li>
+                    <li>
+                      <strong>Belge & Veri Kontrolleri:</strong> РНР Blank numarasının 7 haneli olması, yenilenmiş pasaportların güncellenmesi ve çeyrek içi maaş dönemlerinde boş ay kalmaması gerekmektedir.
+                    </li>
+                  </ul>
+                </div>
+              )}
 
-                  {item.application_no ? (
+              {!data?.refusalCategories || data.refusalCategories.length === 0 ? (
+                <div className="p-8 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-center">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                    Şu anda aktif «Услуга отказана» (Red) kaydı bulunmuyor!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.refusalCategories.map((cat) => {
+                    const isExpanded = expandedRefusalCatId === cat.id;
+                    return (
+                      <div
+                        key={cat.id}
+                        className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 overflow-hidden"
+                      >
+                        <div className="p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                          <div className="space-y-1 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-800">
+                                {cat.stepLabel}
+                              </span>
+                              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                {cat.titleTr}
+                              </h3>
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-slate-300">{cat.hintTr}</p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
+                            <div className="text-right mr-2">
+                              <div className="text-base font-extrabold text-orange-600 dark:text-orange-400 leading-none">
+                                {cat.count} kayıt
+                              </div>
+                              <div className="text-[10px] text-slate-500">%{cat.percentage}</div>
+                            </div>
+
+                            <button
+                              onClick={() =>
+                                jumpToMasterListWithFilter({
+                                  status: 'refused_mvd',
+                                  refusalCat: cat.id,
+                                })
+                              }
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-orange-400 cursor-pointer"
+                            >
+                              Listede Gör
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                exportItemsToExcel(cat.items, `Pondera_VKS_Red_${cat.id}`)
+                              }
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Excel ({cat.count})
+                            </button>
+
+                            <a
+                              href={`/api/gosuslugi/master-list/export-errors?mode=refused&refusalCategory=${encodeURIComponent(cat.id)}&computer=all`}
+                              download
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1 no-underline"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Şablon İndir
+                            </a>
+
+                            {user?.role !== 'viewer' && (
+                              <button
+                                onClick={() =>
+                                  handleReopenRefusedGroup(
+                                    cat.items.map((it) => it.sicil_no),
+                                    cat.titleTr
+                                  )
+                                }
+                                disabled={reopeningRefused !== null}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              >
+                                <RefreshCw
+                                  className={`w-3.5 h-3.5 ${
+                                    reopeningRefused === cat.titleTr ? 'animate-spin' : ''
+                                  }`}
+                                />
+                                Tekrar Gönderime Aç
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setExpandedRefusalCatId(isExpanded ? null : cat.id)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-200/70 dark:bg-slate-700/70 text-slate-800 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
+                            >
+                              {isExpanded ? (
+                                <>
+                                  Gizle <ChevronUp className="w-3.5 h-3.5" />
+                                </>
+                              ) : (
+                                <>
+                                  Kişiler ({cat.count}) <ChevronDown className="w-3.5 h-3.5" />
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="border-t border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 p-3 space-y-2 max-h-80 overflow-y-auto">
+                            {cat.items.map((emp) => (
+                              <div
+                                key={`ref-${emp.sicil_no}-${emp.id}`}
+                                className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                              >
+                                <div className="space-y-0.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                                      #{emp.sicil_no}
+                                    </span>
+                                    {emp.application_no && (
+                                      <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300">
+                                        № {emp.application_no}
+                                      </span>
+                                    )}
+                                    <span className="font-bold text-slate-900 dark:text-white">
+                                      {emp.worker_name}
+                                    </span>
+                                    <span className="text-slate-500">({emp.region})</span>
+                                  </div>
+                                  {emp.refusalHint && (
+                                    <div className="text-[11px] text-orange-800 dark:text-orange-300">
+                                      🔎 {emp.refusalHint}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500 font-mono">
+                                  {emp.pasaport_no && <span>Pasp: {emp.pasaport_no}</span>}
+                                  <span>{emp.submitted_at}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* =====================================================================
+              TAB 4: HATA ANALİZİ («Ошибка»)
+          ===================================================================== */}
+          {activeMainTab === 'errors' && (
+            <div className="space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-500" />
+                    Hata Çeşitlerine Göre Kırılım ({s.totalErrors} Hatalı Kayıt)
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Zaman aşımı veya eksik/hatalı alan kaynaklı hataları grup bazında indirebilir veya doğrudan tekrar gönderime açabilirsiniz
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() =>
+                      exportItemsToExcel(allErrorItems, 'Pondera_VKS_Tum_Hatalar_Detayli_Rapor')
+                    }
+                    disabled={allErrorItems.length === 0}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Detaylı Excel İndir ({allErrorItems.length})
+                  </button>
+
+                  <a
+                    href={errorTemplateExportUrl}
+                    download
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 no-underline"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Renkli VKS Şablon İndir ({allErrorItems.length})
+                  </a>
+
+                  {user?.role !== 'viewer' && allErrorItems.length > 0 && (
                     <button
-                      onClick={() => handleCopyText(item.application_no, `m-${item.id}`)}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-mono text-xs font-bold flex items-center gap-1 shrink-0"
+                      onClick={() =>
+                        handleReopenErrorGroup(
+                          allErrorItems.map((it) => it.sicil_no),
+                          'Tüm Hatalı Kayıtlar'
+                        )
+                      }
+                      disabled={reopeningError !== null}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
-                      <span>№ {item.application_no}</span>
-                      {copiedId === `m-${item.id}` ? (
-                        <Check className="w-3.5 h-3.5" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5 opacity-70" />
-                      )}
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${reopeningError !== null ? 'animate-spin' : ''}`}
+                      />
+                      Tümünü Tekrar Gönderime Aç ({allErrorItems.length})
                     </button>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[11px] font-bold">
-                      Заявка Yok
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
-                  <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-medium">
-                    {item.region}
-                  </span>
-                  <span>{item.citizenship}</span>
-                  {item.pasaport_no && <span>• Pasaport: {item.pasaport_no}</span>}
-                  {item.period_code && <span>• Dönem: {item.period_code}</span>}
-                </div>
-
-                {item.errorCategoryTitle && (
-                  <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
-                    ⚠️ {item.errorCategoryTitle}
-                  </div>
-                )}
-
-                <div
-                  className={`text-[11px] font-mono break-words p-2 rounded-lg ${
-                    item.state === 'error'
-                      ? 'bg-rose-100/60 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200'
-                      : isRefused
-                      ? 'bg-orange-100/70 dark:bg-orange-950/50 text-orange-900 dark:text-orange-200'
-                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  {isRefused ? `🚫 ${item.gosuslugi_status}` : item.gosuslugi_status}
-                  {item.refusalHint && (
-                    <div className="mt-1 font-sans text-[11px] font-medium text-orange-800 dark:text-orange-300 leading-snug">
-                      🔍 {item.refusalHint}
-                    </div>
-                  )}
-                  {item.status_detail && (
-                    <div className="mt-1 text-[10px] opacity-80">{item.status_detail}</div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                  <span>Gönderim: {item.submitted_at}</span>
-                  {item.hasPdf && (
-                    <a
-                      href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(item.pdf_filename)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1"
-                    >
-                      PDF Aç <ExternalLink className="w-3 h-3" />
-                    </a>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
 
-        {/* Desktop Table View (>= md) */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-50/70 dark:bg-slate-800/50">
-                <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Sicil No</th>
-                <th className="py-2.5 px-3 font-semibold">Personel (Rusça / Türkçe)</th>
-                <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Bölge & Uyruk</th>
-                <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Заявка № (Başvuru No)</th>
-                <th className="py-2.5 px-3 font-semibold">Durum / Hata Çeşidi & Detayı</th>
-                <th className="py-2.5 px-3 font-semibold whitespace-nowrap">PDF</th>
-                <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">
-                  Gönderim & Cevap Zamanı
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
-              {filteredSubmissions.slice(0, visibleCount).map((item) => {
-                const isRefused = item.isRefusedMvd || item.gosuslugiStatusKey === 'refused_mvd';
-                const isRendered =
-                  item.isServiceRendered || item.gosuslugiStatusKey === 'service_rendered';
-                return (
-                  <tr
-                    key={`${item.id}-${item.sicil_no}`}
-                    className={`transition-colors ${
-                      item.state === 'error'
-                        ? 'bg-rose-50/20 dark:bg-rose-950/10 hover:bg-rose-50/50 dark:hover:bg-rose-950/25'
-                        : isRefused
-                        ? 'bg-orange-50/30 dark:bg-orange-950/15 hover:bg-orange-50/60 dark:hover:bg-orange-950/30'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                    }`}
-                  >
-                    <td className="py-2 px-3 font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                      {item.sicil_no}
-                    </td>
-                    <td className="py-2 px-3">
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        {item.worker_name}
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        {item.ad_soyad_tr || '-'}
-                        {item.pasaport_no ? ` • Pasaport: ${item.pasaport_no}` : ''}
-                        {item.rnr_no ? ` • RNR: ${item.rnr_no}` : ''}
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <div className="font-semibold text-indigo-700 dark:text-indigo-300">
-                        {item.region}
-                      </div>
-                      <div className="text-[11px] text-slate-500">{item.citizenship}</div>
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      {item.application_no ? (
-                        <button
-                          onClick={() => handleCopyText(item.application_no, `d-${item.id}`)}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-mono font-bold flex items-center gap-1.5 hover:bg-emerald-100 cursor-pointer"
-                          title="Kopyalamak için tıklayın"
-                        >
-                          <span>{item.application_no}</span>
-                          {copiedId === `d-${item.id}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 opacity-60" />
-                          )}
-                        </button>
-                      ) : (
-                        <span className="text-slate-400 font-mono">—</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 max-w-[400px]">
-                      {item.state === 'error' ? (
-                        <div className="space-y-0.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 text-[10px] font-bold">
-                            {item.errorStepLabel || 'Hata'} — {item.errorCategoryTitle}
-                          </span>
-                          <div className="text-[11px] font-mono text-rose-700 dark:text-rose-300 line-clamp-2 leading-tight">
-                            {item.gosuslugi_status}
+              {!data?.errorCategories || data.errorCategories.length === 0 ? (
+                <div className="p-8 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-center">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                    Şu anda kayıtlı hiçbir hata (Ошибка) bulunmuyor!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.errorCategories.map((cat) => {
+                    const isExpanded = expandedErrorCatId === cat.id;
+                    return (
+                      <div
+                        key={cat.id}
+                        className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 overflow-hidden"
+                      >
+                        <div className="p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                          <div className="space-y-1 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800">
+                                {cat.stepLabel}
+                              </span>
+                              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                {cat.titleTr}
+                              </h3>
+                            </div>
+                            <p className="text-xs text-slate-600 dark:text-slate-300">{cat.hintTr}</p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
+                            <div className="text-right mr-2">
+                              <div className="text-base font-extrabold text-rose-600 dark:text-rose-400 leading-none">
+                                {cat.count} kayıt
+                              </div>
+                              <div className="text-[10px] text-slate-500">%{cat.percentage}</div>
+                            </div>
+
+                            <button
+                              onClick={() =>
+                                jumpToMasterListWithFilter({
+                                  status: 'error',
+                                  errorCat: cat.id,
+                                })
+                              }
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-rose-400 cursor-pointer"
+                            >
+                              Listede Gör
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                exportItemsToExcel(cat.items, `Pondera_VKS_Hata_${cat.id}`)
+                              }
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Excel ({cat.count})
+                            </button>
+
+                            <a
+                              href={`/api/gosuslugi/master-list/export-errors?mode=only_oshibka&errorCategory=${encodeURIComponent(cat.id)}&computer=all`}
+                              download
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1 no-underline"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Şablon İndir
+                            </a>
+
+                            {user?.role !== 'viewer' && (
+                              <button
+                                onClick={() =>
+                                  handleReopenErrorGroup(
+                                    cat.items.map((it) => it.sicil_no),
+                                    cat.titleTr
+                                  )
+                                }
+                                disabled={reopeningError !== null}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              >
+                                <RefreshCw
+                                  className={`w-3.5 h-3.5 ${
+                                    reopeningError === cat.titleTr ? 'animate-spin' : ''
+                                  }`}
+                                />
+                                Tekrar Gönderime Aç
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setExpandedErrorCatId(isExpanded ? null : cat.id)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-200/70 dark:bg-slate-700/70 text-slate-800 dark:text-slate-200 flex items-center gap-1 cursor-pointer"
+                            >
+                              {isExpanded ? (
+                                <>
+                                  Gizle <ChevronUp className="w-3.5 h-3.5" />
+                                </>
+                              ) : (
+                                <>
+                                  Kişiler ({cat.count}) <ChevronDown className="w-3.5 h-3.5" />
+                                </>
+                              )}
+                            </button>
                           </div>
                         </div>
-                      ) : isRefused ? (
-                        <div className="space-y-0.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-800 text-[11px] font-bold">
-                            <AlertTriangle className="w-3 h-3" />
-                            🚫 {item.gosuslugi_status}
-                          </span>
-                          {item.refusalHint && (
-                            <div
-                              className="text-[11px] font-medium text-orange-700 dark:text-orange-300 leading-tight line-clamp-2"
-                              title={item.refusalHint}
-                            >
-                              🔍 {item.refusalHint}
-                            </div>
-                          )}
-                          {item.status_detail && (
-                            <div className="text-[11px] text-slate-500 line-clamp-1">{item.status_detail}</div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="space-y-0.5">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                              isRendered
-                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                                : item.isRegisteredMvd
-                                ? 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300'
-                                : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                            }`}
-                          >
-                            <CheckCircle2 className="w-3 h-3" />
-                            {item.gosuslugi_status}
-                          </span>
-                          {item.status_detail && (
-                            <div className="text-[11px] text-slate-500 line-clamp-1">{item.status_detail}</div>
-                          )}
-                        </div>
-                      )}
-                      {item.history && item.history.length > 1 && (
-                        <div className="mt-1 text-[10px] text-indigo-700 dark:text-indigo-300 font-medium">
-                          🔄 Geçmiş: {formatHistorySummaryText(item.history)}
-                        </div>
-                      )}
-                    </td>
-                  <td className="py-2.5 px-3 whitespace-nowrap">
-                    {item.hasPdf ? (
-                      <a
-                        href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(item.pdf_filename)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-semibold hover:bg-teal-100"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        PDF Aç
-                      </a>
-                    ) : item.state === 'sent' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                        <Zap className="w-3 h-3" />
-                        Hızlı Gönderim
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono text-[11px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    <div>📤 {item.submitted_at}</div>
-                    {(item.response_at || item.checked_at) && (
-                      <div className="text-[10.5px] text-emerald-700 dark:text-emerald-400">
-                        🔔 {item.response_at || item.checked_at}
-                      </div>
-                    )}
-                    {item.period_code && (
-                      <div className="text-[10px] text-slate-400">{item.period_code}</div>
-                    )}
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
 
-        {filteredSubmissions.length > visibleCount && (
-          <div className="pt-2 text-center">
-            <button
-              onClick={() => setVisibleCount((prev) => prev + 150)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
-            >
-              Daha Fazla Göster ({visibleCount} / {filteredSubmissions.length})
-            </button>
-          </div>
-        )}
+                        {isExpanded && (
+                          <div className="border-t border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 p-3 space-y-2 max-h-80 overflow-y-auto">
+                            {cat.items.map((emp) => (
+                              <div
+                                key={`${emp.sicil_no}-${emp.id}`}
+                                className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                              >
+                                <div className="space-y-0.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                                      #{emp.sicil_no}
+                                    </span>
+                                    <span className="font-bold text-slate-900 dark:text-white">
+                                      {emp.worker_name}
+                                    </span>
+                                    <span className="text-slate-500">({emp.region})</span>
+                                  </div>
+                                  <div className="text-[11px] font-mono text-rose-700 dark:text-rose-300">
+                                    {emp.gosuslugi_status}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500 font-mono">
+                                  {emp.pasaport_no && <span>Pasp: {emp.pasaport_no}</span>}
+                                  <span>{emp.submitted_at}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-      </>
-      )}
     </div>
   );
 }

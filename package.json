@@ -1,6 +1,6 @@
 {
   "name": "pondera-hr",
-  "version": "2.6.64",
+  "version": "2.6.65",
   "private": true,
   "scripts": {
     "dev": "next dev",
