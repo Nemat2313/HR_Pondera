@@ -189,15 +189,20 @@ export async function POST(request: Request) {
           ELSE gosuslugi_submissions.application_no
         END,
         gosuslugi_status = CASE
+          WHEN gosuslugi_submissions.gosuslugi_status = 'Услуга оказана'
+          THEN 'Услуга оказана'
           WHEN excluded.gosuslugi_status LIKE 'Ошибка%'
             AND gosuslugi_submissions.application_no != ''
             AND gosuslugi_submissions.gosuslugi_status NOT LIKE 'Ошибка%'
           THEN gosuslugi_submissions.gosuslugi_status
-          WHEN excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)')
-            AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению', 'Заявление зарегистрировано')
+          WHEN excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)', 'В обработке')
+            AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство', 'Заявление зарегистрировано')
           THEN gosuslugi_submissions.gosuslugi_status
-          WHEN excluded.gosuslugi_status = 'Заявление зарегистрировано'
+          WHEN excluded.gosuslugi_status IN ('Заявление зарегистрировано', 'Отправлено в ведомство')
             AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению')
+          THEN gosuslugi_submissions.gosuslugi_status
+          WHEN excluded.gosuslugi_status = 'Промежуточные результаты по заявлению'
+            AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана')
           THEN gosuslugi_submissions.gosuslugi_status
           ELSE COALESCE(NULLIF(excluded.gosuslugi_status, ''), gosuslugi_submissions.gosuslugi_status)
         END,
@@ -300,6 +305,11 @@ export async function POST(request: Request) {
         const exAppNo = String(existingRow.application_no || '').trim();
         const exStatus = String(existingRow.gosuslugi_status || '').trim();
         const exSubAt = String(existingRow.submitted_at || '').trim();
+
+        // 2b. Once a worker's notification has reached 'Услуга оказана', NEVER let any other computer's cached/intermediate status downgrade it
+        if (exStatus === 'Услуга оказана' && normalizedStatus !== 'Услуга оказана') {
+          continue;
+        }
 
         // 3. Never downgrade to an older (smaller integer) Gosuslugi application_no
         if (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo)) {
@@ -449,7 +459,13 @@ export async function PATCH(request: Request) {
 
     const byAppNoStmt = db.prepare(`
       UPDATE gosuslugi_submissions
-      SET gosuslugi_status = ?,
+      SET gosuslugi_status = CASE
+            WHEN gosuslugi_status = 'Услуга оказана' THEN 'Услуга оказана'
+            WHEN ? IN ('Отправлено', 'Отправлено (PDF не скачан)', 'В обработке', 'Заявление зарегистрировано', 'Отправлено в ведомство')
+              AND gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению')
+            THEN gosuslugi_status
+            ELSE ?
+          END,
           status_detail = COALESCE(NULLIF(?, ''), status_detail),
           checked_at = ?
       WHERE application_no = ?
@@ -457,7 +473,13 @@ export async function PATCH(request: Request) {
 
     const bySicilStmt = db.prepare(`
       UPDATE gosuslugi_submissions
-      SET gosuslugi_status = ?,
+      SET gosuslugi_status = CASE
+            WHEN gosuslugi_status = 'Услуга оказана' THEN 'Услуга оказана'
+            WHEN ? IN ('Отправлено', 'Отправлено (PDF не скачан)', 'В обработке', 'Заявление зарегистрировано', 'Отправлено в ведомство')
+              AND gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению')
+            THEN gosuslugi_status
+            ELSE ?
+          END,
           status_detail = COALESCE(NULLIF(?, ''), status_detail),
           application_no = COALESCE(NULLIF(?, ''), application_no),
           checked_at = ?
@@ -492,14 +514,14 @@ export async function PATCH(request: Request) {
       if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(status)) continue;
 
       if (appNo) {
-        const res = byAppNoStmt.run(status, detail, nowStr, appNo);
+        const res = byAppNoStmt.run(status, status, detail, nowStr, appNo);
         if (res.changes > 0) {
           updated += res.changes;
           continue;
         }
       }
       if (sicil) {
-        const res = bySicilStmt.run(status, detail, appNo, nowStr, sicil, appNo, appNo);
+        const res = bySicilStmt.run(status, status, detail, appNo, nowStr, sicil, appNo, appNo);
         updated += res.changes;
       }
     }
