@@ -573,7 +573,7 @@ def build_database():
         try:
             old_conn = sqlite3.connect(DB_PATH)
             old_cur = old_conn.cursor()
-            for tbl in ("users", "gosuslugi_submissions", "gosuslugi_vks_master_list", "gosuslugi_refused_archive"):
+            for tbl in ("users", "gosuslugi_submissions", "gosuslugi_vks_master_list", "gosuslugi_refused_archive", "gosuslugi_submission_history"):
                 row = old_cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()
                 if row and row[0]:
                     cursor.execute(row[0].replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "))

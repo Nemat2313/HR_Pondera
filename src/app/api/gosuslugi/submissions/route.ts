@@ -39,6 +39,20 @@ function ensureTable(db: any) {
     );
     CREATE INDEX IF NOT EXISTS idx_refused_arch_appno ON gosuslugi_refused_archive(application_no);
     CREATE INDEX IF NOT EXISTS idx_refused_arch_sicil ON gosuslugi_refused_archive(sicil_no);
+
+    CREATE TABLE IF NOT EXISTS gosuslugi_submission_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sicil_no TEXT NOT NULL,
+      worker_name TEXT DEFAULT '',
+      application_no TEXT DEFAULT '',
+      gosuslugi_status TEXT NOT NULL DEFAULT '',
+      status_detail TEXT DEFAULT '',
+      pdf_filename TEXT DEFAULT '',
+      submitted_at TEXT DEFAULT '',
+      event_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sub_hist_sicil ON gosuslugi_submission_history(sicil_no);
+    CREATE INDEX IF NOT EXISTS idx_sub_hist_appno ON gosuslugi_submission_history(application_no);
   `);
   try {
     db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
@@ -160,6 +174,42 @@ export async function POST(request: Request) {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+
+    const checkLastHistoryStmt = db.prepare(`
+      SELECT application_no, gosuslugi_status
+      FROM gosuslugi_submission_history
+      WHERE sicil_no = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `);
+
+    const insertHistoryStmt = db.prepare(`
+      INSERT INTO gosuslugi_submission_history (
+        sicil_no, worker_name, application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, event_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const logHistoryIfChanged = (
+      hSicil: string,
+      hWorker: string,
+      hAppNo: string,
+      hStatus: string,
+      hDetail: string,
+      hPdf: string,
+      hSubAt: string,
+      hEventAt: string
+    ) => {
+      if (!hSicil || !hStatus) return;
+      try {
+        const lastH = checkLastHistoryStmt.get(hSicil) as
+          | { application_no: string; gosuslugi_status: string }
+          | undefined;
+        if (!lastH || lastH.application_no !== hAppNo || lastH.gosuslugi_status !== hStatus) {
+          insertHistoryStmt.run(hSicil, hWorker, hAppNo, hStatus, hDetail, hPdf, hSubAt, hEventAt);
+        }
+      } catch {}
+    };
 
     const forceUpdateSupersedingStmt = db.prepare(`
       UPDATE gosuslugi_submissions
@@ -306,6 +356,18 @@ export async function POST(request: Request) {
         const exStatus = String(existingRow.gosuslugi_status || '').trim();
         const exSubAt = String(existingRow.submitted_at || '').trim();
 
+        // Ensure existingRow's prior state is recorded in history before any change
+        logHistoryIfChanged(
+          existingRow.sicil_no,
+          existingRow.worker_name,
+          exAppNo,
+          exStatus,
+          existingRow.status_detail,
+          existingRow.pdf_filename,
+          exSubAt,
+          existingRow.checked_at || exSubAt || nowStr
+        );
+
         // 2b. Once a worker's notification has reached 'Услуга оказана', NEVER let any other computer's cached/intermediate status downgrade it
         if (exStatus === 'Услуга оказана' && normalizedStatus !== 'Услуга оказана') {
           continue;
@@ -364,6 +426,16 @@ export async function POST(request: Request) {
             nowStr,
             existingRow.id
           );
+          logHistoryIfChanged(
+            sicil,
+            workerName || existingRow.worker_name,
+            appNo,
+            normalizedStatus,
+            statusDetail,
+            validNewPdf,
+            submittedAt > exSubAt ? submittedAt : exSubAt,
+            checkedAt || nowStr
+          );
           upserted++;
           continue;
         }
@@ -403,6 +475,16 @@ export async function POST(request: Request) {
             nowStr,
             existingRow.id
           );
+          logHistoryIfChanged(
+            sicil,
+            workerName || existingRow.worker_name,
+            '',
+            normalizedStatus,
+            '',
+            '',
+            submittedAt,
+            submittedAt || nowStr
+          );
           upserted++;
           continue;
         }
@@ -430,6 +512,16 @@ export async function POST(request: Request) {
         submittedAt,
         checkedAt,
         nowStr
+      );
+      logHistoryIfChanged(
+        sicil,
+        workerName || existingRow?.worker_name || '',
+        appNo || existingRow?.application_no || '',
+        normalizedStatus,
+        statusDetail,
+        pdfFilename,
+        submittedAt,
+        checkedAt || submittedAt || nowStr
       );
       upserted++;
     }

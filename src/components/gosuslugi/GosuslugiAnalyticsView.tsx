@@ -67,6 +67,42 @@ interface HourlyTimelineItem {
   total: number;
 }
 
+interface HistoryStepItem {
+  stepNo: number;
+  application_no: string;
+  status: string;
+  status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error';
+  detail: string;
+  submitted_at: string;
+  event_at: string;
+}
+
+interface MasterList3088Item {
+  row_index: number;
+  computer_no: number;
+  sicil_no: string;
+  worker_name: string;
+  ad_soyad_tr: string;
+  citizenship: string;
+  region: string;
+  proje_adi: string;
+  pasaport_no: string;
+  rnr_no: string;
+  contract_date: string;
+  application_no: string;
+  gosuslugi_status: string;
+  status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' | 'not_sent';
+  status_detail: string;
+  refusalHint: string;
+  pdf_filename: string;
+  hasPdf: boolean;
+  submitted_at: string;
+  response_at: string;
+  attempt_count: number;
+  had_previous_failure: boolean;
+  history: HistoryStepItem[];
+}
+
 interface EnrichedSubmission {
   id: number;
   sicil_no: string;
@@ -86,6 +122,11 @@ interface EnrichedSubmission {
   pdf_filename: string;
   submitted_at: string;
   checked_at: string;
+  updated_at?: string;
+  response_at?: string;
+  attempt_count?: number;
+  had_previous_failure?: boolean;
+  history?: HistoryStepItem[];
   state: 'sent' | 'error' | 'other';
   hasPdf: boolean;
   isRegisteredMvd: boolean;
@@ -130,6 +171,7 @@ interface AnalyticsResponse {
   citizenshipBreakdown: CitizenshipBreakdownItem[];
   hourlyTimeline: HourlyTimelineItem[];
   submissions: EnrichedSubmission[];
+  masterList3088?: MasterList3088Item[];
 }
 
 export default function GosuslugiAnalyticsView() {
@@ -144,7 +186,10 @@ export default function GosuslugiAnalyticsView() {
   const [reopeningError, setReopeningError] = useState<string | null>(null);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
 
-  // Filters for Zayavka / Submission table
+  // Top-level tab switcher: 'analytics' vs 'master3088'
+  const [activeMainTab, setActiveMainTab] = useState<'analytics' | 'master3088'>('analytics');
+
+  // Filters for Zayavka / Submission table (Tab 1)
   const [statusFilter, setStatusFilter] = useState<
     | 'all'
     | 'sent'
@@ -162,10 +207,35 @@ export default function GosuslugiAnalyticsView() {
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [selectedCitizenship, setSelectedCitizenship] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [subDateQuick, setSubDateQuick] = useState<string>('all');
+  const [subDateFrom, setSubDateFrom] = useState<string>('');
+  const [subDateTo, setSubDateTo] = useState<string>('');
   const [expandedErrorCatId, setExpandedErrorCatId] = useState<string | null>(null);
   const [expandedRefusalCatId, setExpandedRefusalCatId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState<number>(100);
+
+  // Filters for Full 3,088 VKS Master List & History (Tab 2)
+  const [masterSearch, setMasterSearch] = useState<string>('');
+  const [masterStatusFilter, setMasterStatusFilter] = useState<
+    | 'all'
+    | 'service_rendered'
+    | 'registered_mvd'
+    | 'sent_pending'
+    | 'refused_mvd'
+    | 'error'
+    | 'not_sent'
+    | 'resent_with_history'
+  >('all');
+  const [masterComputerFilter, setMasterComputerFilter] = useState<string>('all');
+  const [masterRegionFilter, setMasterRegionFilter] = useState<string>('all');
+  const [masterCitizenshipFilter, setMasterCitizenshipFilter] = useState<string>('all');
+  const [masterDateField, setMasterDateField] = useState<'submitted_at' | 'response_at' | 'any'>('submitted_at');
+  const [masterDateQuick, setMasterDateQuick] = useState<string>('all');
+  const [masterDateFrom, setMasterDateFrom] = useState<string>('');
+  const [masterDateTo, setMasterDateTo] = useState<string>('');
+  const [masterVisibleCount, setMasterVisibleCount] = useState<number>(150);
+  const [expandedHistorySicil, setExpandedHistorySicil] = useState<string | null>(null);
 
   const fetchAnalytics = useCallback(async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
@@ -271,7 +341,23 @@ export default function GosuslugiAnalyticsView() {
         return false;
       }
 
+      if (subDateQuick !== 'all') {
+        const subDay = (item.submitted_at || '').slice(0, 10);
+        if (subDay !== subDateQuick) return false;
+      }
+      if (subDateFrom) {
+        const normFrom = subDateFrom.replace('T', ' ');
+        if (!item.submitted_at || item.submitted_at < normFrom) return false;
+      }
+      if (subDateTo) {
+        const normTo = subDateTo.length === 10 ? `${subDateTo} 23:59:59` : subDateTo.replace('T', ' ') + ':59';
+        if (!item.submitted_at || item.submitted_at > normTo) return false;
+      }
+
       if (q) {
+        const histText = (item.history || [])
+          .map((h) => `${h.application_no} ${h.status} ${h.detail}`)
+          .join(' ');
         const hay = [
           item.application_no,
           item.sicil_no,
@@ -287,6 +373,7 @@ export default function GosuslugiAnalyticsView() {
           item.refusalHint,
           item.refusalCategoryTitle,
           item.errorCategoryTitle,
+          histText,
         ]
           .filter(Boolean)
           .join(' ')
@@ -303,8 +390,208 @@ export default function GosuslugiAnalyticsView() {
     selectedRefusalCat,
     selectedRegion,
     selectedCitizenship,
+    subDateQuick,
+    subDateFrom,
+    subDateTo,
     searchQuery,
   ]);
+
+  const formatHistorySummaryText = (history?: HistoryStepItem[]) => {
+    if (!history || history.length === 0) return 'Henüz başvuru geçmişi yok';
+    return history
+      .map(
+        (h) =>
+          `[${h.stepNo}] ${h.event_at || h.submitted_at || '-'} — ${
+            h.application_no ? `№ ${h.application_no} • ` : ''
+          }${h.status}`
+      )
+      .join('  ➔  ');
+  };
+
+  const masterSummaryCounts = useMemo(() => {
+    const list = data?.masterList3088 || [];
+    let rendered = 0;
+    let registered = 0;
+    let pending = 0;
+    let refused = 0;
+    let error = 0;
+    let notSent = 0;
+    let withHistory = 0;
+    for (const m of list) {
+      if (m.status_key === 'service_rendered') rendered++;
+      else if (m.status_key === 'registered_mvd') registered++;
+      else if (m.status_key === 'sent_pending') pending++;
+      else if (m.status_key === 'refused_mvd') refused++;
+      else if (m.status_key === 'error') error++;
+      else notSent++;
+      if (m.had_previous_failure || m.attempt_count > 1 || (m.history && m.history.length > 1)) {
+        withHistory++;
+      }
+    }
+    return {
+      total: list.length,
+      rendered,
+      registered,
+      pending,
+      refused,
+      error,
+      notSent,
+      withHistory,
+    };
+  }, [data?.masterList3088]);
+
+  const filteredMaster3088 = useMemo(() => {
+    const list = data?.masterList3088 || [];
+    if (!list.length) return [];
+    const q = masterSearch.trim().toLowerCase();
+
+    return list.filter((item) => {
+      if (masterStatusFilter === 'service_rendered' && item.status_key !== 'service_rendered') return false;
+      if (masterStatusFilter === 'registered_mvd' && item.status_key !== 'registered_mvd') return false;
+      if (masterStatusFilter === 'sent_pending' && item.status_key !== 'sent_pending') return false;
+      if (masterStatusFilter === 'refused_mvd' && item.status_key !== 'refused_mvd') return false;
+      if (masterStatusFilter === 'error' && item.status_key !== 'error') return false;
+      if (masterStatusFilter === 'not_sent' && item.status_key !== 'not_sent') return false;
+      if (
+        masterStatusFilter === 'resent_with_history' &&
+        !item.had_previous_failure &&
+        item.attempt_count <= 1 &&
+        (!item.history || item.history.length <= 1)
+      ) {
+        return false;
+      }
+
+      if (masterComputerFilter !== 'all' && String(item.computer_no) !== masterComputerFilter) {
+        return false;
+      }
+      if (masterRegionFilter !== 'all' && item.region !== masterRegionFilter) {
+        return false;
+      }
+      if (masterCitizenshipFilter !== 'all' && item.citizenship !== masterCitizenshipFilter) {
+        return false;
+      }
+
+      // Date / Time Filtering (by submitted_at, response_at, or any history timestamp)
+      if (masterDateQuick !== 'all' || masterDateFrom || masterDateTo) {
+        const candidateTimes: string[] = [];
+        if (masterDateField === 'submitted_at') {
+          if (item.submitted_at) candidateTimes.push(item.submitted_at);
+        } else if (masterDateField === 'response_at') {
+          if (item.response_at) candidateTimes.push(item.response_at);
+        } else {
+          if (item.submitted_at) candidateTimes.push(item.submitted_at);
+          if (item.response_at) candidateTimes.push(item.response_at);
+          for (const h of item.history || []) {
+            if (h.event_at) candidateTimes.push(h.event_at);
+            if (h.submitted_at) candidateTimes.push(h.submitted_at);
+          }
+        }
+        if (candidateTimes.length === 0) return false;
+
+        if (masterDateQuick !== 'all') {
+          const matchesDay = candidateTimes.some((t) => t.slice(0, 10) === masterDateQuick);
+          if (!matchesDay) return false;
+        }
+        if (masterDateFrom) {
+          const normFrom = masterDateFrom.replace('T', ' ');
+          const matchesFrom = candidateTimes.some((t) => t >= normFrom);
+          if (!matchesFrom) return false;
+        }
+        if (masterDateTo) {
+          const normTo =
+            masterDateTo.length === 10
+              ? `${masterDateTo} 23:59:59`
+              : `${masterDateTo.replace('T', ' ')}:59`;
+          const matchesTo = candidateTimes.some((t) => t <= normTo);
+          if (!matchesTo) return false;
+        }
+      }
+
+      if (q) {
+        const histText = (item.history || [])
+          .map((h) => `${h.application_no} ${h.status} ${h.detail} ${h.event_at}`)
+          .join(' ');
+        const hay = [
+          item.sicil_no,
+          item.application_no,
+          item.worker_name,
+          item.ad_soyad_tr,
+          item.pasaport_no,
+          item.rnr_no,
+          item.region,
+          item.proje_adi,
+          item.citizenship,
+          item.gosuslugi_status,
+          item.status_detail,
+          item.refusalHint,
+          `pc ${item.computer_no}`,
+          histText,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [
+    data?.masterList3088,
+    masterSearch,
+    masterStatusFilter,
+    masterComputerFilter,
+    masterRegionFilter,
+    masterCitizenshipFilter,
+    masterDateField,
+    masterDateQuick,
+    masterDateFrom,
+    masterDateTo,
+  ]);
+
+  const exportMaster3088ToExcel = () => {
+    if (!filteredMaster3088.length) return;
+    const rows = filteredMaster3088.map((item) => ({
+      'Sıra No': item.row_index,
+      'Bilgisayar (PC)': `PC ${item.computer_no}`,
+      'Sicil No (Код)': item.sicil_no,
+      'Ad Soyad (Rusça)': item.worker_name,
+      'Ad Soyad (Türkçe)': item.ad_soyad_tr || '-',
+      'Uyruk': item.citizenship,
+      'Bölge / Şantiye': item.region,
+      'Proje': item.proje_adi || '-',
+      'Pasaport No': item.pasaport_no || '-',
+      'VKS RNR No': item.rnr_no || '-',
+      'Sözleşme Tarihi': item.contract_date || '-',
+      'Güncel Заявка № (Başvuru No)': item.application_no || 'Henüz Yok',
+      'Güncel Gosuslugi Statüsü': item.gosuslugi_status,
+      'Statü Grubu':
+        item.status_key === 'service_rendered'
+          ? 'Onaylandı (Услуга оказана)'
+          : item.status_key === 'registered_mvd'
+          ? 'МВД Kayıtlı (Заявление зарегистрировано)'
+          : item.status_key === 'sent_pending'
+          ? 'Gönderildi (Beklemede)'
+          : item.status_key === 'refused_mvd'
+          ? 'МВД Red (Услуга отказана)'
+          : item.status_key === 'error'
+          ? 'Hatalı (Ошибка)'
+          : 'Henüz Gönderilmedi (Kuyrukta)',
+      'Gosuslugi Gönderildiği Vakit (MSK)': item.submitted_at || '-',
+      'Cevap Geldiği / Son Kontrol Vakti (MSK)': item.response_at || '-',
+      'Toplam İşlem / Deneme Adımı': item.history?.length || 0,
+      'Önceki Hata/Red Geçmişi Var mı?': item.had_previous_failure ? 'EVET (Tekrar Gönderildi)' : 'Hayır',
+      'Başvuru Geçmişi (History) Özeti': formatHistorySummaryText(item.history),
+      'PDF Dosyası': item.pdf_filename || '-',
+      'Detay / Red Analizi': item.refusalHint || item.status_detail || '-',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'VKS_3088_Tam_Liste');
+    XLSX.writeFile(
+      wb,
+      `Pondera_VKS_Tum_Liste_ve_Gecmis_${filteredMaster3088.length}_Kisi_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
+  };
 
   const exportItemsToExcel = (itemsToExport: EnrichedSubmission[], filePrefix = 'Gosuslugi_VKS_Analitik_Rapor') => {
     if (!itemsToExport.length) return;
@@ -334,8 +621,9 @@ export default function GosuslugiAnalyticsView() {
       'Gosuslugi Durumu / Hata Detayı': item.gosuslugi_status,
       'Ek Detay / Red Analizi': item.refusalHint || item.status_detail || '-',
       'PDF Dosyası': item.pdf_filename || 'İndirilmedi (Hızlı Gönderim)',
-      'Gönderim Zamanı (MSK)': item.submitted_at,
-      'Son Kontrol Zamanı': item.checked_at || '-',
+      'Gosuslugi Gönderildiği Vakit (MSK)': item.submitted_at,
+      'Cevap Geldiği / Son Kontrol Vakti (MSK)': item.response_at || item.checked_at || '-',
+      'Başvuru Geçmişi (History) Özeti': formatHistorySummaryText(item.history),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -716,7 +1004,615 @@ export default function GosuslugiAnalyticsView() {
             )}
           </div>
         </div>
+
+        {/* Main View Tab Bar */}
+        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveMainTab('analytics')}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeMainTab === 'analytics'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              📊 Analitik Özet & Hata/Red Kırılımı ({s.totalRecords.toLocaleString('tr-TR')})
+            </button>
+
+            <button
+              onClick={() => setActiveMainTab('master3088')}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeMainTab === 'master3088'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              📋 Tüm 3.088 VKS Listesi & Başvuru Geçmişi (History) ({masterSummaryCounts.total.toLocaleString('tr-TR')})
+              {masterSummaryCounts.withHistory > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md bg-amber-400/90 text-slate-950 text-[10px] font-extrabold">
+                  {masterSummaryCounts.withHistory} Geçmişli
+                </span>
+              )}
+            </button>
+          </div>
+
+          {activeMainTab === 'master3088' && (
+            <button
+              onClick={exportMaster3088ToExcel}
+              disabled={filteredMaster3088.length === 0}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              📥 3.088 VKS Listesi & Geçmişi Excel&apos;e İndir ({filteredMaster3088.length})
+            </button>
+          )}
+        </div>
       </div>
+
+      {activeMainTab === 'master3088' ? (
+        <div className="space-y-4">
+          {/* KPI Summary Strip for All 3,088 VKS Personnel */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2.5">
+            {[
+              {
+                id: 'all',
+                label: '📋 Tüm VKS Listesi',
+                count: masterSummaryCounts.total,
+                sub: 'Tam 3.088 Liste',
+                activeCls: 'bg-slate-900 text-white border-slate-900 dark:bg-slate-800',
+                idleCls: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800',
+              },
+              {
+                id: 'service_rendered',
+                label: '✅ Услуга оказана',
+                count: masterSummaryCounts.rendered,
+                sub: 'МВД Onayladı',
+                activeCls: 'bg-emerald-600 text-white border-emerald-600',
+                idleCls: 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60',
+              },
+              {
+                id: 'registered_mvd',
+                label: '🏛 Зарегистрировано',
+                count: masterSummaryCounts.registered,
+                sub: 'МВД Kaydında',
+                activeCls: 'bg-teal-600 text-white border-teal-600',
+                idleCls: 'bg-teal-50/60 dark:bg-teal-950/30 border-teal-200 dark:border-teal-900/60',
+              },
+              {
+                id: 'sent_pending',
+                label: '📤 Отправлено',
+                count: masterSummaryCounts.pending,
+                sub: 'Yanıt Bekleyen',
+                activeCls: 'bg-amber-500 text-white border-amber-500',
+                idleCls: 'bg-amber-50/60 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60',
+              },
+              {
+                id: 'refused_mvd',
+                label: '🚫 Услуга отказана',
+                count: masterSummaryCounts.refused,
+                sub: 'МВД Reddetti',
+                activeCls: 'bg-orange-600 text-white border-orange-600',
+                idleCls: 'bg-orange-50/60 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900/60',
+              },
+              {
+                id: 'error',
+                label: '❌ Ошибка',
+                count: masterSummaryCounts.error,
+                sub: 'Form / Sistem Hatası',
+                activeCls: 'bg-rose-600 text-white border-rose-600',
+                idleCls: 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60',
+              },
+              {
+                id: 'not_sent',
+                label: '⏳ Henüz Gönderilmedi',
+                count: masterSummaryCounts.notSent,
+                sub: 'Kuyrukta Bekleyen',
+                activeCls: 'bg-slate-700 text-white border-slate-700',
+                idleCls: 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800',
+              },
+              {
+                id: 'resent_with_history',
+                label: '🔄 Tekrar Gönderilen',
+                count: masterSummaryCounts.withHistory,
+                sub: 'Geçmişi / >1 Adımı Olan',
+                activeCls: 'bg-indigo-600 text-white border-indigo-600',
+                idleCls: 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900/60',
+              },
+            ].map((card) => {
+              const isAct = masterStatusFilter === card.id;
+              return (
+                <button
+                  key={card.id}
+                  onClick={() => setMasterStatusFilter(card.id as any)}
+                  className={`text-left p-3 rounded-2xl border transition-all cursor-pointer ${
+                    isAct ? card.activeCls : card.idleCls
+                  }`}
+                >
+                  <div className="text-[11px] font-bold opacity-90 truncate">{card.label}</div>
+                  <div className="text-xl font-extrabold mt-0.5">
+                    {card.count.toLocaleString('tr-TR')}
+                  </div>
+                  <div className="text-[10px] opacity-80 truncate">{card.sub}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search, Status, Computer, Region & Date/Time Filter Box */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-indigo-500" />
+                  <span>
+                    Tüm 3.088 VKS Personeli Başvuru Durumu, Заявка №, Gönderim/Cevap Vakti ve Başvuru Geçmişi ({filteredMaster3088.length.toLocaleString('tr-TR')} / {masterSummaryCounts.total.toLocaleString('tr-TR')} Kişi)
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  İlk gönderimde hata/red alıp sonrasında tekrar gönderilen ve onaylanan başvuruların tüm geçmişini (History), gönderildiği vakti ve cevap geldiği vakti buradan inceleyebilir, filtreleyebilir ve Excel&apos;e indirebilirsiniz.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {(masterSearch.trim() !== '' ||
+                  masterStatusFilter !== 'all' ||
+                  masterComputerFilter !== 'all' ||
+                  masterRegionFilter !== 'all' ||
+                  masterCitizenshipFilter !== 'all' ||
+                  masterDateQuick !== 'all' ||
+                  masterDateFrom !== '' ||
+                  masterDateTo !== '') && (
+                  <button
+                    onClick={() => {
+                      setMasterSearch('');
+                      setMasterStatusFilter('all');
+                      setMasterComputerFilter('all');
+                      setMasterRegionFilter('all');
+                      setMasterCitizenshipFilter('all');
+                      setMasterDateQuick('all');
+                      setMasterDateFrom('');
+                      setMasterDateTo('');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-xs font-semibold text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Filtreleri Sıfırla
+                  </button>
+                )}
+
+                <button
+                  onClick={exportMaster3088ToExcel}
+                  disabled={filteredMaster3088.length === 0}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Excel&apos;e İndir ({filteredMaster3088.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Row 1 Filters: Search + Status + PC + Region + Citizenship */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+              <div className="relative min-w-0">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={masterSearch}
+                  onChange={(e) => setMasterSearch(e.target.value)}
+                  placeholder="Sicil, Заявка №, Ad Soyad, Pasaport, RNR, Geçmiş ara..."
+                  className="w-full pl-9 pr-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <select
+                value={masterStatusFilter}
+                onChange={(e) => setMasterStatusFilter(e.target.value as any)}
+                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
+              >
+                <option value="all">Tüm Durumlar ({masterSummaryCounts.total})</option>
+                <option value="service_rendered">✅ Услуга оказана ({masterSummaryCounts.rendered})</option>
+                <option value="registered_mvd">🏛 Заявление зарегистрировано ({masterSummaryCounts.registered})</option>
+                <option value="sent_pending">📤 Отправлено - Bekleyen ({masterSummaryCounts.pending})</option>
+                <option value="refused_mvd">🚫 Услуга отказана - МВД Red ({masterSummaryCounts.refused})</option>
+                <option value="error">❌ Ошибка - Hatalı ({masterSummaryCounts.error})</option>
+                <option value="not_sent">⏳ Henüz Gönderilmedi ({masterSummaryCounts.notSent})</option>
+                <option value="resent_with_history">🔄 Tekrar Gönderilen / Geçmişi Olanlar ({masterSummaryCounts.withHistory})</option>
+              </select>
+
+              <select
+                value={masterComputerFilter}
+                onChange={(e) => setMasterComputerFilter(e.target.value)}
+                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+              >
+                <option value="all">Tüm Bilgisayarlar (PC 1–4)</option>
+                <option value="1">💻 Bilgisayar 1 (PC 1)</option>
+                <option value="2">💻 Bilgisayar 2 (PC 2)</option>
+                <option value="3">💻 Bilgisayar 3 (PC 3)</option>
+                <option value="4">💻 Bilgisayar 4 (PC 4)</option>
+              </select>
+
+              <select
+                value={masterRegionFilter}
+                onChange={(e) => setMasterRegionFilter(e.target.value)}
+                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+              >
+                <option value="all">Tüm Bölgeler / Şantiyeler</option>
+                {data?.regionBreakdown.map((r) => (
+                  <option key={r.region} value={r.region}>
+                    {r.region} ({r.targetVks})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={masterCitizenshipFilter}
+                onChange={(e) => setMasterCitizenshipFilter(e.target.value)}
+                className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+              >
+                <option value="all">Tüm Uyruklar</option>
+                {data?.citizenshipBreakdown.map((c) => (
+                  <option key={c.citizenship} value={c.citizenship}>
+                    {c.citizenship} ({c.total})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Row 2 Filters: Başvuru / Cevap Zamanına Göre Filtre */}
+            <div className="p-3 rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                  Zamana Göre Filtre:
+                </span>
+
+                <select
+                  value={masterDateField}
+                  onChange={(e) => setMasterDateField(e.target.value as any)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold"
+                >
+                  <option value="submitted_at">📤 Gönderildiği Vakte Göre</option>
+                  <option value="response_at">🔔 Cevap Geldiği Vakte Göre</option>
+                  <option value="any">🕒 Herhangi Bir İşlem / Geçmiş Vaktine Göre</option>
+                </select>
+
+                <div className="flex flex-wrap items-center gap-1">
+                  {[
+                    { id: 'all', label: 'Tüm Günler' },
+                    { id: '2026-10-24', label: 'Bugün (24.10)' },
+                    { id: '2026-10-23', label: 'Dün (23.10)' },
+                    { id: '2026-10-22', label: '22.10' },
+                    { id: '2026-10-21', label: '21.10' },
+                    { id: '2026-10-20', label: '20.10' },
+                    { id: '2026-10-19', label: '19.10' },
+                  ].map((dBtn) => (
+                    <button
+                      key={dBtn.id}
+                      onClick={() => {
+                        setMasterDateQuick(dBtn.id);
+                        setMasterDateFrom('');
+                        setMasterDateTo('');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                        masterDateQuick === dBtn.id && !masterDateFrom && !masterDateTo
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                      }`}
+                    >
+                      {dBtn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-slate-500 font-medium">Tarih/Saat Aralığı:</span>
+                <input
+                  type="datetime-local"
+                  value={masterDateFrom}
+                  onChange={(e) => {
+                    setMasterDateFrom(e.target.value);
+                    if (e.target.value) setMasterDateQuick('all');
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                />
+                <span className="text-slate-400">—</span>
+                <input
+                  type="datetime-local"
+                  value={masterDateTo}
+                  onChange={(e) => {
+                    setMasterDateTo(e.target.value);
+                    if (e.target.value) setMasterDateQuick('all');
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                />
+              </div>
+            </div>
+
+            {/* 3,088 Master List Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/50">
+                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sıra / PC</th>
+                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sicil No</th>
+                    <th className="py-2.5 px-3 font-semibold">Personel (Rusça / Türkçe) & Belgeler</th>
+                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Bölge & Uyruk</th>
+                    <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Güncel Заявка №</th>
+                    <th className="py-2.5 px-3 font-semibold">Güncel Gosuslugi Statüsü</th>
+                    <th className="py-2.5 px-3 font-semibold whitespace-nowrap">
+                      Gönderim Vakti & Cevap Vakti
+                    </th>
+                    <th className="py-2.5 px-3 font-semibold min-w-[290px]">
+                      Başvuru Geçmişi (History)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
+                  {filteredMaster3088.slice(0, masterVisibleCount).map((item) => {
+                    const isExpandedHist = expandedHistorySicil === item.sicil_no;
+                    const histList = item.history || [];
+                    return (
+                      <tr
+                        key={`m3088-${item.row_index}-${item.sicil_no}`}
+                        className={`transition-colors align-top ${
+                          item.status_key === 'error'
+                            ? 'bg-rose-50/20 dark:bg-rose-950/10 hover:bg-rose-50/40'
+                            : item.status_key === 'refused_mvd'
+                            ? 'bg-orange-50/25 dark:bg-orange-950/15 hover:bg-orange-50/50'
+                            : item.status_key === 'not_sent'
+                            ? 'bg-slate-50/40 dark:bg-slate-900/40 hover:bg-slate-100/60'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <td className="py-2.5 px-2.5 whitespace-nowrap">
+                          <div className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                            #{item.row_index}
+                          </div>
+                          <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                            PC {item.computer_no}
+                          </span>
+                        </td>
+
+                        <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                          {item.sicil_no}
+                        </td>
+
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-slate-900 dark:text-white">
+                            {item.worker_name}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {item.ad_soyad_tr || '-'}
+                          </div>
+                          <div className="text-[10.5px] text-slate-400 font-mono mt-0.5">
+                            {item.pasaport_no ? `Pasaport: ${item.pasaport_no}` : ''}
+                            {item.rnr_no ? ` • RNR: ${item.rnr_no}` : ''}
+                          </div>
+                        </td>
+
+                        <td className="py-2.5 px-2.5 whitespace-nowrap">
+                          <div className="font-semibold text-indigo-700 dark:text-indigo-300">
+                            {item.region}
+                          </div>
+                          <div className="text-[11px] text-slate-500">{item.citizenship}</div>
+                        </td>
+
+                        <td className="py-2.5 px-2.5 whitespace-nowrap">
+                          {item.application_no ? (
+                            <div className="space-y-1">
+                              <button
+                                onClick={() =>
+                                  handleCopyText(item.application_no, `m3088-${item.sicil_no}`)
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-mono font-bold flex items-center gap-1.5 hover:bg-emerald-100 cursor-pointer"
+                                title="Заявка № kopyala"
+                              >
+                                <span>№ {item.application_no}</span>
+                                {copiedId === `m3088-${item.sicil_no}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5 opacity-60" />
+                                )}
+                              </button>
+                              {item.hasPdf && item.pdf_filename && (
+                                <a
+                                  href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(
+                                    item.pdf_filename
+                                  )}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10.5px] text-teal-600 dark:text-teal-400 font-semibold hover:underline"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  PDF Aç
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-[11px]">Henüz Yok</span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-3 max-w-[260px]">
+                          {item.status_key === 'service_rendered' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold">
+                              <CheckCircle2 className="w-3 h-3" />
+                              ✅ {item.gosuslugi_status}
+                            </span>
+                          ) : item.status_key === 'registered_mvd' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-[11px] font-bold">
+                              🏛 {item.gosuslugi_status}
+                            </span>
+                          ) : item.status_key === 'sent_pending' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[11px] font-bold">
+                              📤 {item.gosuslugi_status}
+                            </span>
+                          ) : item.status_key === 'refused_mvd' ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-800 text-[11px] font-bold">
+                                🚫 {item.gosuslugi_status}
+                              </span>
+                              {item.refusalHint && (
+                                <div className="text-[10.5px] text-orange-700 dark:text-orange-300 line-clamp-2">
+                                  🔍 {item.refusalHint}
+                                </div>
+                              )}
+                            </div>
+                          ) : item.status_key === 'error' ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 text-[11px] font-bold">
+                                ❌ Ошибка
+                              </span>
+                              <div className="text-[10.5px] font-mono text-rose-700 dark:text-rose-300 line-clamp-2">
+                                {item.gosuslugi_status}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-semibold">
+                              ⏳ {item.gosuslugi_status}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap">
+                          {item.submitted_at ? (
+                            <div className="space-y-1">
+                              <div className="text-slate-700 dark:text-slate-200" title="Gosuslugi'ye Gönderildiği Vakit">
+                                <span className="text-[10px] font-sans font-semibold text-slate-400 mr-1">
+                                  Gönderim:
+                                </span>
+                                {item.submitted_at}
+                              </div>
+                              <div
+                                className={
+                                  item.response_at
+                                    ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                                    : 'text-slate-400'
+                                }
+                                title="Cevap Geldiği / Son Statü Kontrol Vakti"
+                              >
+                                <span className="text-[10px] font-sans font-semibold text-slate-400 mr-1">
+                                  Cevap/Kontrol:
+                                </span>
+                                {item.response_at || 'Bekleniyor'}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-3">
+                          {histList.length === 0 ? (
+                            <span className="text-[11px] text-slate-400">Henüz işlem yapılmadı</span>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <div className="flex flex-wrap items-center gap-1">
+                                {item.had_previous_failure && (
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 text-[10px] font-bold">
+                                    🔄 Tekrar Gönderildi ({histList.length} Adım)
+                                  </span>
+                                )}
+                                {histList.slice(0, isExpandedHist ? histList.length : 2).map((h) => {
+                                  const stepCls =
+                                    h.status_key === 'service_rendered'
+                                      ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                      : h.status_key === 'registered_mvd'
+                                      ? 'bg-teal-50 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                                      : h.status_key === 'refused_mvd'
+                                      ? 'bg-orange-50 dark:bg-orange-950/70 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800'
+                                      : h.status_key === 'error'
+                                      ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                      : 'bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+                                  return (
+                                    <div
+                                      key={`h-${item.sicil_no}-${h.stepNo}`}
+                                      className={`px-2 py-0.5 rounded border text-[10.5px] font-medium flex items-center gap-1 ${stepCls}`}
+                                    >
+                                      <span className="font-bold">#{h.stepNo}</span>
+                                      {h.application_no && (
+                                        <span className="font-mono font-bold">№{h.application_no}</span>
+                                      )}
+                                      <span className="truncate max-w-[150px]">
+                                        {h.status_key === 'error' ? 'Ошибка' : h.status}
+                                      </span>
+                                      <span className="font-mono text-[9.5px] opacity-75">
+                                        ({(h.event_at || h.submitted_at || '').slice(5, 16)})
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                                {histList.length > 1 && (
+                                  <button
+                                    onClick={() =>
+                                      setExpandedHistorySicil(isExpandedHist ? null : item.sicil_no)
+                                    }
+                                    className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
+                                  >
+                                    {isExpandedHist ? 'Gizle ▲' : `Detay (${histList.length}) ▼`}
+                                  </button>
+                                )}
+                              </div>
+
+                              {isExpandedHist && (
+                                <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-1 text-[11px]">
+                                  {histList.map((h) => (
+                                    <div
+                                      key={`hdet-${item.sicil_no}-${h.stepNo}`}
+                                      className="flex flex-col border-b last:border-b-0 border-slate-200/60 dark:border-slate-700/60 pb-1 last:pb-0"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-1">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                                          {h.stepNo}. Adım:{' '}
+                                          {h.application_no ? `Заявка № ${h.application_no} — ` : ''}
+                                          {h.status}
+                                        </span>
+                                        <span className="font-mono text-[10px] text-slate-500">
+                                          {h.event_at || h.submitted_at}
+                                        </span>
+                                      </div>
+                                      {h.detail && (
+                                        <div className="text-[10px] text-slate-500 dark:text-slate-400 break-all">
+                                          {h.detail}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredMaster3088.length > masterVisibleCount && (
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  onClick={() => setMasterVisibleCount((prev) => prev + 250)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
+                >
+                  +250 Kayıt Daha Göster ({masterVisibleCount} / {filteredMaster3088.length})
+                </button>
+                <button
+                  onClick={() => setMasterVisibleCount(filteredMaster3088.length)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                >
+                  Tümünü Göster ({filteredMaster3088.length})
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
 
       {/* 6 KPI Cards (Mobile 2-col, Desktop 6-col) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -1790,6 +2686,64 @@ export default function GosuslugiAnalyticsView() {
               ))}
             </select>
           </div>
+
+          {/* Başvuru Zamanı Filtresi (Tab 1) */}
+          <div className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                Başvuru Zamanı:
+              </span>
+              {[
+                { id: 'all', label: 'Tümü' },
+                { id: '2026-10-24', label: 'Bugün (24.10)' },
+                { id: '2026-10-23', label: 'Dün (23.10)' },
+                { id: '2026-10-22', label: '22.10' },
+                { id: '2026-10-21', label: '21.10' },
+                { id: '2026-10-20', label: '20.10' },
+                { id: '2026-10-19', label: '19.10' },
+              ].map((dBtn) => (
+                <button
+                  key={dBtn.id}
+                  onClick={() => {
+                    setSubDateQuick(dBtn.id);
+                    setSubDateFrom('');
+                    setSubDateTo('');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                    subDateQuick === dBtn.id && !subDateFrom && !subDateTo
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                  }`}
+                >
+                  {dBtn.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-slate-500">Aralık:</span>
+              <input
+                type="datetime-local"
+                value={subDateFrom}
+                onChange={(e) => {
+                  setSubDateFrom(e.target.value);
+                  if (e.target.value) setSubDateQuick('all');
+                }}
+                className="px-2 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+              />
+              <span className="text-slate-400">—</span>
+              <input
+                type="datetime-local"
+                value={subDateTo}
+                onChange={(e) => {
+                  setSubDateTo(e.target.value);
+                  if (e.target.value) setSubDateQuick('all');
+                }}
+                className="px-2 py-1 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Status Quick Tabs */}
@@ -1940,7 +2894,9 @@ export default function GosuslugiAnalyticsView() {
                 <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Заявка № (Başvuru No)</th>
                 <th className="py-2.5 px-3 font-semibold">Durum / Hata Çeşidi & Detayı</th>
                 <th className="py-2.5 px-3 font-semibold whitespace-nowrap">PDF</th>
-                <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">Gönderim Zamanı</th>
+                <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">
+                  Gönderim & Cevap Zamanı
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
@@ -1996,7 +2952,7 @@ export default function GosuslugiAnalyticsView() {
                         <span className="text-slate-400 font-mono">—</span>
                       )}
                     </td>
-                    <td className="py-2 px-3 max-w-[380px]">
+                    <td className="py-2 px-3 max-w-[400px]">
                       {item.state === 'error' ? (
                         <div className="space-y-0.5">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 text-[10px] font-bold">
@@ -2043,6 +2999,11 @@ export default function GosuslugiAnalyticsView() {
                           )}
                         </div>
                       )}
+                      {item.history && item.history.length > 1 && (
+                        <div className="mt-1 text-[10px] text-indigo-700 dark:text-indigo-300 font-medium">
+                          🔄 Geçmiş: {formatHistorySummaryText(item.history)}
+                        </div>
+                      )}
                     </td>
                   <td className="py-2.5 px-3 whitespace-nowrap">
                     {item.hasPdf ? (
@@ -2065,7 +3026,12 @@ export default function GosuslugiAnalyticsView() {
                     )}
                   </td>
                   <td className="py-2.5 px-3 text-right font-mono text-[11px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    <div>{item.submitted_at}</div>
+                    <div>📤 {item.submitted_at}</div>
+                    {(item.response_at || item.checked_at) && (
+                      <div className="text-[10.5px] text-emerald-700 dark:text-emerald-400">
+                        🔔 {item.response_at || item.checked_at}
+                      </div>
+                    )}
                     {item.period_code && (
                       <div className="text-[10px] text-slate-400">{item.period_code}</div>
                     )}
@@ -2088,6 +3054,8 @@ export default function GosuslugiAnalyticsView() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

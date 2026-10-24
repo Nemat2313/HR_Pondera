@@ -197,7 +197,7 @@ export async function GET(request: Request) {
     const db = getDb();
     const msk = getMoscowTimeParts();
 
-    // Ensure submissions table exists
+    // Ensure submissions, archive, and history tables exist
     db.exec(`
       CREATE TABLE IF NOT EXISTS gosuslugi_submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,7 +215,35 @@ export async function GET(request: Request) {
         updated_at TEXT DEFAULT '',
         UNIQUE(sicil_no, notification_type, period_code)
       );
+      CREATE TABLE IF NOT EXISTS gosuslugi_refused_archive (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sicil_no TEXT NOT NULL,
+        worker_name TEXT,
+        citizenship TEXT,
+        notification_type TEXT NOT NULL DEFAULT 'vks_salary',
+        period_code TEXT DEFAULT '',
+        application_no TEXT NOT NULL DEFAULT '',
+        gosuslugi_status TEXT NOT NULL DEFAULT 'Услуга отказана',
+        status_detail TEXT DEFAULT '',
+        pdf_filename TEXT DEFAULT '',
+        submitted_at TEXT DEFAULT '',
+        archived_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS gosuslugi_submission_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sicil_no TEXT NOT NULL,
+        worker_name TEXT DEFAULT '',
+        application_no TEXT DEFAULT '',
+        gosuslugi_status TEXT NOT NULL DEFAULT '',
+        status_detail TEXT DEFAULT '',
+        pdf_filename TEXT DEFAULT '',
+        submitted_at TEXT DEFAULT '',
+        event_at TEXT NOT NULL
+      );
     `);
+    try {
+      db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
+    } catch {}
 
     // 1. Load & cache active VKS personnel from personnel table so 15MB of all_data_json is not re-parsed on every poll
     const pVersionRow = db
@@ -324,19 +352,102 @@ export async function GET(request: Request) {
     const personnelBySicil = gCache.__ponderaPersonnelAnalyticsCache.personnelBySicil;
     let totalTargetVksPersonnel = gCache.__ponderaPersonnelAnalyticsCache.totalTargetVksPersonnel;
     const masterWorkerBySicil: Record<string, any> = {};
+    const orderedMasterList: Array<{ row_index: number; computer_no: number; sicil_no: string; worker: any }> = [];
     try {
       const masterRows = db
-        .prepare('SELECT sicil_no, worker_json FROM gosuslugi_vks_master_list')
-        .all() as Array<{ sicil_no: string; worker_json: string }>;
+        .prepare('SELECT row_order, assigned_computer, sicil_no, worker_json FROM gosuslugi_vks_master_list ORDER BY row_order ASC')
+        .all() as Array<{ row_order: number; assigned_computer: number; sicil_no: string; worker_json: string }>;
       if (masterRows.length > 0) {
         totalTargetVksPersonnel = masterRows.length;
-        for (const mr of masterRows) {
-          if (mr.sicil_no && mr.worker_json) {
+        for (let idx = 0; idx < masterRows.length; idx++) {
+          const mr = masterRows[idx];
+          const sNo = String(mr.sicil_no || '').trim();
+          if (sNo && mr.worker_json) {
             try {
-              masterWorkerBySicil[String(mr.sicil_no).trim()] = JSON.parse(mr.worker_json);
+              const parsed = JSON.parse(mr.worker_json);
+              masterWorkerBySicil[sNo] = parsed;
+              orderedMasterList.push({
+                row_index: mr.row_order || idx + 1,
+                computer_no: mr.assigned_computer || Math.min(4, Math.floor(idx / 772) + 1),
+                sicil_no: sNo,
+                worker: parsed,
+              });
             } catch {}
           }
         }
+      }
+    } catch {}
+
+    // Load archived refusals/errors and explicit history events per sicil_no
+    type RawHistoryStep = {
+      application_no: string;
+      status: string;
+      status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error';
+      detail: string;
+      submitted_at: string;
+      event_at: string;
+      source: 'archive' | 'history' | 'current';
+    };
+    const rawHistoryBySicil: Record<string, RawHistoryStep[]> = {};
+    const classifyStatusKey = (
+      st: string
+    ): 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' => {
+      if (/^ошибк/i.test(st)) return 'error';
+      if (/отказан/i.test(st)) return 'refused_mvd';
+      if (/оказан|исполнен/i.test(st)) return 'service_rendered';
+      if (/зарегистрирован|принят|промежуточн/i.test(st)) return 'registered_mvd';
+      return 'sent_pending';
+    };
+
+    try {
+      const archRows = db
+        .prepare(
+          `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, archived_at
+           FROM gosuslugi_refused_archive
+           ORDER BY COALESCE(NULLIF(submitted_at, ''), archived_at) ASC, id ASC`
+        )
+        .all() as any[];
+      for (const ar of archRows) {
+        const sNo = String(ar.sicil_no || '').trim();
+        if (!sNo) continue;
+        const st = String(ar.gosuslugi_status || '').trim();
+        if (!st) continue;
+        if (!rawHistoryBySicil[sNo]) rawHistoryBySicil[sNo] = [];
+        rawHistoryBySicil[sNo].push({
+          application_no: String(ar.application_no || '').trim(),
+          status: st,
+          status_key: classifyStatusKey(st),
+          detail: String(ar.status_detail || '').trim(),
+          submitted_at: String(ar.submitted_at || '').trim(),
+          event_at: String(ar.submitted_at || ar.archived_at || '').trim(),
+          source: 'archive',
+        });
+      }
+    } catch {}
+
+    try {
+      const histRows = db
+        .prepare(
+          `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, event_at
+           FROM gosuslugi_submission_history
+           ORDER BY event_at ASC, id ASC`
+        )
+        .all() as any[];
+      for (const hr of histRows) {
+        const sNo = String(hr.sicil_no || '').trim();
+        if (!sNo) continue;
+        const st = String(hr.gosuslugi_status || '').trim();
+        if (!st) continue;
+        if (!rawHistoryBySicil[sNo]) rawHistoryBySicil[sNo] = [];
+        rawHistoryBySicil[sNo].push({
+          application_no: String(hr.application_no || '').trim(),
+          status: st,
+          status_key: classifyStatusKey(st),
+          detail: String(hr.status_detail || '').trim(),
+          submitted_at: String(hr.submitted_at || '').trim(),
+          event_at: String(hr.event_at || hr.submitted_at || '').trim(),
+          source: 'history',
+        });
       }
     } catch {}
 
@@ -407,12 +518,92 @@ export async function GET(request: Request) {
         `SELECT
           id, sicil_no, worker_name, citizenship, notification_type,
           period_code, application_no, gosuslugi_status, status_detail,
-          pdf_filename, submitted_at, checked_at
+          pdf_filename, submitted_at, checked_at, updated_at
         FROM gosuslugi_submissions
         WHERE LOWER(notification_type) = 'vks_salary'
         ORDER BY submitted_at DESC, id DESC`
       )
       .all() as any[];
+
+    const buildChronologicalHistory = (
+      sNo: string,
+      curAppNo: string,
+      curStatus: string,
+      curDetail: string,
+      curSubAt: string,
+      curChkAt: string,
+      curUpdAt: string
+    ) => {
+      const priorList = [...(rawHistoryBySicil[sNo] || [])];
+      const curKey = curStatus ? classifyStatusKey(curStatus) : null;
+      const respTime = curChkAt || curUpdAt || curSubAt;
+
+      if (curStatus) {
+        // If current status is final/registered and submitted_at < response_at, include initial 'Отправлено' step if not already present
+        if (
+          curKey &&
+          curKey !== 'error' &&
+          curKey !== 'sent_pending' &&
+          curSubAt &&
+          respTime &&
+          respTime > curSubAt
+        ) {
+          priorList.push({
+            application_no: curAppNo,
+            status: 'Отправлено',
+            status_key: 'sent_pending',
+            detail: 'Gosuslugi üzerinden МВД sistemine gönderildi',
+            submitted_at: curSubAt,
+            event_at: curSubAt,
+            source: 'current',
+          });
+        }
+        priorList.push({
+          application_no: curAppNo,
+          status: curStatus,
+          status_key: curKey!,
+          detail: curDetail,
+          submitted_at: curSubAt,
+          event_at: respTime || curSubAt,
+          source: 'current',
+        });
+      }
+
+      priorList.sort((a, b) => (a.event_at || a.submitted_at || '').localeCompare(b.event_at || b.submitted_at || ''));
+
+      const deduped: Array<{
+        stepNo: number;
+        application_no: string;
+        status: string;
+        status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error';
+        detail: string;
+        submitted_at: string;
+        event_at: string;
+      }> = [];
+
+      for (const stp of priorList) {
+        const prev = deduped[deduped.length - 1];
+        if (prev && prev.application_no === stp.application_no && prev.status === stp.status) {
+          if (stp.event_at && (!prev.event_at || stp.event_at > prev.event_at)) {
+            prev.event_at = stp.event_at;
+          }
+          if (stp.detail && !prev.detail) {
+            prev.detail = stp.detail;
+          }
+          continue;
+        }
+        deduped.push({
+          stepNo: deduped.length + 1,
+          application_no: stp.application_no,
+          status: stp.status,
+          status_key: stp.status_key,
+          detail: stp.detail,
+          submitted_at: stp.submitted_at,
+          event_at: stp.event_at,
+        });
+      }
+      return deduped;
+    };
 
     const cutoff15m = getMoscowCutoffString(15);
     const cutoff60m = getMoscowCutoffString(60);
@@ -470,6 +661,8 @@ export async function GET(request: Request) {
       const pdf = String(r.pdf_filename || '').trim();
       const subAt = String(r.submitted_at || '').trim();
       const chkAt = String(r.checked_at || '').trim();
+      const updAt = String(r.updated_at || '').trim();
+      const responseAt = chkAt || (updAt && updAt > subAt ? updAt : '');
 
       // Skip browser-closed pseudo errors
       if (
@@ -682,6 +875,22 @@ export async function GET(request: Request) {
       }
       citizenshipMap[citizenship].total++;
 
+      const workerHistory = buildChronologicalHistory(
+        sicil,
+        appNo,
+        rawStatus,
+        refusalHint || detail,
+        subAt,
+        chkAt,
+        updAt
+      );
+      const distinctAttempts = new Set(
+        workerHistory.map((h) => (h.application_no ? `app:${h.application_no}` : `st:${h.status_key}:${h.submitted_at.slice(0, 13)}`))
+      ).size;
+      const hadPreviousFailure =
+        workerHistory.length > 1 &&
+        workerHistory.slice(0, -1).some((h) => h.status_key === 'error' || h.status_key === 'refused_mvd');
+
       const enrichedItem = {
         id: r.id,
         sicil_no: sicil,
@@ -703,6 +912,11 @@ export async function GET(request: Request) {
         pdf_filename: pdf,
         submitted_at: subAt,
         checked_at: chkAt,
+        updated_at: updAt,
+        response_at: responseAt,
+        attempt_count: Math.max(1, distinctAttempts),
+        had_previous_failure: hadPreviousFailure,
+        history: workerHistory,
         state: isError ? 'error' : isSent ? 'sent' : 'other',
         hasPdf,
         isRegisteredMvd,
@@ -744,6 +958,97 @@ export async function GET(request: Request) {
       }
 
       enrichedSubmissions.push(enrichedItem);
+    }
+
+    // Build full 3,088 VKS master list with current submission status, timestamps, and history
+    const subBySicilMap: Record<string, any> = {};
+    for (const sub of enrichedSubmissions) {
+      if (sub.sicil_no && !subBySicilMap[sub.sicil_no]) {
+        subBySicilMap[sub.sicil_no] = sub;
+      }
+    }
+
+    const masterList3088: any[] = [];
+    for (const mEntry of orderedMasterList) {
+      const sNo = mEntry.sicil_no;
+      const pInfo = personnelBySicil[sNo];
+      if (!matchesRls(pInfo)) continue;
+
+      const w = mEntry.worker || {};
+      const sub = subBySicilMap[sNo];
+      const ruFullName = [w.lastName, w.firstName, w.middleName]
+        .map((part) => String(part || '').trim())
+        .filter((part) => part && part.toLowerCase() !== 'нет')
+        .join(' ');
+      const workerName = sub?.worker_name || ruFullName || pInfo?.tam_adi_kiril || '';
+      const citizenship = pInfo?.uyruk || String(w.citizenship || sub?.citizenship || '').trim() || 'BELİRTİLMEMİŞ';
+      const region = pInfo?.region || sub?.region || 'Belirtilmemiş';
+      const pasaportNo = String(w.passportNumber || pInfo?.pasaport_no || sub?.pasaport_no || '').trim();
+      const rnrNo =
+        w.rnrSeries && w.rnrNumber
+          ? `${w.rnrSeries} ${w.rnrNumber}`
+          : String(w.rnrNumber || pInfo?.rnr_no || sub?.rnr_no || '').trim();
+
+      if (sub) {
+        masterList3088.push({
+          row_index: mEntry.row_index,
+          computer_no: mEntry.computer_no,
+          sicil_no: sNo,
+          worker_name: workerName,
+          ad_soyad_tr: pInfo?.ad_soyad || sub.ad_soyad_tr || '',
+          citizenship,
+          region,
+          proje_adi: pInfo?.proje_adi || '',
+          pasaport_no: pasaportNo,
+          rnr_no: rnrNo,
+          contract_date: String(w.contractDate || '').trim(),
+          application_no: sub.application_no || '',
+          gosuslugi_status: sub.gosuslugi_status || 'Отправлено',
+          status_key: sub.gosuslugiStatusKey || 'sent_pending',
+          status_detail: sub.status_detail || '',
+          refusalHint: sub.refusalHint || '',
+          pdf_filename: sub.pdf_filename || '',
+          hasPdf: Boolean(sub.hasPdf),
+          submitted_at: sub.submitted_at || '',
+          response_at: sub.response_at || sub.checked_at || sub.updated_at || '',
+          attempt_count: sub.attempt_count || 1,
+          had_previous_failure: Boolean(sub.had_previous_failure),
+          history: sub.history || [],
+        });
+      } else {
+        // Worker is not currently in gosuslugi_submissions (either never sent yet, or re-opened to pending queue after error/refusal)
+        const priorHistory = buildChronologicalHistory(sNo, '', '', '', '', '', '');
+        const hadPrevFail = priorHistory.some(
+          (h) => h.status_key === 'error' || h.status_key === 'refused_mvd'
+        );
+        masterList3088.push({
+          row_index: mEntry.row_index,
+          computer_no: mEntry.computer_no,
+          sicil_no: sNo,
+          worker_name: workerName,
+          ad_soyad_tr: pInfo?.ad_soyad || '',
+          citizenship,
+          region,
+          proje_adi: pInfo?.proje_adi || '',
+          pasaport_no: pasaportNo,
+          rnr_no: rnrNo,
+          contract_date: String(w.contractDate || '').trim(),
+          application_no: '',
+          gosuslugi_status: hadPrevFail
+            ? 'Tekrar Gönderim Kuyruğunda (Bekleyen)'
+            : 'Henüz Gönderilmedi (Kuyrukta)',
+          status_key: 'not_sent',
+          status_detail: '',
+          refusalHint: '',
+          pdf_filename: '',
+          hasPdf: false,
+          submitted_at: '',
+          response_at: '',
+          attempt_count: priorHistory.length,
+          had_previous_failure: hadPrevFail,
+          history: priorHistory,
+        });
+      }
     }
 
     // Finalize error category percentages
@@ -822,6 +1127,7 @@ export async function GET(request: Request) {
       citizenshipBreakdown,
       hourlyTimeline,
       submissions: enrichedSubmissions,
+      masterList3088,
     });
   } catch (err: any) {
     return NextResponse.json(
