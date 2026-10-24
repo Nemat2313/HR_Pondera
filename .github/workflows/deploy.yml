@@ -21,25 +21,24 @@ jobs:
           command_timeout: 15m
           script: |
             echo "=== Starting Pondera HR Auto-Deploy ==="
-            # Locate project directory
-            if [ -d "/root/HR_Pondera" ]; then
-              cd /root/HR_Pondera
-            elif [ -d "/var/www/HR_Pondera" ]; then
-              cd /var/www/HR_Pondera
-            else
-              cd ~/HR_Pondera
-            fi
+            cd /var/www/hr_pondera || cd /root/HR_Pondera || cd ~/HR_Pondera
+            echo "Current directory: $(pwd)"
             
             echo "=== Pulling latest changes from GitHub main ==="
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             
-            echo "=== Installing dependencies if package.json changed ==="
-            npm install --production=false
+            echo "=== Installing dependencies ==="
+            npm install
             
             echo "=== Building production Next.js bundle ==="
             npm run build
             
+            echo "=== Copying static assets for standalone build ==="
+            cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+            cp -r public .next/standalone/ 2>/dev/null || true
+            
             echo "=== Restarting PM2 process ==="
-            pm2 restart all || pm2 restart hr-pondera || pm2 start npm --name "hr-pondera" -- start
+            pm2 restart hr-pondera || pm2 restart all
             
             echo "=== Auto-Deploy Completed Successfully ==="
