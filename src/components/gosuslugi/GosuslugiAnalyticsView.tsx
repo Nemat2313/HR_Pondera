@@ -898,7 +898,7 @@ export default function GosuslugiAnalyticsView() {
             <button
               onClick={() => fetchAnalytics(false)}
               disabled={refreshing}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               Yenile
@@ -908,9 +908,9 @@ export default function GosuslugiAnalyticsView() {
               <button
                 onClick={handleTriggerTelegramNow}
                 disabled={sendingTelegram}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white border border-slate-800 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white border border-sky-600 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
               >
-                <Send className="w-3.5 h-3.5 text-sky-400" />
+                <Send className="w-3.5 h-3.5 text-white" />
                 {sendingTelegram ? 'Gönderiliyor...' : 'Telegram Raporu'}
               </button>
             )}
@@ -935,11 +935,11 @@ export default function GosuslugiAnalyticsView() {
             </span>
             <div className="flex items-center gap-3">
               {estimatedHoursLeft && (
-                <span className="text-slate-500 dark:text-slate-400">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">
                   Tahmini Kalan: <strong>~{estimatedHoursLeft} saat</strong>
                 </span>
               )}
-              <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200/60 dark:border-emerald-800/60">
+              <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-200/60 dark:border-emerald-800/60 text-xs">
                 %{s.overallCompletionPct} Tamamlandı
               </span>
             </div>
@@ -972,10 +972,10 @@ export default function GosuslugiAnalyticsView() {
           <button
             type="button"
             onClick={() => setActiveMainTab('analytics')}
-            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
               activeMainTab === 'analytics'
                 ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
-                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-white'
             }`}
           >
             <span
@@ -985,15 +985,15 @@ export default function GosuslugiAnalyticsView() {
             />
             <BarChart3
               className={`w-4 h-4 shrink-0 ${
-                activeMainTab === 'analytics' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'
+                activeMainTab === 'analytics' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
               }`}
             />
             <span className="truncate">Genel Analitik</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
                 activeMainTab === 'analytics'
-                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-300 border border-emerald-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
               }`}
             >
               %{s.overallCompletionPct}
@@ -1004,10 +1004,10 @@ export default function GosuslugiAnalyticsView() {
           <button
             type="button"
             onClick={() => setActiveMainTab('master3088')}
-            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
               activeMainTab === 'master3088'
                 ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
-                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-white'
             }`}
           >
             <span
@@ -1017,15 +1017,15 @@ export default function GosuslugiAnalyticsView() {
             />
             <Users
               className={`w-4 h-4 shrink-0 ${
-                activeMainTab === 'master3088' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
+                activeMainTab === 'master3088' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'
               }`}
             />
             <span className="truncate">Tüm VKS Listesi</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
                 activeMainTab === 'master3088'
-                  ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300'
-                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-900 dark:text-indigo-300 border border-indigo-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
               }`}
             >
               {masterSummaryCounts.total.toLocaleString('tr-TR')}
@@ -1036,10 +1036,10 @@ export default function GosuslugiAnalyticsView() {
           <button
             type="button"
             onClick={() => setActiveMainTab('refusals')}
-            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
               activeMainTab === 'refusals'
                 ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
-                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-white'
             }`}
           >
             <span
@@ -1049,15 +1049,15 @@ export default function GosuslugiAnalyticsView() {
             />
             <XCircle
               className={`w-4 h-4 shrink-0 ${
-                activeMainTab === 'refusals' ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400'
+                activeMainTab === 'refusals' ? 'text-orange-600 dark:text-orange-400' : 'text-slate-500'
               }`}
             />
             <span className="truncate">МВД Red Analizi</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
                 activeMainTab === 'refusals'
-                  ? 'bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300'
-                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  ? 'bg-orange-100 dark:bg-orange-950 text-orange-900 dark:text-orange-300 border border-orange-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
               }`}
             >
               {s.totalRefusedMvd ?? 0}
@@ -1068,10 +1068,10 @@ export default function GosuslugiAnalyticsView() {
           <button
             type="button"
             onClick={() => setActiveMainTab('errors')}
-            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
               activeMainTab === 'errors'
                 ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
-                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
+                : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-white'
             }`}
           >
             <span
@@ -1081,15 +1081,15 @@ export default function GosuslugiAnalyticsView() {
             />
             <AlertTriangle
               className={`w-4 h-4 shrink-0 ${
-                activeMainTab === 'errors' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'
+                activeMainTab === 'errors' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500'
               }`}
             />
             <span className="truncate">Hata Analizi</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
                 activeMainTab === 'errors'
-                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
-                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-900 dark:text-rose-300 border border-rose-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
               }`}
             >
               {s.totalErrors}
@@ -1477,13 +1477,14 @@ export default function GosuslugiAnalyticsView() {
               {/* Header + Actions */}
               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <Users className="w-4 h-4 text-indigo-600" />
-                    <span>
-                      Tüm VKS Listesi, Заявка № ve Başvuru Geçmişi ({filteredMaster3088.length.toLocaleString('tr-TR')} / {masterSummaryCounts.total.toLocaleString('tr-TR')})
+                  <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>Tüm VKS Listesi, Заявка № ve Başvuru Geçmişi</span>
+                    <span className="font-mono text-xs sm:text-[13px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2.5 py-0.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/80">
+                      {filteredMaster3088.length.toLocaleString('tr-TR')} / {masterSummaryCounts.total.toLocaleString('tr-TR')}
                     </span>
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs sm:text-[13px] text-slate-600 dark:text-slate-300 mt-0.5">
                     Personel bazlı başvuru numarası (Заявка №), Gosuslugi statüsü, hata/red teşhisi, PDF makbuzu ve tüm işlem geçmişi
                   </p>
                 </div>
@@ -1664,10 +1665,10 @@ export default function GosuslugiAnalyticsView() {
                         setMasterDateFrom('');
                         setMasterDateTo('');
                       }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                         masterDateQuick === dBtn.id && !masterDateFrom && !masterDateTo
-                          ? 'bg-slate-900 text-white dark:bg-indigo-600'
-                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 hover:text-indigo-600'
                       }`}
                     >
                       {dBtn.label}
@@ -1676,7 +1677,7 @@ export default function GosuslugiAnalyticsView() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="text-slate-500">Tarih Aralığı:</span>
+                  <span className="text-slate-600 dark:text-slate-400 font-medium">Tarih Aralığı:</span>
                   <input
                     type="datetime-local"
                     value={masterDateFrom}
@@ -1703,10 +1704,12 @@ export default function GosuslugiAnalyticsView() {
               <div className="overflow-x-auto border border-slate-200/80 dark:border-slate-800 rounded-xl">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-50/90 dark:bg-slate-800/60">
+                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 bg-slate-50/90 dark:bg-slate-800/60">
                       <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sıra / PC</th>
                       <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Sicil No</th>
-                      <th className="py-2.5 px-3 font-semibold">Personel & Belgeler</th>
+                      <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Personel (Ad Soyad)</th>
+                      <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Pasaport No</th>
+                      <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">RNR (Çalışma İzni)</th>
                       <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Bölge & Uyruk</th>
                       <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Заявка № & PDF</th>
                       <th className="py-2.5 px-3 font-semibold">Gosuslugi Statüsü & Teşhis</th>
@@ -1729,37 +1732,53 @@ export default function GosuslugiAnalyticsView() {
                               : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
                           }`}
                         >
-                          <td className="py-2.5 px-2.5 whitespace-nowrap">
-                            <div className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                          <td className="py-2 px-2.5 whitespace-nowrap">
+                            <div className="font-mono font-medium text-slate-800 dark:text-slate-200">
                               #{item.row_index}
                             </div>
-                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10.5px] font-medium bg-slate-200/80 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
                               PC {item.computer_no}
                             </span>
                           </td>
 
-                          <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                          <td className="py-2 px-2.5 font-mono font-medium text-slate-900 dark:text-white whitespace-nowrap">
                             {item.sicil_no}
                           </td>
 
-                          <td className="py-2.5 px-3">
-                            <div className="font-bold text-slate-900 dark:text-white">
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            <div className="font-medium text-slate-900 dark:text-white leading-tight">
                               {item.worker_name}
                             </div>
-                            <div className="text-[11px] text-slate-500">
+                            <div className="text-[11px] text-slate-600 dark:text-slate-400 leading-tight mt-0.5">
                               {item.ad_soyad_tr || '-'}
-                            </div>
-                            <div className="text-[10.5px] text-slate-400 font-mono mt-0.5">
-                              {item.pasaport_no ? `Pasaport: ${item.pasaport_no}` : ''}
-                              {item.rnr_no ? ` • RNR: ${item.rnr_no}` : ''}
                             </div>
                           </td>
 
-                          <td className="py-2.5 px-2.5 whitespace-nowrap">
-                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                          <td className="py-2 px-2.5 whitespace-nowrap font-mono text-xs text-slate-800 dark:text-slate-200">
+                            {item.pasaport_no ? (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                {item.pasaport_no}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+
+                          <td className="py-2 px-2.5 whitespace-nowrap font-mono text-xs text-slate-800 dark:text-slate-200">
+                            {item.rnr_no ? (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                {item.rnr_no}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+
+                          <td className="py-2 px-2.5 whitespace-nowrap">
+                            <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight">
                               {item.region}
                             </div>
-                            <div className="text-[11px] text-slate-500">{item.citizenship}</div>
+                            <div className="text-[11px] text-slate-600 dark:text-slate-400 leading-tight mt-0.5">{item.citizenship}</div>
                           </td>
 
                           <td className="py-2.5 px-2.5 whitespace-nowrap">
@@ -2044,10 +2063,10 @@ export default function GosuslugiAnalyticsView() {
 
                           <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
                             <div className="text-right mr-2">
-                              <div className="text-base font-extrabold text-orange-600 dark:text-orange-400 leading-none">
+                              <div className="text-base sm:text-lg font-bold text-orange-700 dark:text-orange-400 leading-none">
                                 {cat.count} kayıt
                               </div>
-                              <div className="text-[10px] text-slate-500">%{cat.percentage}</div>
+                              <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-0.5">%{cat.percentage}</div>
                             </div>
 
                             <button
@@ -2057,7 +2076,7 @@ export default function GosuslugiAnalyticsView() {
                                   refusalCat: cat.id,
                                 })
                               }
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-orange-400 cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-orange-400 cursor-pointer"
                             >
                               Listede Gör
                             </button>
@@ -2066,7 +2085,7 @@ export default function GosuslugiAnalyticsView() {
                               onClick={() =>
                                 exportItemsToExcel(cat.items, `Pondera_VKS_Red_${cat.id}`)
                               }
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" />
                               Excel ({cat.count})
@@ -2075,7 +2094,7 @@ export default function GosuslugiAnalyticsView() {
                             <a
                               href={`/api/gosuslugi/master-list/export-errors?mode=refused&refusalCategory=${encodeURIComponent(cat.id)}&computer=all`}
                               download
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1 no-underline"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1 no-underline"
                             >
                               <Download className="w-3.5 h-3.5" />
                               Şablon İndir
@@ -2090,7 +2109,7 @@ export default function GosuslugiAnalyticsView() {
                                   )
                                 }
                                 disabled={reopeningRefused !== null}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
                               >
                                 <RefreshCw
                                   className={`w-3.5 h-3.5 ${
@@ -2169,11 +2188,14 @@ export default function GosuslugiAnalyticsView() {
             <div className="space-y-4">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-500" />
-                    Hata Çeşitlerine Göre Kırılım ({s.totalErrors} Hatalı Kayıt)
+                  <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>Hata Çeşitlerine Göre Kırılım</span>
+                    <span className="font-mono text-xs sm:text-[13px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/80 px-2.5 py-0.5 rounded-lg border border-rose-200/80 dark:border-rose-800/80">
+                      {s.totalErrors} Hatalı Kayıt
+                    </span>
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs sm:text-[13px] text-slate-600 dark:text-slate-300 mt-0.5">
                     Zaman aşımı veya eksik/hatalı alan kaynaklı hataları grup bazında indirebilir veya doğrudan tekrar gönderime açabilirsiniz
                   </p>
                 </div>
@@ -2184,7 +2206,7 @@ export default function GosuslugiAnalyticsView() {
                       exportItemsToExcel(allErrorItems, 'Pondera_VKS_Tum_Hatalar_Detayli_Rapor')
                     }
                     disabled={allErrorItems.length === 0}
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     <Download className="w-3.5 h-3.5" />
                     Detaylı Excel İndir ({allErrorItems.length})
@@ -2193,7 +2215,7 @@ export default function GosuslugiAnalyticsView() {
                   <a
                     href={errorTemplateExportUrl}
                     download
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 no-underline"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 no-underline shadow-xs"
                   >
                     <Download className="w-3.5 h-3.5" />
                     Renkli VKS Şablon İndir ({allErrorItems.length})
@@ -2208,7 +2230,7 @@ export default function GosuslugiAnalyticsView() {
                         )
                       }
                       disabled={reopeningError !== null}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
                     >
                       <RefreshCw
                         className={`w-3.5 h-3.5 ${reopeningError !== null ? 'animate-spin' : ''}`}
@@ -2238,10 +2260,10 @@ export default function GosuslugiAnalyticsView() {
                         <div className="p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
                           <div className="space-y-1 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800">
+                              <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded border bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800">
                                 {cat.stepLabel}
                               </span>
-                              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                                 {cat.titleTr}
                               </h3>
                             </div>
@@ -2250,10 +2272,10 @@ export default function GosuslugiAnalyticsView() {
 
                           <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2 shrink-0">
                             <div className="text-right mr-2">
-                              <div className="text-base font-extrabold text-rose-600 dark:text-rose-400 leading-none">
+                              <div className="text-base sm:text-lg font-bold text-rose-700 dark:text-rose-400 leading-none">
                                 {cat.count} kayıt
                               </div>
-                              <div className="text-[10px] text-slate-500">%{cat.percentage}</div>
+                              <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-0.5">%{cat.percentage}</div>
                             </div>
 
                             <button
@@ -2263,7 +2285,7 @@ export default function GosuslugiAnalyticsView() {
                                   errorCat: cat.id,
                                 })
                               }
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-rose-400 cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-rose-400 cursor-pointer"
                             >
                               Listede Gör
                             </button>
@@ -2272,7 +2294,7 @@ export default function GosuslugiAnalyticsView() {
                               onClick={() =>
                                 exportItemsToExcel(cat.items, `Pondera_VKS_Hata_${cat.id}`)
                               }
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 flex items-center gap-1 cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" />
                               Excel ({cat.count})
@@ -2281,7 +2303,7 @@ export default function GosuslugiAnalyticsView() {
                             <a
                               href={`/api/gosuslugi/master-list/export-errors?mode=only_oshibka&errorCategory=${encodeURIComponent(cat.id)}&computer=all`}
                               download
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1 no-underline"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1 no-underline shadow-xs"
                             >
                               <Download className="w-3.5 h-3.5" />
                               Şablon İndir
@@ -2296,7 +2318,7 @@ export default function GosuslugiAnalyticsView() {
                                   )
                                 }
                                 disabled={reopeningError !== null}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
                               >
                                 <RefreshCw
                                   className={`w-3.5 h-3.5 ${

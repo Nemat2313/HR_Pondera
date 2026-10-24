@@ -35,7 +35,7 @@ module.exports = {
         'subtle': '0 2px 4px rgba(0,0,0,0.02)',
       },
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['Tahoma', '"Segoe UI"', '-apple-system', 'BlinkMacSystemFont', 'Roboto', 'Arial', 'sans-serif'],
       },
     },
   },

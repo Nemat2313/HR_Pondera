@@ -168,7 +168,7 @@ export default function PowerBIDualDonuts({
             y={ey - 6}
             textAnchor={textAnchor}
             dominantBaseline="central"
-            className="fill-slate-800 dark:fill-slate-100 font-extrabold text-[11px]"
+            className="fill-slate-700 dark:fill-slate-200 font-medium text-xs"
           >
             {titleText}
           </text>
@@ -180,7 +180,7 @@ export default function PowerBIDualDonuts({
             textAnchor={textAnchor}
             dominantBaseline="central"
             fill={sliceColor}
-            className="font-mono font-black text-[11px]"
+            className="font-medium text-xs"
           >
             {`${countText} (${pctText})`}
           </text>
@@ -199,14 +199,14 @@ export default function PowerBIDualDonuts({
             <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-teal-500/20 flex items-center justify-center border border-emerald-200/60 dark:border-teal-500/30">
               <Briefcase className="w-4 h-4 text-emerald-600 dark:text-teal-400" />
             </div>
-            <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+            <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
               {lang === 'ru' ? 'Распределение: Синие / Белые воротнички' : 'Beyaz Yaka / Mavi Yaka Dağılımı'}
             </h3>
           </div>
           {onOpenDetail && (
             <button
               onClick={() => onOpenDetail('collar', selectedCollar || 'all')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-emerald-700 dark:text-teal-300 text-[11px] font-bold border border-emerald-200 dark:border-teal-500/30 transition-all cursor-pointer shrink-0"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-emerald-800 dark:text-teal-200 text-xs font-medium border border-emerald-300/80 dark:border-teal-500/30 transition-all cursor-pointer shrink-0"
               title={lang === 'ru' ? 'Открыть детализацию по категориям' : 'Yaka Dağılımı Detayını Aç'}
             >
               <FileSpreadsheet className="w-3 h-3 text-emerald-600 dark:text-teal-400" />
@@ -277,10 +277,10 @@ export default function PowerBIDualDonuts({
           {/* Clean Center KPI Badge inside innerRadius=48 */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-20 h-20 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
-              <span className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
+              <span className="text-xl font-bold text-slate-800 dark:text-white leading-none tracking-tight">
                 %{bluePct}
               </span>
-              <span className="text-[8px] text-emerald-600 dark:text-teal-400 font-extrabold uppercase tracking-wider mt-1 leading-tight">
+              <span className="text-[9px] text-emerald-700 dark:text-teal-400 font-medium uppercase tracking-wider mt-1 leading-tight">
                 {lang === 'ru' ? 'Синий вор.' : 'Mavi Yaka'}
               </span>
             </div>
@@ -295,14 +295,14 @@ export default function PowerBIDualDonuts({
             <div className="w-7 h-7 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30">
               <Globe2 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             </div>
-            <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+            <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
               {lang === 'ru' ? 'Статус: Экспат / СНГ / Местный' : 'Expat / SNG / Yerel Statüsü'}
             </h3>
           </div>
           {onOpenDetail && (
             <button
               onClick={() => onOpenDetail('category', selectedCategory || 'all')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-[11px] font-bold border border-cyan-200 dark:border-cyan-500/30 transition-all cursor-pointer shrink-0"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-800 dark:text-cyan-300 text-xs font-medium border border-cyan-300/80 dark:border-cyan-500/30 transition-all cursor-pointer shrink-0"
               title={lang === 'ru' ? 'Открыть детализацию по статусам' : 'Statü Dağılımı Detayını Aç'}
             >
               <FileSpreadsheet className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
@@ -377,10 +377,10 @@ export default function PowerBIDualDonuts({
           {/* Clean Center KPI Badge inside innerRadius=48 */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-20 h-20 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
-              <span className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
+              <span className="text-xl font-bold text-slate-800 dark:text-white leading-none tracking-tight">
                 %{expatPct}
               </span>
-              <span className="text-[8.5px] text-cyan-600 dark:text-cyan-400 font-extrabold uppercase tracking-wider mt-1 leading-tight">
+              <span className="text-[9px] text-cyan-700 dark:text-cyan-400 font-medium uppercase tracking-wider mt-1 leading-tight">
                 {lang === 'ru' ? 'Экспат' : 'Ekspat'}
               </span>
             </div>
@@ -395,14 +395,14 @@ export default function PowerBIDualDonuts({
             <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-500/20 flex items-center justify-center border border-teal-200/60 dark:border-teal-500/30">
               <Users2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             </div>
-            <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+            <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
               {lang === 'ru' ? 'Распределение по полу (Мужчины / Женщины)' : 'Cinsiyet Dağılımı (Erkek / Kadın)'}
             </h3>
           </div>
           {onOpenDetail && (
             <button
               onClick={() => onOpenDetail('gender', 'all')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-700 dark:text-teal-300 text-[11px] font-bold border border-teal-200 dark:border-teal-500/30 transition-all cursor-pointer shrink-0"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-800 dark:text-teal-200 text-xs font-medium border border-teal-300/80 dark:border-teal-500/30 transition-all cursor-pointer shrink-0"
               title={lang === 'ru' ? 'Открыть детализацию по полу' : 'Cinsiyet Detayını Aç'}
             >
               <FileSpreadsheet className="w-3 h-3 text-teal-600 dark:text-teal-400" />
@@ -423,16 +423,16 @@ export default function PowerBIDualDonuts({
                 <WcMaleIcon className="w-11 h-28" />
               </div>
               <div className="min-w-0 flex flex-col justify-center">
-                <span className="text-[11px] font-extrabold text-teal-900 dark:text-teal-300 leading-tight">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
                   {lang === 'ru' ? 'Мужской штат' : 'Erkek Kadro'}
                 </span>
-                <span className="inline-flex w-fit mt-1 text-[10px] px-2 py-0.5 rounded-full bg-teal-500/15 dark:bg-teal-800/90 text-teal-800 dark:text-teal-100 border border-teal-300/60 dark:border-teal-600/50 font-black">
+                <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-700 font-medium">
                   %{malePct}
                 </span>
-                <p className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-2 tracking-tight leading-none">
+                <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
                   {maleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
                   {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
                 </p>
               </div>
@@ -447,16 +447,16 @@ export default function PowerBIDualDonuts({
                 <WcFemaleIcon className="w-11 h-28" />
               </div>
               <div className="min-w-0 flex flex-col justify-center">
-                <span className="text-[11px] font-extrabold text-violet-900 dark:text-violet-300 leading-tight">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
                   {lang === 'ru' ? 'Женский штат' : 'Kadın Kadro'}
                 </span>
-                <span className="inline-flex w-fit mt-1 text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 dark:bg-violet-800/90 text-violet-800 dark:text-violet-100 border border-violet-300/60 dark:border-violet-600/50 font-black">
+                <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700 font-medium">
                   %{femalePct}
                 </span>
-                <p className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-2 tracking-tight leading-none">
+                <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
                   {femaleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
                   {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
                 </p>
               </div>
@@ -466,11 +466,11 @@ export default function PowerBIDualDonuts({
           {/* Proportional dual progress bar & ratio footer */}
           <div className="space-y-2 pt-3">
             <div className="space-y-1 px-0.5">
-              <div className="flex items-center justify-between text-xs font-extrabold">
-                <span className="text-teal-700 dark:text-teal-300">
+              <div className="flex items-center justify-between text-xs font-medium">
+                <span className="text-teal-800 dark:text-teal-300">
                   %{malePct} {lang === 'ru' ? 'Мужчины' : 'Erkek'}
                 </span>
-                <span className="text-violet-700 dark:text-violet-300">
+                <span className="text-purple-800 dark:text-purple-300">
                   %{femalePct} {lang === 'ru' ? 'Женщины' : 'Kadın'}
                 </span>
               </div>
@@ -489,10 +489,10 @@ export default function PowerBIDualDonuts({
             </div>
 
             <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+              <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
                 {lang === 'ru' ? 'Преимущественно полевой / строительный штат' : 'Saha / Şantiye yoğunluklu kadro'}
               </span>
-              <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
+              <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
                 {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотношение' : 'Oran'}
               </span>
             </div>

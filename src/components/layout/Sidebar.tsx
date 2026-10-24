@@ -239,7 +239,7 @@ export default function Sidebar({
                     : 'Kullanıcı'}
                 </span>
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-normal truncate">
+              <div className="flex items-center gap-1 text-[10.5px] text-slate-700 dark:text-slate-300 mt-1 font-medium truncate">
                 {user.scope_type === 'region' ? (
                   <>
                     <MapPin className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
@@ -263,7 +263,7 @@ export default function Sidebar({
           {/* Navigation Links */}
           <div className="p-2 space-y-0.5">
             <div
-              className={`px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 ${
+              className={`px-2 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 ${
                 collapsed && !mobileOpen ? 'text-center' : ''
               }`}
             >
@@ -277,21 +277,21 @@ export default function Sidebar({
                 <button
                   key={item.id}
                   onClick={() => handleSelectTab(item.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[12px] transition-all duration-150 cursor-pointer ${
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12.5px] transition-all duration-150 cursor-pointer ${
                     isActive
-                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 shadow-2xs font-medium'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/60 font-normal'
+                      ? 'bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-200 border border-emerald-300/70 dark:border-emerald-700/60 shadow-2xs font-semibold'
+                      : 'text-slate-800 dark:text-slate-100 hover:text-black dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60 font-normal'
                   } ${collapsed && !mobileOpen ? 'justify-center px-0' : ''}`}
                   title={collapsed && !mobileOpen ? item.label : undefined}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-400'}`} />
                   {(!collapsed || mobileOpen) && (
                     <div className="flex-1 flex items-center justify-between text-left min-w-0">
                       <span className="whitespace-nowrap leading-tight tracking-tight">{item.label}</span>
                       {item.badge && (
                         <span
                           className={`text-[9.5px] font-medium px-1.5 py-0.2 rounded shrink-0 ml-1 leading-normal ${
-                            item.badgeColor || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                            item.badgeColor || 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
                           }`}
                         >
                           {item.badge}
@@ -313,8 +313,8 @@ export default function Sidebar({
                 <ShieldCheck className="w-3.5 h-3.5" />
               </div>
               <div className="overflow-hidden">
-                <p className="text-[11px] font-medium text-slate-800 dark:text-slate-200 truncate leading-tight">{t('nav_db_secure')}</p>
-                <p className="text-[9.5px] text-slate-500 dark:text-slate-400 truncate leading-tight font-normal">{t('nav_db_sub')}</p>
+                <p className="text-[11px] font-semibold text-slate-900 dark:text-white truncate leading-tight">{t('nav_db_secure')}</p>
+                <p className="text-[10px] text-slate-700 dark:text-slate-300 truncate leading-tight font-normal">{t('nav_db_sub')}</p>
               </div>
             </div>
           ) : (

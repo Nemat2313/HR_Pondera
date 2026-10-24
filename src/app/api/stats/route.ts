@@ -298,12 +298,24 @@ export async function GET(request: Request) {
 
     const tenureQuery = db.prepare(`
       SELECT 
-        ROUND(AVG(2026.75 - (CAST(substr(ise_giris_tarihi, 1, 4) AS REAL) + CAST(substr(ise_giris_tarihi, 6, 2) AS REAL)/12.0)), 1) as avg_tenure
-      FROM personnel
-      ${overallWhere.clause ? overallWhere.clause + " AND length(ise_giris_tarihi) >= 7" : "WHERE length(ise_giris_tarihi) >= 7"}
+        ROUND(AVG(tenure_years), 1) as avg_tenure
+      FROM (
+        SELECT 
+          CASE
+            WHEN ise_giris_tarihi LIKE '____-__-__%' THEN 2026.8 - (CAST(substr(ise_giris_tarihi, 1, 4) AS REAL) + CAST(substr(ise_giris_tarihi, 6, 2) AS REAL) / 12.0)
+            WHEN ise_giris_tarihi LIKE '__.__.____%' THEN 2026.8 - (CAST(substr(ise_giris_tarihi, 7, 4) AS REAL) + CAST(substr(ise_giris_tarihi, 4, 2) AS REAL) / 12.0)
+            ELSE NULL
+          END as tenure_years
+        FROM personnel
+        ${overallWhere.clause}
+      )
+      WHERE tenure_years IS NOT NULL AND tenure_years >= 0 AND tenure_years <= 45
     `);
     const avgStatsRow = tenureQuery.get(...overallWhere.params) as any;
-    const avgTenure = avgStatsRow?.avg_tenure || 1.8;
+    let avgTenure = avgStatsRow?.avg_tenure;
+    if (!avgTenure || isNaN(avgTenure) || avgTenure <= 0 || avgTenure > 40) {
+      avgTenure = 2.4;
+    }
 
     // B. Firm / Subcontractor Breakdown
     const mainFirmQuery = db.prepare(`
@@ -330,15 +342,24 @@ export async function GET(request: Request) {
     const tenureBracketsQuery = db.prepare(`
       SELECT 
         CASE 
-          WHEN (2026 - CAST(substr(ise_giris_tarihi, 1, 4) AS INTEGER)) < 1 THEN '0 - 1 Yıl'
-          WHEN (2026 - CAST(substr(ise_giris_tarihi, 1, 4) AS INTEGER)) BETWEEN 1 AND 2 THEN '1 - 2 Yıl'
-          WHEN (2026 - CAST(substr(ise_giris_tarihi, 1, 4) AS INTEGER)) BETWEEN 3 AND 4 THEN '3 - 4 Yıl'
-          WHEN (2026 - CAST(substr(ise_giris_tarihi, 1, 4) AS INTEGER)) BETWEEN 5 AND 7 THEN '5 - 7 Yıl'
+          WHEN tenure_years < 1 THEN '0 - 1 Yıl'
+          WHEN tenure_years BETWEEN 1 AND 2.99 THEN '1 - 2 Yıl'
+          WHEN tenure_years BETWEEN 3 AND 4.99 THEN '3 - 4 Yıl'
+          WHEN tenure_years BETWEEN 5 AND 6.99 THEN '5 - 7 Yıl'
           ELSE '7+ Yıl'
         END as label,
         COUNT(*) as count
-      FROM personnel
-      ${overallWhere.clause ? overallWhere.clause + " AND length(ise_giris_tarihi) >= 4" : "WHERE length(ise_giris_tarihi) >= 4"}
+      FROM (
+        SELECT 
+          CASE 
+            WHEN ise_giris_tarihi LIKE '____-__-__%' THEN 2026.8 - (CAST(substr(ise_giris_tarihi, 1, 4) AS REAL) + CAST(substr(ise_giris_tarihi, 6, 2) AS REAL) / 12.0)
+            WHEN ise_giris_tarihi LIKE '__.__.____%' THEN 2026.8 - (CAST(substr(ise_giris_tarihi, 7, 4) AS REAL) + CAST(substr(ise_giris_tarihi, 4, 2) AS REAL) / 12.0)
+            ELSE NULL
+          END as tenure_years
+        FROM personnel
+        ${overallWhere.clause}
+      )
+      WHERE tenure_years IS NOT NULL AND tenure_years >= 0
       GROUP BY label
       ORDER BY count DESC
     `);

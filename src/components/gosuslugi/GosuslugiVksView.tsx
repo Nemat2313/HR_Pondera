@@ -3084,10 +3084,10 @@ export default function GosuslugiVksView() {
           <button
             type="button"
             onClick={() => setServiceTab('vks')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs font-extrabold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
               serviceTab === 'vks'
                 ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white border border-transparent'
             }`}
           >
             <span className="flex items-center gap-2 truncate">
@@ -3095,7 +3095,7 @@ export default function GosuslugiVksView() {
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'vks'
                     ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-400 dark:text-slate-500'
+                    : 'text-slate-500'
                 }`}
               />
               <span className="truncate">
@@ -3103,10 +3103,10 @@ export default function GosuslugiVksView() {
               </span>
             </span>
             <span
-              className={`text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0 ${
+              className={`text-xs px-2.5 py-0.5 rounded-md font-bold shrink-0 ${
                 serviceTab === 'vks'
                   ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
-                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}
             >
               600585/1
@@ -3117,10 +3117,10 @@ export default function GosuslugiVksView() {
           <button
             type="button"
             onClick={() => setServiceTab('hiring')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs font-extrabold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
               serviceTab === 'hiring'
                 ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white border border-transparent'
             }`}
           >
             <span className="flex items-center gap-2 truncate">
@@ -3128,7 +3128,7 @@ export default function GosuslugiVksView() {
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'hiring'
                     ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-400 dark:text-slate-500'
+                    : 'text-slate-500'
                 }`}
               />
               <span className="truncate">
@@ -3136,10 +3136,10 @@ export default function GosuslugiVksView() {
               </span>
             </span>
             <span
-              className={`text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0 ${
+              className={`text-xs px-2.5 py-0.5 rounded-md font-bold shrink-0 ${
                 serviceTab === 'hiring'
                   ? 'bg-amber-50 dark:bg-amber-950/90 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80'
-                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}
             >
               {lang === 'ru' ? 'В работе' : 'İşlemde'}
@@ -3150,10 +3150,10 @@ export default function GosuslugiVksView() {
           <button
             type="button"
             onClick={() => setServiceTab('dismissal')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs font-extrabold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
               serviceTab === 'dismissal'
                 ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white border border-transparent'
             }`}
           >
             <span className="flex items-center gap-2 truncate">
@@ -3161,7 +3161,7 @@ export default function GosuslugiVksView() {
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'dismissal'
                     ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-400 dark:text-slate-500'
+                    : 'text-slate-500'
                 }`}
               />
               <span className="truncate">
@@ -3169,10 +3169,10 @@ export default function GosuslugiVksView() {
               </span>
             </span>
             <span
-              className={`text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0 ${
+              className={`text-xs px-2.5 py-0.5 rounded-md font-bold shrink-0 ${
                 serviceTab === 'dismissal'
                   ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
-                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}
             >
               600585/1
@@ -3737,28 +3737,28 @@ export default function GosuslugiVksView() {
             }`}
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+              <span className="text-xs sm:text-[13px] font-semibold text-slate-900 dark:text-white">
                 {lang === 'ru' ? '🌐 Весь список' : '🌐 Tüm Liste'}
               </span>
               {isLoadingMaster && activeComputerFilter === 'all' && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
               )}
             </div>
-            <div className="text-[10.5px] text-slate-500 dark:text-slate-300 mt-1 flex items-center justify-between font-mono">
+            <div className="text-xs text-slate-700 dark:text-slate-200 mt-1 flex items-center justify-between font-mono font-medium">
               <span>Top: {masterSummary?.totalMaster || '—'}</span>
-              <span className="text-emerald-600 dark:text-emerald-300 font-bold">
+              <span className="text-emerald-700 dark:text-emerald-300 font-bold">
                 ✓{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.sent, 0)
                   : '—'}
               </span>
-              <span className="text-amber-600 dark:text-amber-300 font-bold">
+              <span className="text-amber-700 dark:text-amber-300 font-bold">
                 ⏳{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.pending, 0)
                   : '—'}
               </span>
-              <span className="text-rose-600 dark:text-rose-300 font-bold">
+              <span className="text-rose-700 dark:text-rose-300 font-bold">
                 ⚠{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.error, 0)
@@ -3786,15 +3786,15 @@ export default function GosuslugiVksView() {
                   <button
                     onClick={() => handleLoadFromMasterList(pcStr, 'all')}
                     disabled={isLoadingMaster}
-                    className="text-xs font-extrabold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer text-left flex-1 truncate"
+                    className="text-xs sm:text-[13px] font-semibold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer text-left flex-1 truncate"
                   >
                     💻 PC {pcNum}{' '}
-                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-300">({rangeText})</span>
+                    <span className="text-[11px] font-mono text-slate-600 dark:text-slate-300">({rangeText})</span>
                   </button>
                   {pcStat && pcStat.error > 0 && (
                     <button
                       onClick={() => handleLoadFromMasterList(pcStr, 'error')}
-                      className="px-1.5 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-500/30 dark:hover:bg-rose-500/50 border border-rose-300 dark:border-rose-400/40 text-rose-700 dark:text-rose-200 text-[9.5px] font-bold cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-500/30 dark:hover:bg-rose-500/50 border border-rose-300 dark:border-rose-400/40 text-rose-700 dark:text-rose-200 text-[10.5px] font-bold cursor-pointer"
                       title={`PC ${pcNum} üzerindeki ${pcStat.error} hatalı kaydı göster`}
                     >
                       ⚠ {pcStat.error}
@@ -3803,11 +3803,11 @@ export default function GosuslugiVksView() {
                 </div>
                 <div
                   onClick={() => handleLoadFromMasterList(pcStr, 'all')}
-                  className="text-[10.5px] text-slate-500 dark:text-slate-300 mt-1 flex items-center justify-between font-mono cursor-pointer"
+                  className="text-xs text-slate-700 dark:text-slate-200 mt-1 flex items-center justify-between font-mono font-medium cursor-pointer"
                 >
                   <span>Top: {pcStat?.total ?? '—'}</span>
-                  <span className="text-emerald-600 dark:text-emerald-300 font-bold">✓ {pcStat?.sent ?? 0}</span>
-                  <span className="text-amber-600 dark:text-amber-300 font-bold">⏳ {pcStat?.pending ?? 0}</span>
+                  <span className="text-emerald-700 dark:text-emerald-300 font-bold">✓ {pcStat?.sent ?? 0}</span>
+                  <span className="text-amber-700 dark:text-amber-300 font-bold">⏳ {pcStat?.pending ?? 0}</span>
                 </div>
               </div>
             );
