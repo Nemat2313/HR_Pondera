@@ -12,14 +12,44 @@
   --foreground: #f8fafc;
 }
 
-body {
+/* Universal Typography: Tahoma & Clean System Fallbacks */
+*, ::before, ::after {
+  font-family: 'Tahoma', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif !important;
+}
+
+html, body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Tahoma', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  font-family: 'Tahoma', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+button, input, optgroup, select, textarea, table, th, td {
+  font-family: 'Tahoma', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif !important;
+}
+
+/* Soften harsh, thick bold fonts across all components to match clean sidebar aesthetic */
+b, strong, .font-bold, .font-extrabold {
+  font-weight: 600 !important;
+}
+
+/* Prevent washed-out light grey text in light mode - keep fonts dark and crisp */
+.text-slate-400 {
+  color: #475569 !important; /* slate-600 equivalent in light mode for crisp readable text */
+}
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.text-slate-500 {
+  color: #334155 !important; /* slate-700 in light mode */
+}
+.dark .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
 
 /* Custom scrollbar for data grids and drawers */
 ::-webkit-scrollbar {

@@ -36,6 +36,7 @@ module.exports = {
       },
       fontFamily: {
         sans: ['Tahoma', '"Segoe UI"', '-apple-system', 'BlinkMacSystemFont', 'Roboto', 'Arial', 'sans-serif'],
+        mono: ['Tahoma', '"Segoe UI"', '-apple-system', 'BlinkMacSystemFont', 'Roboto', 'Arial', 'sans-serif'],
       },
     },
   },

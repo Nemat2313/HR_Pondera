@@ -168,14 +168,14 @@ export default function Topbar({
       {/* Right Controls */}
       <div className="flex items-center gap-1.5 sm:gap-2.5">
         {/* Language Switcher (TR / RU) */}
-        <div className="flex items-center bg-slate-100 dark:bg-slate-800/90 rounded-xl p-0.5 border border-slate-200/80 dark:border-slate-700 text-xs font-bold shrink-0 shadow-2xs">
+        <div className="flex items-center bg-slate-100 dark:bg-slate-800/90 rounded-xl p-0.5 border border-slate-200/80 dark:border-slate-700 text-xs font-medium shrink-0 shadow-2xs">
           <button
             type="button"
             onClick={() => setLang('tr')}
-            className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               lang === 'tr'
                 ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                : 'text-slate-800 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
             }`}
             title="Türkçe"
           >
@@ -184,10 +184,10 @@ export default function Topbar({
           <button
             type="button"
             onClick={() => setLang('ru')}
-            className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               lang === 'ru'
                 ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                : 'text-slate-800 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
             }`}
             title="Русский"
           >
@@ -200,17 +200,17 @@ export default function Topbar({
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Açık Moda Geç' : 'Koyu Moda Geç'}
           title={theme === 'dark' ? 'Açık Mod (Light)' : 'Koyu Mod (Dark)'}
-          className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all text-xs font-medium shrink-0 cursor-pointer shadow-2xs"
+          className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all text-xs font-medium shrink-0 cursor-pointer shadow-2xs"
         >
           {theme === 'dark' ? (
             <>
               <Sun className="w-4 h-4 text-amber-400 animate-in spin-in-90 duration-300" />
-              <span className="hidden xl:inline text-amber-300 font-semibold">{t('mode_light')}</span>
+              <span className="hidden xl:inline text-amber-300 font-medium">{t('mode_light')}</span>
             </>
           ) : (
             <>
               <Moon className="w-4 h-4 text-emerald-600 animate-in spin-in-90 duration-300" />
-              <span className="hidden xl:inline text-slate-700 font-semibold">{t('mode_dark')}</span>
+              <span className="hidden xl:inline text-slate-800 font-medium">{t('mode_dark')}</span>
             </>
           )}
         </button>
@@ -219,21 +219,21 @@ export default function Topbar({
         {user && (
           <div
             onClick={onOpenLogin}
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold cursor-pointer hover:opacity-90 transition-opacity"
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity"
             title="Kullanıcı / Şantiye RLS Değiştirmek İçin Tıklayın"
           >
             {user.scope_type === 'region' ? (
-              <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+              <span className="flex items-center gap-1 text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
                 <MapPin className="w-3 h-3" />
                 RLS: {user.scope_value}
               </span>
             ) : user.scope_type === 'project' ? (
-              <span className="flex items-center gap-1 text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-lg border border-amber-200 dark:border-amber-800">
+              <span className="flex items-center gap-1 text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-lg border border-amber-200 dark:border-amber-800">
                 <Briefcase className="w-3 h-3" />
                 RLS: {user.scope_value}
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+              <span className="flex items-center gap-1 text-emerald-900 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
                 <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                 {t('rls_all_sites')}
               </span>
@@ -242,8 +242,8 @@ export default function Topbar({
         )}
 
         {/* Turn Over / Include Exits Toggle */}
-        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs">
-          <span className={`font-medium ${!includeExits ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
+        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-normal">
+          <span className={`font-medium ${!includeExits ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-400'}`}>
             {t('status_active')}
           </span>
           <button
@@ -259,18 +259,18 @@ export default function Topbar({
               }`}
             />
           </button>
-          <span className={`font-medium ${includeExits ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
+          <span className={`font-medium ${includeExits ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-400'}`}>
             {t('status_exited')}
           </span>
         </div>
 
         {/* Data Freshness Badge */}
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-medium">
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-300 rounded-xl text-xs font-medium">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="font-semibold text-emerald-900 dark:text-emerald-200">{t('label_data_date')}</span>
+          <span className="font-medium text-emerald-950 dark:text-emerald-200">{t('label_data_date')}</span>
           <span>{dataFreshness || '03.10.2026'}</span>
         </div>
 
@@ -278,7 +278,7 @@ export default function Topbar({
         {user?.role !== 'viewer' && (
           <button
             onClick={onOpenUpload}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-medium shadow-2xs transition-colors shrink-0"
             title={t('btn_upload_excel')}
           >
             <UploadCloud className="w-4 h-4" />
@@ -353,7 +353,7 @@ export default function Topbar({
               {user ? user.name.slice(0, 1) : 'H'}
             </div>
             <div className="hidden lg:block text-left">
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight truncate max-w-[120px]">
+              <p className="text-xs font-medium text-slate-900 dark:text-slate-100 leading-tight truncate max-w-[120px]">
                 {user ? user.name : (lang === 'ru' ? 'Не авторизован' : 'Giriş Yapılmadı')}
               </p>
               <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">

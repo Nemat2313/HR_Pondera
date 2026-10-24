@@ -263,7 +263,7 @@ export default function Sidebar({
           {/* Navigation Links */}
           <div className="p-2 space-y-0.5">
             <div
-              className={`px-2 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 ${
+              className={`px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 ${
                 collapsed && !mobileOpen ? 'text-center' : ''
               }`}
             >
@@ -279,19 +279,19 @@ export default function Sidebar({
                   onClick={() => handleSelectTab(item.id)}
                   className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12.5px] transition-all duration-150 cursor-pointer ${
                     isActive
-                      ? 'bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-200 border border-emerald-300/70 dark:border-emerald-700/60 shadow-2xs font-semibold'
-                      : 'text-slate-800 dark:text-slate-100 hover:text-black dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60 font-normal'
+                      ? 'bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 border border-emerald-300/70 dark:border-emerald-700/60 shadow-2xs font-semibold'
+                      : 'text-slate-900 dark:text-slate-100 hover:text-black dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800/60 font-normal'
                   } ${collapsed && !mobileOpen ? 'justify-center px-0' : ''}`}
                   title={collapsed && !mobileOpen ? item.label : undefined}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-300'}`} />
                   {(!collapsed || mobileOpen) && (
                     <div className="flex-1 flex items-center justify-between text-left min-w-0">
                       <span className="whitespace-nowrap leading-tight tracking-tight">{item.label}</span>
                       {item.badge && (
                         <span
                           className={`text-[9.5px] font-medium px-1.5 py-0.2 rounded shrink-0 ml-1 leading-normal ${
-                            item.badgeColor || 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                            item.badgeColor || 'bg-slate-200/90 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
                           }`}
                         >
                           {item.badge}

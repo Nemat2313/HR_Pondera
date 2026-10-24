@@ -3079,15 +3079,15 @@ export default function GosuslugiVksView() {
       {/* PAGE-CONNECTED TAB BAR + TOP HEADER SECTION */}
       <div>
         {/* WINDOWS MULTI-TAB FORM HEADER (3 EQUAL-WIDTH TABS) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 px-1 pt-1 bg-slate-200/70 dark:bg-slate-900/90 rounded-t-2xl border border-b-0 border-slate-300/80 dark:border-slate-800">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 px-1 pt-1 bg-slate-200/80 dark:bg-slate-900/90 rounded-t-2xl border border-b-0 border-slate-300/80 dark:border-slate-800">
           {/* Tab 1: VKS Salary Notification */}
           <button
             type="button"
             onClick={() => setServiceTab('vks')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
               serviceTab === 'vks'
-                ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white border border-transparent'
+                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
+                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
             }`}
           >
             <span className="flex items-center gap-2 truncate">
@@ -3095,7 +3095,7 @@ export default function GosuslugiVksView() {
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'vks'
                     ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-500'
+                    : 'text-slate-600'
                 }`}
               />
               <span className="truncate">
@@ -3103,10 +3103,10 @@ export default function GosuslugiVksView() {
               </span>
             </span>
             <span
-              className={`text-xs px-2.5 py-0.5 rounded-md font-bold shrink-0 ${
+              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
                 serviceTab === 'vks'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
-                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-800 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
+                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
               }`}
             >
               600585/1
@@ -3117,10 +3117,10 @@ export default function GosuslugiVksView() {
           <button
             type="button"
             onClick={() => setServiceTab('hiring')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
               serviceTab === 'hiring'
-                ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white border border-transparent'
+                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
+                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
             }`}
           >
             <span className="flex items-center gap-2 truncate">
@@ -3128,7 +3128,7 @@ export default function GosuslugiVksView() {
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'hiring'
                     ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-500'
+                    : 'text-slate-600'
                 }`}
               />
               <span className="truncate">
@@ -3136,10 +3136,10 @@ export default function GosuslugiVksView() {
               </span>
             </span>
             <span
-              className={`text-xs px-2.5 py-0.5 rounded-md font-bold shrink-0 ${
+              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
                 serviceTab === 'hiring'
-                  ? 'bg-amber-50 dark:bg-amber-950/90 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80'
-                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  ? 'bg-amber-50 dark:bg-amber-950/90 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80'
+                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
               }`}
             >
               {lang === 'ru' ? 'В работе' : 'İşlemde'}
@@ -3150,10 +3150,10 @@ export default function GosuslugiVksView() {
           <button
             type="button"
             onClick={() => setServiceTab('dismissal')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
               serviceTab === 'dismissal'
-                ? 'bg-white dark:bg-[#111F38] text-slate-900 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/80 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white border border-transparent'
+                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
+                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
             }`}
           >
             <span className="flex items-center gap-2 truncate">
@@ -3161,7 +3161,7 @@ export default function GosuslugiVksView() {
                 className={`w-4 h-4 shrink-0 ${
                   serviceTab === 'dismissal'
                     ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-500'
+                    : 'text-slate-600'
                 }`}
               />
               <span className="truncate">
@@ -3169,10 +3169,10 @@ export default function GosuslugiVksView() {
               </span>
             </span>
             <span
-              className={`text-xs px-2.5 py-0.5 rounded-md font-bold shrink-0 ${
+              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
                 serviceTab === 'dismissal'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
-                  : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-800 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
+                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
               }`}
             >
               600585/1
@@ -3247,7 +3247,7 @@ export default function GosuslugiVksView() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
+              <h1 className="text-sm sm:text-base font-semibold tracking-tight text-slate-950 dark:text-white">
                 {lang === 'ru'
                   ? 'Уведомление МВД о выплате ЗП ВКС'
                   : 'VKS Maaş Bildirimi (МВД)'}
@@ -3257,13 +3257,13 @@ export default function GosuslugiVksView() {
               <div className="relative group inline-flex items-center">
                 <button
                   type="button"
-                  className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 flex items-center justify-center transition cursor-help"
+                  className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-300/80 dark:border-slate-700 flex items-center justify-center transition cursor-help"
                   aria-label="Info"
                 >
                   <Info className="w-3 h-3" />
                 </button>
                 <div className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute left-0 top-7 z-50 w-80 sm:w-96 p-3 rounded-xl bg-slate-900 text-white text-xs leading-relaxed shadow-xl border border-slate-700">
-                  <div className="font-bold text-indigo-400 mb-1 flex items-center gap-1.5">
+                  <div className="font-semibold text-indigo-400 mb-1 flex items-center gap-1.5">
                     <Bot className="w-3.5 h-3.5" />
                     <span>Pondera Playwright RPA (Форма ЕПГУ 600585/1)</span>
                   </div>
@@ -3273,14 +3273,14 @@ export default function GosuslugiVksView() {
 
               {/* Single Live Agent Status Pill */}
               {isOnline ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   {lang === 'ru' ? 'RPA Онлайн (8088)' : 'RPA Aktif (8088)'}
                 </span>
               ) : (
                 <button
                   onClick={() => setShowAgentGuide(!showAgentGuide)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/15 border border-amber-200/90 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 cursor-pointer transition"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-500/15 border border-amber-300/90 dark:border-amber-500/30 text-amber-900 dark:text-amber-300 hover:bg-amber-100 cursor-pointer transition"
                 >
                   <span className="w-2 h-2 rounded-full bg-amber-500" />
                   <span>{lang === 'ru' ? 'Агент выкл. (8088)' : 'Ajan Kapalı (8088)'}</span>
@@ -3289,7 +3289,7 @@ export default function GosuslugiVksView() {
               )}
 
               {bridgeStatus.chrome_ready && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 dark:bg-blue-500/15 border border-blue-300 dark:border-blue-500/30 text-blue-800 dark:text-blue-300">
                   <Globe className="w-3 h-3" />
                   Chrome (9222)
                 </span>
@@ -3301,7 +3301,7 @@ export default function GosuslugiVksView() {
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
+              className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
               title="Yeni VKS listesi veya düzeltilmiş şablon Excel dosyasını yükle"
             >
               <Upload className="w-3.5 h-3.5" />
@@ -3311,21 +3311,21 @@ export default function GosuslugiVksView() {
             <button
               onClick={handleLoadFromDatabase}
               disabled={isLoadingDb}
-              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
+              className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
             >
               {isLoadingDb ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-600" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-700" />
               ) : (
-                <Database className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+                <Database className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
               )}
               <span>{lang === 'ru' ? 'Из базы' : 'Sistemden Çek'}</span>
             </button>
 
             <button
               onClick={handleExportExcel}
-              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+              className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
             >
-              <Download className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+              <Download className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
               <span>{lang === 'ru' ? 'Экспорт' : 'Excel İndir'}</span>
             </button>
 
@@ -3333,7 +3333,7 @@ export default function GosuslugiVksView() {
               href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
               download
               title="Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında indir"
-              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+              className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
               <span>{lang === 'ru' ? 'Шаблон Ошибок' : 'Hatalı Şablon'}</span>
@@ -3343,7 +3343,7 @@ export default function GosuslugiVksView() {
               href={`/api/gosuslugi/master-list/export-errors?mode=refused&computer=${activeComputerFilter}`}
               download
               title="Услуга отказана (МВД Red) alan kayıtları şablon formatında indir"
-              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+              className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
               <span>{lang === 'ru' ? 'Шаблон Отказов' : 'Red Şablon'}</span>
@@ -3353,7 +3353,7 @@ export default function GosuslugiVksView() {
               href="/api/gosuslugi/pdf/zip"
               download="Pondera_VKS_Gosuslugi_PDFs_2026-3.zip"
               title="İndirilen tüm VKS bildirim PDF'lerini tek ZIP arşivi olarak indir"
-              className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+              className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>{lang === 'ru' ? 'PDF (ZIP)' : 'PDF ZIP'}</span>
@@ -3658,13 +3658,13 @@ export default function GosuslugiVksView() {
       <div className="p-3.5 rounded-2xl bg-white dark:bg-[#131C31] text-slate-900 dark:text-white border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-extrabold">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-400/30 text-indigo-900 dark:text-indigo-200 text-xs font-semibold">
               <Database className="w-3.5 h-3.5" />
               {lang === 'ru'
                 ? `Серверная очередь ВКС (${masterSummary?.totalMaster || 0})`
                 : `Merkezi VKS Kuyruğu (${masterSummary?.totalMaster || 0})`}
             </span>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+            <span className="text-[11.5px] text-slate-700 dark:text-slate-300 font-normal">
               {lang === 'ru'
                 ? 'Распределение на 4 ПК • Защита от дублей'
                 : '4 Bilgisayar Dağılımı • Mükerrer Korumalı'}
@@ -3676,7 +3676,7 @@ export default function GosuslugiVksView() {
             <button
               onClick={() => handleSplit4Computers('tail_transfer', 600)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300/80 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-[11px] font-medium inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="1. ve 2. bilgisayarların listelerinin sonundan 600'er kişiyi 3. ve 4. bilgisayarlara aktarır"
             >
               <Zap className="w-3 h-3 text-amber-500" />
@@ -3685,19 +3685,19 @@ export default function GosuslugiVksView() {
             <button
               onClick={() => handleSplit4Computers('tail_transfer', 500)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300/80 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-[11px] font-medium inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="1. ve 2. bilgisayarların listelerinin sonundan 500'er kişiyi 3. ve 4. bilgisayarlara aktarır"
             >
-              <Zap className="w-3 h-3 text-teal-500" />
+              <Zap className="w-3 h-3 text-teal-600" />
               <span>{lang === 'ru' ? 'По 500 -> ПК 3-4' : '500 Aktar (PC 3-4)'}</span>
             </button>
             <button
               onClick={() => handleSplit4Computers('equal_4', 600)}
               disabled={isSplittingMaster}
-              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300/80 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-[11px] font-medium inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="Kalan gönderilmemiş tüm başvuruları 4 bilgisayara eşit böler"
             >
-              <Users className="w-3 h-3 text-indigo-500" />
+              <Users className="w-3 h-3 text-indigo-600" />
               <span>{lang === 'ru' ? 'Поровну (4 ПК)' : '4 PC Eşit Böl'}</span>
             </button>
             <button
@@ -3705,7 +3705,7 @@ export default function GosuslugiVksView() {
                 handleRetryErrors(activeComputerFilter === 'all' ? 'all' : 'computer')
               }
               disabled={isRetryingErrors}
-              className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 border border-rose-200 dark:border-rose-400/40 text-rose-700 dark:text-rose-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 border border-rose-300/90 dark:border-rose-400/40 text-rose-800 dark:text-rose-200 text-[11px] font-medium inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="Hata (Ошибка) veren kayıtların hata statüsünü sıfırlayıp tekrar gönderim kuyruğuna alır"
             >
               <RefreshCw className={`w-3 h-3 ${isRetryingErrors ? 'animate-spin' : ''}`} />
@@ -3716,7 +3716,7 @@ export default function GosuslugiVksView() {
                 handleReopenRefused(activeComputerFilter === 'all' ? 'all' : 'computer')
               }
               disabled={isRetryingErrors}
-              className="h-7 px-2.5 rounded-lg bg-orange-50 hover:bg-orange-100 dark:bg-orange-500/20 dark:hover:bg-orange-500/30 border border-orange-200 dark:border-orange-400/40 text-orange-700 dark:text-orange-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+              className="h-7 px-2.5 rounded-lg bg-orange-50 hover:bg-orange-100 dark:bg-orange-500/20 dark:hover:bg-orange-500/30 border border-orange-300/90 dark:border-orange-400/40 text-orange-800 dark:text-orange-200 text-[11px] font-medium inline-flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
               title="Red (Услуга отказана) alan kayıtları tekrar gönderim kuyruğuna alır"
             >
               <RefreshCw className={`w-3 h-3 ${isRetryingErrors ? 'animate-spin' : ''}`} />
@@ -3733,32 +3733,32 @@ export default function GosuslugiVksView() {
             className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
               activeComputerFilter === 'all' && workers.length > 0
                 ? 'bg-indigo-50/90 dark:bg-indigo-600/25 border-indigo-400 ring-1 ring-indigo-400/50'
-                : 'bg-slate-50/80 hover:bg-slate-100/80 dark:bg-white/5 dark:hover:bg-white/10 border-slate-200/90 dark:border-white/10'
+                : 'bg-slate-50/90 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 border-slate-300/90 dark:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-xs sm:text-[13px] font-semibold text-slate-900 dark:text-white">
+              <span className="text-xs sm:text-[13px] font-medium text-slate-950 dark:text-white">
                 {lang === 'ru' ? '🌐 Весь список' : '🌐 Tüm Liste'}
               </span>
               {isLoadingMaster && activeComputerFilter === 'all' && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
               )}
             </div>
-            <div className="text-xs text-slate-700 dark:text-slate-200 mt-1 flex items-center justify-between font-mono font-medium">
-              <span>Top: {masterSummary?.totalMaster || '—'}</span>
-              <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+            <div className="text-[12.5px] text-slate-800 dark:text-slate-200 mt-1.5 flex items-center justify-between font-normal">
+              <span className="text-slate-900 dark:text-slate-100">Top: {masterSummary?.totalMaster || '—'}</span>
+              <span className="text-emerald-800 dark:text-emerald-300 font-medium">
                 ✓{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.sent, 0)
                   : '—'}
               </span>
-              <span className="text-amber-700 dark:text-amber-300 font-bold">
+              <span className="text-amber-800 dark:text-amber-300 font-medium">
                 ⏳{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.pending, 0)
                   : '—'}
               </span>
-              <span className="text-rose-700 dark:text-rose-300 font-bold">
+              <span className="text-rose-800 dark:text-rose-300 font-medium">
                 ⚠{' '}
                 {masterSummary
                   ? Object.values(masterSummary.computers).reduce((a, b) => a + b.error, 0)
@@ -3779,22 +3779,22 @@ export default function GosuslugiVksView() {
                 className={`p-2.5 rounded-xl border transition flex flex-col justify-between ${
                   isSelectedPc
                     ? 'bg-indigo-50/90 dark:bg-indigo-600/25 border-indigo-400 ring-1 ring-indigo-400/50'
-                    : 'bg-slate-50/80 hover:bg-slate-100/80 dark:bg-white/5 dark:hover:bg-white/10 border-slate-200/90 dark:border-white/10'
+                    : 'bg-slate-50/90 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 border-slate-300/90 dark:border-white/10'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1">
                   <button
                     onClick={() => handleLoadFromMasterList(pcStr, 'all')}
                     disabled={isLoadingMaster}
-                    className="text-xs sm:text-[13px] font-semibold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer text-left flex-1 truncate"
+                    className="text-xs sm:text-[13px] font-medium text-slate-950 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer text-left flex-1 truncate"
                   >
                     💻 PC {pcNum}{' '}
-                    <span className="text-[11px] font-mono text-slate-600 dark:text-slate-300">({rangeText})</span>
+                    <span className="text-[11.5px] text-slate-700 dark:text-slate-300">({rangeText})</span>
                   </button>
                   {pcStat && pcStat.error > 0 && (
                     <button
                       onClick={() => handleLoadFromMasterList(pcStr, 'error')}
-                      className="px-2 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-500/30 dark:hover:bg-rose-500/50 border border-rose-300 dark:border-rose-400/40 text-rose-700 dark:text-rose-200 text-[10.5px] font-bold cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-500/30 dark:hover:bg-rose-500/50 border border-rose-300 dark:border-rose-400/40 text-rose-800 dark:text-rose-200 text-[11px] font-medium cursor-pointer"
                       title={`PC ${pcNum} üzerindeki ${pcStat.error} hatalı kaydı göster`}
                     >
                       ⚠ {pcStat.error}
@@ -3803,11 +3803,11 @@ export default function GosuslugiVksView() {
                 </div>
                 <div
                   onClick={() => handleLoadFromMasterList(pcStr, 'all')}
-                  className="text-xs text-slate-700 dark:text-slate-200 mt-1 flex items-center justify-between font-mono font-medium cursor-pointer"
+                  className="text-[12.5px] text-slate-800 dark:text-slate-200 mt-1.5 flex items-center justify-between font-normal cursor-pointer"
                 >
-                  <span>Top: {pcStat?.total ?? '—'}</span>
-                  <span className="text-emerald-700 dark:text-emerald-300 font-bold">✓ {pcStat?.sent ?? 0}</span>
-                  <span className="text-amber-700 dark:text-amber-300 font-bold">⏳ {pcStat?.pending ?? 0}</span>
+                  <span className="text-slate-900 dark:text-slate-100">Top: {pcStat?.total ?? '—'}</span>
+                  <span className="text-emerald-800 dark:text-emerald-300 font-medium">✓ {pcStat?.sent ?? 0}</span>
+                  <span className="text-amber-800 dark:text-amber-300 font-medium">⏳ {pcStat?.pending ?? 0}</span>
                 </div>
               </div>
             );
@@ -3835,13 +3835,13 @@ export default function GosuslugiVksView() {
 
           {/* Single Unified Filter & Count Tabs (No Duplicate KPI Cards Above) */}
           {workers.length > 0 && (
-            <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-[11px] font-bold gap-1">
+            <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300/80 dark:border-slate-800 text-xs font-medium gap-1">
               <button
                 onClick={() => setQueueFilter('all')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition ${
                   queueFilter === 'all'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    ? 'bg-white dark:bg-slate-800 text-slate-950 dark:text-white shadow-2xs font-semibold'
+                    : 'text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white'
                 }`}
               >
                 {lang === 'ru' ? `Все (${workers.length})` : `Tümü (${workers.length})`}
@@ -3850,8 +3850,8 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('ready')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'ready'
-                    ? 'bg-indigo-600 text-white shadow-2xs'
-                    : 'text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                    : 'text-indigo-800 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
                 }`}
               >
                 <CheckCircle2 className="w-3 h-3" />
@@ -3863,8 +3863,8 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('sent')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'sent'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
+                    : 'text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
                 }`}
               >
                 <ShieldCheck className="w-3 h-3" />
@@ -3876,10 +3876,10 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('error')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'error'
-                    ? 'bg-rose-600 text-white shadow-2xs'
+                    ? 'bg-rose-600 text-white shadow-2xs font-semibold'
                     : errorCount > 0
-                    ? 'text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
-                    : 'text-slate-400 hover:text-slate-600'
+                    ? 'text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
+                    : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 <AlertCircle className="w-3 h-3" />
@@ -3891,10 +3891,10 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('invalid')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'invalid'
-                    ? 'bg-amber-600 text-white shadow-2xs'
+                    ? 'bg-amber-600 text-white shadow-2xs font-semibold'
                     : invalidCount > 0
-                    ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
-                    : 'text-slate-400 hover:text-slate-600'
+                    ? 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
+                    : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 <AlertTriangle className="w-3 h-3" />
@@ -3911,7 +3911,7 @@ export default function GosuslugiVksView() {
                 setWorkers([]);
                 setQueueFilter('all');
               }}
-              className="h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs inline-flex items-center gap-1 cursor-pointer transition"
+              className="h-9 px-2.5 rounded-xl border border-slate-300/80 dark:border-slate-700 text-slate-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs inline-flex items-center gap-1 cursor-pointer transition"
               title={lang === 'ru' ? 'Очистить список' : 'Listeyi Temizle'}
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -3924,7 +3924,7 @@ export default function GosuslugiVksView() {
           <button
             onClick={handleOpenChrome}
             disabled={isLaunchingChrome}
-            className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+            className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
           >
             <Globe className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
             <span>
@@ -3941,7 +3941,7 @@ export default function GosuslugiVksView() {
           {isRunning ? (
             <button
               onClick={handleStopRobot}
-              className="h-9 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+              className="h-9 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <Square className="w-3.5 h-3.5 fill-white" />
               <span>{lang === 'ru' ? 'Стоп' : 'Durdur'}</span>
@@ -3951,7 +3951,7 @@ export default function GosuslugiVksView() {
               <button
                 onClick={() => handleStartRobot(1)}
                 disabled={isStartingRobot || selectedValidCount === 0}
-                className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
                 <Play className="w-3.5 h-3.5" />
                 <span>{lang === 'ru' ? 'Тест (1)' : 'Test (1 Satır)'}</span>
@@ -3960,7 +3960,7 @@ export default function GosuslugiVksView() {
               <button
                 onClick={() => handleStartRobot(0, undefined, false)}
                 disabled={isStartingRobot || selectedValidCount === 0}
-                className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
               >
                 <Play className="w-3.5 h-3.5 fill-white" />
                 <span>
@@ -3974,7 +3974,7 @@ export default function GosuslugiVksView() {
                 onClick={() => handleStartRobot(0, undefined, true)}
                 disabled={isStartingRobot || selectedValidCount === 0}
                 title="PDF beklemeksizin hızlı gönderim"
-                className="h-9 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
               >
                 <Zap className="w-3.5 h-3.5 fill-white" />
                 <span>
@@ -3988,7 +3988,7 @@ export default function GosuslugiVksView() {
                 onClick={() => handleCheckGosuslugiStatuses(true)}
                 disabled={isCheckingStatuses}
                 title="PDF indirmeden Gosuslugi JSON üzerinden statüleri hızlıca sorgula"
-                className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
                 <span>{lang === 'ru' ? 'Быстрый статус' : 'Hızlı Statü'}</span>
@@ -3998,7 +3998,7 @@ export default function GosuslugiVksView() {
                 onClick={() => handleCheckGosuslugiStatuses(false)}
                 disabled={isCheckingStatuses}
                 title="Gosuslugi durumlarını sorgula ve PDF makbuzlarını indir"
-                className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 ${
@@ -4072,7 +4072,7 @@ export default function GosuslugiVksView() {
         ) : (
           <div className="overflow-x-auto max-h-[540px]">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10.5px] tracking-wider whitespace-nowrap">
+              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900/95 border-b border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-200 font-semibold uppercase text-[11px] tracking-wider whitespace-nowrap">
                 <tr>
                   <th className="py-2.5 px-2.5 w-9 text-center">
                     <input
@@ -4092,7 +4092,7 @@ export default function GosuslugiVksView() {
                       }
                     />
                   </th>
-                  <th className="py-2.5 px-2 w-9 text-center">№</th>
+                  <th className="py-2.5 px-2 w-9 text-center font-semibold">№</th>
                   <th className="py-2.5 px-2.5 min-w-[205px]">Статус ГУ / № Заявления</th>
                   <th className="py-2.5 px-2.5">Код / Sicil</th>
                   <th className="py-2.5 px-2.5 min-w-[210px]">ФИО (Кириллица)</th>
@@ -4106,7 +4106,7 @@ export default function GosuslugiVksView() {
                   <th className="py-2.5 px-2.5 text-right">Действие</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 font-mono text-[11.5px]">
+              <tbody className="divide-y divide-slate-200/90 dark:divide-slate-800/80 text-[12px] font-normal text-slate-900 dark:text-slate-100">
                 {filteredWorkers.map((w, idx) => {
                   const codeKey = w.code || w.sicil;
                   const rowVal = validationMap[w.id] || {
@@ -4152,7 +4152,7 @@ export default function GosuslugiVksView() {
                           className="rounded border-slate-300 dark:border-slate-600 accent-emerald-600 cursor-pointer"
                         />
                       </td>
-                      <td className="py-2.5 px-2 text-center text-slate-400 font-bold whitespace-nowrap">
+                      <td className="py-2.5 px-2 text-center text-slate-600 dark:text-slate-400 font-normal whitespace-nowrap">
                         {idx + 1}
                       </td>
 
@@ -4166,12 +4166,12 @@ export default function GosuslugiVksView() {
                         }
                       >
                         {isProcessing && isWaitingManual ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500 text-white shadow-xs animate-pulse whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-500 text-white shadow-xs animate-pulse whitespace-nowrap">
                             <AlertCircle className="w-3 h-3" />
                             {lang === 'ru' ? 'Ручная правка...' : 'Manuel Düzeltme...'}
                           </span>
                         ) : isProcessing ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-600 text-white shadow-xs animate-pulse whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-600 text-white shadow-xs animate-pulse whitespace-nowrap">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             {lang === 'ru' ? 'Заполняется...' : 'İşleniyor...'}
                           </span>
@@ -4179,14 +4179,14 @@ export default function GosuslugiVksView() {
                           <div className="space-y-0.5 leading-tight">
                             {w.gosuslugiStatus &&
                             /отказан|возврат|не оказан/i.test(w.gosuslugiStatus) ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-rose-100 dark:bg-rose-500/25 border border-rose-300 dark:border-rose-500/40 text-rose-800 dark:text-rose-200 whitespace-nowrap">
                                 <AlertCircle className="w-3 h-3 shrink-0" />
                                 {w.gosuslugiStatus}
                               </span>
                             ) : !w.pdfFilename ||
                               (w.gosuslugiStatus && /PDF не скачан/i.test(w.gosuslugiStatus)) ? (
                               <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-sky-100 dark:bg-sky-500/20 border border-sky-300 dark:border-sky-500/40 text-sky-800 dark:text-sky-300 whitespace-nowrap font-sans"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-sky-100 dark:bg-sky-500/20 border border-sky-300 dark:border-sky-500/40 text-sky-900 dark:text-sky-200 whitespace-nowrap"
                                 title={
                                   lang === 'ru'
                                     ? 'Заявление отправлено в Госуслуги, но PDF-квитанция ещё не скачана. Нажмите «3. Проверить статусы ГУ», чтобы скачать PDF.'
@@ -4200,24 +4200,24 @@ export default function GosuslugiVksView() {
                               </span>
                             ) : w.gosuslugiStatus &&
                               /промежуточн|обработк|зарегистрирован/i.test(w.gosuslugiStatus) ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 whitespace-nowrap font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-200 whitespace-nowrap">
                                 <RefreshCw className="w-3 h-3 shrink-0" />
                                 {w.gosuslugiStatus}
                               </span>
                             ) : w.gosuslugiStatus &&
                               /оказан|исполнен|принят/i.test(w.gosuslugiStatus) ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-100 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-200 whitespace-nowrap font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-100 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-200 whitespace-nowrap">
                                 <CheckCircle2 className="w-3 h-3 shrink-0" />
                                 {w.gosuslugiStatus}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 whitespace-nowrap font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-300 whitespace-nowrap">
                                 <CheckCircle2 className="w-3 h-3 shrink-0" />
                                 {w.gosuslugiStatus || (lang === 'ru' ? 'Отправлено' : 'Gönderildi')}
                               </span>
                             )}
                             {w.applicationNo && (
-                              <div className="text-[10.5px] font-mono font-bold text-indigo-700 dark:text-indigo-300 truncate">
+                              <div className="text-[11px] font-medium text-indigo-900 dark:text-indigo-300 truncate">
                                 № {w.applicationNo}
                               </div>
                             )}
@@ -4230,7 +4230,7 @@ export default function GosuslugiVksView() {
                                 )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-[9.5px] font-sans font-bold text-teal-600 dark:text-teal-400 hover:underline truncate max-w-[220px]"
+                                className="inline-flex items-center gap-1 text-[10px] font-medium text-teal-800 dark:text-teal-300 hover:underline truncate max-w-[220px]"
                                 title={
                                   lang === 'ru'
                                     ? `Скачать PDF с сервера: ${w.pdfFilename}`
@@ -4243,8 +4243,8 @@ export default function GosuslugiVksView() {
                             )}
                           </div>
                         ) : w.status === 'error' ? (
-                          <div className="space-y-0.5 leading-tight font-sans">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/40 text-rose-700 dark:text-rose-300 whitespace-nowrap">
+                          <div className="space-y-0.5 leading-tight">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-800 dark:text-rose-300 whitespace-nowrap">
                               <AlertCircle className="w-3 h-3 shrink-0" />
                               {lang === 'ru' ? 'Ошибка ЕПГУ (Готов к повтору)' : 'Gosuslugi Hatası (Tekrar Gönderime Hazır)'}
                             </span>
@@ -4258,17 +4258,17 @@ export default function GosuslugiVksView() {
                             )}
                           </div>
                         ) : !isRowValid ? (
-                          <div className="space-y-0.5 font-sans">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-extrabold bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 whitespace-nowrap">
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-300 whitespace-nowrap">
                               <AlertTriangle className="w-3 h-3 shrink-0" />
                               {lang === 'ru'
                                 ? `Готов (предупр.: ${rowVal.issues.length})`
                                 : `Gönderime Hazır (Uyarı: ${rowVal.issues.length})`}
                             </span>
-                            <ul className="text-[10px] leading-tight text-amber-700 dark:text-amber-300 space-y-0.5 pl-0.5">
+                            <ul className="text-[10px] leading-tight text-amber-800 dark:text-amber-300 space-y-0.5 pl-0.5">
                               {rowVal.issues.slice(0, 2).map((iss, iIdx) => (
                                 <li key={iIdx} className="flex items-center gap-1 truncate max-w-[220px]">
-                                  <span className="text-amber-500 font-bold shrink-0">•</span>
+                                  <span className="text-amber-600 font-bold shrink-0">•</span>
                                   <span className="truncate">
                                     {lang === 'ru' ? iss.ru : iss.tr}
                                     {iIdx === 1 && rowVal.issues.length > 2
@@ -4280,19 +4280,19 @@ export default function GosuslugiVksView() {
                             </ul>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 whitespace-nowrap">
                             <CheckCircle2 className="w-3 h-3" />
                             {lang === 'ru' ? 'Готов к отправке' : 'İşleme Hazır'}
                           </span>
                         )}
                       </td>
 
-                      <td className="py-2.5 px-2.5 text-teal-700 dark:text-teal-400 font-bold whitespace-nowrap">
+                      <td className="py-2.5 px-2.5 text-teal-800 dark:text-teal-300 font-medium whitespace-nowrap">
                         {w.code || w.sicil}
                       </td>
 
                       {/* Full Name & Position (Max 3 lines) */}
-                      <td className="py-2.5 px-2.5 font-sans font-bold text-slate-900 dark:text-white min-w-[210px] max-w-[250px]">
+                      <td className="py-2.5 px-2.5 font-medium text-slate-950 dark:text-white min-w-[210px] max-w-[250px]">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[150px]">
                             <input
@@ -4345,7 +4345,7 @@ export default function GosuslugiVksView() {
                           </div>
                         )}
                         <div
-                          className="text-[10px] text-slate-400 font-normal mt-0.5 truncate max-w-[235px]"
+                          className="text-[10.5px] text-slate-700 dark:text-slate-300 font-normal mt-0.5 truncate max-w-[235px]"
                           title={w.position}
                         >
                           {w.position}
@@ -4353,7 +4353,7 @@ export default function GosuslugiVksView() {
                       </td>
 
                       {/* Citizenship, Place of Birth & BirthDate (2 lines) */}
-                      <td className="py-2.5 px-2.5 font-sans min-w-[125px] whitespace-nowrap">
+                      <td className="py-2.5 px-2.5 min-w-[125px] whitespace-nowrap">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[130px]">
                             <input
@@ -4386,7 +4386,7 @@ export default function GosuslugiVksView() {
                                 handleUpdateWorkerField(w.id, 'birthDate', e.target.value)
                               }
                               placeholder="ДД.ММ.ГГГГ"
-                              className={`w-full px-1.5 py-0.5 rounded border text-xs font-mono ${
+                              className={`w-full px-1.5 py-0.5 rounded border text-xs ${
                                 fErr.birthDate
                                   ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
                                   : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
@@ -4396,20 +4396,20 @@ export default function GosuslugiVksView() {
                         ) : (
                           <>
                             <div
-                              className={`font-semibold truncate max-w-[140px] ${
+                              className={`font-medium truncate max-w-[140px] ${
                                 fErr.citizenship
                                   ? 'text-rose-600 dark:text-rose-400'
-                                  : 'text-slate-700 dark:text-slate-200'
+                                  : 'text-slate-900 dark:text-slate-100'
                               }`}
                               title={w.citizenship}
                             >
                               {w.citizenship || '—'}
                             </div>
                             <div
-                              className={`text-[10.5px] font-mono whitespace-nowrap ${
+                              className={`text-[11px] whitespace-nowrap ${
                                 fErr.birthDate
-                                  ? 'text-rose-600 dark:text-rose-400 font-bold underline decoration-wavy'
-                                  : 'text-slate-400'
+                                  ? 'text-rose-600 dark:text-rose-400 font-medium underline decoration-wavy'
+                                  : 'text-slate-700 dark:text-slate-300'
                               }`}
                             >
                               {w.birthDate || (lang === 'ru' ? 'Нет Д.Р.' : 'D.T. Yok')}
@@ -4472,17 +4472,17 @@ export default function GosuslugiVksView() {
                         ) : (
                           <>
                             <div
-                              className={`font-bold whitespace-nowrap ${
+                              className={`font-medium whitespace-nowrap ${
                                 fErr.passport
                                   ? 'text-rose-600 dark:text-rose-400'
-                                  : 'text-slate-800 dark:text-slate-200'
+                                  : 'text-slate-900 dark:text-slate-100'
                               }`}
                             >
                               {w.passportSeries} {w.passportNumber || '—'}
                             </div>
                             <div
-                              className={`text-[10px] truncate max-w-[180px] ${
-                                fErr.passport ? 'text-rose-500 font-semibold' : 'text-slate-400'
+                              className={`text-[10.5px] truncate max-w-[180px] font-normal ${
+                                fErr.passport ? 'text-rose-600 font-medium' : 'text-slate-700 dark:text-slate-300'
                               }`}
                               title={`${w.passportIssueDate} ${w.passportIssuedBy}`}
                             >
@@ -4499,9 +4499,9 @@ export default function GosuslugiVksView() {
                             value={w.inn}
                             onChange={(e) => handleUpdateWorkerField(w.id, 'inn', e.target.value)}
                             placeholder="12-значный ИНН"
-                            className={`w-28 px-1.5 py-0.5 rounded border text-xs font-mono ${
+                            className={`w-28 px-1.5 py-0.5 rounded border text-xs ${
                               fErr.inn
-                                ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold'
+                                ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-medium'
                                 : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white'
                             }`}
                           />
@@ -4509,8 +4509,8 @@ export default function GosuslugiVksView() {
                           <span
                             className={
                               fErr.inn
-                                ? 'text-rose-600 dark:text-rose-400 font-bold underline decoration-wavy font-mono'
-                                : 'text-slate-800 dark:text-slate-200 font-mono'
+                                ? 'text-rose-600 dark:text-rose-400 font-medium underline decoration-wavy'
+                                : 'text-slate-900 dark:text-slate-100 font-normal'
                             }
                             title={fErr.inn ? fErr.inn.join('; ') : w.inn}
                           >
@@ -4587,17 +4587,17 @@ export default function GosuslugiVksView() {
                         ) : (
                           <>
                             <div
-                              className={`font-semibold whitespace-nowrap ${
+                              className={`font-medium whitespace-nowrap ${
                                 fErr.rnr
-                                  ? 'text-rose-600 dark:text-rose-400 font-bold'
-                                  : 'text-slate-800 dark:text-slate-200'
+                                  ? 'text-rose-600 dark:text-rose-400 font-medium'
+                                  : 'text-slate-900 dark:text-slate-100'
                               }`}
                             >
                               РНР: {w.rnrSeries || '—'} {w.rnrNumber || '—'}
                             </div>
                             <div
-                              className={`text-[10px] whitespace-nowrap ${
-                                fErr.rnr ? 'text-rose-500 font-semibold' : 'text-slate-400'
+                              className={`text-[10.5px] whitespace-nowrap font-normal ${
+                                fErr.rnr ? 'text-rose-600 font-medium' : 'text-slate-700 dark:text-slate-300'
                               }`}
                             >
                               Бланк: {w.blankSeries || '—'} {w.blankNumber || '—'}
@@ -4658,28 +4658,28 @@ export default function GosuslugiVksView() {
                           </div>
                         ) : (
                           <div
-                            className={`leading-snug space-y-0.5 ${
-                              fErr.contract ? 'text-rose-600 dark:text-rose-400 font-bold' : ''
+                            className={`leading-snug space-y-0.5 font-normal ${
+                              fErr.contract ? 'text-rose-600 dark:text-rose-400 font-medium' : ''
                             }`}
                           >
                             <div className="whitespace-nowrap">
                               Закл.:{' '}
-                              <span className="text-slate-800 dark:text-slate-200 font-semibold">
+                              <span className="text-slate-900 dark:text-slate-100 font-medium">
                                 {w.contractDate || '—'}
                               </span>
                             </div>
                             <div className="whitespace-nowrap">
-                              С: <span className="text-slate-700 dark:text-slate-300">{w.contractStartDate || '—'}</span>
+                              С: <span className="text-slate-800 dark:text-slate-200">{w.contractStartDate || '—'}</span>
                             </div>
                             <div className="whitespace-nowrap">
                               По:{' '}
                               <span
                                 className={
                                   fErr.contract
-                                    ? 'underline decoration-wavy text-rose-600 dark:text-rose-400'
+                                    ? 'underline decoration-wavy text-rose-600 dark:text-rose-400 font-medium'
                                     : !w.contractEndDate
-                                    ? 'text-emerald-600 dark:text-emerald-400 font-bold'
-                                    : 'text-slate-700 dark:text-slate-300'
+                                    ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                                    : 'text-slate-800 dark:text-slate-200'
                                 }
                               >
                                 {w.contractEndDate ||
@@ -4734,22 +4734,22 @@ export default function GosuslugiVksView() {
                         ) : (
                           <>
                             <div
-                              className={`font-semibold ${
-                                fErr.period ? 'text-rose-600 dark:text-rose-400 font-bold' : ''
+                              className={`font-medium text-slate-900 dark:text-slate-100 ${
+                                fErr.period ? 'text-rose-600 dark:text-rose-400 font-medium' : ''
                               }`}
                             >
                               {w.periodStart} — {w.periodEnd}
                             </div>
                             {w.exitDate && (
-                              <div className="text-[9.5px] font-bold text-amber-600 dark:text-amber-400">
+                              <div className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
                                 {lang === 'ru' ? `Уволен: ${w.exitDate}` : `Çıkış: ${w.exitDate}`}
                               </div>
                             )}
                             <div
-                              className={`text-[10px] ${
+                              className={`text-[10.5px] font-normal ${
                                 fErr.address
-                                  ? 'text-rose-600 dark:text-rose-400 font-bold'
-                                  : 'text-slate-400'
+                                  ? 'text-rose-600 dark:text-rose-400 font-medium'
+                                  : 'text-slate-700 dark:text-slate-300'
                               }`}
                             >
                               Индекс: {w.postalCode || '—'}
@@ -4759,53 +4759,53 @@ export default function GosuslugiVksView() {
                       </td>
 
                       {/* Salary Amount (Monthly 1-месяц, 2-месяц, 3-месяц + Total) */}
-                      <td className="py-2 px-2.5 font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap min-w-[215px]">
+                      <td className="py-2 px-2.5 font-normal text-emerald-800 dark:text-emerald-300 whitespace-nowrap min-w-[215px]">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 min-w-[185px]">
                             <div className="flex items-center gap-1">
-                              <span className="w-11 text-[9.5px] text-slate-400 font-normal">1-мес:</span>
+                              <span className="w-11 text-[9.5px] text-slate-500 dark:text-slate-400 font-normal">1-мес:</span>
                               <input
                                 value={w.month1Salary || ''}
                                 onChange={(e) =>
                                   handleUpdateWorkerField(w.id, 'month1Salary', e.target.value)
                                 }
                                 placeholder="0.00"
-                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px] font-mono"
+                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px]"
                               />
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="w-11 text-[9.5px] text-slate-400 font-normal">2-мес:</span>
+                              <span className="w-11 text-[9.5px] text-slate-500 dark:text-slate-400 font-normal">2-мес:</span>
                               <input
                                 value={w.month2Salary || ''}
                                 onChange={(e) =>
                                   handleUpdateWorkerField(w.id, 'month2Salary', e.target.value)
                                 }
                                 placeholder="0.00"
-                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px] font-mono"
+                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px]"
                               />
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="w-11 text-[9.5px] text-slate-400 font-normal">3-мес:</span>
+                              <span className="w-11 text-[9.5px] text-slate-500 dark:text-slate-400 font-normal">3-мес:</span>
                               <input
                                 value={w.month3Salary || ''}
                                 onChange={(e) =>
                                   handleUpdateWorkerField(w.id, 'month3Salary', e.target.value)
                                 }
                                 placeholder="0.00"
-                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px] font-mono"
+                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px]"
                               />
                             </div>
                             <div className="flex items-center gap-1 pt-0.5 border-t border-slate-200 dark:border-slate-700">
-                              <span className="w-11 text-[9.5px] text-emerald-600 dark:text-emerald-400 font-bold">Всего:</span>
+                              <span className="w-11 text-[9.5px] text-emerald-700 dark:text-emerald-400 font-medium">Всего:</span>
                               <input
                                 value={w.salaryAmount}
                                 onChange={(e) =>
                                   handleUpdateWorkerField(w.id, 'salaryAmount', e.target.value)
                                 }
-                                className={`flex-1 px-1.5 py-0.5 rounded border text-[10.5px] font-mono ${
+                                className={`flex-1 px-1.5 py-0.5 rounded border text-[10.5px] ${
                                   fErr.salary
                                     ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700'
-                                    : 'border-emerald-500 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300'
+                                    : 'border-emerald-500 bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 font-medium'
                                 }`}
                               />
                             </div>
@@ -4815,12 +4815,12 @@ export default function GosuslugiVksView() {
                             {buildWorkerMonthlyPeriods(w, periodStart, periodEnd).map((mp) => (
                               <div
                                 key={mp.monthIdx}
-                                className="text-[10px] font-normal text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2"
+                                className="text-[10.5px] font-normal text-slate-700 dark:text-slate-300 flex items-center justify-between gap-2"
                               >
-                                <span className="text-slate-400">
+                                <span className="text-slate-500 dark:text-slate-400">
                                   {mp.monthIdx}-мес ({mp.start.slice(0, 5)}–{mp.end.slice(0, 5)}):
                                 </span>
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                <span className="font-normal text-slate-900 dark:text-slate-100">
                                   {Number(mp.amount).toLocaleString('ru-RU', {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
@@ -4830,14 +4830,14 @@ export default function GosuslugiVksView() {
                               </div>
                             ))}
                             <div
-                              className={`text-[11px] pt-0.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 ${
-                                fErr.salary ? 'text-rose-600 dark:text-rose-400' : ''
+                              className={`text-[11.5px] pt-0.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 ${
+                                fErr.salary ? 'text-rose-600 dark:text-rose-400 font-medium' : ''
                               }`}
                             >
-                              <span className="text-[9.5px] uppercase tracking-wider text-slate-400 font-sans">
+                              <span className="text-[10px] uppercase tracking-wider text-slate-700 dark:text-slate-300 font-medium">
                                 {lang === 'ru' ? 'Итого:' : 'Toplam:'}
                               </span>
-                              <span>
+                              <span className="font-medium text-emerald-800 dark:text-emerald-300">
                                 {w.salaryAmount
                                   ? `${Number(
                                       String(w.salaryAmount).replace(',', '.')
