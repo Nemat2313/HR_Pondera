@@ -1,0 +1,45 @@
+name: Deploy Pondera HR to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Production VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Remote Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 89.111.152.49
+          username: root
+          password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            echo "=== Starting Pondera HR Auto-Deploy ==="
+            # Locate project directory
+            if [ -d "/root/HR_Pondera" ]; then
+              cd /root/HR_Pondera
+            elif [ -d "/var/www/HR_Pondera" ]; then
+              cd /var/www/HR_Pondera
+            else
+              cd ~/HR_Pondera
+            fi
+            
+            echo "=== Pulling latest changes from GitHub main ==="
+            git pull origin main
+            
+            echo "=== Installing dependencies if package.json changed ==="
+            npm install --production=false
+            
+            echo "=== Building production Next.js bundle ==="
+            npm run build
+            
+            echo "=== Restarting PM2 process ==="
+            pm2 restart all || pm2 restart hr-pondera || pm2 start npm --name "hr-pondera" -- start
+            
+            echo "=== Auto-Deploy Completed Successfully ==="
