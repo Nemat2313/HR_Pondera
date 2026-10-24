@@ -263,11 +263,15 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     );
   `);
 
-  const rows = db
+  const rawRows = db
     .prepare(
       `SELECT sicil_no, period_code, application_no, gosuslugi_status, pdf_filename, submitted_at
        FROM gosuslugi_submissions
-       WHERE LOWER(notification_type) = 'vks_salary'`
+       WHERE LOWER(notification_type) = 'vks_salary'
+       ORDER BY
+         CASE WHEN gosuslugi_status LIKE '%оказана%' THEN 0 WHEN application_no != '' THEN 1 ELSE 2 END ASC,
+         submitted_at DESC,
+         id DESC`
     )
     .all() as Array<{
     sicil_no: string;
@@ -277,6 +281,15 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     pdf_filename: string;
     submitted_at: string;
   }>;
+
+  const seenSicils = new Set<string>();
+  const rows: typeof rawRows = [];
+  for (const r of rawRows) {
+    const s = String(r.sicil_no || '').trim();
+    if (!s || seenSicils.has(s)) continue;
+    seenSicils.add(s);
+    rows.push(r);
+  }
 
   let totalSent = 0;
   let totalPdf = 0;

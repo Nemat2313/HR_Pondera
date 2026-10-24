@@ -3682,14 +3682,39 @@ class GosuslugiVksBot:
         verified_order_no = ""
         rejected_urls = set()
         url_to_order_no: Dict[str, str] = {}
+        url_to_citizen: Dict[str, str] = {}
+
+        def _extract_multiline_citizen(card_txt: str) -> str:
+            if not card_txt:
+                return ""
+            m_c = re.search(r"гражданин\s*:?\s*([\s\S]+)$", card_txt, re.IGNORECASE)
+            if not m_c:
+                return ""
+            stop_re = re.compile(
+                r"^(адрес|инициатор|не прочитано|прочитано|уведомления|услуга|заявление|промежуточные|ошибка|сегодня|вчера|\d{1,2}\s+[а-я]+|№\s*\d+)",
+                re.IGNORECASE,
+            )
+            parts_c = []
+            for raw_ln in m_c.group(1).splitlines():
+                ln = raw_ln.strip(" |\t\r\n")
+                if not ln:
+                    continue
+                if stop_re.match(ln):
+                    break
+                parts_c.append(ln)
+                if len(parts_c) >= 3:
+                    break
+            return " ".join(parts_c).strip()
 
         # Check if we are ALREADY on an '/order/...' details page right now
         if "lk.gosuslugi.ru/order/" in (self.page.url or ""):
             page_info = self.inspect_open_order_page()
-            has_cit = bool(self._normalize_ru_tokens(page_info["citizen_name"]))
             if (
                 self.is_valid_labor_activity_service(page_info["service_title"] + " " + page_info.get("body_text", "")[:400])
-                and (not has_cit or self.does_citizen_match_worker(page_info["citizen_name"], row, page_info.get("body_text", "")))
+                and (
+                    self.does_citizen_match_worker(page_info["citizen_name"], row, page_info.get("body_text", ""))
+                    or (expected_order_no and page_info["order_no"] == expected_order_no)
+                )
                 and not self.is_order_already_linked_to_another_worker(page_info["order_no"], sicil)
             ):
                 fallback_id = (self.page.url or "").rstrip("/").split("/order/")[-1].split("?")[0]
@@ -3784,6 +3809,9 @@ class GosuslugiVksBot:
                         m_card_no = re.search(r"№\s*(\d{8,14})", c_text)
                         if m_card_no and full_u not in url_to_order_no:
                             url_to_order_no[full_u] = m_card_no.group(1).strip()
+                        card_cit = _extract_multiline_citizen(c_text)
+                        if card_cit and full_u not in url_to_citizen:
+                            url_to_citizen[full_u] = card_cit
 
                     # Pass 0: Card explicitly containing expected_order_no from Step 15
                     if expected_order_no:
@@ -3808,16 +3836,17 @@ class GosuslugiVksBot:
 
                     # Pass 2: Recent 'Уведомления о трудовой деятельности иностранцев' cards that haven't been rejected
                     for c in raw_cards[:8]:
-                        c_text_low = str(c.get("text") or "").lower().replace("ё", "е")
+                        c_text = str(c.get("text") or "")
+                        c_text_low = c_text.lower().replace("ё", "е")
                         c_href = str(c.get("href") or "").strip()
                         if not c_href or not self.is_valid_labor_activity_service(c_text_low):
                             continue
                         if ("мвд" in c_text_low or "уведомлени" in c_text_low or "выдан" in c_text_low) and "трудовой деятельности" not in c_text_low:
                             continue
-                        m_card_cit = re.search(r"гражданин\s*:?\s*([^\n\r]+)", c_text_low)
-                        if m_card_cit and not self.does_citizen_match_worker(m_card_cit.group(1), row, c_text_low):
+                        card_cit_str = _extract_multiline_citizen(c_text)
+                        if card_cit_str and not self.does_citizen_match_worker(card_cit_str, row, c_text_low):
                             logger.info(
-                                f"Step 16.2: Skipping card in list because Гражданин '{m_card_cit.group(1).strip()}' != '{clean_worker_name}'"
+                                f"Step 16.2: Skipping card in list because Гражданин '{card_cit_str}' != '{clean_worker_name}'"
                             )
                             continue
                         full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
@@ -3840,7 +3869,7 @@ class GosuslugiVksBot:
                 page_info = self.inspect_open_order_page()
                 p_no = page_info["order_no"] or url_to_order_no.get(cand_url, "")
                 p_srv = page_info["service_title"]
-                p_cit = page_info["citizen_name"]
+                p_cit = page_info["citizen_name"] or url_to_citizen.get(cand_url, "")
                 p_body = page_info.get("body_text", "")
 
                 logger.info(
@@ -3866,11 +3895,9 @@ class GosuslugiVksBot:
                     rejected_urls.add(cand_url)
                     continue
 
-                has_explicit_cit = bool(self._normalize_ru_tokens(p_cit))
                 is_match = (
                     self.does_citizen_match_worker(p_cit, row, p_body)
                     or (expected_order_no and p_no == expected_order_no)
-                    or (cand_idx == 0 and not has_explicit_cit)
                 )
                 if not is_match:
                     logger.warning(

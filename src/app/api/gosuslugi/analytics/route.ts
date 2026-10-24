@@ -512,8 +512,8 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Load all Gosuslugi submissions
-    const rawSubs = db
+    // 2. Load all Gosuslugi submissions and deduplicate by sicil_no (preferring Услуга оказана -> non-empty application_no -> latest)
+    const allRawSubs = db
       .prepare(
         `SELECT
           id, sicil_no, worker_name, citizenship, notification_type,
@@ -521,9 +521,21 @@ export async function GET(request: Request) {
           pdf_filename, submitted_at, checked_at, updated_at
         FROM gosuslugi_submissions
         WHERE LOWER(notification_type) = 'vks_salary'
-        ORDER BY submitted_at DESC, id DESC`
+        ORDER BY
+          CASE WHEN gosuslugi_status LIKE '%оказана%' THEN 0 WHEN application_no != '' THEN 1 ELSE 2 END ASC,
+          submitted_at DESC,
+          id DESC`
       )
       .all() as any[];
+
+    const seenSubSicils = new Set<string>();
+    const rawSubs: any[] = [];
+    for (const r of allRawSubs) {
+      const s = String(r.sicil_no || '').trim();
+      if (!s || seenSubSicils.has(s)) continue;
+      seenSubSicils.add(s);
+      rawSubs.push(r);
+    }
 
     const buildChronologicalHistory = (
       sNo: string,
@@ -674,11 +686,12 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const pInfo = personnelBySicil[sicil];
+      const baseSicil = sicil.replace(/_\d+$/, '');
+      const pInfo = personnelBySicil[sicil] || personnelBySicil[baseSicil];
       if (!matchesRls(pInfo)) {
         continue;
       }
-      const mWorker = masterWorkerBySicil[sicil] || {};
+      const mWorker = masterWorkerBySicil[sicil] || masterWorkerBySicil[baseSicil] || {};
       const region = pInfo?.region || 'Diğer / Eşleşmeyen';
       const citizenship =
         pInfo?.uyruk || String(r.citizenship || '').trim() || 'BELİRTİLMEMİŞ';
@@ -969,13 +982,18 @@ export async function GET(request: Request) {
     }
 
     const masterList3088: any[] = [];
+    const consumedSubSicils = new Set<string>();
     for (const mEntry of orderedMasterList) {
       const sNo = mEntry.sicil_no;
-      const pInfo = personnelBySicil[sNo];
+      const baseSno = sNo.replace(/_\d+$/, '');
+      const pInfo = personnelBySicil[sNo] || personnelBySicil[baseSno];
       if (!matchesRls(pInfo)) continue;
 
       const w = mEntry.worker || {};
-      const sub = subBySicilMap[sNo];
+      const sub = !consumedSubSicils.has(sNo) ? subBySicilMap[sNo] : undefined;
+      if (sub) {
+        consumedSubSicils.add(sNo);
+      }
       const ruFullName = [w.lastName, w.firstName, w.middleName]
         .map((part) => String(part || '').trim())
         .filter((part) => part && part.toLowerCase() !== 'нет')

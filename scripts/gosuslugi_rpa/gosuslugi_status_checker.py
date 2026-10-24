@@ -247,6 +247,31 @@ def attach_feeds_network_listener(page: Page):
         pass
 
 
+def extract_citizen_from_card_text(card_text: str) -> str:
+    """Extracts full Гражданин FIO from single-line or multi-line Gosuslugi card text."""
+    if not card_text:
+        return ""
+    m = re.search(r"Гражданин\s*:?\s*([\s\S]+)$", card_text, re.IGNORECASE)
+    if not m:
+        return ""
+    tail = m.group(1)
+    stop_re = re.compile(
+        r"^(адрес|инициатор|не прочитано|прочитано|уведомления|услуга|заявление|промежуточные|ошибка|сегодня|вчера|\d{1,2}\s+[а-я]+|№\s*\d+)",
+        re.IGNORECASE,
+    )
+    parts: List[str] = []
+    for raw_ln in tail.splitlines():
+        ln = raw_ln.strip(" |\t\r\n")
+        if not ln:
+            continue
+        if stop_re.match(ln):
+            break
+        parts.append(ln)
+        if len(parts) >= 3:
+            break
+    return " ".join(parts).strip()
+
+
 def extract_orders_from_dom(page: Page) -> Dict[str, Dict[str, Any]]:
     """
     Scrapes all visible `<a href*='/order/'>` order cards directly from the DOM on https://lk.gosuslugi.ru/orders.
@@ -290,13 +315,16 @@ def extract_orders_from_dom(page: Page) -> Dict[str, Dict[str, Any]]:
                 if not app_no:
                     continue
                 status_label = classify_gosuslugi_status_text(c_text)
-                m_cit = re.search(r"Гражданин\s*:?\s*([^\n\r]+)", c_text, re.IGNORECASE)
-                citizen_name = m_cit.group(1).strip() if m_cit else ""
-                srv_title = (
-                    "Уведомления о трудовой деятельности иностранцев"
-                    if "трудовой деятельности" in c_text.lower()
-                    else ""
-                )
+                citizen_name = extract_citizen_from_card_text(c_text)
+                c_low = c_text.lower().replace("ё", "е")
+                if "трудовой деятельности" in c_low:
+                    srv_title = "Уведомления о трудовой деятельности иностранцев"
+                elif "прибытии" in c_low or "убытии" in c_low:
+                    srv_title = "Уведомления о прибытии и убытии иностранцев"
+                elif "разрешение на работу" in c_low:
+                    srv_title = "Разрешение на работу ИГ"
+                else:
+                    srv_title = ""
                 entry = {
                     "application_no": app_no,
                     "feed_id": feed_id,
@@ -581,13 +609,16 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
                 m_feed = re.search(r"/order/(\d+)", href_val)
                 feed_id = m_feed.group(1) if m_feed else ""
                 status_label = classify_gosuslugi_status_text(card_text)
-                citizen_match = re.search(r"Гражданин\s*:?\s*([^\n\r]+)", card_text, re.IGNORECASE)
-                citizen_name = citizen_match.group(1).strip() if citizen_match else ""
-                srv_title = (
-                    "Уведомления о трудовой деятельности иностранцев"
-                    if "трудовой деятельности" in card_text.lower()
-                    else ""
-                )
+                citizen_name = extract_citizen_from_card_text(card_text)
+                c_low = card_text.lower().replace("ё", "е")
+                if "трудовой деятельности" in c_low:
+                    srv_title = "Уведомления о трудовой деятельности иностранцев"
+                elif "прибытии" in c_low or "убытии" in c_low:
+                    srv_title = "Уведомления о прибытии и убытии иностранцев"
+                elif "разрешение на работу" in c_low:
+                    srv_title = "Разрешение на работу ИГ"
+                else:
+                    srv_title = ""
                 found_item = {
                     "application_no": clean_no,
                     "feed_id": feed_id,
@@ -607,8 +638,9 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
 
 def normalize_name_for_match(name: str) -> str:
     """Normalizes Russian full name for case-insensitive matching against 'Гражданин: ...'."""
-    cleaned = re.sub(r"[^а-яёa-z\s]", " ", (name or "").lower())
-    stop_words = {"нет", "не", "заполнено", "отсутствует", "no", "none", "null"}
+    cleaned = re.sub(r"^[0-9]+[а-яёa-z]*\s*", " ", (name or "").lower().replace("ё", "е"))
+    cleaned = re.sub(r"[^а-яa-z\s]", " ", cleaned)
+    stop_words = {"нет", "не", "заполнено", "отсутствует", "no", "none", "null", "дог"}
     tokens = [t for t in cleaned.split() if t and len(t) >= 2 and t not in stop_words]
     return " ".join(tokens)
 
@@ -616,22 +648,28 @@ def normalize_name_for_match(name: str) -> str:
 def does_citizen_match_worker_name(citizen_text: str, worker_name: str) -> bool:
     """
     Strictly verifies that all meaningful name tokens of `worker_name`
-    appear inside `citizen_text` ('Гражданин: ...').
-    Supports single-token names when Фамилия/Отчество are 'Нет' (e.g. 'Нет АДЖАД Нет').
+    appear as exact whole words inside `citizen_text` ('Гражданин: ...').
+    Supports single-token names when Фамилия/Отчество are 'Нет' (e.g. 'Нет АДЖАД Нет'),
+    requiring that `citizen_text` also has only 1 token so 'АКРАМ' never matches 'АКРАМЖОН'.
     """
     norm_c = normalize_name_for_match(citizen_text)
     norm_w = normalize_name_for_match(worker_name)
     if not norm_c or not norm_w:
         return False
+    c_tokens = [t for t in norm_c.split() if len(t) >= 2]
     w_tokens = [t for t in norm_w.split() if len(t) >= 2]
-    if not w_tokens:
+    if not c_tokens or not w_tokens:
         return False
-    return all(tok in norm_c for tok in w_tokens)
+    if len(w_tokens) == 1 and len(c_tokens) != 1:
+        return False
+    c_set = set(c_tokens)
+    return all(tok in c_set for tok in w_tokens)
 
 
 def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
     """
-    Excludes non-labor services such as 'Уведомления о прибытии и убытии иностранцев',
+    Strictly requires 'Уведомления о трудовой деятельности иностранцев' and excludes
+    non-labor services such as 'Уведомления о прибытии и убытии иностранцев',
     Work Permits ('Разрешение на работу ИГ'), and unsent drafts ('черновик').
     """
     if not ord_item:
@@ -639,7 +677,8 @@ def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
     srv = str(ord_item.get("service_title") or "").lower().replace("ё", "е")
     raw_t = str(ord_item.get("raw_title") or "").lower().replace("ё", "е")
     raw_s = str(ord_item.get("raw_status") or "").lower()
-    combined = f"{srv} {raw_t}"
+    det = str(ord_item.get("status_detail") or "").lower().replace("ё", "е")
+    combined = f"{srv} {raw_t} {det}"
     excluded = (
         "прибытии",
         "убытии",
@@ -650,7 +689,7 @@ def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
     )
     if any(bad in combined for bad in excluded) or "draft" in raw_s:
         return False
-    if srv and "трудовой деятельности" not in srv:
+    if "трудовой деятельности" not in combined:
         return False
     return True
 
@@ -1401,8 +1440,8 @@ def run_fast_json_status_sync_on_page(
             matched_order: Optional[Dict[str, Any]] = None
 
             # 1) First check labor_orders_list (sorted newest application_no first) by citizen name
-            # so if the worker was re-submitted and has a NEWER application_no on Gosuslugi, we always pick the latest one!
-            if worker_name:
+            # (never overwrite an already-rendered application_no by name-only matching!)
+            if worker_name and not (prev_status == "Услуга оказана" and app_no):
                 for cand in labor_orders_list:
                     cand_no = cand["application_no"]
                     if is_superseded_or_archived_order(cand_no, cand.get("gosuslugi_status", ""), submitted_at):
@@ -1422,7 +1461,7 @@ def run_fast_json_status_sync_on_page(
                 if is_valid_labor_notification_order(candidate) and not is_superseded_or_archived_order(
                     app_no, candidate.get("gosuslugi_status", ""), submitted_at
                 ):
-                    if raw_app_no == app_no or not (
+                    if not (
                         worker_name
                         and candidate.get("citizen_name")
                         and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name)
@@ -1452,6 +1491,11 @@ def run_fast_json_status_sync_on_page(
                     candidate
                     and is_valid_labor_notification_order(candidate)
                     and not is_superseded_or_archived_order(app_no, candidate.get("gosuslugi_status", ""), submitted_at)
+                    and not (
+                        worker_name
+                        and candidate.get("citizen_name")
+                        and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name)
+                    )
                 ):
                     consecutive_search_misses = 0
                     matched_order = candidate
@@ -1806,8 +1850,8 @@ def main():
                 matched_order: Optional[Dict[str, Any]] = None
 
                 # 1) First check labor_orders_list (sorted newest application_no first) by Citizen Name ('Гражданин')
-                # so if a worker was re-submitted and has a NEWER application_no on Gosuslugi, the newest order wins!
-                if worker_name:
+                # (never overwrite an already-rendered application_no by name-only matching!)
+                if worker_name and not (cur_status == "Услуга оказана" and app_no):
                     for cand in labor_orders_list:
                         cand_no = cand["application_no"]
                         if is_superseded_or_archived_order(cand_no, cand.get("gosuslugi_status", ""), submitted_at):
@@ -1842,7 +1886,7 @@ def main():
                         logger.info(
                             f"  -> Skipping archived/outage № {app_no} for {worker_name}"
                         )
-                    elif raw_app_no != app_no and worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
+                    elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
                         logger.warning(
                             f"  -> Rejecting № {app_no} for {worker_name}: order belongs to Гражданин '{candidate['citizen_name']}'!"
                         )
@@ -1897,7 +1941,7 @@ def main():
                             logger.warning(
                                 f"  -> Rejecting targeted № {app_no}: wrong service, draft, or archived!"
                             )
-                        elif raw_app_no != app_no and worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
+                        elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
                             logger.warning(
                                 f"  -> Rejecting targeted № {app_no} for {worker_name}: belongs to Гражданин '{candidate['citizen_name']}'!"
                             )

@@ -656,6 +656,7 @@ export async function POST(request: Request) {
           const mergedWorker: Record<string, any> = {
             ...safePrev,
             ...norm.workerObj,
+            sicil: targetRowKey,
             // Preserve non-empty fields from safePrev or personnel DB if incoming field is empty
             rnrSeries: norm.workerObj.rnrSeries || safePrev.rnrSeries || dbFallback?.rnrSeries || '',
             rnrNumber: norm.workerObj.rnrNumber || safePrev.rnrNumber || dbFallback?.rnrNumber || '',
@@ -669,7 +670,7 @@ export async function POST(request: Request) {
 
           upsertStmt.run(
             targetRowKey,
-            norm.sicilNo,
+            targetRowKey,
             finalRowOrder,
             finalComputer,
             JSON.stringify(mergedWorker),
@@ -679,10 +680,10 @@ export async function POST(request: Request) {
           updated++;
 
           if (clearErrorsForUpdated) {
-            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
-            const delRes = clearErrorStmt.run(norm.sicilNo);
+            archiveRefusedBySicilStmt.run(nowStr, targetRowKey);
+            const delRes = clearErrorStmt.run(targetRowKey);
             clearedErrors += Number(delRes.changes || 0);
-            const refRes = clearRefusedBySicilStmt.run(norm.sicilNo);
+            const refRes = clearRefusedBySicilStmt.run(targetRowKey);
             reopenedRefused += Number(refRes.changes || 0);
           }
         } else {
@@ -692,6 +693,7 @@ export async function POST(request: Request) {
 
           const newWorker = {
             ...norm.workerObj,
+            sicil: targetRowKey,
             rnrSeries: norm.workerObj.rnrSeries || dbFallback?.rnrSeries || '',
             rnrNumber: norm.workerObj.rnrNumber || dbFallback?.rnrNumber || '',
             rnrIssueDate: norm.workerObj.rnrIssueDate || dbFallback?.rnrIssueDate || '',
@@ -704,7 +706,7 @@ export async function POST(request: Request) {
 
           upsertStmt.run(
             targetRowKey,
-            norm.sicilNo,
+            targetRowKey,
             finalRowOrder,
             finalComputer,
             JSON.stringify(newWorker),

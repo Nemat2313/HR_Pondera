@@ -315,10 +315,15 @@ export async function POST(request: Request) {
       }
 
       const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
-      const periodCode = String(item.period_code || item.periodCode || '').trim();
+      const periodCode = String(item.period_code || item.periodCode || '2026-3').trim() || '2026-3';
       const workerName = String(item.worker_name || item.workerName || '').trim();
       const citizenship = String(item.citizenship || '').trim();
       const statusDetail = String(item.status_detail || item.statusDetail || '').trim();
+
+      // Reject non-VKS migration arrival/departure ('прибытии и убытии') or work permit ('разрешение на работу') orders
+      if (/уведомления о прибытии|прибытии и убытии|разрешение на работу иг/i.test(statusDetail)) {
+        continue;
+      }
       let pdfFilename = String(item.pdf_filename || item.pdfFilename || '').trim();
       const submittedAt = String(item.submitted_at || item.submittedAt || nowStr).trim();
       const checkedAt = String(item.checked_at || item.checkedAt || '').trim();
