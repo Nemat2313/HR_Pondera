@@ -33,6 +33,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { useAuth } from '@/context/AuthContext';
+import GosuslugiWaterfallChart from './GosuslugiWaterfallChart';
 
 interface ErrorCategoryItem {
   id: string;
@@ -848,8 +849,6 @@ export default function GosuslugiAnalyticsView() {
     },
   ];
 
-  const pieData = statusChartRows.filter((r) => r.value > 0);
-
   return (
     <div className="p-3 sm:p-6 space-y-4 max-w-[1600px] mx-auto">
       {/* COMPACT CLEAN HEADER */}
@@ -1152,63 +1151,39 @@ export default function GosuslugiAnalyticsView() {
                   </div>
                 </div>
 
-                {/* Chart Grid: Left Donut Chart + Right Interactive Visual Bars with Inline Downloads */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                  {/* Left: Donut Chart (4 cols) */}
-                  <div className="lg:col-span-4 flex flex-col items-center justify-center bg-white dark:bg-slate-900 rounded-xl border border-slate-200/70 dark:border-slate-800 p-4">
-                    <div className="relative w-full h-56">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={pieData}
-                            dataKey="value"
-                            nameKey="shortLabel"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={62}
-                            outerRadius={88}
-                            paddingAngle={2}
-                          >
-                            {pieData.map((entry) => (
-                              <Cell key={entry.id} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            formatter={(val: any, name: any) => [
-                              `${Number(val).toLocaleString('tr-TR')} kişi`,
-                              name,
-                            ]}
-                            contentStyle={{
-                              borderRadius: '12px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                            }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      {/* Center Donut Label */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                          Gönderilen
-                        </span>
-                        <span className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
-                          {s.totalSent.toLocaleString('tr-TR')}
-                        </span>
-                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                          %{s.successRatePct} Başarı
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="w-full pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>İşlenen: <strong className="text-slate-800 dark:text-slate-200">{s.totalRecords.toLocaleString('tr-TR')}</strong></span>
-                      <span>PDF Bekleyen: <strong className="text-amber-600 dark:text-amber-400">{s.totalNoPdf.toLocaleString('tr-TR')}</strong></span>
-                    </div>
+                {/* Chart Grid: Left Build-Down Waterfall Chart (5 cols) + Right Interactive Visual Bars (7 cols) */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left: Build-Down Waterfall Chart (5 cols) */}
+                  <div className="lg:col-span-5">
+                    <GosuslugiWaterfallChart
+                      total={masterSummaryCounts.total || s.totalTargetVksPersonnel || 3088}
+                      serviceRendered={s.totalServiceRendered ?? 0}
+                      inProgress={(s.totalRegisteredOnly ?? 0) + (s.totalSentPendingStatus ?? 0)}
+                      registeredMvd={s.totalRegisteredOnly ?? 0}
+                      sentPending={s.totalSentPendingStatus ?? 0}
+                      refusedMvd={s.totalRefusedMvd ?? 0}
+                      errors={s.totalErrors ?? 0}
+                      notSent={masterSummaryCounts.notSent ?? 0}
+                      totalSent={s.totalSent ?? 0}
+                      successRatePct={s.successRatePct ?? 99}
+                      totalPdf={s.totalPdf ?? 0}
+                      totalNoPdf={s.totalNoPdf ?? 0}
+                      onSelectStage={(stageKey) => {
+                        if (stageKey === 'all') {
+                          jumpToMasterListWithFilter({ status: 'all' });
+                        } else if (stageKey === 'refused_mvd') {
+                          setActiveMainTab('refusals');
+                        } else if (stageKey === 'error') {
+                          setActiveMainTab('errors');
+                        } else {
+                          jumpToMasterListWithFilter({ status: stageKey as any });
+                        }
+                      }}
+                    />
                   </div>
 
-                  {/* Right: Horizontal Visual Bars + Contextual Download Buttons Next to Numbers (8 cols) */}
-                  <div className="lg:col-span-8 space-y-2.5">
+                  {/* Right: Horizontal Visual Bars + Contextual Download Buttons Next to Numbers (7 cols) */}
+                  <div className="lg:col-span-7 space-y-2.5">
                     {statusChartRows.map((row) => (
                       <div
                         key={row.id}
