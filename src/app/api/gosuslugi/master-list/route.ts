@@ -38,10 +38,12 @@ function sanitizeVksWorkerFields(w: Record<string, any>): {
     const latToCyr: Record<string, string> = {
       A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
     };
-    const cleanBlank1 = rawBlank1
-      .replace(/\s+/g, '')
-      .toUpperCase()
-      .replace(/[ABCEHKMOPTXY]/g, (ch) => latToCyr[ch] || ch);
+    const cleanBlank1 = /\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4}/.test(rawBlank1)
+      ? 'ВВ'
+      : rawBlank1
+          .replace(/\s+/g, '')
+          .toUpperCase()
+          .replace(/[ABCEHKMOPTXY]/g, (ch) => latToCyr[ch] || ch);
     if (cleanBlank1 !== rawBlank1) {
       out.blankSeries = cleanBlank1;
       if ('СерийныйНомер1' in out) out['СерийныйНомер1'] = cleanBlank1;
@@ -66,7 +68,9 @@ function sanitizeVksWorkerFields(w: Record<string, any>): {
   // 4. RNR Series & Number: strip spaces and .0
   const rawRnrSeries = String(out.rnrSeries ?? out['Серия'] ?? '').trim();
   if (rawRnrSeries) {
-    const cleanRnrSeries = rawRnrSeries.replace(/\.0$/, '').replace(/\s+/g, '');
+    const cleanRnrSeries = /^[ВB]{2}$/i.test(rawRnrSeries)
+      ? '77'
+      : rawRnrSeries.replace(/\.0$/, '').replace(/\s+/g, '');
     if (cleanRnrSeries !== rawRnrSeries) {
       out.rnrSeries = cleanRnrSeries;
       if ('Серия' in out) out['Серия'] = cleanRnrSeries;
@@ -419,7 +423,7 @@ export async function GET(request: Request) {
         assignedComputer: comp,
         assigned_computer: comp,
         status: rowStatus,
-        selected: rowStatus === 'pending' || statusFilter === 'error',
+        selected: rowStatus !== 'success',
         applicationNo: sub?.application_no || '',
         application_no: sub?.application_no || '',
         gosuslugiStatus: sub?.gosuslugi_status || '',
@@ -643,15 +647,21 @@ export async function POST(request: Request) {
               ? forcedComputer
               : existingMatch.assigned_computer || norm.assignedComputer;
 
+          const isPrevCorrupted =
+            prevObj.lastName === norm.sicilNo ||
+            /^\d{4}-\d{2}-\d{2}/.test(String(prevObj.passportNumber || '')) ||
+            /^\d{4}-\d{2}-\d{2}/.test(String(prevObj.blankSeries || ''));
+          const safePrev = isPrevCorrupted ? {} : prevObj;
+
           const mergedWorker: Record<string, any> = {
-            ...prevObj,
+            ...safePrev,
             ...norm.workerObj,
-            // Preserve non-empty fields from prevObj or personnel DB if incoming field is empty
-            rnrSeries: norm.workerObj.rnrSeries || prevObj.rnrSeries || dbFallback?.rnrSeries || '',
-            rnrNumber: norm.workerObj.rnrNumber || prevObj.rnrNumber || dbFallback?.rnrNumber || '',
-            rnrIssueDate: norm.workerObj.rnrIssueDate || prevObj.rnrIssueDate || dbFallback?.rnrIssueDate || '',
-            blankSeries: norm.workerObj.blankSeries || prevObj.blankSeries || dbFallback?.blankSeries || '',
-            blankNumber: norm.workerObj.blankNumber || prevObj.blankNumber || dbFallback?.blankNumber || '',
+            // Preserve non-empty fields from safePrev or personnel DB if incoming field is empty
+            rnrSeries: norm.workerObj.rnrSeries || safePrev.rnrSeries || dbFallback?.rnrSeries || '',
+            rnrNumber: norm.workerObj.rnrNumber || safePrev.rnrNumber || dbFallback?.rnrNumber || '',
+            rnrIssueDate: norm.workerObj.rnrIssueDate || safePrev.rnrIssueDate || dbFallback?.rnrIssueDate || '',
+            blankSeries: norm.workerObj.blankSeries || safePrev.blankSeries || dbFallback?.blankSeries || '',
+            blankNumber: norm.workerObj.blankNumber || safePrev.blankNumber || dbFallback?.blankNumber || '',
             rowOrder: finalRowOrder,
             rowKey: targetRowKey,
             assignedComputer: finalComputer,
