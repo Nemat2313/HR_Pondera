@@ -17,15 +17,17 @@ export async function POST(request: Request) {
     const sync = searchParams.get('sync') === 'true';
 
     const deployScript = `
-      cd /root/HR_Pondera || cd /var/www/HR_Pondera || cd ~/HR_Pondera
-      git pull origin main
-      which python3 || true
-      which python || true
-      apt-get update -y && apt-get install -y python3-openpyxl python3-pip python-is-python3 || true
-      python3 -m pip install --break-system-packages openpyxl || pip3 install openpyxl || pip install openpyxl || true
-      python3 -c "import openpyxl; print('OPENPYXL_LOADED_OK:', openpyxl.__file__)" || true
-      npm run build
-      pm2 restart all
+      (
+        flock -w 180 9 || exit 0
+        cd /var/www/hr_pondera || cd /root/HR_Pondera || cd /var/www/HR_Pondera || cd ~/HR_Pondera
+        git fetch origin main
+        git reset --hard origin/main
+        npm install
+        npm run build
+        cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+        cp -r public .next/standalone/ 2>/dev/null || true
+        pm2 restart hr-pondera || pm2 restart all
+      ) 9>/tmp/pondera_deploy.lock
     `;
 
     if (sync) {
