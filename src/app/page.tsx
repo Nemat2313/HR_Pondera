@@ -21,6 +21,9 @@ const GosuslugiAnalyticsView = dynamic(() => import('@/components/gosuslugi/Gosu
 const PoweriseInnovationView = dynamic(() => import('@/components/powerise/PoweriseInnovationView'));
 const OfficialVsRealView = dynamic(() => import('@/components/workforce/OfficialVsRealView'));
 const QuotaTrackingView = dynamic(() => import('@/components/quotas/QuotaTrackingView'));
+const InvitationsTrackingView = dynamic(() => import('@/components/invitations/InvitationsTrackingView'));
+const TravelTicketsAdminView = dynamic(() => import('@/components/powerise/TravelTicketsAdminView'));
+const CampManagementView = dynamic(() => import('@/components/powerise/CampManagementView'));
 const ExcelUploadModal = dynamic(() => import('@/components/modals/ExcelUploadModal'));
 
 export default function Home() {
@@ -240,6 +243,12 @@ export default function Home() {
         {activeTab === 'official_real' && <OfficialVsRealView />}
 
         {activeTab === 'quotas' && <QuotaTrackingView />}
+
+        {activeTab === 'invitations' && <InvitationsTrackingView />}
+
+        {activeTab === 'travel_tickets' && <TravelTicketsAdminView />}
+
+        {activeTab === 'camp_management' && <CampManagementView />}
 
         {activeTab === 'compliance' && (
           <ComplianceAnalyticsView onNavigateToPersonnel={handleNavigateToPersonnel} />

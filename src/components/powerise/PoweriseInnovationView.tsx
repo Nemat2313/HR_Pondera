@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import {
   Smartphone,
   ScanLine,
@@ -19,12 +20,19 @@ import {
   Compass,
   Cpu,
   ExternalLink,
+  Plane,
+  Building,
+  Bed,
+  Check,
+  Info,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
 export default function PoweriseInnovationView() {
   const { lang } = useLanguage();
-  const [activeSubTab, setActiveSubTab] = useState<'video' | 'nfc' | 'geofence' | 'puantaj'>('video');
+  const [activeSubTab, setActiveSubTab] = useState<
+    'video' | 'nfc' | 'geofence' | 'puantaj' | 'tickets' | 'camp'
+  >('nfc');
 
   return (
     <div className="p-6 lg:p-8 space-y-8 font-normal max-w-7xl mx-auto">
@@ -43,19 +51,19 @@ export default function PoweriseInnovationView() {
                     : 'Powerise • Saha İnovasyon & Mobil Ekosistem'}
                 </h1>
                 <span className="px-2.5 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/50 font-normal">
-                  {lang === 'ru' ? 'Готовые модули' : 'Hazır Modüller'}
+                  {lang === 'ru' ? 'Готовые модули' : 'Hazır & Entegre Edilebilir'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal">
                 {lang === 'ru'
-                  ? 'NFC считывание паспортов, полигоны Geofencing и 3-уровневая сверка табелей (Powerise App)'
-                  : 'NFC pasaport çipi okuma, saha poligon geofencing ve turnike-formen-puantör 3 katmanlı puantaj doğrulama vitrini'}
+                  ? 'NFC считывание паспортов, полигоны Geofencing, 3-уровневая сверка табелей, умные билеты и общежития'
+                  : 'NFC pasaport okuma, eBA otomatik sicil açılışı, şantiye poligon geofencing ve turnike-formen-puantör 3 katmanlı puantaj'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Action Button */}
+        {/* Action Button: YouTube Video */}
         <div className="flex items-center gap-2.5">
           <a
             href="https://www.youtube.com/watch?v=UQWgBJtFEJU"
@@ -73,434 +81,507 @@ export default function PoweriseInnovationView() {
       {/* Navigation Sub-Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <button
-          onClick={() => setActiveSubTab('video')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
-            activeSubTab === 'video'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
-          }`}
-        >
-          <Play className="w-3.5 h-3.5" />
-          <span>{lang === 'ru' ? 'Видео-презентация' : '1. Tanıtım Videosu & Genel Bakış'}</span>
-        </button>
-
-        <button
           onClick={() => setActiveSubTab('nfc')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
             activeSubTab === 'nfc'
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
           <ScanLine className="w-3.5 h-3.5" />
-          <span>{lang === 'ru' ? 'NFC Паспорт' : '2. NFC Pasaport Okuma Mobil'}</span>
+          <span>{lang === 'ru' ? '1. NFC Паспорт & eBA' : '1. NFC Pasaport & eBA Sicil'}</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('geofence')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
             activeSubTab === 'geofence'
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
           <Compass className="w-3.5 h-3.5" />
-          <span>{lang === 'ru' ? 'Полигоны и Geofencing' : '3. Saha Poligon & Konum Takibi'}</span>
+          <span>{lang === 'ru' ? '2. Полигоны на карте' : '2. Saha Poligon & Personel Haritası'}</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('puantaj')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
             activeSubTab === 'puantaj'
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
-          <span>{lang === 'ru' ? '3-Уровневый Табель' : "4. 3'lü Puantaj Konsolidasyonu"}</span>
+          <span>{lang === 'ru' ? '3. 3-Уровневый Табель' : "3. 3'lü Puantaj Konsolidasyonu"}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('tickets')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
+            activeSubTab === 'tickets'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Plane className="w-3.5 h-3.5" />
+          <span>{lang === 'ru' ? '4. AI Билеты (АХО)' : '4. AI Uçak & Tren Biletleri'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('camp')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
+            activeSubTab === 'camp'
+              ? 'bg-teal-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Building className="w-3.5 h-3.5" />
+          <span>{lang === 'ru' ? '5. Общежития и Городок' : '5. Şantiye Kamp & Lojman'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('video')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer font-normal ${
+            activeSubTab === 'video'
+              ? 'bg-rose-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Play className="w-3.5 h-3.5" />
+          <span>{lang === 'ru' ? 'Видео-презентация' : 'YouTube Video Tanıtımı'}</span>
         </button>
       </div>
 
-      {/* SUB-TAB 1: VIDEO SHOWCASE */}
-      {activeSubTab === 'video' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Video Player Card */}
-          <div className="rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-2xl">
-            <div className="p-4 sm:p-6 bg-gradient-to-r from-slate-900 to-slate-950 flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
-                <span className="text-xs text-white uppercase tracking-wider font-normal">
-                  {lang === 'ru'
-                    ? 'Официальный ролик Powerise: Мобильные технологии для строительных объектов'
-                    : 'Resmi Powerise Tanıtım Videosu: Mobil Saha, NFC & 3 Katmanlı Puantaj'}
-                </span>
+      {/* SUB-TAB 1: NFC & BIOMETRIC PASSPORT -> EBA SİCİL AÇILIŞI */}
+      {activeSubTab === 'nfc' && (
+        <div className="space-y-8 animate-in fade-in duration-200">
+          {/* Hero Showcase Card */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+            {/* Left: Generated NFC Showcase Image */}
+            <div className="lg:col-span-7 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-xl relative group">
+              <div className="relative aspect-[16/10] w-full bg-slate-950">
+                <Image
+                  src="/images/powerise/nfc_passport_eba_showcase.jpg"
+                  alt="NFC Pasaport Okuma ve eBA Sicil Açma Vitrini"
+                  fill
+                  className="object-cover group-hover:scale-[1.02] transition-transform duration-500"
+                  priority
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+                <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700 text-white text-[11px] font-normal flex items-center gap-1.5 shadow-sm">
+                  <ScanLine className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>ICAO 9303 Çip Okuma Motoru</span>
+                </div>
+                <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white">
+                  <div>
+                    <p className="text-xs text-slate-200 font-normal">Pasaport Çipinden Doğrudan Biyometri & Sicil Açma</p>
+                    <p className="text-[10.5px] text-slate-400 font-normal">eBA İnsan Kaynakları sistemine 2.5 saniyede hatasız personel kartı oluşturulur</p>
+                  </div>
+                  <span className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-normal">
+                    %100 Orijinal İmza
+                  </span>
+                </div>
               </div>
-              <span className="text-xs text-slate-400 font-normal">HD 1080p</span>
             </div>
 
-            {/* Responsive 16:9 YouTube Embed */}
-            <div className="relative w-full aspect-video bg-black">
-              <iframe
-                src="https://www.youtube.com/embed/UQWgBJtFEJU?rel=0&modestbranding=1"
-                title="Powerise Mobile & Field Innovation"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                className="absolute inset-0 w-full h-full border-0"
+            {/* Right: Real Mobile NFC Reader UI */}
+            <div className="lg:col-span-5 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131C31] shadow-lg flex flex-col justify-between p-5 space-y-4">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                    <span className="text-xs text-slate-900 dark:text-white font-normal">Powerise Saha Mobil Uygulaması</span>
+                  </div>
+                  <span className="text-[10.5px] text-slate-400 font-mono font-normal">iOS & Android</span>
+                </div>
+                <div className="mt-3 relative aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900">
+                  <Image
+                    src="/images/powerise/powerise_mobile_nfc.png"
+                    alt="Powerise Mobil NFC Ekranı"
+                    fill
+                    className="object-cover object-top"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/50 text-xs text-slate-700 dark:text-slate-300 font-normal">
+                <span className="text-emerald-700 dark:text-emerald-300 font-normal">İnternetsiz (Offline) Çalışma:</span> Şantiyede internet kesilse bile veriler yerel SQLite veritabanına şifrelenerek kaydedilir, internet geldiğinde eBA ve merkeze anında eşitlenir.
+              </div>
+            </div>
+          </div>
+
+          {/* Step-by-Step Flow Explanation (Adım Adım Nasıl Çalışıyor?) */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-500" />
+                <h3 className="text-lg text-slate-900 dark:text-white font-normal">
+                  NFC Pasaport ile eBA&apos;da Otomatik Sicil Açma Süreci (3 Adım)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-normal">
+                Manuel veri giriş hatasını sıfıra indiren ve işe giriş işlemlerini 20 dakikadan 3 saniyeye düşüren patentli iş akışı
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Step 1 */}
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/70 space-y-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-sm font-normal shadow-sm">
+                  1
+                </div>
+                <h4 className="text-sm text-slate-900 dark:text-white font-normal">
+                  NFC Çipine Telefonu Yaklaştırma
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                  İşe yeni başlayan yabancı personelin (Özbekistan, Hindistan, Türkiye vb.) biyometrik pasaportunun çipine mobil cihazın arkası yaklaştırılır. Kamera ve NFC anteni temassız protokolü (ICAO 9303) anında başlatır.
+                </p>
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-normal pt-1">
+                  • Temassız & Hijyenik • Optik tarama gerekmez
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/70 space-y-3">
+                <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center text-sm font-normal shadow-sm">
+                  2
+                </div>
+                <h4 className="text-sm text-slate-900 dark:text-white font-normal">
+                  Kriptografik Doğrulama & Biyometrik Fotoğraf
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                  Devlet otoritelerinin elektronik imzası teyit edilir (sahte veya tahrif edilmiş pasaport imkansızdır). Çipin içindeki yüksek çözünürlüklü dijital vesikalık fotoğraf, MRZ, doğum tarihi ve pasaport bitiş süresi çözülür.
+                </p>
+                <div className="text-[11px] text-teal-600 dark:text-teal-400 font-normal pt-1">
+                  • Sahtecilik %0 • Orijinal Dijital Vesikalık
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/70 space-y-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm font-normal shadow-sm">
+                  3
+                </div>
+                <h4 className="text-sm text-slate-900 dark:text-white font-normal">
+                  eBA & Pondera HR Otomatik Sicil Açılışı
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                  Tek bir harf dahi elle yazılmadan eBA İnsan Kaynakları sisteminde çalışan sicili açılır, şantiye lokasyonu ve departmanı atanır. Pasaport görseli e-arşive aktarılır ve onay akışı tetiklenir.
+                </p>
+                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-normal pt-1">
+                  • Sıfır Klavye Girişi • eBA Onay Akışı Aktif
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 2: POLİGONLAR VE GEOFENCING (RESİM 3 BİREBİR & ŞIK ENTEGRASYON) */}
+      {activeSubTab === 'geofence' && (
+        <div className="space-y-8 animate-in fade-in duration-200">
+          {/* Real Screenshot 3 Showcase */}
+          <div className="rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131C31] shadow-xl">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                  <Compass className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm text-slate-900 dark:text-white font-normal">
+                    {lang === 'ru'
+                      ? 'Реальный экран: Полигоны объектов и аналитика пуантеров'
+                      : 'Gerçek Saha Ekranı: Şantiye Poligonları & Fotoğraflı Personel Lokasyon Haritası'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-normal">
+                    Kingisepp / Ust-Luga şantiyesinde poligon bazlı tarama, puantör kotaları ve personelin harita üzerindeki anlık pinleri
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-normal">
+                  v2.5 Canlı BI
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 text-[11px] font-normal">
+                  1. Kontrol (Sabah) & 2. Kontrol (Akşam)
+                </span>
+              </div>
+            </div>
+
+            {/* The Actual Image: powerise_map_polygons.png */}
+            <div className="relative aspect-[16/9] w-full bg-slate-950 overflow-hidden">
+              <Image
+                src="/images/powerise/powerise_map_polygons.png"
+                alt="Şantiye Poligon Haritası ve Fotoğraflı Personel Takibi"
+                fill
+                className="object-contain"
+                priority
               />
             </div>
 
-            <div className="p-5 sm:p-6 bg-slate-900/90 text-slate-300 text-xs leading-relaxed border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 font-normal">
+            {/* Bottom Insight Bar */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-normal">
               <div>
-                <strong className="text-white font-normal">Powerise Mimari Özeti:</strong> Bu video, sahada binlerce çalışanın NFC pasaport ile anında sisteme kaydedilmesini, Formen Mobil ile saatlerin toplanmasını, poligon bazlı konum kontrolünü ve turnike verileriyle çapraz puantaj onayını canlı olarak göstermektedir.
+                <span className="text-slate-400 text-[11px]">Toplam Okutma:</span>
+                <p className="text-slate-900 dark:text-white text-base">424 Personel</p>
               </div>
-              <div className="shrink-0 text-slate-400 text-[11px] font-normal">
-                Kaynak: C:\Users\nemat\Powerise
+              <div>
+                <span className="text-slate-400 text-[11px]">Aktif Puantör:</span>
+                <p className="text-teal-600 dark:text-teal-400 text-base">3 Saha Puantörü</p>
+              </div>
+              <div>
+                <span className="text-slate-400 text-[11px]">Örnek Personel Kartı:</span>
+                <p className="text-slate-900 dark:text-white truncate">Mamasoat Khurramov (Boru Montaj)</p>
+              </div>
+              <div>
+                <span className="text-slate-400 text-[11px]">Saha Dışı Tarama:</span>
+                <p className="text-emerald-600 dark:text-emerald-400 text-base">0 (Tam İhlalsiz Güvenlik)</p>
               </div>
             </div>
           </div>
 
-          {/* 3 Value Pillars */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div
-              onClick={() => setActiveSubTab('nfc')}
-              className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-500 transition-all cursor-pointer group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                <ScanLine className="w-5 h-5" />
-              </div>
-              <h3 className="text-sm text-slate-900 dark:text-white font-normal mb-1">
-                NFC & Biyometrik Pasaport Okuma
-              </h3>
+          {/* Explanation Cards for Polygons */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+              <h4 className="text-sm text-slate-900 dark:text-white font-normal flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-teal-500" />
+                <span>Harita Üzerinde Dinamik Poligon Çizimi</span>
+              </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
-                Pasaport çipinden ICAO standardında biyometrik fotoğraf ve MRZ verisini saniyeler içinde çekme. Sıfır yazım hatası.
+                Uydu haritası üzerinde parmakla veya fare ile reaktör binası, boru köprüsü, prefabrik atölyesi gibi çalışma alanları poligon olarak sınırlandırılır.
               </p>
-              <div className="mt-3 flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-normal">
-                <span>Detayları İncele</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
             </div>
 
-            <div
-              onClick={() => setActiveSubTab('geofence')}
-              className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-teal-500 transition-all cursor-pointer group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/70 text-teal-600 dark:text-teal-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                <Compass className="w-5 h-5" />
-              </div>
-              <h3 className="text-sm text-slate-900 dark:text-white font-normal mb-1">
-                Saha Poligon Haritası & Geofencing
-              </h3>
+            <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+              <h4 className="text-sm text-slate-900 dark:text-white font-normal flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-500" />
+                <span>Puantör Hedef & Kota Analitiği</span>
+              </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
-                Şantiye haritasına sektör poligonları çizerek çalışanların hangi sahada ve binada bulunduğunu anlık izleme.
+                Her puantöre atanan çalışan sayısı (örn. Sardorbek Fozilov: 162/167 %97 başarı) ve sabah/akşam kontrolleri gerçek zamanlı izlenir.
               </p>
-              <div className="mt-3 flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 font-normal">
-                <span>Detayları İncele</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
             </div>
 
-            <div
-              onClick={() => setActiveSubTab('puantaj')}
-              className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500 transition-all cursor-pointer group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                <Layers className="w-5 h-5" />
-              </div>
-              <h3 className="text-sm text-slate-900 dark:text-white font-normal mb-1">
-                Turnike + Formen + Puantör
-              </h3>
+            <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+              <h4 className="text-sm text-slate-900 dark:text-white font-normal flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-rose-500" />
+                <span>Kırmızı Kenarlık = Saha Dışı Alarmı</span>
+              </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
-                Turnike giriş-çıkışları, formen mobil girişleri ve bağımsız puantör gözlemleriyle 3 katmanlı kusursuz puantaj.
+                Şantiye sınırları dışından yapılan sahte okutmalar veya yanlış lokasyonlar sistem tarafından kırmızı kenarlıkla işaretlenir ve raporlanır.
               </p>
-              <div className="mt-3 flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 font-normal">
-                <span>Detayları İncele</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* SUB-TAB 2: NFC & BIOMETRIC PASSPORT */}
-      {activeSubTab === 'nfc' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
-            <div className="space-y-4">
-              <span className="text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-normal">
-                ICAO 9303 Temassız Çip Okuma
-              </span>
-              <h2 className="text-2xl text-slate-900 dark:text-white font-normal leading-snug">
-                Akıllı Telefon ile Saniyeler İçinde Pasaport Doğrulama ve Kayıt
-              </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
-                Özbekistan, Hindistan, Türkiye ve SNG ülkelerinin biyometrik pasaportlarındaki NFC çipleri telefon kamerası ve anteniyle okunur. Yüksek çözünürlüklü yüz fotoğrafı doğrudan çipten alınır, sahte pasaport ve tahrifat riski sıfıra indirilir.
-              </p>
-
-              <div className="space-y-2.5 pt-2">
-                <div className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300 font-normal">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Kriptografik İmza Teyidi: Belgenin devlet otoritesi tarafından basıldığını anında teyit eder.</span>
-                </div>
-                <div className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300 font-normal">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Dijital Biyometrik Fotoğraf: Yüksek çözünürlüklü yüz görseli kart ve giriş kartlarına otomatik aktarılır.</span>
-                </div>
-                <div className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300 font-normal">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>EBA & Pondera HR Otomatik Entegrasyonu: Manuel veri girişine gerek kalmadan sicil kartı açılır.</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Mobile NFC Reader Mockup Card */}
-            <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 text-white border border-slate-800 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <ScanLine className="w-4 h-4 text-emerald-400 animate-pulse" />
-                  <span className="text-xs text-emerald-400 font-normal">NFC Anteni Aktif • Pasaportu Yaklaştırın</span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-normal">Powerise Mobile v3.2</span>
-              </div>
-
-              {/* Simulated Chip Data Readout */}
-              <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 font-normal">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-16 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 text-xs font-normal">
-                    <Users className="w-6 h-6 text-emerald-400" />
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      ICAO Çip Doğrulandı (100%)
-                    </span>
-                    <h4 className="text-sm text-white font-normal">RAKHMATOV SHAVKAT</h4>
-                    <p className="text-xs text-slate-400 font-normal">Pasaport: FA 1982736 • UZB (Özbekistan)</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-slate-800 text-slate-300 font-normal">
-                  <div>Doğum Tarihi: <span className="text-white">14.06.1989</span></div>
-                  <div>Geçerlilik: <span className="text-emerald-400">12.05.2031</span></div>
-                  <div>Cinsiyet: <span className="text-white">Erkek</span></div>
-                  <div>Çip Durumu: <span className="text-emerald-400">Orijinal İmza</span></div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-slate-400 font-normal pt-1">
-                <span>Powerise Pasaport Okuma Kütüphanesi</span>
-                <span className="text-emerald-400">Aktarıma Hazır</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUB-TAB 3: GEOFENCING & POLYGON TRACKING */}
-      {activeSubTab === 'geofence' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
-            <div className="space-y-4">
-              <span className="text-xs uppercase tracking-wider text-teal-600 dark:text-teal-400 font-normal">
-                Saha Alanı & Sektör Yönetimi
-              </span>
-              <h2 className="text-2xl text-slate-900 dark:text-white font-normal leading-snug">
-                Şantiye Haritasında Poligon Çizerek Personelin Bulunduğu Yeri Görme
-              </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
-                Büyük ölçekli şantiyelerde (Kazan, Svobodny AGHK, Ust-Luga) harita üzerinde poligon çizilerek çalışma bölgeleri tanımlanır. Çalışanların Formen mobil uygulaması ve saha Bluetooth/GPS antenleri aracılığıyla hangi poligonda kaç saat geçirdiği şeffaf olarak raporlanır.
-              </p>
-
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                  <div className="text-xs text-slate-500 dark:text-slate-400 font-normal">Poligon 1: Reaktör Alanı</div>
-                  <div className="text-lg text-emerald-600 dark:text-emerald-400 font-normal mt-0.5">842 Personel</div>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                  <div className="text-xs text-slate-500 dark:text-slate-400 font-normal">Poligon 2: Boru İskele Hattı</div>
-                  <div className="text-lg text-teal-600 dark:text-teal-400 font-normal mt-0.5">1.215 Personel</div>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                  <div className="text-xs text-slate-500 dark:text-slate-400 font-normal">Poligon 3: Prefabrik İmalat</div>
-                  <div className="text-lg text-indigo-600 dark:text-indigo-400 font-normal mt-0.5">380 Personel</div>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                  <div className="text-xs text-slate-500 dark:text-slate-400 font-normal">Yetkisiz Bölge Alarmı</div>
-                  <div className="text-lg text-rose-600 dark:text-rose-400 font-normal mt-0.5">0 İhlal</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Visual Polygon Map Representation */}
-            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4 text-white">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                <span className="text-xs text-slate-300 font-normal">Şantiye Geofence Harita Katmanı (Simülasyon)</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-normal">
-                  GPS & BLE Doğruluk: ±1.5m
-                </span>
-              </div>
-
-              {/* Polygon Map Canvas SVG */}
-              <div className="relative aspect-[16/10] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 p-4 flex items-center justify-center">
-                <svg className="w-full h-full" viewBox="0 0 400 250">
-                  {/* Grid Lines */}
-                  <defs>
-                    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
-                    </pattern>
-                  </defs>
-                  <rect width="400" height="250" fill="url(#grid)" />
-
-                  {/* Polygon 1: Green Area */}
-                  <polygon
-                    points="30,40 160,30 180,120 50,130"
-                    fill="rgba(16, 185, 129, 0.2)"
-                    stroke="#10B981"
-                    strokeWidth="1.5"
-                    strokeDasharray="3 3"
-                  />
-                  <text x="50" y="70" fill="#10B981" fontSize="10" fontFamily="Tahoma">SEKTÖR A (842 Kişi)</text>
-
-                  {/* Polygon 2: Blue Area */}
-                  <polygon
-                    points="200,40 370,50 350,160 210,140"
-                    fill="rgba(14, 165, 233, 0.2)"
-                    stroke="#0EA5E9"
-                    strokeWidth="1.5"
-                    strokeDasharray="3 3"
-                  />
-                  <text x="230" y="80" fill="#0EA5E9" fontSize="10" fontFamily="Tahoma">SEKTÖR B - BORU (1.215 Kişi)</text>
-
-                  {/* Polygon 3: Purple Area */}
-                  <polygon
-                    points="80,150 260,160 240,230 70,220"
-                    fill="rgba(139, 92, 246, 0.2)"
-                    stroke="#8B5CF6"
-                    strokeWidth="1.5"
-                    strokeDasharray="3 3"
-                  />
-                  <text x="100" y="190" fill="#8B5CF6" fontSize="10" fontFamily="Tahoma">ATÖLYE & İMALAT (380 Kişi)</text>
-
-                  {/* Real-time Personnel Dots */}
-                  <circle cx="90" cy="90" r="2.5" fill="#10B981" className="animate-ping" />
-                  <circle cx="90" cy="90" r="2" fill="#10B981" />
-                  <circle cx="280" cy="100" r="2.5" fill="#0EA5E9" className="animate-ping" />
-                  <circle cx="280" cy="100" r="2" fill="#0EA5E9" />
-                  <circle cx="160" cy="190" r="2.5" fill="#8B5CF6" className="animate-ping" />
-                  <circle cx="160" cy="190" r="2" fill="#8B5CF6" />
-                </svg>
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-slate-400 font-normal">
-                <span>Otomatik Giriş/Çıkış Damgası</span>
-                <span className="text-teal-400">Haritada Poligon Çizme Aktif</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUB-TAB 4: 3-TIER PUANTAJ CONSOLIDATION */}
+      {/* SUB-TAB 3: 3-SEVİYELİ PUANTAJ KONSOLİDASYONU (GERÇEK WEB RESMİ) */}
       {activeSubTab === 'puantaj' && (
+        <div className="space-y-8 animate-in fade-in duration-200">
+          <div className="rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131C31] shadow-xl">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm text-slate-900 dark:text-white font-normal">
+                    {lang === 'ru'
+                      ? 'cabinet.powerise.ru • 3-уровневая консолидация табелей'
+                      : 'Powerise Web Konsolu: Turnike + Formen + Puantör Puantaj Girişi'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-normal">
+                    449 çalışanın NFC okuma saatleri, turnike girişleri ve 1./2. kontrollerinin çapraz doğrulanması
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-normal">
+                  Çalıştı: 450 Kişi
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-[11px] font-normal">
+                  Saat Uyuşmazlığı: 0
+                </span>
+              </div>
+            </div>
+
+            {/* The Actual Image: powerise_web_timesheet.png */}
+            <div className="relative aspect-[16/9] w-full bg-slate-950 overflow-hidden">
+              <Image
+                src="/images/powerise/powerise_web_timesheet.png"
+                alt="Powerise Web Puantaj Giriş Konsolu"
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 font-normal leading-relaxed">
+              <strong className="text-slate-900 dark:text-white font-normal">Konsolidasyon Mantığı:</strong> Şantiye turnikesinden geçen personelin saati otomatik gelir. Formen sahada NFC kartını okutur (1. Kontrol). Bağımsız puantör akşam tekrar doğrular (2. Kontrol). Her 3 kaynak uyuştuğunda tek tıkla resmi bordro puantajı onaylanır.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 4: AI UÇAK & TREN BİLETLERİ REKLAM SEKME */}
+      {activeSubTab === 'tickets' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="space-y-3">
-            <span className="text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400 font-normal">
-              Turnike (ACS) + Formen Mobil + Bağımsız Puantör
-            </span>
-            <h2 className="text-2xl text-slate-900 dark:text-white font-normal leading-snug">
-              Günlük Puantajı Onaya Sunma: 3 Katmanlı Çapraz Doğrulama
-            </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal max-w-3xl">
-              Turnikeden geçen fiziksel saatler, formenin mobil uygulamadan ekibi için girdiği saatler ve bağımsız puantörün sahada bizzat tuttuğu gözlem verileri tek ekranda çapraz eşleştirilir. Tutarsızlıklar otomatik işaretlenir ve şeffaf puantaj yönetici onayına sunulur.
-            </p>
-          </div>
-
-          {/* 3 Columns Comparison Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Column 1: Turnike */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">1. Katman</span>
-                <span className="px-2 py-0.5 text-[10px] rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-normal">
-                  Turnike (ACS)
-                </span>
-              </div>
-              <h3 className="text-sm text-slate-900 dark:text-white font-normal">
-                Fiziksel Kapı & Turnike Kaydı
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
-                Şantiye giriş ve çıkış turnikelerindeki elektronik kart veya yüz okuma logları. Şantiyede geçirilen brüt süre.
-              </p>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs space-y-1 font-normal">
-                <div className="flex justify-between"><span>Giriş:</span><span className="text-slate-900 dark:text-white">07:46</span></div>
-                <div className="flex justify-between"><span>Çıkış:</span><span className="text-slate-900 dark:text-white">18:14</span></div>
-                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1 text-blue-600 dark:text-blue-400"><span>Turnike Süresi:</span><span>10.5 Saat</span></div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+            <div className="lg:col-span-7 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-xl relative group">
+              <div className="relative aspect-[16/10] w-full bg-slate-950">
+                <Image
+                  src="/images/powerise/ai_ticket_admin_showcase.jpg"
+                  alt="AI Bilet Ayrıştırma"
+                  fill
+                  className="object-cover group-hover:scale-[1.02] transition-transform duration-500"
+                  priority
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+                <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white">
+                  <div>
+                    <p className="text-xs font-normal">RZD ve Havayolu Biletlerini AI ile Ayrıştırma</p>
+                    <p className="text-[10.5px] text-slate-400 font-normal">Yolcu, şantiye, kalkış-varış ve bilet bedeli anında tabloda</p>
+                  </div>
+                  <span className="text-[11px] px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-normal">
+                    Yapay Zeka Destekli
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Column 2: Formen Mobil */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">2. Katman</span>
-                <span className="px-2 py-0.5 text-[10px] rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-normal">
-                  Formen Mobil
-                </span>
-              </div>
-              <h3 className="text-sm text-slate-900 dark:text-white font-normal">
-                Formen Saha Çalışma Bildirimi
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
-                Ekipbaşının veya ustanın kendi ekibindeki işçiler için mobil uygulamadan onayladığı net çalışma saati ve mesai.
-              </p>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs space-y-1 font-normal">
-                <div className="flex justify-between"><span>Normal Mesai:</span><span className="text-slate-900 dark:text-white">8.0 Saat</span></div>
-                <div className="flex justify-between"><span>Fazla Mesai:</span><span className="text-slate-900 dark:text-white">+2.0 Saat</span></div>
-                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1 text-amber-600 dark:text-amber-400"><span>Formen Bildirimi:</span><span>10.0 Saat</span></div>
-              </div>
-            </div>
-
-            {/* Column 3: Puantör */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">3. Katman</span>
-                <span className="px-2 py-0.5 text-[10px] rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-normal">
-                  Puantör Saha
-                </span>
-              </div>
-              <h3 className="text-sm text-slate-900 dark:text-white font-normal">
-                Bağımsız Puantör Gözlemi
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
-                Şantiye İK puantörünün sahayı bizzat gezerek sektörde işçiyi fiziken gördüğü ve teyit ettiği bağımsız kontrol.
-              </p>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs space-y-1 font-normal">
-                <div className="flex justify-between"><span>Sabah Kontrolü:</span><span className="text-emerald-600">Mevcut (Sektör B)</span></div>
-                <div className="flex justify-between"><span>Öğleden Sonra:</span><span className="text-emerald-600">Mevcut (Sektör B)</span></div>
-                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1 text-emerald-600 dark:text-emerald-400"><span>Puantör Onayı:</span><span>Tam Teyit (10 Saat)</span></div>
-              </div>
-            </div>
-          </div>
-
-          {/* Verification Decision Banner */}
-          <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-col sm:flex-row items-center justify-between gap-4 font-normal">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
+            <div className="lg:col-span-5 flex flex-col justify-between p-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
               <div>
-                <h4 className="text-sm text-slate-900 dark:text-white font-normal">
-                  3 Katmanlı Konsolidasyon Motoru: %99.2 Uyum Oranı
-                </h4>
-                <p className="text-xs text-slate-600 dark:text-slate-400 font-normal">
-                  Turnike, Formen ve Puantör saatleri eşleştiğinde otomatik yeşil onay verilir; sapmalı kayıtlar yöneticinin önüne ayrıştırılarak düşer.
+                <span className="text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400 font-normal">
+                  İdari İşler & Lojistik Modülü
+                </span>
+                <h3 className="text-lg text-slate-900 dark:text-white font-normal mt-1 leading-snug">
+                  Şantiye Bilet ve Sevk Operasyonlarını Otomatikleştirin
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed font-normal">
+                  Yüzlerce PDF bileti elle girmek yerine sisteme bırakın; AI motoru pasaport numarasıyla çalışanı bulsun, şantiyesine bağlasın ve bütçeyi raporlasın.
                 </p>
               </div>
+
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-normal">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>RZD Tren ve E-Bilet PDF desteği</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-normal">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Şantiye bazlı seyahat bütçesi ve maliyet takibi</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-normal">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Yoldaki ve şantiyeye varan personel izleme</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/50 text-xs text-indigo-700 dark:text-indigo-300 font-normal">
+                Yan menüdeki <strong className="font-normal">&quot;İdari İşler & Bilet Takibi&quot;</strong> sayfasından canlı demoyu inceleyebilirsiniz.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 5: ŞANTİYE KAMP VE LOJMAN REKLAM SEKME */}
+      {activeSubTab === 'camp' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+            <div className="lg:col-span-7 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-xl relative group">
+              <div className="relative aspect-[16/10] w-full bg-slate-950">
+                <Image
+                  src="/images/powerise/camp_dormitory_showcase.jpg"
+                  alt="Kamp ve Lojman Doluluk Haritası"
+                  fill
+                  className="object-cover group-hover:scale-[1.02] transition-transform duration-500"
+                  priority
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+                <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white">
+                  <div>
+                    <p className="text-xs font-normal">Şantiye Kampı 3D Blok ve Yatak Doluluk Haritası</p>
+                    <p className="text-[10.5px] text-slate-400 font-normal">NFC pasaport okutulunca anında oda ve yatak ataması</p>
+                  </div>
+                  <span className="text-[11px] px-2.5 py-1 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-500/30 font-normal">
+                    Obshchezhitiye Modülü
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <button
-              type="button"
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-normal shadow-sm whitespace-nowrap cursor-pointer transition-all"
-            >
-              Günlük Puantajı Onaya Sun (Simüle Et)
-            </button>
+            <div className="lg:col-span-5 flex flex-col justify-between p-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div>
+                <span className="text-xs uppercase tracking-wider text-teal-600 dark:text-teal-400 font-normal">
+                  Kamp & Lojman (Obshchezhitiye)
+                </span>
+                <h3 className="text-lg text-slate-900 dark:text-white font-normal mt-1 leading-snug">
+                  4.800+ Yataklı Şantiye Kamplarında Sıfır Hata ile İkamet Yönetimi
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed font-normal">
+                  Şantiyeye yeni gelen işçilerin kalacağı oda ve yataklar otomatik planlanır. Vardiya uyumu (gece/gündüz) gözetilerek iş kazaları önlenir.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-normal">
+                  <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0" />
+                  <span>Konteyner ve prefabrik blok bazlı doluluk kontrolü</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-normal">
+                  <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0" />
+                  <span>İşten ayrılan personelin lojmandan otomatik tahliyesi</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-normal">
+                  <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0" />
+                  <span>Hijyen, temizlik ve bakım döngüsü takibi</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200/50 dark:border-teal-800/50 text-xs text-teal-700 dark:text-teal-300 font-normal">
+                Yan menüdeki <strong className="font-normal">&quot;Kamp & Lojman Takibi&quot;</strong> sayfasından interaktif oda matrisini inceleyebilirsiniz.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 6: YOUTUBE VIDEO TANITIMI */}
+      {activeSubTab === 'video' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-2xl">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2.5">
+                <Play className="w-5 h-5 text-rose-500" />
+                <div>
+                  <h3 className="text-sm font-normal">Powerise Saha ve Şantiye Uygulamaları Tanıtım Filmi</h3>
+                  <p className="text-[11px] text-slate-400 font-normal">YouTube üzerinden yüksek çözünürlüklü izleyebilirsiniz</p>
+                </div>
+              </div>
+              <a
+                href="https://www.youtube.com/watch?v=UQWgBJtFEJU"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-normal flex items-center gap-1.5 transition-all"
+              >
+                <span>YouTube&apos;da Aç</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <div className="relative aspect-[16/9] w-full bg-black">
+              <iframe
+                src="https://www.youtube.com/embed/UQWgBJtFEJU?rel=0"
+                title="Powerise Saha ve Şantiye Uygulamaları Tanıtımı"
+                className="w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
           </div>
         </div>
       )}

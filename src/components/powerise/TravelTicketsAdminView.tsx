@@ -1,0 +1,440 @@
+'use client';
+
+import React, { useState } from 'react';
+import Image from 'next/image';
+import {
+  Plane,
+  Train,
+  Sparkles,
+  UploadCloud,
+  FileText,
+  CheckCircle2,
+  Calendar,
+  MapPin,
+  Users,
+  Search,
+  Download,
+  Filter,
+  ArrowRight,
+  TrendingUp,
+  CreditCard,
+  Building2,
+  Clock,
+  Check,
+  AlertCircle,
+} from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
+
+interface TicketItem {
+  id: string;
+  passenger_name: string;
+  passport_no: string;
+  transport_type: 'flight' | 'train';
+  carrier: string;
+  route_from: string;
+  route_to: string;
+  project: string;
+  travel_date: string;
+  ticket_cost: string;
+  ai_status: 'Tarandı (%99.8)' | 'Kontrol Edildi';
+  ticket_code: string;
+}
+
+const SAMPLE_TICKETS: TicketItem[] = [
+  {
+    id: 'TCK-2026-001',
+    passenger_name: 'MAMASOAT KHURRAMOV',
+    passport_no: 'FA 4210519',
+    transport_type: 'flight',
+    carrier: 'Uzbekistan Airways (HY-631)',
+    route_from: 'Taşkent (TAS)',
+    route_to: 'St. Petersburg Pulkovo (LED)',
+    project: 'Ust-Luga Gaz Kimya',
+    travel_date: '28.10.2026 04:30',
+    ticket_cost: '28.450 ₽',
+    ai_status: 'Tarandı (%99.8)',
+    ticket_code: 'AER-LED-9021',
+  },
+  {
+    id: 'TCK-2026-002',
+    passenger_name: 'RAJESH KUMAR',
+    passport_no: 'Z 8492019',
+    transport_type: 'flight',
+    carrier: 'Air India / Aeroflot (AI-1945)',
+    route_from: 'Delhi (DEL)',
+    route_to: 'Moskova Şeremetyevo (SVO)',
+    project: 'Kazan Gaz Kimya',
+    travel_date: '29.10.2026 12:15',
+    ticket_cost: '44.800 ₽',
+    ai_status: 'Tarandı (%99.8)',
+    ticket_code: 'AER-SVO-1182',
+  },
+  {
+    id: 'TCK-2026-003',
+    passenger_name: 'SARDORBEK FOZILOV',
+    passport_no: 'AA 1209384',
+    transport_type: 'train',
+    carrier: 'RZD Sapsan (758A)',
+    route_from: 'Moskova (Leningradsky)',
+    route_to: 'St. Petersburg (Moskovsky)',
+    project: 'Ust-Luga Gaz Kimya',
+    travel_date: '26.10.2026 07:00',
+    ticket_cost: '4.850 ₽',
+    ai_status: 'Tarandı (%99.8)',
+    ticket_code: 'RZD-SAP-8831',
+  },
+  {
+    id: 'TCK-2026-004',
+    passenger_name: 'BAKYTBEK ASANOV',
+    passport_no: 'AC 551920',
+    transport_type: 'train',
+    carrier: 'RZD Rossiya (002M)',
+    route_from: 'Moskova (Yaroslavsky)',
+    route_to: 'Belogorsk / Svobodny',
+    project: 'Svobodny AGHK',
+    travel_date: '30.10.2026 23:45',
+    ticket_cost: '14.200 ₽',
+    ai_status: 'Tarandı (%99.8)',
+    ticket_code: 'RZD-RUS-4409',
+  },
+  {
+    id: 'TCK-2026-005',
+    passenger_name: 'SHAVKAT RAKHMATOV',
+    passport_no: 'FA 1982736',
+    transport_type: 'flight',
+    carrier: 'Aeroflot (SU-1240)',
+    route_from: 'Samara Kurumoch (KUF)',
+    route_to: 'Tyumen Roshchino (TJM)',
+    project: 'Tobolsk DGP-2',
+    travel_date: '27.10.2026 09:20',
+    ticket_cost: '11.600 ₽',
+    ai_status: 'Tarandı (%99.8)',
+    ticket_code: 'AER-TJM-3301',
+  },
+];
+
+export default function TravelTicketsAdminView() {
+  const { lang } = useLanguage();
+  const [filterType, setFilterType] = useState<'all' | 'flight' | 'train'>('all');
+  const [search, setSearch] = useState('');
+  const [uploadedCount, setUploadedCount] = useState(148);
+
+  const filtered = SAMPLE_TICKETS.filter((t) => {
+    if (filterType !== 'all' && t.transport_type !== filterType) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return (
+        t.passenger_name.toLowerCase().includes(q) ||
+        t.passport_no.toLowerCase().includes(q) ||
+        t.project.toLowerCase().includes(q) ||
+        t.route_from.toLowerCase().includes(q) ||
+        t.route_to.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  return (
+    <div className="p-6 lg:p-8 space-y-8 font-normal max-w-7xl mx-auto">
+      {/* Top Banner */}
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-xl space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shadow-inner">
+              <Plane className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl text-white tracking-tight font-normal">
+                  {lang === 'ru'
+                    ? 'АХО • Умное распознавание билетов (AI OCR)'
+                    : 'İdari İşler • AI ile Uçak & Tren Bilet Yönetimi'}
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-normal flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                  {lang === 'ru' ? 'Powerise AI Модуль' : 'Powerise Satılık İnovasyon Modülü'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 font-normal">
+                {lang === 'ru'
+                  ? 'Автоматическое считывание PDF билетов (РЖД, Аэрофлот, S7), привязка к сотрудникам и учет расходов по объектам'
+                  : 'RZD tren ve havayolu PDF biletlerini yapay zeka ile anında ayrıştırma, çalışana, şantiyeye ve bütçeye otomatik bağlama'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700/80 text-right">
+              <div className="text-[10px] text-slate-400 font-normal">
+                {lang === 'ru' ? 'Распознано ИИ' : 'AI ile Ayrıştırılan'}
+              </div>
+              <div className="text-base text-indigo-400 font-normal">1.842 Bilet</div>
+            </div>
+            <div className="px-3.5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-800/60 text-right">
+              <div className="text-[10px] text-emerald-400 font-normal">
+                {lang === 'ru' ? 'Точность OCR' : 'OCR Başarısı'}
+              </div>
+              <div className="text-base text-emerald-300 font-normal">%99.8</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Showcase Visual Card (Generated Image + Features) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Left: AI OCR Showcase Image */}
+        <div className="lg:col-span-7 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-lg relative group">
+          <div className="relative aspect-[16/10] w-full bg-slate-950">
+            <Image
+              src="/images/powerise/ai_ticket_admin_showcase.jpg"
+              alt="AI Uçak ve Tren Bilet Tarama Vitrini"
+              fill
+              className="object-cover group-hover:scale-[1.02] transition-transform duration-500"
+              priority
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+            <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700 text-white text-[11px] font-normal flex items-center gap-1.5 shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Yapay Zeka (AI Vision) OCR Motoru</span>
+            </div>
+            <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white">
+              <div>
+                <p className="text-xs text-slate-200 font-normal">Toplu PDF ve E-Bilet İçe Aktarma</p>
+                <p className="text-[10.5px] text-slate-400 font-normal">İsim, Pasaport No, Kalkış-Varış, Koltuk, Tutar 1.5 saniyede çıkarılır</p>
+              </div>
+              <span className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-normal">
+                Doğrulandı
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: How It Works & Value Proposition */}
+        <div className="lg:col-span-5 flex flex-col justify-between p-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400 font-normal">
+                Powerise İdari İşler Otomasyonu
+              </span>
+            </div>
+            <h3 className="text-lg text-slate-900 dark:text-white font-normal leading-snug">
+              İdari İşler Departmanında Günler Süren Manuel Bilet Girişine Son
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed font-normal">
+              Büyük şantiyelere her ay yüzlerce usta ve mühendis taşınır. İdari işler yetkilisi gelen e-bilet PDF&apos;lerini sisteme sürükleyip bıraktığında AI motoru:
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50">
+              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs shrink-0 font-normal">
+                1
+              </div>
+              <div>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Tek Seferde 100+ PDF Bilet Yükleme</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                  RZD tren biletleri ve uçak biniş kartları format fark etmeksizin saniyeler içinde ayrıştırılır.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-teal-50/60 dark:bg-teal-950/40 border border-teal-100 dark:border-teal-900/50">
+              <div className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center text-xs shrink-0 font-normal">
+                2
+              </div>
+              <div>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Personel Sicili & Proje Eşleşmesi</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                  Bilet üzerindeki pasaport no ve isim Pondera HR veri tabanı ile otomatik eşleşir, doğru şantiyeye zimmetlenir.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50">
+              <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0 font-normal">
+                3
+              </div>
+              <div>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Lojistik Maliyet & Sevk Raporu</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                  Şantiye başına seyahat giderleri, harcanan bütçe ve yoldaki personel listesi anlık Excel veya grafik olarak alınır.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Entegrasyon: 1-2 İş Günü</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-normal">Satın Alma & Lisanslama İçin Hazır</span>
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-normal">Bu Ay Kesilen Bilet</span>
+            <Plane className="w-4 h-4 text-indigo-500" />
+          </div>
+          <div className="text-2xl text-slate-900 dark:text-white font-normal">342 Adet</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">189 Uçak • 153 Tren (RZD)</div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-normal">Seyahat Bütçesi (Ekim)</span>
+            <CreditCard className="w-4 h-4 text-emerald-500" />
+          </div>
+          <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">4.680.200 ₽</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">Bütçe Uyum: %94.2 (Optimum)</div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-normal">Yoldaki / Transferde</span>
+            <Clock className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="text-2xl text-amber-600 dark:text-amber-400 font-normal">28 Personel</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">Bugün şantiyeye varış bekleniyor</div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-normal">En Çok Sevk Alan Saha</span>
+            <Building2 className="w-4 h-4 text-teal-500" />
+          </div>
+          <div className="text-2xl text-teal-600 dark:text-teal-400 font-normal">Ust-Luga</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">142 Bilet (%41.5 Pay)</div>
+        </div>
+      </div>
+
+      {/* Interactive Table: AI Parsed Tickets */}
+      <div className="p-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <h3 className="text-base text-slate-900 dark:text-white font-normal">
+              {lang === 'ru' ? 'Журнал электронных билетов' : 'Son Ayrıştırılan Biletler & Sevk Listesi'}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal">
+              Yapay zeka tarafından PDF&apos;lerden otomatik çıkarılan güzergah, yolcu ve maliyet kayıtları
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Filter Buttons */}
+            <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <button
+                onClick={() => setFilterType('all')}
+                className={`px-3 py-1 text-xs rounded-lg transition-all font-normal cursor-pointer ${
+                  filterType === 'all'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                Tümü (5)
+              </button>
+              <button
+                onClick={() => setFilterType('flight')}
+                className={`px-3 py-1 text-xs rounded-lg transition-all font-normal cursor-pointer flex items-center gap-1 ${
+                  filterType === 'flight'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <Plane className="w-3 h-3" />
+                Uçak (3)
+              </button>
+              <button
+                onClick={() => setFilterType('train')}
+                className={`px-3 py-1 text-xs rounded-lg transition-all font-normal cursor-pointer flex items-center gap-1 ${
+                  filterType === 'train'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <Train className="w-3 h-3" />
+                Tren / RZD (2)
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Yolcu, pasaport, şantiye..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white focus:outline-hidden font-normal"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-normal">
+                <th className="py-2.5 px-3">Yolcu / Personel</th>
+                <th className="py-2.5 px-3">Ulaşım / Sefer</th>
+                <th className="py-2.5 px-3">Kalkış & Varış Güzergahı</th>
+                <th className="py-2.5 px-3">Atanan Şantiye</th>
+                <th className="py-2.5 px-3">Seyahat Tarihi</th>
+                <th className="py-2.5 px-3">Tutar</th>
+                <th className="py-2.5 px-3 text-right">AI Durumu</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-normal">
+              {filtered.map((item) => (
+                <tr
+                  key={item.id}
+                  className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                >
+                  <td className="py-3 px-3">
+                    <div className="text-slate-900 dark:text-white font-normal">{item.passenger_name}</div>
+                    <div className="text-[11px] text-slate-400 font-normal">{item.passport_no}</div>
+                  </td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200 font-normal">
+                      {item.transport_type === 'flight' ? (
+                        <Plane className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      ) : (
+                        <Train className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                      )}
+                      <span>{item.carrier}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono font-normal">{item.ticket_code}</div>
+                  </td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1 text-slate-700 dark:text-slate-300 font-normal">
+                      <span>{item.route_from}</span>
+                      <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span className="text-slate-900 dark:text-white">{item.route_to}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-normal">
+                    {item.project}
+                  </td>
+                  <td className="py-3 px-3 text-slate-600 dark:text-slate-400 font-normal">
+                    {item.travel_date}
+                  </td>
+                  <td className="py-3 px-3 text-slate-900 dark:text-white font-normal">
+                    {item.ticket_cost}
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10.5px] font-normal">
+                      <CheckCircle2 className="w-3 h-3" />
+                      {item.ai_status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
