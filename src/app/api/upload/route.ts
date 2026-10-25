@@ -64,40 +64,55 @@ export async function POST(request: Request) {
 
     const safeFreshness = dataFreshness.replace(/['"\\]/g, '');
     const safeFileName = path.basename(file.name).replace(/['"\\]/g, '');
-    const primaryCmd = process.platform === 'win32' ? 'python' : 'python3';
     const pyArgs = ['-c', PYTHON_BUILD_INLINE, tempFilePath, safeFreshness, safeFileName];
 
+    const isWin = process.platform === 'win32';
+    const candidates = isWin
+      ? ['python', 'python3']
+      : [
+          path.join(process.cwd(), 'venv', 'bin', 'python3'),
+          path.join(process.cwd(), 'venv', 'bin', 'python'),
+          path.join(process.cwd(), '.venv', 'bin', 'python3'),
+          '/usr/bin/python3',
+          'python3',
+          'python',
+        ].filter((c) => (c.startsWith('/') ? fs.existsSync(c) : true));
+
+    let executed = false;
     let buildError: string | null = null;
-    try {
-      await execFilePromise(primaryCmd, pyArgs, {
-        cwd: process.cwd(),
-        timeout: 300000,
-        maxBuffer: 20 * 1024 * 1024,
-      });
-    } catch (err: any) {
-      buildError = err?.stderr || err?.message || String(err);
+    for (const cmd of candidates) {
       try {
-        const fallbackCmd = primaryCmd === 'python3' ? 'python' : 'python3';
-        await execFilePromise(fallbackCmd, pyArgs, {
+        await execFilePromise(cmd, pyArgs, {
           cwd: process.cwd(),
           timeout: 300000,
           maxBuffer: 20 * 1024 * 1024,
         });
+        executed = true;
         buildError = null;
-      } catch (fallbackErr: any) {
-        buildError = fallbackErr?.stderr || fallbackErr?.message || buildError;
-        return NextResponse.json(
-          {
-            success: false,
-            message: `Excel dosyası işlenirken hata oluştu: ${String(buildError || '').slice(0, 200)}`,
-          },
-          { status: 500 }
-        );
+        break;
+      } catch (err: any) {
+        const msg = err?.stderr || err?.stdout || err?.message || String(err);
+        if (!buildError || !msg.includes('ENOENT')) {
+          buildError = msg;
+        }
       }
-    } finally {
+    }
+
+    if (!executed) {
       if (fs.existsSync(tempFilePath)) {
         try { fs.unlinkSync(tempFilePath); } catch {}
       }
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Excel dosyası işlenirken hata oluştu: ${String(buildError || '').slice(0, 300)}`,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (fs.existsSync(tempFilePath)) {
+      try { fs.unlinkSync(tempFilePath); } catch {}
     }
 
     // Invalidate cached database connection so next query immediately loads the updated database

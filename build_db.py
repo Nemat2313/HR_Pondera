@@ -1,4 +1,3 @@
-import openpyxl
 import sqlite3
 import json
 import time
@@ -8,6 +7,8 @@ import shutil
 import gzip
 from datetime import datetime, date
 import sys
+
+openpyxl = None
 
 if hasattr(sys.stdout, 'reconfigure'):
     try:
@@ -221,6 +222,20 @@ def get_row_iterator(file_path):
         return
 
     # 3. Handle Excel: .xlsx, .xls
+    global openpyxl
+    if openpyxl is None:
+        try:
+            import openpyxl as _op
+            openpyxl = _op
+        except ImportError:
+            import subprocess
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "install", "--break-system-packages", "openpyxl"], capture_output=True, timeout=90)
+                import openpyxl as _op
+                openpyxl = _op
+            except Exception as pip_err:
+                raise RuntimeError(f"Python Excel kutuphanesi 'openpyxl' bulunamadi ve otomatik kurulamadi: {pip_err}")
+
     wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
     ws_data = find_personnel_sheet(wb)
     ws_data._max_row = None  # Force reading all rows even if metadata dimension was truncated by eBA!
