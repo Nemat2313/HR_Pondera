@@ -124,8 +124,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         />
 
         {/* Multi-layered Soft Daylight Vignettes for High Contrast & Text Legibility */}
-        <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/85 to-white/90" />
-        <div className="absolute inset-0 bg-gradient-to-t from-white/95 via-transparent to-white/60" />
+        <div className="absolute inset-0 bg-gradient-to-r from-white/85 via-white/50 to-white/80" />
+        <div className="absolute inset-0 bg-gradient-to-t from-white/90 via-transparent to-white/40" />
 
         {/* Ambient Subtle Daylight Light Orbs */}
         <div
@@ -139,7 +139,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         {/* Subtle Architectural Grid Overlay */}
         <div
-          className="absolute inset-0 opacity-[0.04] pointer-events-none"
+          className="absolute inset-0 opacity-[0.03] pointer-events-none"
           style={{
             backgroundImage:
               'linear-gradient(to right, rgba(15,23,42,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(15,23,42,0.3) 1px, transparent 1px)',
@@ -149,144 +149,153 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       </div>
 
       {/* Main Content Container */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-6 flex flex-col lg:flex-row items-center justify-between gap-10">
-        {/* LEFT SHOWCASE PANEL: Daylight HR Command Center Branding & Floating Cards */}
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-8 flex flex-col lg:flex-row items-center lg:items-stretch justify-between gap-8 lg:gap-12 min-h-[640px]">
+        {/* LEFT SHOWCASE PANEL: Daylight HR Command Center Branding with Spacious Center & Transparent Bottom Cards */}
         {isStandalonePage && (
           <div
-            className={`hidden lg:flex flex-col justify-between max-w-xl text-slate-900 space-y-7 transition-all duration-700 ${
+            className={`hidden lg:flex flex-col justify-between flex-1 max-w-xl text-slate-900 transition-all duration-700 ${
               mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
             }`}
             style={{
               transform: `translate3d(${mousePos.x * 0.3}px, ${mousePos.y * 0.3}px, 0)`,
             }}
           >
-            {/* Top Live Badge */}
-            <div className="inline-flex items-center gap-2.5 self-start px-4 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-slate-200/90 shadow-xs">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600" />
-              </span>
-              <span className="text-xs font-normal tracking-wide uppercase text-slate-800">
-                {lang === 'ru'
-                  ? 'PONDERA HR • ЦЕНТР УПРАВЛЕНИЯ ПЕРСОНАЛОМ'
-                  : 'PONDERA HR • İNSAN KAYNAKLARI KOMUTA MERKEZİ'}
-              </span>
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            </div>
-
-            {/* Hero Headline */}
-            <div className="space-y-3.5">
-              <h1 className="text-3xl xl:text-4xl font-normal tracking-tight leading-[1.18] text-slate-950">
-                {lang === 'ru' ? (
-                  <>
-                    Интеллектуальное управление{' '}
-                    <span className="text-emerald-700">
-                      персоналом и ВКС
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    Yeni Nesil Kurumsal{' '}
-                    <span className="text-emerald-700">
-                      Personel & VKS Yönetimi
-                    </span>
-                  </>
-                )}
-              </h1>
-              <p className="text-sm xl:text-base text-slate-700 leading-relaxed max-w-lg font-normal">
-                {lang === 'ru'
-                  ? 'Единая платформа кадровой аналитики, миграционного контроля, автоматизации Госуслуг МВД и защиты данных на уровне строк (RLS).'
-                  : 'Şantiye, bölge ve proje bazlı Row-Level Security (RLS) mimarisiyle uçtan uca personel analitiği, göçmenlik uyumluluğu ve Gosuslugi МВД otomasyonu.'}
-              </p>
-            </div>
-
-            {/* Floating Glassmorphic Feature Cards (Light Mode) */}
-            <div className="grid grid-cols-1 gap-3 pt-1">
-              {/* Card 1 */}
-              <div
-                style={{ animation: 'floatSlow 6s ease-in-out infinite' }}
-                className="group flex items-center gap-4 p-3.5 rounded-2xl bg-white/90 hover:bg-white backdrop-blur-xl border border-slate-200/90 shadow-sm transition-all duration-300"
-              >
-                <div className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-normal text-slate-900">
-                      {lang === 'ru' ? 'Кадровая Аналитика в Реальном Времени' : 'Canlı Personel & Puantaj Analitiği'}
-                    </h3>
-                    <span className="px-2 py-0.5 text-[10px] font-normal rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                      BI
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 mt-0.5 truncate font-normal">
-                    {lang === 'ru'
-                      ? 'Мгновенная фильтрация по проектам, отделам, гражданству и табелям'
-                      : 'Proje, departman, uyruk ve yaka bazlı anlık çapraz filtreleme ve raporlama'}
-                  </p>
-                </div>
+            {/* Top Area: Live Badge & Headline */}
+            <div className="space-y-4">
+              {/* Top Live Badge */}
+              <div className="inline-flex items-center gap-2.5 self-start px-4 py-1.5 rounded-full bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-xs">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600" />
+                </span>
+                <span className="text-xs font-normal tracking-wide uppercase text-slate-800">
+                  {lang === 'ru'
+                    ? 'PONDERA HR • ЦЕНТР УПРАВЛЕНИЯ ПЕРСОНАЛОМ'
+                    : 'PONDERA HR • İNSAN KAYNAKLARI KOMUTA MERKEZİ'}
+                </span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               </div>
 
-              {/* Card 2 */}
-              <div
-                style={{ animation: 'floatDelayed 7s ease-in-out infinite 1s' }}
-                className="group flex items-center gap-4 p-3.5 rounded-2xl bg-white/90 hover:bg-white backdrop-blur-xl border border-slate-200/90 shadow-sm transition-all duration-300 ml-4"
-              >
-                <div className="w-11 h-11 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <Cpu className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-normal text-slate-900">
-                      {lang === 'ru' ? 'Роботизация Госуслуг и МВД (RPA)' : 'Gosuslugi & МВД VKS Robot Otomasyonu'}
-                    </h3>
-                    <span className="px-2 py-0.5 text-[10px] font-normal rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                      AUTO-SYNC
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 mt-0.5 truncate font-normal">
-                    {lang === 'ru'
-                      ? 'Автоматическая подача уведомлений ВКС, ЭЦП и контроль статусов МВД'
-                      : 'Çoklu bilgisayar RPA ajanları, elektronik imza ve anlık МВД statü takibi'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Card 3 */}
-              <div
-                style={{ animation: 'floatSlow 6.5s ease-in-out infinite 0.5s' }}
-                className="group flex items-center gap-4 p-3.5 rounded-2xl bg-white/90 hover:bg-white backdrop-blur-xl border border-slate-200/90 shadow-sm transition-all duration-300"
-              >
-                <div className="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-normal text-slate-900">
-                      {lang === 'ru' ? 'Защита Row-Level Security (RLS)' : 'Kurumsal Row-Level Security (RLS)'}
-                    </h3>
-                    <span className="px-2 py-0.5 text-[10px] font-normal rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
-                      256-BIT
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 mt-0.5 truncate font-normal">
-                    {lang === 'ru'
-                      ? 'Строгое разграничение прав доступа по регионам и строительным объектам'
-                      : 'Bölge ve şantiye yetkilerine göre izole edilmiş yüksek güvenlikli veri erişimi'}
-                  </p>
-                </div>
+              {/* Hero Headline */}
+              <div className="space-y-2.5">
+                <h1 className="text-3xl xl:text-4xl font-normal tracking-tight leading-[1.18] text-slate-950">
+                  {lang === 'ru' ? (
+                    <>
+                      Интеллектуальное управление{' '}
+                      <span className="text-emerald-700">
+                        персоналом и ВКС
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Yeni Nesil Kurumsal{' '}
+                      <span className="text-emerald-700">
+                        Personel & VKS Yönetimi
+                      </span>
+                    </>
+                  )}
+                </h1>
+                <p className="text-sm xl:text-base text-slate-700 leading-relaxed max-w-lg font-normal">
+                  {lang === 'ru'
+                    ? 'Единая платформа кадровой аналитики, миграционного контроля, автоматизации Госуслуг МВД и корпоративного доступа.'
+                    : 'Şantiye, bölge ve proje bazlı izole yetkilendirme mimarisiyle uçtan uca personel analitiği, göçmenlik uyumluluğu ve Gosuslugi МВД otomasyonu.'}
+                </p>
               </div>
             </div>
 
-            {/* Footer Trust Strip */}
-            <div className="flex items-center gap-6 pt-1 text-xs text-slate-700 font-normal">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>{lang === 'ru' ? 'Защищенное соединение SSL' : 'SSL Şifreli Kurumsal Bağlantı'}</span>
+            {/* Middle Space: Kept intentionally open and unobstructed to showcase the bright modern office view */}
+            <div className="flex-1 min-h-[40px]" />
+
+            {/* Bottom Area: 3 Animated Transparent Lines & Footer Trust Strip */}
+            <div className="space-y-4">
+              {/* 3 Animated Feature Items - Fully Transparent Background */}
+              <div className="space-y-2">
+                {/* Card 1 */}
+                <div
+                  style={{ animation: 'floatSlow 6s ease-in-out infinite' }}
+                  className="group flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl bg-transparent hover:bg-white/40 border border-slate-300/40 hover:border-slate-300/80 transition-all duration-300"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-emerald-600/15 text-emerald-800 flex items-center justify-center shrink-0">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-normal text-slate-950">
+                        {lang === 'ru' ? 'Кадровая Аналитика в Реальном Времени' : 'Canlı Personel & Puantaj Analitiği'}
+                      </h3>
+                      <span className="px-1.5 py-0.2 text-[9px] font-normal rounded bg-emerald-100/70 text-emerald-900 border border-emerald-300/50">
+                        BI
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 truncate font-normal">
+                      {lang === 'ru'
+                        ? 'Мгновенная фильтрация по проектам, отделам, гражданству и табелям'
+                        : 'Proje, departman, uyruk ve yaka bazlı anlık çapraz filtreleme ve raporlama'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Card 2 */}
+                <div
+                  style={{ animation: 'floatDelayed 7s ease-in-out infinite 1s' }}
+                  className="group flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl bg-transparent hover:bg-white/40 border border-slate-300/40 hover:border-slate-300/80 transition-all duration-300"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-amber-600/15 text-amber-800 flex items-center justify-center shrink-0">
+                    <Cpu className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-normal text-slate-950">
+                        {lang === 'ru' ? 'Роботизация Госуслуг и МВД (RPA)' : 'Gosuslugi & МВД VKS Robot Otomasyonu'}
+                      </h3>
+                      <span className="px-1.5 py-0.2 text-[9px] font-normal rounded bg-amber-100/70 text-amber-900 border border-amber-300/50">
+                        AUTO-SYNC
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 truncate font-normal">
+                      {lang === 'ru'
+                        ? 'Автоматическая подача уведомлений ВКС, ЭЦП и контроль статусов МВД'
+                        : 'Çoklu bilgisayar RPA ajanları, elektronik imza ve anlık МВД statü takibi'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Card 3 */}
+                <div
+                  style={{ animation: 'floatSlow 6.5s ease-in-out infinite 0.5s' }}
+                  className="group flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl bg-transparent hover:bg-white/40 border border-slate-300/40 hover:border-slate-300/80 transition-all duration-300"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-indigo-600/15 text-indigo-800 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-normal text-slate-950">
+                        {lang === 'ru' ? 'Корпоративная Защита и Изоляция Данных' : 'Kurumsal Veri & Yetki İzolasyonu'}
+                      </h3>
+                      <span className="px-1.5 py-0.2 text-[9px] font-normal rounded bg-indigo-100/70 text-indigo-900 border border-indigo-300/50">
+                        256-BIT
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 truncate font-normal">
+                      {lang === 'ru'
+                        ? 'Строгое разграничение прав доступа по регионам и строительным объектам'
+                        : 'Bölge ve şantiye yetkilerine göre izole edilmiş yüksek güvenlikli veri erişimi'}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Globe2 className="w-4 h-4 text-indigo-600" />
-                <span>hr.pondera.network</span>
+
+              {/* Footer Trust Strip */}
+              <div className="flex items-center gap-6 pt-1 text-xs text-slate-700 font-normal">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>{lang === 'ru' ? 'Защищенное соединение SSL' : 'SSL Şifreli Kurumsal Bağlantı'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Globe2 className="w-4 h-4 text-indigo-600" />
+                  <span>hr.pondera.network</span>
+                </div>
               </div>
             </div>
           </div>

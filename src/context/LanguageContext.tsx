@@ -216,8 +216,8 @@ const translations: Record<string, { tr: string; ru: string }> = {
   demo_hse_note: { tr: 'Şantiyeye giriş yapacak tüm personelin yasal İSG evrakları tamdır.', ru: 'Все сотрудники на стройплощадке имеют полный комплект документов по ТБ.' },
 
   // Login Modal
-  login_title: { tr: 'Pondera HR Giriş & RLS Erişimi', ru: 'Вход в Pondera HR и доступ RLS' },
-  login_sub: { tr: 'Bölge ve Proje bazlı Row-Level Security (RLS) ile güvenli giriş yapın', ru: 'Безопасный вход с разграничением прав доступа (RLS) по объектам' },
+  login_title: { tr: 'Pondera HR Yönetim Girişi', ru: 'Вход в систему Pondera HR' },
+  login_sub: { tr: 'Bölge ve proje bazlı yetkilendirme ile güvenli giriş yapın', ru: 'Безопасный вход с разграничением прав доступа по объектам' },
   login_fast_title: { tr: 'HIZLI GİRİŞ (DEMO HESAPLAR):', ru: 'БЫСТРЫЙ ВХОД (ДЕМО-ПРОФИЛИ):' },
   login_admin_desc: { tr: 'Tüm Şantiyeler & Kullanıcı Yönetimi', ru: 'Все участки и управление пользователями' },
   login_kazan_desc: { tr: 'Yalnızca Kazan Bölgesi (2.258 Personel)', ru: 'Только объект Казань (2.258 сотрудников)' },
