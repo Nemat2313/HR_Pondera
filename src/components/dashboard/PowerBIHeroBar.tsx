@@ -171,7 +171,7 @@ export default function PowerBIHeroBar({
       </div>
 
       {/* METRICS ROW (Inspired directly by the Power BI cards) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-4 relative z-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-4 relative z-10">
         {/* Metric 1: Toplam Çalışan */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
           <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('kpi_total_personnel')}</span>
@@ -188,14 +188,7 @@ export default function PowerBIHeroBar({
           <span className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Молодой коллектив' : 'Genç & Dinamik Kadro'}</span>
         </div>
 
-        {/* Metric 3: Ortalama Kıdem */}
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('kpi_avg_tenure')}</span>
-          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">{avgTenure} {t('unit_years')}</div>
-          <span className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Стаж в компании' : 'Şirket İçi Deneyim'}</span>
-        </div>
-
-        {/* Metric 4: Turnover (Sirkülasyon) Oranı */}
+        {/* Metric 3: Turnover (Sirkülasyon) Oranı */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
