@@ -14,17 +14,24 @@ jobs:
     name: Deploy to Production VPS
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Production Auto-Deploy Webhook
-        run: |
-          echo "=== Triggering Pondera HR Production Auto-Deploy ==="
-          HTTP_CODE=$(curl -k -s -o /tmp/deploy_resp.json -w "%{http_code}" -X POST "https://hr.pondera.network/api/deploy?secret=pondera_hr_deploy_secret_2026")
-          cat /tmp/deploy_resp.json || true
-          echo ""
-          echo "Webhook HTTP Status: $HTTP_CODE"
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "=== Auto-Deploy Triggered Successfully ==="
-            exit 0
-          fi
-          echo "Webhook returned $HTTP_CODE, attempting fallback..."
-          exit 0
-
+      - name: Execute Remote Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 89.111.152.49
+          username: root
+          password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            echo "=== Starting Pondera HR Auto-Deploy ==="
+            cd /var/www/hr_pondera || cd /root/HR_Pondera || cd ~/HR_Pondera
+            echo "Current directory: $(pwd)"
+            git fetch origin main
+            git reset --hard origin/main
+            npm install
+            npm run build
+            cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+            cp -r public .next/standalone/ 2>/dev/null || true
+            pm2 restart hr-pondera || pm2 restart all
+            echo "=== Auto-Deploy Completed Successfully ==="
