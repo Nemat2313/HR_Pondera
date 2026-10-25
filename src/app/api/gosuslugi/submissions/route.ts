@@ -154,7 +154,9 @@ export async function POST(request: Request) {
     `);
 
     const checkArchivedSicilStmt = db.prepare(`
-      SELECT MAX(archived_at) AS max_archived_at, MAX(submitted_at) AS max_submitted_at
+      SELECT MAX(archived_at) AS max_archived_at,
+             MAX(submitted_at) AS max_submitted_at,
+             MAX(CASE WHEN LENGTH(application_no) = 10 THEN application_no ELSE '' END) AS max_archived_app_no
       FROM gosuslugi_refused_archive
       WHERE sicil_no = ?
     `);
@@ -292,13 +294,18 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // 1b. Skip old errored/refused record from a PC's local bridge state if this sicil was already archived/re-opened
+      // 1b. Skip old errored/refused record from a PC's local bridge state if this sicil was already archived/re-opened,
+      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) that has genuinely received a status update.
       if (sicil && (/^ошибк/i.test(normalizedStatus) || /отказан/i.test(normalizedStatus))) {
         const archInfo = checkArchivedSicilStmt.get(sicil) as
-          | { max_archived_at?: string; max_submitted_at?: string }
+          | { max_archived_at?: string; max_submitted_at?: string; max_archived_app_no?: string }
           | undefined;
+        const isNewerValidAppNo =
+          /^\d{10}$/.test(appNo) &&
+          Number(appNo) >= 8300000000 &&
+          (!archInfo?.max_archived_app_no || appNo > archInfo.max_archived_app_no);
         const rawIncomingSubAt = String(item.submitted_at || item.submittedAt || '').trim();
-        if (archInfo?.max_archived_at) {
+        if (archInfo?.max_archived_at && !isNewerValidAppNo) {
           if (
             !rawIncomingSubAt ||
             rawIncomingSubAt <= archInfo.max_archived_at ||
@@ -595,7 +602,9 @@ export async function PATCH(request: Request) {
     `);
 
     const checkArchivedSicilStmt = db.prepare(`
-      SELECT MAX(archived_at) AS max_archived_at, MAX(submitted_at) AS max_submitted_at
+      SELECT MAX(archived_at) AS max_archived_at,
+             MAX(submitted_at) AS max_submitted_at,
+             MAX(CASE WHEN LENGTH(application_no) = 10 THEN application_no ELSE '' END) AS max_archived_app_no
       FROM gosuslugi_refused_archive
       WHERE sicil_no = ?
     `);

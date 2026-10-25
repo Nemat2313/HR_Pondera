@@ -218,7 +218,9 @@ INTERCEPTED_FEED_ORDERS: Dict[str, Dict[str, Any]] = {}
 FEED_RESPONSE_STATE: Dict[str, Any] = {
     "seq": 0,
     "last_url": "",
+    "last_q": "",
     "last_items": [],
+    "by_q": {},
 }
 
 
@@ -226,15 +228,20 @@ def attach_feeds_network_listener(page: Page):
     """
     Attaches a Playwright response listener on `page` so whenever Angular on lk.gosuslugi.ru/orders
     makes a native request to `/api/lk/v1/feeds/` (which is NEVER blocked by Gosuslugi's 428 WAF),
-    we automatically capture and parse all items into `INTERCEPTED_FEED_ORDERS`.
+    we automatically capture and parse all items into `INTERCEPTED_FEED_ORDERS` and index responses
+    by their exact `q=` search parameter (`FEED_RESPONSE_STATE["by_q"][q_param]`).
     """
     if getattr(page, "_feeds_listener_attached", False):
         return
+
+    from urllib.parse import urlparse, parse_qs
 
     def _on_response(resp):
         try:
             u = resp.url or ""
             if "/api/lk/v1/feeds" in u and resp.status == 200:
+                q_vals = parse_qs(urlparse(u).query).get("q") or [""]
+                q_param = str(q_vals[0] or "").strip()
                 data = resp.json()
                 items = data.get("items") if isinstance(data, dict) else None
                 parsed_batch = []
@@ -244,9 +251,18 @@ def attach_feeds_network_listener(page: Page):
                         if parsed and parsed.get("application_no"):
                             INTERCEPTED_FEED_ORDERS[parsed["application_no"]] = parsed
                             parsed_batch.append(parsed)
-                FEED_RESPONSE_STATE["seq"] = int(FEED_RESPONSE_STATE.get("seq", 0)) + 1
+                new_seq = int(FEED_RESPONSE_STATE.get("seq", 0)) + 1
+                FEED_RESPONSE_STATE["seq"] = new_seq
                 FEED_RESPONSE_STATE["last_url"] = u
+                FEED_RESPONSE_STATE["last_q"] = q_param
                 FEED_RESPONSE_STATE["last_items"] = parsed_batch
+                by_q = FEED_RESPONSE_STATE.setdefault("by_q", {})
+                by_q[q_param] = {
+                    "seq": new_seq,
+                    "items": parsed_batch,
+                    "ts": time.time(),
+                    "url": u,
+                }
         except Exception:
             pass
 
@@ -519,15 +535,16 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
 
 def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = False) -> Optional[Dict[str, Any]]:
     """
-    Looks up a single `application_no` on https://lk.gosuslugi.ru/orders:
+    Looks up a single `application_no` on https://lk.gosuslugi.ru/orders strictly by its 10-digit zayavka number:
     1) Checks `INTERCEPTED_FEED_ORDERS` cache first (unless `force_live_search=True` or status is not final)
     2) Navigates to https://lk.gosuslugi.ru/orders (if currently on an `/order/<feed_id>` page),
-       types `<app_no>` into the search box (`input.search-input`), waits for the fresh `/api/lk/v1/feeds/`
-       response (`FEED_RESPONSE_STATE["seq"] > seq_before`), and extracts both the intercepted JSON item
-       AND the `<a href*='/order/'>` DOM card (including `feed_id`!).
+       types `<app_no>` into the search box (`input.search-input`) WITHOUT sending an intermediate empty `Backspace`
+       search, and waits strictly for the `/api/lk/v1/feeds/?...&q=<app_no>` response (`FEED_RESPONSE_STATE["by_q"][clean_no]`)
+       before ever advancing to the next application!
+    3) Also falls back to direct XHR `/api/lk/v1/feeds/?...&q=<app_no>` inside `page.evaluate` if the UI input did not fire.
     """
     clean_no = str(app_no or "").strip()
-    if not clean_no:
+    if not clean_no or not clean_no.isdigit():
         return None
 
     if not force_live_search and clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("feed_id"):
@@ -552,7 +569,11 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
     if force_live_search and clean_no in INTERCEPTED_FEED_ORDERS:
         INTERCEPTED_FEED_ORDERS.pop(clean_no, None)
 
-    # UI Search Input on https://lk.gosuslugi.ru/orders (triggers Angular's native request + renders <a href='/order/...'>)
+    by_q_map = FEED_RESPONSE_STATE.setdefault("by_q", {})
+    prev_q_seq = int((by_q_map.get(clean_no) or {}).get("seq", 0))
+    got_specific_q_response = False
+
+    # UI Search Input on https://lk.gosuslugi.ru/orders (strictly by application_no, never by worker name!)
     try:
         search_inp = page.locator(
             "input.search-input:visible, "
@@ -566,13 +587,13 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
             "main input[type='text']:visible"
         ).first
         if search_inp.count() > 0 and search_inp.is_visible():
-            seq_before = int(FEED_RESPONSE_STATE.get("seq", 0))
+            page.wait_for_timeout(120)
+            prev_q_seq = int((by_q_map.get(clean_no) or {}).get("seq", 0))
             search_inp.click()
-            page.keyboard.press("Control+A")
-            page.keyboard.press("Backspace")
+            # Use fill(clean_no) directly WITHOUT pressing Control+A + Backspace so Angular never fires an empty q="" XHR!
             search_inp.fill(clean_no)
+            page.wait_for_timeout(80)
             page.keyboard.press("Enter")
-            # Also click search button icon if present (avoiding clear/reset 'X' button)
             try:
                 search_btn = page.locator(
                     "button.search-button:visible, button[type='submit']:visible"
@@ -582,34 +603,51 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
             except Exception:
                 pass
 
-            # Poll up to 3.5s (14 x 250ms) waiting for the NEW /api/lk/v1/feeds/ response or the matching DOM card.
-            # Never trust a stale 'Ничего не найдено' banner from a previous search before the new response arrives!
-            for step_idx in range(14):
+            # Poll up to 8.0s (32 x 250ms) waiting strictly for the `/api/lk/v1/feeds/?...&q=<clean_no>` response
+            # (`by_q_map[clean_no]["seq"] > prev_q_seq`) or the visible DOM card for `clean_no`.
+            # NEVER abort early on a stale 'Заявления не найдены' banner from a previous search before `q=<clean_no>` responds!
+            for step_idx in range(32):
                 page.wait_for_timeout(250)
                 if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status"):
-                    return INTERCEPTED_FEED_ORDERS[clean_no]
+                    got_specific_q_response = True
+                    break
+
+                q_entry = by_q_map.get(clean_no) or {}
+                cur_q_seq = int(q_entry.get("seq", 0))
+                if cur_q_seq > prev_q_seq:
+                    got_specific_q_response = True
+                    page.wait_for_timeout(350)
+                    if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status"):
+                        break
+                    q_items = q_entry.get("items") or []
+                    if len(q_items) == 0:
+                        return None
+                    break
+
                 card_check = page.locator(
                     f"a[href*='/order/']:has-text('{clean_no}'), div.feed-item:has-text('{clean_no}'), *:has-text('№ {clean_no}')"
                 ).first
                 if card_check.count() > 0 and card_check.is_visible():
+                    got_specific_q_response = True
+                    page.wait_for_timeout(250)
                     break
-                cur_seq = int(FEED_RESPONSE_STATE.get("seq", 0))
-                if cur_seq > seq_before:
-                    # Fresh network response for this search arrived!
-                    if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status"):
-                        return INTERCEPTED_FEED_ORDERS[clean_no]
-                    last_batch = FEED_RESPONSE_STATE.get("last_items") or []
-                    if len(last_batch) == 0:
-                        return None
-                    break
-                if step_idx >= 5:
-                    not_found_loc = page.locator(
-                        "text=/Ничего не найдено|Заявлений не найдено|не найдено/i"
-                    ).first
-                    if not_found_loc.count() > 0 and not_found_loc.is_visible():
-                        return None
+
+                # If Angular hasn't fired the request after 2.0s (step_idx == 8), re-trigger Enter / search button once
+                if step_idx == 8 and cur_q_seq == prev_q_seq:
+                    try:
+                        search_inp.press("Enter")
+                        search_btn = page.locator(
+                            "button.search-button:visible, button[type='submit']:visible"
+                        ).first
+                        if search_btn.count() > 0 and search_btn.is_visible():
+                            search_btn.click(timeout=600)
+                    except Exception:
+                        pass
 
             if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status"):
+                dom_found = extract_orders_from_dom(page)
+                if clean_no in dom_found and dom_found[clean_no].get("feed_id") and not INTERCEPTED_FEED_ORDERS[clean_no].get("feed_id"):
+                    INTERCEPTED_FEED_ORDERS[clean_no]["feed_id"] = dom_found[clean_no]["feed_id"]
                 return INTERCEPTED_FEED_ORDERS[clean_no]
 
             dom_found = extract_orders_from_dom(page)
@@ -641,7 +679,7 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
                 elif "разрешение на работу" in c_low:
                     srv_title = "Разрешение на работу ИГ"
                 else:
-                    srv_title = ""
+                    srv_title = "Уведомления о трудовой деятельности иностранцев"
                 found_item = {
                     "application_no": clean_no,
                     "feed_id": feed_id,
@@ -656,102 +694,37 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
     except Exception as e:
         logger.debug(f"UI search fallback note for № {clean_no}: {e}")
 
-    return None
-
-
-def query_order_by_worker_name(
-    page: Page,
-    worker_name: str,
-    submitted_at: str = "",
-    assigned_app_nos_to_sicil: Optional[Dict[str, str]] = None,
-    sicil: str = "",
-) -> Optional[Dict[str, Any]]:
-    """
-    Searches https://lk.gosuslugi.ru/orders by foreign worker's name (`worker_name`) for records
-    that were saved as 'Отправлено (PDF не скачан)' without an `application_no`.
-    Validates both `is_valid_labor_notification_order` and `does_citizen_match_worker_name`,
-    returning the newest matching order (highest integer `application_no`).
-    """
-    norm_w = normalize_name_for_match(worker_name)
-    if not norm_w:
-        return None
-
-    try:
-        if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
-            page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=35000)
-            page.wait_for_timeout(2000)
-    except Exception:
-        pass
-
-    try:
-        search_inp = page.locator(
-            "input.search-input:visible, "
-            "lib-search input:visible, "
-            "epgu-search input:visible, "
-            "input[placeholder*='Поиск']:visible, "
-            "input[placeholder*='поиск']:visible, "
-            "input[type='search']:visible, "
-            "main input[type='text']:visible"
-        ).first
-        if search_inp.count() == 0 or not search_inp.is_visible():
-            return None
-
-        seq_before = int(FEED_RESPONSE_STATE.get("seq", 0))
-        search_inp.click()
-        page.keyboard.press("Control+A")
-        page.keyboard.press("Backspace")
-        search_inp.fill(worker_name.strip())
-        page.keyboard.press("Enter")
+    # Direct XHR fallback if Angular's UI input did not fire a network response for q=<clean_no>
+    if not got_specific_q_response:
         try:
-            search_btn = page.locator(
-                "button.search-button:visible, button[type='submit']:visible"
-            ).first
-            if search_btn.count() > 0 and search_btn.is_visible():
-                search_btn.click(timeout=800)
+            raw_q_items = page.evaluate(
+                """async (qNo) => {
+                    const suffix = `?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL&pageSize=20&status=&startDate=&lastFeedId=&lastFeedDate=&q=${encodeURIComponent(qNo)}`;
+                    const urls = [
+                        `/api/lk/v1/feeds/${suffix}`,
+                        `https://lk.gosuslugi.ru/api/lk/v1/feeds/${suffix}`
+                    ];
+                    for (const u of urls) {
+                        try {
+                            const r = await fetch(u, { credentials: "include", headers: { "Accept": "application/json, text/plain, */*" } });
+                            if (r.ok) {
+                                const d = await r.json();
+                                if (d && Array.isArray(d.items)) return d.items;
+                            }
+                        } catch (e) {}
+                    }
+                    return null;
+                }""",
+                clean_no,
+            )
+            if isinstance(raw_q_items, list):
+                for raw_it in raw_q_items:
+                    parsed = parse_feed_item(raw_it)
+                    if parsed and parsed.get("application_no") == clean_no:
+                        INTERCEPTED_FEED_ORDERS[clean_no] = parsed
+                        return parsed
         except Exception:
             pass
-
-        for step_idx in range(14):
-            page.wait_for_timeout(250)
-            cur_seq = int(FEED_RESPONSE_STATE.get("seq", 0))
-            if cur_seq > seq_before:
-                break
-            if step_idx >= 6:
-                not_found_loc = page.locator(
-                    "text=/Ничего не найдено|Заявлений не найдено|не найдено/i"
-                ).first
-                if not_found_loc.count() > 0 and not_found_loc.is_visible():
-                    return None
-
-        page.wait_for_timeout(250)
-        dom_found = extract_orders_from_dom(page)
-        candidates = list(FEED_RESPONSE_STATE.get("last_items") or [])
-        for d_ord in dom_found.values():
-            candidates.append(d_ord)
-
-        valid_matches = []
-        for cand in candidates:
-            cand_no = str(cand.get("application_no") or "").strip()
-            if not cand_no or not cand_no.isdigit():
-                continue
-            if not is_valid_labor_notification_order(cand):
-                continue
-            if is_superseded_or_archived_order(cand_no, cand.get("gosuslugi_status", ""), submitted_at):
-                continue
-            if assigned_app_nos_to_sicil and sicil:
-                owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
-                if owner_sicil and owner_sicil != sicil:
-                    continue
-            if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
-                valid_matches.append(cand)
-
-        if valid_matches:
-            valid_matches.sort(key=lambda x: int(x["application_no"]), reverse=True)
-            best = valid_matches[0]
-            INTERCEPTED_FEED_ORDERS[best["application_no"]] = best
-            return best
-    except Exception as e:
-        logger.debug(f"Worker name search note for '{worker_name}': {e}")
 
     return None
 
@@ -810,6 +783,32 @@ def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
     if any(bad in combined for bad in excluded) or "draft" in raw_s:
         return False
     if "трудовой деятельности" not in combined:
+        return False
+    return True
+
+
+def is_acceptable_order_for_exact_app_no(ord_item: Dict[str, Any]) -> bool:
+    """
+    Validates an order matched by its exact 10-digit Gosuslugi `application_no` (`extId`).
+    Excludes non-labor services ('прибытии', 'убытии', 'разрешение на работу') and unsent drafts ('черновик'),
+    without rejecting valid orders if DOM card text shortened the service subtitle.
+    """
+    if not ord_item:
+        return False
+    srv = str(ord_item.get("service_title") or "").lower().replace("ё", "е")
+    raw_t = str(ord_item.get("raw_title") or "").lower().replace("ё", "е")
+    raw_s = str(ord_item.get("raw_status") or "").lower()
+    det = str(ord_item.get("status_detail") or "").lower().replace("ё", "е")
+    combined = f"{srv} {raw_t} {det}"
+    excluded = (
+        "прибытии",
+        "убытии",
+        "разрешение на работу",
+        "выдан документ разрешение",
+        "получение разрешения",
+        "черновик",
+    )
+    if any(bad in combined for bad in excluded) or "draft" in raw_s:
         return False
     return True
 
@@ -1382,7 +1381,7 @@ def is_local_bridge_up_to_date() -> bool:
         with urllib.request.urlopen(req, timeout=1.5) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
-                return str(data.get("bridge_version") or "") >= "2.6.61"
+                return str(data.get("bridge_version") or "") >= "2.6.82"
     except Exception:
         pass
     return False
@@ -1464,16 +1463,19 @@ def prevent_windows_sleep():
 
 def run_fast_json_status_sync_on_page(
     page: Page,
-    max_pages: int = 60,
+    max_pages: int = 100,
     records: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     """
     Fast, non-intrusive status sync (NO PDF download, NO /order/<feed_id> navigation):
-    Fetches up to `max_pages * 20` (e.g. 1,200) applications directly from Gosuslugi's JSON API
-    (/api/lk/v1/feeds/) using the current browser session cookies in ~2-4 seconds, matches them
-    against the central 3,088 VKS master list by application_no or Гражданин name, and updates
-    their statuses ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению',
-    'Заявление зарегистрировано') on the central Pondera HR server.
+    1) Fetches up to `max_pages * 20` (e.g. 2,000) applications directly from Gosuslugi's JSON API
+       (/api/lk/v1/feeds/) using the current browser session cookies in ~3-5 seconds.
+    2) Matches records STRICTLY by their latest `application_no` (never by worker FIO name, so an older
+       refused application can never be matched by name).
+    3) For any pending/registered application ('Отправлено', 'Заявление зарегистрировано', etc.) that has
+       a 10-digit `application_no` and was not in the bulk JSON feed, searches strictly by `application_no`
+       on https://lk.gosuslugi.ru/orders and waits for the exact `/api/lk/v1/feeds/?...&q=<app_no>` response
+       before moving to the next number.
     """
     try:
         attach_feeds_network_listener(page)
@@ -1486,24 +1488,9 @@ def run_fast_json_status_sync_on_page(
         if not target_records:
             return 0
 
-        # Identify local sicils on this PC
-        local_sicils = set()
-        active_vks_q_path = os.path.join(CURRENT_DIR, "active_vks_queue.json")
-        if os.path.exists(active_vks_q_path):
-            try:
-                with open(active_vks_q_path, "r", encoding="utf-8") as qf:
-                    q_data = json.load(qf)
-                    if isinstance(q_data, list):
-                        for qr in q_data:
-                            qs = str(qr.get("Sicil") or qr.get("Код") or qr.get("sicil") or "").strip()
-                            if qs:
-                                local_sicils.add(qs)
-            except Exception:
-                pass
-
         if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
             try:
-                logger.info("Navigating briefly to https://lk.gosuslugi.ru/orders to fetch 1,200 JSON order statuses...")
+                logger.info("Navigating briefly to https://lk.gosuslugi.ru/orders to fetch JSON order statuses...")
                 page.goto(
                     ORDERS_URL,
                     wait_until="domcontentloaded",
@@ -1515,22 +1502,10 @@ def run_fast_json_status_sync_on_page(
 
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
 
-        # Always sort labor orders descending by integer application_no so the MOST RECENT application wins!
-        labor_orders_list = sorted(
-            [
-                ord_item for ord_item in bulk_orders.values()
-                if is_valid_labor_notification_order(ord_item)
-                and not is_superseded_or_archived_order(
-                    ord_item.get("application_no", ""),
-                    ord_item.get("gosuslugi_status", ""),
-                )
-            ],
-            key=lambda x: int(x["application_no"]) if str(x.get("application_no") or "").isdigit() else 0,
-            reverse=True,
-        )
-
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         updated_records: List[Dict[str, Any]] = []
+        status_changed_count = 0
+        verified_same_pending_count = 0
         assigned_app_nos_to_sicil: Dict[str, str] = {}
         for r_pre in target_records:
             p_sic = str(r_pre.get("sicil") or r_pre.get("sicil_no") or "").strip()
@@ -1540,7 +1515,7 @@ def run_fast_json_status_sync_on_page(
             if p_sic and p_app and p_app.isdigit() and not is_superseded_or_archived_order(p_app, p_st, p_sub):
                 assigned_app_nos_to_sicil[p_app] = p_sic
 
-        # Prioritize pending/registered applications ('Отправлено' & 'Заявление зарегистрировано') first!
+        # Prioritize pending/registered applications that have a 10-digit application_no (newest first!)
         def _fast_priority_key(r_it: Dict[str, Any]):
             st_it = str(r_it.get("gosuslugi_status") or "").strip()
             app_it = str(r_it.get("application_no") or "").strip()
@@ -1548,17 +1523,16 @@ def run_fast_json_status_sync_on_page(
             is_pending_st = (
                 st_it not in ("Услуга оказана", "Услуга отказана")
                 and not st_it.lower().startswith("ошибк")
-                and bool(st_it or has_app)
+                and has_app
             )
-            if is_pending_st and has_app:
-                return (0, -int(app_it))
             if is_pending_st:
-                return (1, 0)
+                return (0, -int(app_it))
+            if has_app:
+                return (1, -int(app_it))
             return (2, 0)
 
         sorted_target_records = sorted(target_records, key=_fast_priority_key)
         targeted_search_count = 0
-        consecutive_search_misses = 0
 
         for rec in sorted_target_records:
             raw_app_no = str(rec.get("application_no") or "").strip()
@@ -1567,103 +1541,50 @@ def run_fast_json_status_sync_on_page(
             worker_name = str(rec.get("worker_name") or "").strip()
             prev_status = str(rec.get("gosuslugi_status") or "").strip()
             submitted_at = str(rec.get("submitted_at") or "").strip()
-            is_local = bool(rec.get("is_local_worker")) or (sicil in local_sicils) or (not local_sicils)
 
             if app_no and is_superseded_or_archived_order(app_no, prev_status, submitted_at):
                 app_no = ""
 
+            # Strictly require a valid latest `application_no` — NEVER search or match by worker_name!
+            if not app_no:
+                continue
+
             matched_order: Optional[Dict[str, Any]] = None
 
-            # 1) First check labor_orders_list (sorted newest application_no first) by citizen name
-            # (never overwrite an already-rendered application_no by name-only matching!)
-            if worker_name and not (prev_status == "Услуга оказана" and app_no):
-                for cand in labor_orders_list:
-                    cand_no = cand["application_no"]
-                    if is_superseded_or_archived_order(cand_no, cand.get("gosuslugi_status", ""), submitted_at):
-                        continue
-                    owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
-                    if owner_sicil and sicil and owner_sicil != sicil:
-                        continue
-                    if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
-                        if not app_no or (cand_no.isdigit() and app_no.isdigit() and int(cand_no) >= int(app_no)):
-                            matched_order = cand
-                            app_no = cand_no
-                        break
-
-            # 2) If not matched by citizen name (or citizen name snippet was omitted), check app_no in bulk_orders
-            if not matched_order and app_no and app_no in bulk_orders:
+            # 1) Check exact `app_no` in `bulk_orders` (just fetched live from /api/lk/v1/feeds/)
+            if app_no in bulk_orders:
                 candidate = bulk_orders[app_no]
-                if is_valid_labor_notification_order(candidate) and not is_superseded_or_archived_order(
+                if is_acceptable_order_for_exact_app_no(candidate) and not is_superseded_or_archived_order(
                     app_no, candidate.get("gosuslugi_status", ""), submitted_at
                 ):
-                    if not (
-                        worker_name
-                        and candidate.get("citizen_name")
-                        and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name)
-                    ):
-                        matched_order = candidate
+                    matched_order = candidate
 
-            # 3) Targeted one-by-one search on https://lk.gosuslugi.ru/orders for ALL pending/registered applications
-            # ('Отправлено', 'Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'В обработке')
-            # that were not resolved to a final status ('Услуга оказана' / 'Услуга отказана') in the 1,200 bulk JSON feed!
+            # 2) Targeted one-by-one search strictly by `app_no` ONLY when `app_no` is pending/registered
+            # AND was NOT already found in `bulk_orders`!
             is_intermediate_prev = (
-                bool(prev_status or app_no)
-                and prev_status not in ("Услуга оказана", "Услуга отказана")
+                prev_status not in ("Услуга оказана", "Услуга отказана")
                 and not prev_status.lower().startswith("ошибк")
             )
-            matched_st_so_far = str(matched_order.get("gosuslugi_status") or "").strip() if matched_order else ""
-            needs_live_single_search = (
-                bool(app_no and app_no.isdigit())
-                and is_intermediate_prev
-                and matched_st_so_far not in ("Услуга оказана", "Услуга отказана")
-            )
-            if needs_live_single_search:
+            if not matched_order and is_intermediate_prev:
                 targeted_search_count += 1
                 logger.info(
-                    f"[{targeted_search_count}] Поштучный поиск по Заявке № {app_no} ({worker_name or sicil}, текущий статус: {prev_status or 'Отправлено'})..."
+                    f"[{targeted_search_count}] Поштучный поиск по № Заявления {app_no} ({worker_name or sicil}, текущий статус: {prev_status or 'Отправлено'})..."
                 )
                 candidate = query_single_order_by_no(page, app_no, force_live_search=True)
                 if (
                     candidate
-                    and is_valid_labor_notification_order(candidate)
+                    and is_acceptable_order_for_exact_app_no(candidate)
                     and not is_superseded_or_archived_order(app_no, candidate.get("gosuslugi_status", ""), submitted_at)
-                    and not (
-                        worker_name
-                        and candidate.get("citizen_name")
-                        and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name)
-                    )
                 ):
-                    consecutive_search_misses = 0
                     matched_order = candidate
                     bulk_orders[app_no] = candidate
                     logger.info(
-                        f"  -> Найдено № {app_no} ({candidate.get('citizen_name') or worker_name}): {candidate.get('gosuslugi_status')}"
+                        f"  -> Найдено № {app_no} ({worker_name}): {candidate.get('gosuslugi_status')}"
                     )
                 else:
-                    consecutive_search_misses += 1
-            elif not matched_order and not app_no and is_intermediate_prev and worker_name:
-                # 3b) For 'Отправлено (PDF не скачан)' records that have NO application_no, search by worker_name in the search box!
-                targeted_search_count += 1
-                logger.info(
-                    f"[{targeted_search_count}] Поштучный поиск по ФИО Гражданина '{worker_name}' (Код: {sicil}, без № заявления, статус: {prev_status})..."
-                )
-                candidate = query_order_by_worker_name(
-                    page=page,
-                    worker_name=worker_name,
-                    submitted_at=submitted_at,
-                    assigned_app_nos_to_sicil=assigned_app_nos_to_sicil,
-                    sicil=sicil,
-                )
-                if candidate:
-                    consecutive_search_misses = 0
-                    matched_order = candidate
-                    app_no = candidate["application_no"]
-                    bulk_orders[app_no] = candidate
                     logger.info(
-                        f"  -> Найдено по ФИО '{worker_name}': № {app_no} ({candidate.get('gosuslugi_status')})"
+                        f"  -> Заявление № {app_no} не найдено в этом аккаунте Госуслуг."
                     )
-                else:
-                    consecutive_search_misses += 1
 
             if not matched_order:
                 continue
@@ -1676,8 +1597,26 @@ def run_fast_json_status_sync_on_page(
                 assigned_app_nos_to_sicil[final_app_no] = sicil
 
             new_status = str(matched_order.get("gosuslugi_status") or "").strip()
-            if prev_status == new_status and raw_app_no == final_app_no:
+            # Prevent downgrading an already final status ('Услуга оказана' / 'Услуга отказана') to an intermediate status
+            if (
+                raw_app_no == final_app_no
+                and prev_status in ("Услуга оказана", "Услуга отказана")
+                and new_status not in ("Услуга оказана", "Услуга отказана")
+            ):
                 continue
+
+            if prev_status == new_status and raw_app_no == final_app_no:
+                if is_intermediate_prev:
+                    verified_same_pending_count += 1
+                    logger.info(
+                        f"  [=] № {final_app_no} ({worker_name}) — проверено на Госуслугах: статус без изменений («{new_status}»)"
+                    )
+                continue
+
+            status_changed_count += 1
+            logger.info(
+                f"  [✓] СТАТУС ОБНОВЛЁН: № {final_app_no} ({worker_name}) -> «{prev_status or 'Отправлено'}» ==> «{new_status}»"
+            )
 
             prev_pdf = str(rec.get("pdf_filename") or "").strip()
             if prev_pdf and final_app_no and final_app_no not in prev_pdf and re.search(r"[789]\d{9}", prev_pdf):
@@ -1705,13 +1644,13 @@ def run_fast_json_status_sync_on_page(
             update_local_applications_ledger(updated_records)
             sync_updates_to_pondera_api(updated_records)
             logger.info(
-                f">>> Fast 30-Min JSON Status Sync: Scanned {len(bulk_orders)} orders on this Gosuslugi account, "
-                f"updated {len(updated_records)} application statuses on central server (0 PDFs downloaded)! <<<"
+                f">>> Fast JSON Status Sync: Просканировано {len(bulk_orders)} заявлений в этом аккаунте Госуслуг | "
+                f"Изменился статус: {status_changed_count} | Ожидают ответа МВД (без изменений): {verified_same_pending_count} <<<"
             )
         else:
             logger.info(
-                f">>> Fast 30-Min JSON Status Sync: Scanned {len(bulk_orders)} orders on this Gosuslugi account "
-                f"(all statuses already up to date). <<<"
+                f">>> Fast JSON Status Sync: Просканировано {len(bulk_orders)} заявлений в этом аккаунте Госуслуг | "
+                f"Изменился статус: 0 | Проверено в ожидании ответа МВД (без изменений): {verified_same_pending_count} <<<"
             )
         restart_local_bridge_if_outdated()
         return len(updated_records)
@@ -1726,7 +1665,7 @@ def main():
     parser.add_argument("--json", default="", help="Path to JSON queue of applications/workers to check")
     parser.add_argument("--cdp-port", type=int, default=9222, help="Chrome Remote Debugging Port")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of records to check")
-    parser.add_argument("--max-pages", type=int, default=60, help="Max bulk pages (20 orders/page, 60 = 1200 orders) to fetch without searching")
+    parser.add_argument("--max-pages", type=int, default=100, help="Max bulk pages (20 orders/page, 100 = 2000 orders) to fetch without searching")
     parser.add_argument("--status-only", action="store_true", help="Fast JSON-only status check without downloading PDFs or opening individual order pages")
     args = parser.parse_args()
 
@@ -1921,7 +1860,7 @@ def main():
         # TIER 1: Bulk fetch orders via Gosuslugi API / Network Interceptor / DOM + 'Показать ещё'
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=args.max_pages)
 
-        # Filter labor notification orders for citizen lookup (sorted newest application_no first!)
+        # Filter labor notification orders (sorted newest application_no first!)
         labor_orders_list = sorted(
             [
                 ord_item for ord_item in bulk_orders.values()
@@ -1957,11 +1896,9 @@ def main():
                 )
 
         if records:
-            inspected_feed_ids = set()
             is_large_batch = len(records) > 50
             matched_on_this_account_count = 0
             pdfs_downloaded_count = 0
-            consecutive_nonlocal_search_misses = 0
 
             def _record_sort_key(r: Dict[str, Any]):
                 r_app = str(r.get("application_no") or "").strip()
@@ -1972,20 +1909,20 @@ def main():
                 r_sic = str(r.get("sicil") or r.get("sicil_no") or "").strip()
                 is_local = bool(r.get("is_local_worker")) or (r_sic in local_sicils)
                 is_pending_st = (
-                    bool(r_st or has_app)
+                    has_app
                     and r_st not in ("Услуга оказана", "Услуга отказана")
                     and not r_st.lower().startswith("ошибк")
                 )
-                if is_pending_st and has_app:
-                    return (0, 0 if is_local else 1)
-                if in_bulk and missing_pdf:
-                    return (1, 0 if is_local else 1)
+                if is_pending_st and in_bulk:
+                    return (0, -int(r_app))
                 if is_pending_st:
+                    return (1, -int(r_app))
+                if in_bulk and missing_pdf:
                     return (2, 0 if is_local else 1)
                 if has_app and missing_pdf and is_local:
-                    return (3, 0)
+                    return (3, -int(r_app))
                 if has_app and missing_pdf:
-                    return (4, 0)
+                    return (4, -int(r_app))
                 if in_bulk:
                     return (5, 0)
                 return (6, 0 if is_local else 1)
@@ -2002,53 +1939,34 @@ def main():
                 cur_status = str(rec.get("gosuslugi_status") or "").strip()
                 submitted_at = str(rec.get("submitted_at") or "").strip()
                 needs_status_refresh = (
-                    bool(cur_status or app_no)
+                    bool(app_no)
                     and cur_status not in ("Услуга оказана", "Услуга отказана")
                     and not cur_status.lower().startswith("ошибк")
                 )
-                is_local = bool(rec.get("is_local_worker")) or (sicil in local_sicils) or (not local_sicils)
 
                 if app_no and is_superseded_or_archived_order(app_no, cur_status, submitted_at):
                     app_no = ""
                     pdf_file = ""
 
+                # Strictly require latest `application_no` — NEVER search by worker FIO name!
+                if not app_no:
+                    continue
+
                 # If PDF is already downloaded and order is not in bulk_orders, skip slow search only if status is already final
-                if is_large_batch and pdf_file and (not app_no or app_no not in bulk_orders):
+                if is_large_batch and pdf_file and app_no not in bulk_orders:
                     if not needs_status_refresh:
                         continue
 
                 matched_order: Optional[Dict[str, Any]] = None
 
-                # 1) First check labor_orders_list (sorted newest application_no first) by Citizen Name ('Гражданин')
-                # (never overwrite an already-rendered application_no by name-only matching!)
-                if worker_name and not (cur_status == "Услуга оказана" and app_no):
-                    for cand in labor_orders_list:
-                        cand_no = cand["application_no"]
-                        if is_superseded_or_archived_order(cand_no, cand.get("gosuslugi_status", ""), submitted_at):
-                            continue
-                        owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
-                        if owner_sicil and sicil and owner_sicil != sicil:
-                            continue
-                        if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
-                            if not app_no or (cand_no.isdigit() and app_no.isdigit() and int(cand_no) >= int(app_no)):
-                                matched_order = cand
-                                if cand_no != app_no:
-                                    logger.info(
-                                        f"  -> Matched '{worker_name}' by Гражданин ('{cand.get('citizen_name')}') -> NEWEST № {cand_no} (was № {app_no or '—'}): {matched_order['gosuslugi_status']}"
-                                    )
-                                    if pdf_file and cand_no not in pdf_file and re.search(r"[789]\d{9}", pdf_file):
-                                        pdf_file = ""
-                                app_no = cand_no
-                            break
-
-                # 2) Match by application_no in bulk feed if not matched above (with citizen & service validation!)
-                if not matched_order and app_no and app_no in bulk_orders:
+                # 1) Match strictly by exact `application_no` in bulk feed
+                if app_no in bulk_orders:
                     logger.info(
                         f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
                         f"(Код: {sicil or '—'}, № Заявления: {app_no})"
                     )
                     candidate = bulk_orders[app_no]
-                    if not is_valid_labor_notification_order(candidate):
+                    if not is_acceptable_order_for_exact_app_no(candidate):
                         logger.warning(
                             f"  -> Rejecting № {app_no} for {worker_name}: wrong service ('{candidate.get('service_title')}') or draft!"
                         )
@@ -2056,64 +1974,28 @@ def main():
                         logger.info(
                             f"  -> Skipping archived/outage № {app_no} for {worker_name}"
                         )
-                    elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
-                        logger.warning(
-                            f"  -> Rejecting № {app_no} for {worker_name}: order belongs to Гражданин '{candidate['citizen_name']}'!"
-                        )
                     else:
                         matched_order = candidate
                         logger.info(
                             f"  -> Matched № {app_no} in bulk feed: {matched_order['gosuslugi_status']}"
                         )
 
-                # 2.5) Only for small targeted batches (<= 50 records): inspect recent unassigned labor orders
-                if not matched_order and not is_large_batch and worker_name and not app_no:
-                    for cand in labor_orders_list[:80]:
-                        cand_no = cand["application_no"]
-                        cand_feed_id = cand.get("feed_id", "")
-                        owner_sicil = assigned_app_nos_to_sicil.get(cand_no)
-                        if owner_sicil and sicil and owner_sicil != sicil:
-                            continue
-                        if not cand.get("citizen_name") and cand_feed_id and cand_feed_id not in inspected_feed_ids:
-                            inspected_feed_ids.add(cand_feed_id)
-                            page_info = expand_history_and_inspect_order_page(page, cand_feed_id)
-                            if page_info.get("citizen_name"):
-                                cand["citizen_name"] = page_info["citizen_name"]
-                                logger.info(
-                                    f"  -> Expanded 'Показать историю' on № {cand_no}: Гражданин = '{cand['citizen_name']}'"
-                                )
-                        if does_citizen_match_worker_name(cand.get("citizen_name", ""), worker_name):
-                            matched_order = cand
-                            app_no = cand_no
-                            logger.info(
-                                f"  -> Matched '{worker_name}' via 'Показать историю' ('{cand.get('citizen_name')}') -> № {app_no}: {matched_order['gosuslugi_status']}"
-                            )
-                            break
-
-                # 3) One-by-one search on lk.gosuslugi.ru/orders for ANY worker that has application_no and needs PDF download or status refresh!
-                matched_st_so_far = str(matched_order.get("gosuslugi_status") or "").strip() if matched_order else ""
-                needs_live_single_search = (
-                    not matched_order
-                    or (needs_status_refresh and matched_st_so_far not in ("Услуга оказана", "Услуга отказана"))
-                )
-                if needs_live_single_search and app_no and app_no.isdigit() and (not pdf_file or needs_status_refresh or not is_large_batch):
+                # 2) One-by-one search strictly by `application_no` on lk.gosuslugi.ru/orders ONLY when not in `bulk_orders`
+                #    (or when `feed_id` is missing and PDF download is required)!
+                needs_feed_id_for_pdf = bool(matched_order and not matched_order.get("feed_id") and not pdf_file)
+                needs_live_single_search = (not matched_order) or needs_feed_id_for_pdf
+                if needs_live_single_search and (not pdf_file or needs_status_refresh or not is_large_batch):
                     logger.info(
                         f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
-                        f"(Код: {sicil or '—'}, № Заявления: {app_no}) — поштучный поиск на lk.gosuslugi.ru/orders..."
+                        f"(Код: {sicil or '—'}, № Заявления: {app_no}) — поштучный поиск по № Заявления на lk.gosuslugi.ru/orders..."
                     )
                     candidate = query_single_order_by_no(page, app_no, force_live_search=True)
                     if candidate:
-                        if not is_local:
-                            consecutive_nonlocal_search_misses = 0
-                        if not is_valid_labor_notification_order(candidate) or is_superseded_or_archived_order(
+                        if not is_acceptable_order_for_exact_app_no(candidate) or is_superseded_or_archived_order(
                             app_no, candidate.get("gosuslugi_status", ""), submitted_at
                         ):
                             logger.warning(
                                 f"  -> Rejecting targeted № {app_no}: wrong service, draft, or archived!"
-                            )
-                        elif worker_name and candidate.get("citizen_name") and not does_citizen_match_worker_name(candidate["citizen_name"], worker_name):
-                            logger.warning(
-                                f"  -> Rejecting targeted № {app_no} for {worker_name}: belongs to Гражданин '{candidate['citizen_name']}'!"
                             )
                         else:
                             matched_order = candidate
@@ -2122,28 +2004,7 @@ def main():
                                 f"  -> Found № {app_no} via search on lk.gosuslugi.ru/orders (feed_id={candidate.get('feed_id')}): {matched_order['gosuslugi_status']}"
                             )
                     else:
-                        if not is_local:
-                            consecutive_nonlocal_search_misses += 1
-                        logger.info(f"  -> Заявление № {app_no} не найдено в текущем аккаунте Госуслуг (возможно, отправлено с другого аккаунта).")
-                elif not matched_order and not app_no and needs_status_refresh and worker_name:
-                    logger.info(
-                        f"Checking Gosuslugi Status for: {worker_name} "
-                        f"(Код: {sicil or '—'}, без № заявления) — поштучный поиск по ФИО на lk.gosuslugi.ru/orders..."
-                    )
-                    candidate = query_order_by_worker_name(
-                        page=page,
-                        worker_name=worker_name,
-                        submitted_at=submitted_at,
-                        assigned_app_nos_to_sicil=assigned_app_nos_to_sicil,
-                        sicil=sicil,
-                    )
-                    if candidate:
-                        matched_order = candidate
-                        app_no = candidate["application_no"]
-                        bulk_orders[app_no] = candidate
-                        logger.info(
-                            f"  -> Found by ФИО '{worker_name}' on lk.gosuslugi.ru/orders -> № {app_no}: {matched_order['gosuslugi_status']}"
-                        )
+                        logger.info(f"  -> Заявление № {app_no} не найдено в текущем аккаунте Госуслуг.")
 
                 if matched_order:
                     matched_on_this_account_count += 1
@@ -2156,6 +2017,14 @@ def main():
                         continue
                     if sicil:
                         assigned_app_nos_to_sicil[final_app_no] = sicil
+
+                    new_st_val = str(matched_order.get("gosuslugi_status") or "").strip()
+                    if (
+                        raw_app_no == final_app_no
+                        and cur_status in ("Услуга оказана", "Услуга отказана")
+                        and new_st_val not in ("Услуга оказана", "Услуга отказана")
+                    ):
+                        new_st_val = cur_status
 
                     # Automatically download, rename, and upload the receipt PDF to backend if missing
                     if not pdf_file or not is_large_batch:
@@ -2178,7 +2047,7 @@ def main():
                         "worker_name": worker_name or matched_order.get("citizen_name") or "",
                         "application_no": final_app_no,
                         "pdf_filename": pdf_file,
-                        "gosuslugi_status": matched_order["gosuslugi_status"],
+                        "gosuslugi_status": new_st_val,
                         "status_detail": matched_order.get("status_detail", ""),
                         "checked_at": now_str,
                     }

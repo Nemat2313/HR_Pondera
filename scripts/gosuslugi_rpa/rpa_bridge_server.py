@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.6.79"
+BRIDGE_VERSION = "2.6.82"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
@@ -525,7 +525,7 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
     cmd = [sys.executable, script_path]
 
     if mode == "check_status_fast":
-        cmd.extend(["--status-only", "--max-pages", "60"])
+        cmd.extend(["--status-only", "--max-pages", "100"])
     elif json_file and os.path.exists(json_file):
         cmd.extend(["--json", json_file])
     elif mode != "check_status":
