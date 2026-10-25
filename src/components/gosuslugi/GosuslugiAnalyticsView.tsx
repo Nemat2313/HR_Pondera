@@ -860,18 +860,18 @@ export default function GosuslugiAnalyticsView() {
                 <Activity className="w-3 h-3 animate-pulse" />
                 Canlı VKS Analitiği
               </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <span className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" />
-                Moskova Saati: <strong className="text-slate-700 dark:text-slate-200">{data?.moscowTime || '-'}</strong>
+                Moskova Saati: <span className="text-slate-800 dark:text-slate-200 font-normal">{data?.moscowTime || '-'}</span>
               </span>
               {(s.last15mSent > 0 || s.last60mSent > 0) && (
-                <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline-flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
-                  Son 1 Saat: <strong className="text-emerald-600 dark:text-emerald-400">+{s.last60mSent} gönderim</strong>
+                <span className="text-xs text-slate-600 dark:text-slate-400 hidden sm:inline-flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
+                  Son 1 Saat: <span className="text-emerald-700 dark:text-emerald-400 font-normal">+{s.last60mSent} gönderim</span>
                   {s.last15mSent > 0 && <span>(15dk: +{s.last15mSent})</span>}
                 </span>
               )}
             </div>
-            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+            <h1 className="text-base sm:text-lg font-normal text-slate-900 dark:text-white tracking-tight">
               Gosuslugi VKS Bildirim & Analitik Merkezi
             </h1>
           </div>
@@ -880,10 +880,10 @@ export default function GosuslugiAnalyticsView() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-normal border transition-all flex items-center gap-1.5 cursor-pointer ${
                 autoRefresh
-                  ? 'bg-emerald-50/80 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                  ? 'bg-emerald-50/80 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
               }`}
             >
               <span
@@ -897,7 +897,7 @@ export default function GosuslugiAnalyticsView() {
             <button
               onClick={() => fetchAnalytics(false)}
               disabled={refreshing}
-              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl text-xs font-normal bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               Yenile
@@ -907,7 +907,7 @@ export default function GosuslugiAnalyticsView() {
               <button
                 onClick={handleTriggerTelegramNow}
                 disabled={sendingTelegram}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white border border-sky-600 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl text-xs font-normal bg-sky-600 hover:bg-sky-500 text-white border border-sky-600 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5 text-white" />
                 {sendingTelegram ? 'Gönderiliyor...' : 'Telegram Raporu'}
@@ -917,7 +917,7 @@ export default function GosuslugiAnalyticsView() {
         </div>
 
         {telegramFeedback && (
-          <div className="mt-3 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 font-medium">
+          <div className="mt-3 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 font-normal">
             {telegramFeedback}
           </div>
         )}
@@ -925,20 +925,20 @@ export default function GosuslugiAnalyticsView() {
         {/* Slim Overall Progress Bar */}
         <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5">
-            <span className="font-semibold text-slate-700 dark:text-slate-300">
+            <span className="font-normal text-slate-800 dark:text-slate-200">
               Genel Bildirim İlerlemesi:{' '}
-              <strong className="text-slate-900 dark:text-white">
+              <span className="text-slate-900 dark:text-white font-normal">
                 {s.totalSent.toLocaleString('tr-TR')} / {s.totalTargetVksPersonnel.toLocaleString('tr-TR')}
-              </strong>{' '}
+              </span>{' '}
               VKS Personeli
             </span>
             <div className="flex items-center gap-3">
               {estimatedHoursLeft && (
-                <span className="text-slate-600 dark:text-slate-300 font-medium">
-                  Tahmini Kalan: <strong>~{estimatedHoursLeft} saat</strong>
+                <span className="text-slate-700 dark:text-slate-300 font-normal">
+                  Tahmini Kalan: <span className="font-normal">~{estimatedHoursLeft} saat</span>
                 </span>
               )}
-              <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-200/60 dark:border-emerald-800/60 text-xs">
+              <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-300 font-normal border border-emerald-200/60 dark:border-emerald-800/60 text-xs">
                 %{s.overallCompletionPct} Tamamlandı
               </span>
             </div>
@@ -989,10 +989,10 @@ export default function GosuslugiAnalyticsView() {
             />
             <span className="truncate">Genel Analitik</span>
             <span
-              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-normal ${
                 activeMainTab === 'analytics'
-                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-300 border border-emerald-300/60'
-                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-950 dark:text-emerald-300 border border-emerald-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-800 dark:text-slate-300'
               }`}
             >
               %{s.overallCompletionPct}
@@ -1003,9 +1003,9 @@ export default function GosuslugiAnalyticsView() {
           <button
             type="button"
             onClick={() => setActiveMainTab('master3088')}
-            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-normal flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
               activeMainTab === 'master3088'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
+                ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
                 : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-white'
             }`}
           >
@@ -1021,10 +1021,10 @@ export default function GosuslugiAnalyticsView() {
             />
             <span className="truncate">Tüm VKS Listesi</span>
             <span
-              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-normal ${
                 activeMainTab === 'master3088'
-                  ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-900 dark:text-indigo-300 border border-indigo-300/60'
-                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-950 dark:text-indigo-300 border border-indigo-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-800 dark:text-slate-300'
               }`}
             >
               {masterSummaryCounts.total.toLocaleString('tr-TR')}
@@ -1035,9 +1035,9 @@ export default function GosuslugiAnalyticsView() {
           <button
             type="button"
             onClick={() => setActiveMainTab('refusals')}
-            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-normal flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
               activeMainTab === 'refusals'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
+                ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
                 : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-white'
             }`}
           >
@@ -1053,10 +1053,10 @@ export default function GosuslugiAnalyticsView() {
             />
             <span className="truncate">МВД Red Analizi</span>
             <span
-              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-normal ${
                 activeMainTab === 'refusals'
-                  ? 'bg-orange-100 dark:bg-orange-950 text-orange-900 dark:text-orange-300 border border-orange-300/60'
-                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  ? 'bg-orange-100 dark:bg-orange-950 text-orange-950 dark:text-orange-300 border border-orange-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-800 dark:text-slate-300'
               }`}
             >
               {s.totalRefusedMvd ?? 0}
@@ -1067,9 +1067,9 @@ export default function GosuslugiAnalyticsView() {
           <button
             type="button"
             onClick={() => setActiveMainTab('errors')}
-            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
+            className={`group relative w-full px-3 py-2.5 rounded-t-xl text-xs sm:text-sm font-normal flex items-center justify-center gap-2 transition-all cursor-pointer select-none border border-b-0 ${
               activeMainTab === 'errors'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
+                ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white border-slate-200/90 dark:border-slate-800 -mb-px z-10 shadow-[0_-2px_8px_rgba(15,23,42,0.04)]'
                 : 'bg-slate-100/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 border-transparent hover:bg-white/60 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-white'
             }`}
           >
@@ -1085,10 +1085,10 @@ export default function GosuslugiAnalyticsView() {
             />
             <span className="truncate">Hata Analizi</span>
             <span
-              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-bold ${
+              className={`px-2.5 py-0.5 rounded-full text-xs sm:text-[13px] font-normal ${
                 activeMainTab === 'errors'
-                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-900 dark:text-rose-300 border border-rose-300/60'
-                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-950 dark:text-rose-300 border border-rose-300/60'
+                  : 'bg-slate-200/90 dark:bg-slate-800 text-slate-800 dark:text-slate-300'
               }`}
             >
               {s.totalErrors}
@@ -1107,11 +1107,11 @@ export default function GosuslugiAnalyticsView() {
               <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/50 p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-200/70 dark:border-slate-800">
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <h2 className="text-sm sm:text-base font-normal text-slate-900 dark:text-white flex items-center gap-2">
                       <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       Gosuslugi Portal Resmi Statü Dağılımı & İndirme Merkezi
                     </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 font-normal">
                       Her statünün yanındaki indirme butonlarıyla ilgili kayıtları doğrudan indirebilir veya satıra tıklayarak listeyi açabilirsiniz
                     </p>
                   </div>
@@ -1119,13 +1119,13 @@ export default function GosuslugiAnalyticsView() {
                   {/* Primary Totals & Master Downloads */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs">
-                      <span className="text-slate-500 dark:text-slate-400">Toplam Liste:</span>
-                      <strong className="font-mono text-sm text-slate-900 dark:text-white">
+                      <span className="text-slate-600 dark:text-slate-400 font-normal">Toplam Liste:</span>
+                      <span className="text-sm text-slate-900 dark:text-white font-normal">
                         {masterSummaryCounts.total.toLocaleString('tr-TR')}
-                      </strong>
+                      </span>
                       <button
                         onClick={() => exportMasterListToExcel()}
-                        className="ml-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                        className="ml-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-normal flex items-center gap-1 cursor-pointer transition-colors"
                         title="Tüm VKS Listesini Excel olarak indir"
                       >
                         <Download className="w-3 h-3" />
@@ -1134,14 +1134,14 @@ export default function GosuslugiAnalyticsView() {
                     </div>
 
                     <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs">
-                      <span className="text-slate-500 dark:text-slate-400">EBA PDF:</span>
-                      <strong className="font-mono text-sm text-teal-600 dark:text-teal-400">
+                      <span className="text-slate-600 dark:text-slate-400 font-normal">EBA PDF:</span>
+                      <span className="text-sm text-teal-700 dark:text-teal-400 font-normal">
                         {s.totalPdf.toLocaleString('tr-TR')}
-                      </strong>
+                      </span>
                       <button
                         onClick={() => handleDownloadPdfZip(false)}
                         disabled={downloadingZip || s.totalPdf === 0}
-                        className="ml-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                        className="ml-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-normal flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
                         title="İndirilen tüm PDF makbuzlarını tek ZIP arşivi olarak indir"
                       >
                         <Download className="w-3 h-3" />
@@ -1196,17 +1196,17 @@ export default function GosuslugiAnalyticsView() {
                             className="flex items-center gap-2 text-left group cursor-pointer"
                           >
                             <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${row.dotClass}`} />
-                            <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                            <span className="text-xs sm:text-sm font-normal text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                               {row.label}
                             </span>
                           </button>
 
                           {/* Number + Contextual Download & Detail Buttons right next to the number */}
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
+                            <span className="text-sm sm:text-base font-normal text-slate-900 dark:text-white">
                               {row.value.toLocaleString('tr-TR')}
                             </span>
-                            <span className="text-[11px] font-mono text-slate-400 w-9 text-right">
+                            <span className="text-[11px] text-slate-600 dark:text-slate-400 w-9 text-right font-normal">
                               %{row.pct}
                             </span>
 
@@ -1219,7 +1219,7 @@ export default function GosuslugiAnalyticsView() {
                                   );
                                   exportMasterListToExcel(list, 'Pondera_VKS_Onaylananlar');
                                 }}
-                                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-normal bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
                                 title="Onaylanan (Услуга оказана) kayıtları Excel olarak indir"
                               >
                                 <Download className="w-3 h-3" />
@@ -1232,7 +1232,7 @@ export default function GosuslugiAnalyticsView() {
                                 <a
                                   href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
                                   download
-                                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 no-underline transition-colors"
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-normal bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 no-underline transition-colors"
                                   title="МВД Red (Услуга отказана) kayıtlarını renkli VKS şablonu olarak indir"
                                 >
                                   <Download className="w-3 h-3 text-orange-600" />
@@ -1241,7 +1241,30 @@ export default function GosuslugiAnalyticsView() {
                                 <button
                                   type="button"
                                   onClick={() => setActiveMainTab('refusals')}
-                                  className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/80 flex items-center gap-1 cursor-pointer"
+                                  className="px-2 py-1 rounded-lg text-[11px] font-normal bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-300 border border-orange-200 dark:border-orange-800/80 flex items-center gap-1 cursor-pointer"
+                                >
+                                  Analiz <ArrowRight className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+
+                            {row.actionType === 'error_template' && (
+                              <div className="flex items-center gap-1.5">
+                                {user?.role !== 'viewer' && (
+                                  <a
+                                    href={errorTemplateExportUrl}
+                                    download
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-normal bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 no-underline transition-colors"
+                                    title="Hatalı (Ошибка) kayıtları renkli VKS şablonu olarak indir"
+                                  >
+                                    <Download className="w-3 h-3 text-rose-600" />
+                                    Şablon İndir
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveMainTab('errors')}
+                                  className="px-2 py-1 rounded-lg text-[11px] font-normal bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 flex items-center gap-1 cursor-pointer"
                                 >
                                   Analiz <ArrowRight className="w-3 h-3" />
                                 </button>

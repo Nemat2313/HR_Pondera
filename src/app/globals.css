@@ -26,13 +26,15 @@ html, body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-button, input, optgroup, select, textarea, table, th, td {
+button, input, optgroup, select, textarea, table, th, td, h1, h2, h3, h4, h5, h6, b, strong, text, tspan {
   font-family: 'Tahoma', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif !important;
 }
 
-/* Soften harsh, thick bold fonts across all components to match clean sidebar aesthetic */
-b, strong, .font-bold, .font-extrabold {
-  font-weight: 600 !important;
+/* User absolute rule: NO THICK BOLD ANYWHERE (bold kalin harf hic bir yerde olmasin) */
+b, strong, th, h1, h2, h3, h4, h5, h6, text, tspan,
+.font-bold, .font-extrabold, .font-semibold, .font-medium,
+[class*="font-bold"], [class*="font-extrabold"], [class*="font-semibold"] {
+  font-weight: 400 !important;
 }
 
 /* Prevent washed-out light grey text in light mode - keep fonts dark and crisp */

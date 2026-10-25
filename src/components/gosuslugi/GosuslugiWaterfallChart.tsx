@@ -323,7 +323,7 @@ export default function GosuslugiWaterfallChart({
                     x={bar.x + bar.width / 2}
                     y={bar.topY - 6}
                     textAnchor="middle"
-                    className="font-mono text-[11px] font-semibold fill-slate-800 dark:fill-slate-100"
+                    className="text-[11px] font-normal fill-slate-900 dark:fill-slate-100"
                   >
                     {bar.displayCount}
                   </text>
@@ -333,7 +333,7 @@ export default function GosuslugiWaterfallChart({
                     x={bar.x + bar.width / 2}
                     y={202}
                     textAnchor="middle"
-                    className="font-medium text-[10px] fill-slate-700 dark:fill-slate-300"
+                    className="text-[10.5px] font-normal fill-slate-800 dark:fill-slate-200"
                   >
                     {bar.shortLabel}
                   </text>
@@ -343,7 +343,7 @@ export default function GosuslugiWaterfallChart({
                     x={bar.x + bar.width / 2}
                     y={217}
                     textAnchor="middle"
-                    className="font-mono text-[9.5px] font-semibold fill-slate-500 dark:fill-slate-400"
+                    className="text-[10px] font-normal fill-slate-600 dark:fill-slate-400"
                   >
                     %{bar.pct}
                   </text>
@@ -401,10 +401,10 @@ export default function GosuslugiWaterfallChart({
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-100 text-xs">
+                    <span className="text-slate-900 dark:text-slate-100 text-xs font-normal">
                       {stage.displayCount}
                     </span>
-                    <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300 w-8 text-right font-medium">
+                    <span className="text-[11px] text-slate-700 dark:text-slate-300 w-8 text-right font-normal">
                       %{stage.pct}
                     </span>
                   </div>
@@ -429,28 +429,28 @@ export default function GosuslugiWaterfallChart({
       {/* FOOTER SUMMARY PILLS (Preserving key metrics from previous donut) */}
       <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-2 text-center text-xs">
         <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-          <span className="block text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wide font-medium">
+          <span className="block text-[10px] text-slate-700 dark:text-slate-300 uppercase tracking-wide font-normal">
             Gönderilen
           </span>
-          <strong className="font-mono text-xs text-slate-800 dark:text-slate-200 font-semibold">
+          <span className="text-xs text-slate-900 dark:text-slate-100 font-normal">
             {totalSent.toLocaleString('tr-TR')}
-          </strong>
+          </span>
         </div>
         <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-          <span className="block text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wide font-medium">
+          <span className="block text-[10px] text-slate-700 dark:text-slate-300 uppercase tracking-wide font-normal">
             Başarı Oranı
           </span>
-          <strong className="font-mono text-xs text-emerald-700 dark:text-emerald-400 font-semibold">
+          <span className="text-xs text-emerald-800 dark:text-emerald-400 font-normal">
             %{successRatePct}
-          </strong>
+          </span>
         </div>
         <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-          <span className="block text-[10px] text-slate-600 dark:text-slate-300 uppercase tracking-wide font-medium">
+          <span className="block text-[10px] text-slate-700 dark:text-slate-300 uppercase tracking-wide font-normal">
             Kalan Kuyruk
           </span>
-          <strong className="font-mono text-xs text-slate-700 dark:text-slate-300 font-semibold">
+          <span className="text-xs text-slate-800 dark:text-slate-200 font-normal">
             {notSent.toLocaleString('tr-TR')}
-          </strong>
+          </span>
         </div>
       </div>
     </div>
