@@ -31,9 +31,13 @@ interface TicketItem {
   passport_no: string;
   transport_type: 'flight' | 'train';
   carrier: string;
+  carrierRu: string;
   route_from: string;
+  route_fromRu: string;
   route_to: string;
+  route_toRu: string;
   project: string;
+  projectRu: string;
   travel_date: string;
   ticket_cost: string;
   ai_status: string;
@@ -47,9 +51,13 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passport_no: 'FA 4210519',
     transport_type: 'flight',
     carrier: 'Uzbekistan Airways (HY-631)',
-    route_from: 'Ташкент (TAS)',
-    route_to: 'Санкт-Петербург (LED)',
-    project: 'Усть-Луга Комплекс',
+    carrierRu: 'Uzbekistan Airways (HY-631)',
+    route_from: 'Taşkent (TAS)',
+    route_fromRu: 'Ташкент (TAS)',
+    route_to: 'St. Petersburg (LED)',
+    route_toRu: 'Санкт-Петербург (LED)',
+    project: 'Ust-Luga Kompleksi',
+    projectRu: 'Усть-Луга Комплекс',
     travel_date: '28.10.2026 04:30',
     ticket_cost: '28.450 ₽',
     ai_status: '%99.8 OCR',
@@ -61,9 +69,13 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passport_no: 'Z 8492019',
     transport_type: 'flight',
     carrier: 'Air India / Aeroflot (AI-1945)',
-    route_from: 'Дели (DEL)',
-    route_to: 'Москва Шереметьево (SVO)',
-    project: 'Казань Газ-Химия',
+    carrierRu: 'Air India / Аэрофлот (AI-1945)',
+    route_from: 'Delhi (DEL)',
+    route_fromRu: 'Дели (DEL)',
+    route_to: 'Moskova Şeremetyevo (SVO)',
+    route_toRu: 'Москва Шереметьево (SVO)',
+    project: 'Kazan Gaz-Kimya',
+    projectRu: 'Казань Газ-Химия',
     travel_date: '29.10.2026 12:15',
     ticket_cost: '44.800 ₽',
     ai_status: '%99.8 OCR',
@@ -74,10 +86,14 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passenger_name: 'SARDORBEK FOZILOV',
     passport_no: 'AA 1209384',
     transport_type: 'train',
-    carrier: 'РЖД Сапсан (758A)',
-    route_from: 'Москва (Ленинградский)',
-    route_to: 'Санкт-Петербург (Московский)',
-    project: 'Усть-Луга Комплекс',
+    carrier: 'RZD Sapsan (758A)',
+    carrierRu: 'РЖД Сапсан (758A)',
+    route_from: 'Moskova (Leningradskiy)',
+    route_fromRu: 'Москва (Ленинградский)',
+    route_to: 'St. Petersburg (Moskovskiy)',
+    route_toRu: 'Санкт-Петербург (Московский)',
+    project: 'Ust-Luga Kompleksi',
+    projectRu: 'Усть-Луга Комплекс',
     travel_date: '26.10.2026 07:00',
     ticket_cost: '4.850 ₽',
     ai_status: '%99.8 OCR',
@@ -88,10 +104,14 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passenger_name: 'BAKYTBEK ASANOV',
     passport_no: 'AC 551920',
     transport_type: 'train',
-    carrier: 'РЖД Россия (002M)',
-    route_from: 'Москва (Ярославский)',
-    route_to: 'Белогорск / Свободный',
-    project: 'Свободный АГХК',
+    carrier: 'RZD Rossiya (002M)',
+    carrierRu: 'РЖД Россия (002M)',
+    route_from: 'Moskova (Yaroslavskiy)',
+    route_fromRu: 'Москва (Ярославский)',
+    route_to: 'Belogorsk / Svobodny',
+    route_toRu: 'Белогорск / Свободный',
+    project: 'Svobodny AGHK',
+    projectRu: 'Свободный АГХК',
     travel_date: '30.10.2026 23:45',
     ticket_cost: '14.200 ₽',
     ai_status: '%99.8 OCR',
@@ -102,10 +122,14 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passenger_name: 'SHAVKAT RAKHMATOV',
     passport_no: 'FA 1982736',
     transport_type: 'flight',
-    carrier: 'Аэрофлот (SU-1240)',
-    route_from: 'Самара (KUF)',
-    route_to: 'Тюмень Рощино (TJM)',
-    project: 'Тобольск ДГП-2',
+    carrier: 'Aeroflot (SU-1240)',
+    carrierRu: 'Аэрофлот (SU-1240)',
+    route_from: 'Samara (KUF)',
+    route_fromRu: 'Самара (KUF)',
+    route_to: 'Tyumen Roşçino (TJM)',
+    route_toRu: 'Тюмень Рощино (TJM)',
+    project: 'Tobolsk DGP-2',
+    projectRu: 'Тобольск ДГП-2',
     travel_date: '27.10.2026 09:20',
     ticket_cost: '11.600 ₽',
     ai_status: '%99.8 OCR',
@@ -301,7 +325,7 @@ export default function TravelTicketsAdminView() {
             <Plane className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="text-2xl text-slate-900 dark:text-white font-normal">342 {lang === 'ru' ? 'шт.' : 'Adet'}</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             189 {lang === 'ru' ? 'Авиа' : 'Uçak'} • 153 {lang === 'ru' ? 'Поезд (РЖД)' : 'Tren (RZD)'}
           </div>
         </div>
@@ -312,7 +336,7 @@ export default function TravelTicketsAdminView() {
             <CreditCard className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">4.680.200 ₽</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             {lang === 'ru' ? 'Исполнение бюджета: %94.2' : 'Bütçe Uyum: %94.2 (Optimum)'}
           </div>
         </div>
@@ -323,7 +347,7 @@ export default function TravelTicketsAdminView() {
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-2xl text-amber-600 dark:text-amber-400 font-normal">28 {lang === 'ru' ? 'чел.' : 'Personel'}</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             {lang === 'ru' ? 'Прибытие ожидается сегодня' : 'Bugün şantiyeye varış bekleniyor'}
           </div>
         </div>
@@ -336,7 +360,7 @@ export default function TravelTicketsAdminView() {
           <div className="text-2xl text-teal-600 dark:text-teal-400 font-normal">
             {lang === 'ru' ? 'Усть-Луга' : 'Ust-Luga'}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             142 {lang === 'ru' ? 'билета (доля 41.5%)' : 'Bilet (%41.5 Pay)'}
           </div>
         </div>
@@ -411,7 +435,7 @@ export default function TravelTicketsAdminView() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-normal">
+              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-normal">
                 <th className="py-2.5 px-3">{lang === 'ru' ? 'Пассажир / Работник' : 'Yolcu / Personel'}</th>
                 <th className="py-2.5 px-3">{lang === 'ru' ? 'Рейс / Перевозчик' : 'Ulaşım / Sefer'}</th>
                 <th className="py-2.5 px-3">{lang === 'ru' ? 'Маршрут поездки' : 'Kalkış & Varış Güzergahı'}</th>
@@ -429,7 +453,7 @@ export default function TravelTicketsAdminView() {
                 >
                   <td className="py-3 px-3">
                     <div className="text-slate-900 dark:text-white font-normal">{item.passenger_name}</div>
-                    <div className="text-[11px] text-slate-400 font-normal">{item.passport_no}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">{item.passport_no}</div>
                   </td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200 font-normal">
@@ -438,19 +462,21 @@ export default function TravelTicketsAdminView() {
                       ) : (
                         <Train className="w-3.5 h-3.5 text-teal-500 shrink-0" />
                       )}
-                      <span>{item.carrier}</span>
+                      <span>{lang === 'ru' ? item.carrierRu : item.carrier}</span>
                     </div>
                     <div className="text-[10px] text-slate-400 font-mono font-normal">{item.ticket_code}</div>
                   </td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-1 text-slate-700 dark:text-slate-300 font-normal">
-                      <span>{item.route_from}</span>
+                      <span>{lang === 'ru' ? item.route_fromRu : item.route_from}</span>
                       <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="text-slate-900 dark:text-white">{item.route_to}</span>
+                      <span className="text-slate-900 dark:text-white">
+                        {lang === 'ru' ? item.route_toRu : item.route_to}
+                      </span>
                     </div>
                   </td>
                   <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-normal">
-                    {item.project}
+                    {lang === 'ru' ? item.projectRu : item.project}
                   </td>
                   <td className="py-3 px-3 text-slate-600 dark:text-slate-400 font-normal">
                     {item.travel_date}

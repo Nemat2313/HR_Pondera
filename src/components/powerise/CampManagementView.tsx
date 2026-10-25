@@ -24,11 +24,15 @@ import { useLanguage } from '@/context/LanguageContext';
 interface RoomData {
   id: string;
   block: string;
+  blockRu: string;
   room_number: string;
+  room_numberRu: string;
   site: string;
+  siteRu: string;
   capacity: number;
   occupied: number;
   nationality_focus: string;
+  nationality_focusRu: string;
   status: 'Dolu' | 'Müsait' | 'Bakım / Dezenfeksiyon';
   residents: string[];
 }
@@ -37,55 +41,75 @@ const SAMPLE_ROOMS: RoomData[] = [
   {
     id: 'RM-101',
     block: 'A Blok (Ust-Luga Kampı)',
+    blockRu: 'Блок А (Городок Усть-Луга)',
     room_number: 'Oda 104',
+    room_numberRu: 'Комната 104',
     site: 'Ust-Luga Gaz Kimya',
+    siteRu: 'Усть-Луга Комплекс',
     capacity: 4,
     occupied: 4,
     nationality_focus: 'Özbekistan (Boru Montaj Ekibi)',
+    nationality_focusRu: 'Узбекистан (Бригада монтажа трубопроводов)',
     status: 'Dolu',
     residents: ['M. Khurramov', 'S. Rakhmatov', 'Z. Khujaniyozov', 'S. Sadikov'],
   },
   {
     id: 'RM-102',
     block: 'A Blok (Ust-Luga Kampı)',
+    blockRu: 'Блок А (Городок Усть-Луга)',
     room_number: 'Oda 105',
+    room_numberRu: 'Комната 105',
     site: 'Ust-Luga Gaz Kimya',
+    siteRu: 'Усть-Луга Комплекс',
     capacity: 4,
     occupied: 3,
     nationality_focus: 'Özbekistan / Kırgızistan',
+    nationality_focusRu: 'Узбекистан / Кыргызстан',
     status: 'Müsait',
     residents: ['B. Asanov', 'T. Karimov', 'J. Ubaydullaev'],
   },
   {
     id: 'RM-103',
     block: 'B Blok (Mühendis Lojmanı)',
+    blockRu: 'Блок Б (Инженерный корпус)',
     room_number: 'Oda 201',
+    room_numberRu: 'Комната 201',
     site: 'Ust-Luga Gaz Kimya',
+    siteRu: 'Усть-Луга Комплекс',
     capacity: 2,
     occupied: 2,
     nationality_focus: 'Türkiye (Teknik Ofis / Saha Şefi)',
+    nationality_focusRu: 'Турция (Технический офис / Начальник участка)',
     status: 'Dolu',
     residents: ['A. Yılmaz (Saha Şefi)', 'M. Demir (Mühendis)'],
   },
   {
     id: 'RM-104',
     block: 'C Blok (Kazan Modüler Kamp)',
+    blockRu: 'Блок С (Модульный городок Казань)',
     room_number: 'Oda 308',
+    room_numberRu: 'Комната 308',
     site: 'Kazan Gaz Kimya',
+    siteRu: 'Казань Газ-Химия',
     capacity: 4,
     occupied: 4,
     nationality_focus: 'Hindistan (Elektrik Montaj)',
+    nationality_focusRu: 'Индия (Электромонтаж)',
     status: 'Dolu',
     residents: ['R. Kumar', 'A. Patel', 'S. Sharma', 'D. Verma'],
   },
   {
     id: 'RM-105',
     block: 'C Blok (Kazan Modüler Kamp)',
+    blockRu: 'Блок С (Модульный городок Казань)',
     room_number: 'Oda 309',
+    room_numberRu: 'Комната 309',
     site: 'Kazan Gaz Kimya',
+    siteRu: 'Казань Газ-Химия',
     capacity: 4,
     occupied: 0,
     nationality_focus: 'Yeni Gelen Kafile İçin Ayrıldı',
+    nationality_focusRu: 'Зарезервировано для новой группы',
     status: 'Bakım / Dezenfeksiyon',
     residents: [],
   },
@@ -97,14 +121,18 @@ export default function CampManagementView() {
   const [search, setSearch] = useState('');
 
   const filteredRooms = SAMPLE_ROOMS.filter((r) => {
-    if (selectedBlock !== 'all' && !r.block.includes(selectedBlock)) return false;
+    if (selectedBlock !== 'all' && !r.block.includes(selectedBlock) && !r.blockRu.includes(selectedBlock)) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       return (
         r.room_number.toLowerCase().includes(q) ||
+        r.room_numberRu.toLowerCase().includes(q) ||
         r.block.toLowerCase().includes(q) ||
+        r.blockRu.toLowerCase().includes(q) ||
         r.site.toLowerCase().includes(q) ||
-        r.nationality_focus.toLowerCase().includes(q)
+        r.siteRu.toLowerCase().includes(q) ||
+        r.nationality_focus.toLowerCase().includes(q) ||
+        r.nationality_focusRu.toLowerCase().includes(q)
       );
     }
     return true;
@@ -278,7 +306,7 @@ export default function CampManagementView() {
             <Bed className="w-4 h-4 text-teal-500" />
           </div>
           <div className="text-2xl text-slate-900 dark:text-white font-normal">4.850 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             {lang === 'ru' ? '3 основных городка' : '3 Ana Şantiye Kamp Alanı'}
           </div>
         </div>
@@ -289,7 +317,7 @@ export default function CampManagementView() {
             <Users className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">4.238 {lang === 'ru' ? 'чел.' : 'Kişi'}</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             {lang === 'ru' ? 'Занятость: %87.4' : 'Aktif Konaklama (%87.4)'}
           </div>
         </div>
@@ -300,7 +328,7 @@ export default function CampManagementView() {
             <DoorClosed className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="text-2xl text-indigo-600 dark:text-indigo-400 font-normal">528 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             {lang === 'ru' ? 'Готово к приему вахты' : 'Yeni kafileler için hazır'}
           </div>
         </div>
@@ -311,7 +339,7 @@ export default function CampManagementView() {
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-2xl text-amber-600 dark:text-amber-400 font-normal">84 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-normal">
             {lang === 'ru' ? 'Плановая дезинфекция' : 'Rutin hijyen ve tamirat'}
           </div>
         </div>
@@ -389,9 +417,11 @@ export default function CampManagementView() {
                 <div>
                   <h4 className="text-sm text-slate-900 dark:text-white font-normal flex items-center gap-1.5">
                     <DoorClosed className="w-4 h-4 text-teal-500" />
-                    <span>{room.room_number}</span>
+                    <span>{lang === 'ru' ? room.room_numberRu : room.room_number}</span>
                   </h4>
-                  <span className="text-[11px] text-slate-400 font-normal">{room.block}</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                    {lang === 'ru' ? room.blockRu : room.block}
+                  </span>
                 </div>
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full font-normal ${
@@ -440,7 +470,9 @@ export default function CampManagementView() {
 
               {/* Resident tags */}
               <div className="pt-1 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1.5">
-                <div className="text-[10.5px] text-slate-400 font-normal">{room.nationality_focus}</div>
+                <div className="text-[10.5px] text-slate-500 dark:text-slate-400 font-normal">
+                  {lang === 'ru' ? room.nationality_focusRu : room.nationality_focus}
+                </div>
                 {room.residents.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {room.residents.map((r, i) => (
@@ -453,7 +485,7 @@ export default function CampManagementView() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-[10px] text-slate-400 italic font-normal">
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 italic font-normal">
                     {lang === 'ru' ? 'Нет жильцов (Свободная комната)' : 'Kayıtlı sakin yok (Boş oda)'}
                   </div>
                 )}

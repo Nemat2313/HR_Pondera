@@ -23,7 +23,9 @@ interface InvitationItem {
   name: string;
   passport_no: string;
   nationality: string;
+  nationalityRu: string;
   site: string;
+  siteRu: string;
   application_date: string;
   issued_date: string;
   invitation_code: string;
@@ -37,7 +39,9 @@ const SAMPLE_INVITATIONS: InvitationItem[] = [
     name: 'SHAVKAT RAKHMATOV',
     passport_no: 'FA 1982736',
     nationality: 'Özbekistan',
+    nationalityRu: 'Узбекистан',
     site: 'Kazan Gaz Kimya',
+    siteRu: 'Казань Газ-Химия',
     application_date: '02.10.2026',
     issued_date: '24.10.2026 14:22',
     invitation_code: 'MVD-77-2026-90412',
@@ -49,7 +53,9 @@ const SAMPLE_INVITATIONS: InvitationItem[] = [
     name: 'RAJESH KUMAR',
     passport_no: 'Z 8492019',
     nationality: 'Hindistan',
+    nationalityRu: 'Индия',
     site: 'Ust Luga Kompleksi',
+    siteRu: 'Усть-Луга Комплекс',
     application_date: '05.10.2026',
     issued_date: '25.10.2026 09:15',
     invitation_code: 'MVD-47-2026-11842',
@@ -61,7 +67,9 @@ const SAMPLE_INVITATIONS: InvitationItem[] = [
     name: 'BAKYTBEK ASANOV',
     passport_no: 'AC 551920',
     nationality: 'Kırgızistan',
+    nationalityRu: 'Кыргызстан',
     site: 'Svobodny AGHK',
+    siteRu: 'Свободный АГХК',
     application_date: '08.10.2026',
     issued_date: '25.10.2026 10:48',
     invitation_code: 'MVD-28-2026-64019',
@@ -73,7 +81,9 @@ const SAMPLE_INVITATIONS: InvitationItem[] = [
     name: 'AMIT PATEL',
     passport_no: 'V 4710928',
     nationality: 'Hindistan',
+    nationalityRu: 'Индия',
     site: 'Tobolsk DGP-2',
+    siteRu: 'Тобольск ДГП-2',
     application_date: '10.10.2026',
     issued_date: '25.10.2026 11:05',
     invitation_code: 'MVD-72-2026-38291',
@@ -156,7 +166,7 @@ export default function InvitationsTrackingView() {
           <div className="text-2xl text-slate-900 dark:text-white font-normal">
             245 <span className="text-xs text-slate-400">{lang === 'ru' ? 'чел.' : 'Kişi'}</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-normal">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
             {lang === 'ru' ? 'В обработке МВД' : 'MVD değerlendirme sürecinde'}
           </p>
         </div>
@@ -169,7 +179,7 @@ export default function InvitationsTrackingView() {
           <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">
             184 <span className="text-xs text-emerald-600">{lang === 'ru' ? 'приглашений' : 'Davetiye'}</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-normal">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
             {lang === 'ru' ? 'Успешно получено в этом месяце' : 'Bu ay e-posta ile teslim alındı'}
           </p>
         </div>
@@ -182,7 +192,7 @@ export default function InvitationsTrackingView() {
           <div className="text-2xl text-sky-600 dark:text-sky-400 font-normal">
             183 <span className="text-xs text-sky-600">(%99.5)</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-normal">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
             {lang === 'ru' ? 'Мгновенно доставлено в группу HR' : 'İK kanalına anında iletildi'}
           </p>
         </div>
@@ -195,7 +205,7 @@ export default function InvitationsTrackingView() {
           <div className="text-2xl text-slate-900 dark:text-white font-normal">
             18.4 <span className="text-xs text-slate-400">{lang === 'ru' ? 'дней' : 'Gün'}</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-normal">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
             {lang === 'ru' ? 'В рамках регламентного срока' : 'Yasal süre sınırından önce'}
           </p>
         </div>
@@ -228,7 +238,7 @@ export default function InvitationsTrackingView() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-normal">
+              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-normal">
                 <th className="py-2.5 px-3">{lang === 'ru' ? 'Сотрудник и Паспорт' : 'Personel & Pasaport'}</th>
                 <th className="py-2.5 px-3">{lang === 'ru' ? 'Гражданство / Объект' : 'Uyruk / Şantiye'}</th>
                 <th className="py-2.5 px-3">{lang === 'ru' ? 'Подача / Выдача' : 'Başvuru / Onay'}</th>
@@ -242,15 +252,19 @@ export default function InvitationsTrackingView() {
                 <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="py-3 px-3">
                     <div className="text-slate-900 dark:text-white font-normal">{item.name}</div>
-                    <div className="text-[11px] text-slate-400 font-normal">{item.passport_no}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">{item.passport_no}</div>
                   </td>
                   <td className="py-3 px-3">
-                    <div className="text-slate-700 dark:text-slate-300 font-normal">{item.nationality}</div>
-                    <div className="text-[11px] text-slate-400 font-normal">{item.site}</div>
+                    <div className="text-slate-700 dark:text-slate-300 font-normal">
+                      {lang === 'ru' ? item.nationalityRu : item.nationality}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                      {lang === 'ru' ? item.siteRu : item.site}
+                    </div>
                   </td>
                   <td className="py-3 px-3">
                     <div className="text-slate-700 dark:text-slate-300 font-normal">{item.issued_date}</div>
-                    <div className="text-[11px] text-slate-400 font-normal">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                       {lang === 'ru' ? 'Подача:' : 'Başvuru:'} {item.application_date}
                     </div>
                   </td>
@@ -280,7 +294,7 @@ export default function InvitationsTrackingView() {
                   <td className="py-3 px-3 text-right">
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60 text-xs hover:bg-sky-100 transition-colors cursor-pointer font-normal"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60 text-xs hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors cursor-pointer font-normal"
                     >
                       <Download className="w-3 h-3" />
                       <span>PDF ({item.pdf_size})</span>
