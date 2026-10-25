@@ -15,7 +15,6 @@ export const maxDuration = 300;
 
 const PYTHON_BUILD_INLINE = [
   'import sys, build_db',
-  'if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8", errors="replace")',
   'build_db.EXCEL_PATH = sys.argv[1]',
   'build_db.DATA_FRESHNESS = sys.argv[2]',
   'build_db.SOURCE_FILE = sys.argv[3]',
