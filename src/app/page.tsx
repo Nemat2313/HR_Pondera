@@ -18,6 +18,9 @@ const UserManagementView = dynamic(() => import('@/components/admin/UserManageme
 const ComplianceAnalyticsView = dynamic(() => import('@/components/compliance/ComplianceAnalyticsView'));
 const GosuslugiVksView = dynamic(() => import('@/components/gosuslugi/GosuslugiVksView'));
 const GosuslugiAnalyticsView = dynamic(() => import('@/components/gosuslugi/GosuslugiAnalyticsView'));
+const PoweriseInnovationView = dynamic(() => import('@/components/powerise/PoweriseInnovationView'));
+const OfficialVsRealView = dynamic(() => import('@/components/workforce/OfficialVsRealView'));
+const QuotaTrackingView = dynamic(() => import('@/components/quotas/QuotaTrackingView'));
 const ExcelUploadModal = dynamic(() => import('@/components/modals/ExcelUploadModal'));
 
 export default function Home() {
@@ -231,6 +234,12 @@ export default function Home() {
         {activeTab === 'gosuslugi' && user?.role !== 'viewer' && <GosuslugiVksView />}
 
         {activeTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
+
+        {activeTab === 'powerise_tech' && <PoweriseInnovationView />}
+
+        {activeTab === 'official_real' && <OfficialVsRealView />}
+
+        {activeTab === 'quotas' && <QuotaTrackingView />}
 
         {activeTab === 'compliance' && (
           <ComplianceAnalyticsView onNavigateToPersonnel={handleNavigateToPersonnel} />

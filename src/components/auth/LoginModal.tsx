@@ -183,14 +183,14 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     <>
                       Интеллектуальное управление{' '}
                       <span className="text-emerald-700">
-                        персоналом и ВКС
+                        персоналом
                       </span>
                     </>
                   ) : (
                     <>
                       Yeni Nesil Kurumsal{' '}
                       <span className="text-emerald-700">
-                        Personel & VKS Yönetimi
+                        Personel Yönetimi
                       </span>
                     </>
                   )}

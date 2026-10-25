@@ -18,6 +18,7 @@ interface WorldDemographicsMapProps {
 interface CountryMeta {
   key: string;
   displayName: string;
+  displayNameRu: string;
   flagCode: string; // ISO 3166-1 2-letter code for local SVG flags
   anchorX: number;  // Coğrafi gerçek merkez koordinatı (%)
   anchorY: number;
@@ -28,31 +29,58 @@ interface CountryMeta {
 }
 
 const COUNTRY_META: Record<string, CountryMeta> = {
-  HINDISTAN: {
-    key: 'HINDISTAN',
-    displayName: 'Hindistan',
-    flagCode: 'in',
-    anchorX: 53.0,
-    anchorY: 85.0, // Hindistan yarımadasının tam merkezi
-    badgeX: 47.0,
-    badgeY: 91.5,
-    corridor: 'Güney Asya',
-    color: '#F59E0B',
-  },
   OZBEKISTAN: {
     key: 'OZBEKISTAN',
     displayName: 'Özbekistan',
+    displayNameRu: 'Узбекистан',
     flagCode: 'uz',
-    anchorX: 43.8,
-    anchorY: 62.0, // Özbekistan sınırlarının tam merkezi
-    badgeX: 37.5,
-    badgeY: 54.5,
+    anchorX: 43.5,
+    anchorY: 59.5, // Haritada UZBEKISTAN Tashkent konumu
+    badgeX: 38.0,
+    badgeY: 52.0,
     corridor: 'Orta Asya (SNG)',
     color: '#06B6D4',
+  },
+  KIRGIZISTAN: {
+    key: 'KIRGIZISTAN',
+    displayName: 'Kırgızistan',
+    displayNameRu: 'Кыргызстан',
+    flagCode: 'kg',
+    anchorX: 51.5,
+    anchorY: 62.0, // Haritada KYRGYZSTAN konumu
+    badgeX: 57.5,
+    badgeY: 55.5,
+    corridor: 'Orta Asya (SNG)',
+    color: '#EC4899',
+  },
+  HINDISTAN: {
+    key: 'HINDISTAN',
+    displayName: 'Hindistan',
+    displayNameRu: 'Индия',
+    flagCode: 'in',
+    anchorX: 52.5,
+    anchorY: 83.0,
+    badgeX: 46.5,
+    badgeY: 90.5,
+    corridor: 'Güney Asya',
+    color: '#F59E0B',
+  },
+  KAZAKISTAN: {
+    key: 'KAZAKISTAN',
+    displayName: 'Kazakistan',
+    displayNameRu: 'Казахстан',
+    flagCode: 'kz',
+    anchorX: 46.5,
+    anchorY: 51.5,
+    badgeX: 46.5,
+    badgeY: 43.0,
+    corridor: 'Orta Asya (SNG)',
+    color: '#0284C7',
   },
   AZERBAYCAN: {
     key: 'AZERBAYCAN',
     displayName: 'Azerbaycan',
+    displayNameRu: 'Азербайджан',
     flagCode: 'az',
     anchorX: 36.8,
     anchorY: 63.2,
@@ -64,17 +92,19 @@ const COUNTRY_META: Record<string, CountryMeta> = {
   RUSYA: {
     key: 'RUSYA',
     displayName: 'Rusya',
+    displayNameRu: 'Россия',
     flagCode: 'ru',
     anchorX: 62.0,
     anchorY: 34.0,
     badgeX: 63.5,
-    badgeY: 28.0,
+    badgeY: 27.5,
     corridor: 'Avrasya / Saha',
     color: '#3B82F6',
   },
   TURKMENISTAN: {
     key: 'TURKMENISTAN',
     displayName: 'Türkmenistan',
+    displayNameRu: 'Туркменистан',
     flagCode: 'tm',
     anchorX: 42.0,
     anchorY: 67.0,
@@ -86,6 +116,7 @@ const COUNTRY_META: Record<string, CountryMeta> = {
   TURKIYE: {
     key: 'TURKIYE',
     displayName: 'Türkiye',
+    displayNameRu: 'Турция',
     flagCode: 'tr',
     anchorX: 29.5,
     anchorY: 64.5,
@@ -97,17 +128,19 @@ const COUNTRY_META: Record<string, CountryMeta> = {
   TACIKISTAN: {
     key: 'TACIKISTAN',
     displayName: 'Tacikistan',
+    displayNameRu: 'Таджикистан',
     flagCode: 'tj',
-    anchorX: 48.8,
-    anchorY: 67.5,
-    badgeX: 55.0,
-    badgeY: 72.0,
+    anchorX: 49.0,
+    anchorY: 66.5,
+    badgeX: 56.5,
+    badgeY: 71.5,
     corridor: 'Orta Asya (SNG)',
     color: '#8B5CF6',
   },
   BANGLADES: {
     key: 'BANGLADES',
     displayName: 'Bangladeş',
+    displayNameRu: 'Бангладеш',
     flagCode: 'bd',
     anchorX: 58.8,
     anchorY: 81.2,
@@ -116,31 +149,10 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     corridor: 'Güney Asya',
     color: '#10B981',
   },
-  KIRGIZISTAN: {
-    key: 'KIRGIZISTAN',
-    displayName: 'Kırgızistan',
-    flagCode: 'kg',
-    anchorX: 51.5,
-    anchorY: 64.0, // Kırgızistan dağlık bölgesinin tam merkezi
-    badgeX: 62.0,
-    badgeY: 60.5,
-    corridor: 'Orta Asya (SNG)',
-    color: '#EC4899',
-  },
-  KAZAKISTAN: {
-    key: 'KAZAKISTAN',
-    displayName: 'Kazakistan',
-    flagCode: 'kz',
-    anchorX: 46.8,
-    anchorY: 53.2,
-    badgeX: 46.8,
-    badgeY: 45.0,
-    corridor: 'Orta Asya (SNG)',
-    color: '#0284C7',
-  },
   MOLDOVA: {
     key: 'MOLDOVA',
     displayName: 'Moldova',
+    displayNameRu: 'Молдова',
     flagCode: 'md',
     anchorX: 27.0,
     anchorY: 54.5,
@@ -152,6 +164,7 @@ const COUNTRY_META: Record<string, CountryMeta> = {
   BELARUS: {
     key: 'BELARUS',
     displayName: 'Belarus',
+    displayNameRu: 'Беларусь',
     flagCode: 'by',
     anchorX: 26.0,
     anchorY: 46.5,
@@ -160,7 +173,50 @@ const COUNTRY_META: Record<string, CountryMeta> = {
     corridor: 'Doğu Avrupa',
     color: '#64748B',
   },
+  FILIPINLER: {
+    key: 'FILIPINLER',
+    displayName: 'Filipinler',
+    displayNameRu: 'Филиппины',
+    flagCode: 'ph',
+    anchorX: 78.0,
+    anchorY: 85.0,
+    badgeX: 79.0,
+    badgeY: 89.0,
+    corridor: 'Güneydoğu Asya',
+    color: '#0284C7',
+  },
 };
+
+// Robust normalizer matching any spelling variations
+function normalizeCountryKey(raw: string): string {
+  if (!raw) return 'DIGER';
+  const clean = raw
+    .trim()
+    .toUpperCase()
+    .replace(/İ/g, 'I')
+    .replace(/I/g, 'I')
+    .replace(/Ö/g, 'O')
+    .replace(/Ü/g, 'U')
+    .replace(/Ğ/g, 'G')
+    .replace(/Ş/g, 'S')
+    .replace(/Ç/g, 'C');
+
+  if (clean.includes('OZBEK') || clean.includes('UZBEK')) return 'OZBEKISTAN';
+  if (clean.includes('KIRGIZ') || clean.includes('KYRGYZ')) return 'KIRGIZISTAN';
+  if (clean.includes('KAZAK')) return 'KAZAKISTAN';
+  if (clean.includes('TURKMEN')) return 'TURKMENISTAN';
+  if (clean.includes('TACIK') || clean.includes('TAJIK')) return 'TACIKISTAN';
+  if (clean.includes('AZER')) return 'AZERBAYCAN';
+  if (clean.includes('TURK') || clean.includes('TURKEY')) return 'TURKIYE';
+  if (clean.includes('RUS') || clean.includes('RUSSIA')) return 'RUSYA';
+  if (clean.includes('HIND') || clean.includes('INDIA')) return 'HINDISTAN';
+  if (clean.includes('BANGLA')) return 'BANGLADES';
+  if (clean.includes('MOLDOV')) return 'MOLDOVA';
+  if (clean.includes('BELARUS') || clean.includes('BEYAZ')) return 'BELARUS';
+  if (clean.includes('FILIP') || clean.includes('PHILIP')) return 'FILIPINLER';
+
+  return clean;
+}
 
 export default function WorldDemographicsMap({
   nationalities,
@@ -170,6 +226,7 @@ export default function WorldDemographicsMap({
   const { lang, translateVal } = useLanguage();
   const [hoveredCountryKey, setHoveredCountryKey] = useState<string | null>(null);
   const [selectedCorridor, setSelectedCorridor] = useState<string>('all');
+  const [activePulseIndex, setActivePulseIndex] = useState<number>(0);
 
   const total = totalEmployees || 1;
 
@@ -187,12 +244,38 @@ export default function WorldDemographicsMap({
     return corr;
   };
 
-  // Enhance nationalities with coordinates, leader lines and SVG flags
-  const mappedCountries = nationalities
-    .map((item) => {
-      const meta = COUNTRY_META[item.label] || {
-        key: item.label,
-        displayName: item.label,
+  // Build aggregated count map using the robust normalizer
+  const countMap: Record<string, number> = {};
+  nationalities.forEach((item) => {
+    const normKey = normalizeCountryKey(item.label);
+    countMap[normKey] = (countMap[normKey] || 0) + item.count;
+  });
+
+  // Base list of essential Eurasia & Silk Road corridor countries so they NEVER disappear
+  const essentialKeys = [
+    'OZBEKISTAN',
+    'KIRGIZISTAN',
+    'KAZAKISTAN',
+    'TURKMENISTAN',
+    'TACIKISTAN',
+    'AZERBAYCAN',
+    'TURKIYE',
+    'RUSYA',
+    'HINDISTAN',
+    'BANGLADES',
+    'BELARUS',
+    'MOLDOVA',
+  ];
+
+  // Merge with any other nationalities present in data
+  const allKeys = Array.from(new Set([...essentialKeys, ...Object.keys(countMap)]));
+
+  const mappedCountries = allKeys
+    .map((key) => {
+      const meta = COUNTRY_META[key] || {
+        key,
+        displayName: key,
+        displayNameRu: key,
         flagCode: 'tr',
         anchorX: 50,
         anchorY: 50,
@@ -201,11 +284,13 @@ export default function WorldDemographicsMap({
         corridor: 'Diğer',
         color: '#6366F1',
       };
-      const pct = Number(((item.count / total) * 100).toFixed(1));
+      const count = countMap[key] || 0;
+      const pct = Number(((count / total) * 100).toFixed(1));
       return {
-        ...item,
         ...meta,
-        displayName: lang === 'ru' ? translateVal(meta.displayName) : meta.displayName,
+        label: meta.displayName,
+        count,
+        displayName: lang === 'ru' ? meta.displayNameRu : meta.displayName,
         displayCorridor: getCorridorName(meta.corridor),
         pct,
       };
@@ -216,6 +301,15 @@ export default function WorldDemographicsMap({
     selectedCorridor === 'all'
       ? mappedCountries
       : mappedCountries.filter((c) => c.corridor.includes(selectedCorridor));
+
+  // Sequential pulsing live indicator animation: pulses through countries one by one
+  React.useEffect(() => {
+    if (filteredCountries.length === 0) return;
+    const interval = setInterval(() => {
+      setActivePulseIndex((prev) => (prev + 1) % filteredCountries.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [filteredCountries.length]);
 
   const hoveredCountry = mappedCountries.find((c) => c.key === hoveredCountryKey);
 
@@ -254,7 +348,7 @@ export default function WorldDemographicsMap({
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-normal">
       {/* Real Geopolitical Eurasia & World Map Canvas */}
       <div className="bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-card p-6 overflow-hidden relative">
         {/* Header Bar with Corridor Filters */}
@@ -264,18 +358,18 @@ export default function WorldDemographicsMap({
               <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-600 dark:text-teal-400 flex items-center justify-center shadow-xs">
                 <Globe className="w-4 h-4" />
               </div>
-              <h2 className="font-bold text-base text-slate-900 dark:text-white tracking-tight">
+              <h2 className="text-base text-slate-900 dark:text-white tracking-tight font-normal">
                 {lang === 'ru'
                   ? 'Интерактивная карта распределения персонала по Евразии'
                   : 'Avrasya & Küresel İşgücü Dağılım Haritası'}
               </h2>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
+              <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
                 {lang === 'ru'
-                  ? `12 стран • ${mappedCountries.reduce((s, c) => s + c.count, 0).toLocaleString('ru-RU')} чел.`
-                  : `12 Kaynak Ülke • ${mappedCountries.reduce((s, c) => s + c.count, 0).toLocaleString('tr-TR')} Kişi`}
+                  ? `${mappedCountries.length} стран • ${mappedCountries.reduce((s, c) => s + c.count, 0).toLocaleString('ru-RU')} чел.`
+                  : `${mappedCountries.length} Kaynak Ülke • ${mappedCountries.reduce((s, c) => s + c.count, 0).toLocaleString('tr-TR')} Kişi`}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-normal">
               {lang === 'ru'
                 ? 'Реальные векторные флаги, точные географические координаты и соединительные линии.'
                 : 'Gerçek vektör bayraklar, merkezlenmiş ülke koordinatları ve bağlantı çizgileriyle ayrıştırılmış ferah harita.'}
@@ -283,14 +377,14 @@ export default function WorldDemographicsMap({
           </div>
 
           {/* Corridor Filter Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 dark:bg-slate-800/70 p-1.5 rounded-2xl border border-slate-200/70 dark:border-slate-700/60">
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 dark:bg-slate-800/70 p-1.5 rounded-2xl border border-slate-200/70 dark:border-slate-700/60 font-normal">
             {corridors.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSelectedCorridor(c.id)}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
+                className={`px-2.5 py-1 text-xs rounded-xl transition-all cursor-pointer font-normal ${
                   selectedCorridor === c.id
-                    ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-2xs font-bold'
+                    ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-2xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
@@ -301,7 +395,7 @@ export default function WorldDemographicsMap({
         </div>
 
         {/* Map Container: Adaptive Light Mode & Dark Mode Cartographic Canvas */}
-        <div className="relative w-full aspect-[16/9] min-h-[400px] max-h-[620px] mt-4 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-gradient-to-br from-[#e8f2fa] via-[#f2f8fd] to-[#dfeaf5] dark:from-[#0f172a] dark:via-[#111c33] dark:to-[#090f1d] select-none">
+        <div className="relative w-full aspect-[16/9] min-h-[400px] max-h-[620px] mt-4 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-gradient-to-br from-[#e8f2fa] via-[#f2f8fd] to-[#dfeaf5] dark:from-[#0f172a] dark:via-[#111c33] dark:to-[#090f1d] select-none font-normal">
           {/* Light Mode Geopolitical Eurasia Map Image */}
           <img
             src="/images/eurasia_map_light.jpg"
@@ -330,7 +424,7 @@ export default function WorldDemographicsMap({
           >
             <defs>
               <filter id="mapLineGlow" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="0.3" result="blur" />
+                <feGaussianBlur stdDeviation="0.25" result="blur" />
                 <feMerge>
                   <feMergeNode in="blur" />
                   <feMergeNode in="SourceGraphic" />
@@ -338,30 +432,21 @@ export default function WorldDemographicsMap({
               </filter>
             </defs>
 
-            {mappedCountries.map((c) => {
+            {filteredCountries.map((c, idx) => {
               const isHovered = hoveredCountryKey === c.key;
-              const hasOffset = Math.hypot(c.badgeX - c.anchorX, c.badgeY - c.anchorY) > 1.2;
+              const isPulsing = activePulseIndex === idx;
+              const hasOffset = Math.hypot(c.badgeX - c.anchorX, c.badgeY - c.anchorY) > 0.8;
 
               return (
                 <g key={`leader-line-${c.key}`}>
-                  {/* Coğrafi Ülke Merkezindeki Radar Noktası */}
+                  {/* Coğrafi Ülke Merkezindeki Minik Zarif Nokta (Büyük Yuvarlaklar ve Ping Kaldırıldı) */}
                   <circle
                     cx={c.anchorX}
                     cy={c.anchorY}
-                    r={isHovered ? 1.3 : 0.85}
+                    r={isHovered ? 0.45 : isPulsing ? 0.4 : 0.3}
                     fill={c.color}
-                    className="transition-all duration-200"
-                  />
-                  <circle
-                    cx={c.anchorX}
-                    cy={c.anchorY}
-                    r={isHovered ? 2.4 : 1.6}
-                    fill="none"
-                    stroke={c.color}
-                    strokeWidth="0.25"
-                    opacity={isHovered ? 0.95 : 0.55}
-                    className="animate-ping"
-                    style={{ transformOrigin: `${c.anchorX}% ${c.anchorY}%` }}
+                    opacity={isHovered || isPulsing ? 0.95 : 0.75}
+                    className="transition-all duration-300"
                   />
 
                   {/* Bağlantı Çizgisi (Leader Line) */}
@@ -374,8 +459,8 @@ export default function WorldDemographicsMap({
                         x2={c.badgeX}
                         y2={c.badgeY}
                         stroke={c.color}
-                        strokeWidth={isHovered ? 0.7 : 0.35}
-                        opacity={isHovered ? 0.6 : 0.28}
+                        strokeWidth={isHovered || isPulsing ? 0.5 : 0.25}
+                        opacity={isHovered ? 0.55 : isPulsing ? 0.4 : 0.2}
                         filter="url(#mapLineGlow)"
                       />
                       {/* Ön plan kesikli şık hat */}
@@ -385,16 +470,17 @@ export default function WorldDemographicsMap({
                         x2={c.badgeX}
                         y2={c.badgeY}
                         stroke={c.color}
-                        strokeWidth={isHovered ? 0.45 : 0.26}
-                        strokeDasharray={isHovered ? 'none' : '0.8 0.6'}
-                        opacity={isHovered ? 1 : 0.75}
+                        strokeWidth={isHovered || isPulsing ? 0.35 : 0.2}
+                        strokeDasharray={isHovered || isPulsing ? 'none' : '0.8 0.6'}
+                        opacity={isHovered || isPulsing ? 1 : 0.7}
                       />
-                      {/* Rozet bağlantı noktası */}
+                      {/* Rozet bağlantı noktası (Çok ufak) */}
                       <circle
                         cx={c.badgeX}
                         cy={c.badgeY}
-                        r={isHovered ? 0.6 : 0.4}
+                        r={isHovered ? 0.35 : 0.25}
                         fill={c.color}
+                        opacity={0.8}
                       />
                     </>
                   )}
@@ -403,9 +489,10 @@ export default function WorldDemographicsMap({
             })}
           </svg>
 
-          {/* INTERACTIVE CALLOUT BADGES (Gerçek SVG Bayraklar + Ayrıştırılmış Rozetler) */}
-          {mappedCountries.map((country) => {
+          {/* INTERACTIVE CALLOUT BADGES (Sırayla Büyüyüp Parıldayan Canlı Gösterge Animasyonu) */}
+          {filteredCountries.map((country, idx) => {
             const isHovered = hoveredCountryKey === country.key;
+            const isPulsing = activePulseIndex === idx;
 
             return (
               <div
@@ -413,10 +500,10 @@ export default function WorldDemographicsMap({
                 style={{
                   left: `${country.badgeX}%`,
                   top: `${country.badgeY}%`,
-                  transform: 'translate(-50%, -50%)',
+                  transform: `translate(-50%, -50%) scale(${isHovered ? 1.12 : isPulsing ? 1.1 : 1})`,
                 }}
-                className={`absolute z-20 transition-all duration-200 cursor-pointer select-none ${
-                  isHovered ? 'z-30 scale-108' : ''
+                className={`absolute z-20 transition-all duration-500 ease-out cursor-pointer select-none font-normal ${
+                  isHovered ? 'z-30' : isPulsing ? 'z-25' : ''
                 }`}
                 onClick={() => onNavigateToPersonnel('nationality', country.displayName || country.label)}
                 onMouseEnter={() => setHoveredCountryKey(country.key)}
@@ -424,24 +511,31 @@ export default function WorldDemographicsMap({
               >
                 {/* Modern High-Contrast Rozet Çipi */}
                 <div
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-lg border backdrop-blur-md transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-md border backdrop-blur-md transition-all duration-300 ${
                     isHovered
-                      ? 'bg-white text-slate-900 border-teal-500 ring-2 ring-teal-400/50 shadow-2xl scale-105'
+                      ? 'bg-white text-slate-900 border-teal-500 ring-2 ring-teal-400/60 shadow-xl'
+                      : isPulsing
+                      ? 'bg-white text-slate-950 border-teal-400 ring-2 ring-teal-400/40 shadow-lg dark:bg-slate-900 dark:text-white dark:border-teal-400'
                       : 'bg-white/95 text-slate-900 border-slate-300/80 hover:border-teal-400 hover:bg-white dark:bg-slate-900/90 dark:text-white dark:border-white/20 dark:hover:border-teal-400/80 dark:hover:bg-slate-900'
                   }`}
                 >
-                  {/* Gerçek Vektör Ülke Bayrağı (Windows/Web/Mobil Her Cihazda Renkli Görünür) */}
+                  {/* Gerçek Vektör Ülke Bayrağı */}
                   <img
                     src={`/flags/${country.flagCode}.svg`}
                     alt={country.displayName}
                     className="w-4 h-2.5 object-cover rounded-2xs shadow-2xs shrink-0 border border-slate-200/60"
                   />
-                  <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
+                  <span className="text-[11px] font-normal tracking-tight whitespace-nowrap">
                     {country.displayName}:
                   </span>
                   <span
-                    className="text-[11px] font-extrabold whitespace-nowrap"
-                    style={{ color: isHovered ? '#0f766e' : country.color }}
+                    className={`text-[11px] whitespace-nowrap transition-all duration-300 ${
+                      isPulsing ? 'scale-105' : ''
+                    }`}
+                    style={{
+                      color: isHovered || isPulsing ? '#0f766e' : country.color,
+                      fontWeight: 400,
+                    }}
                   >
                     {country.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
                   </span>

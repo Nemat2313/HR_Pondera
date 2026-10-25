@@ -19,6 +19,8 @@ import {
   FileCheck2,
   Bot,
   Activity,
+  Smartphone,
+  Scale,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -109,6 +111,27 @@ export default function Sidebar({
       icon: Activity,
       badge: lang === 'ru' ? 'Live' : 'Canlı',
       badgeColor: 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/50 dark:border-rose-700/50',
+    },
+    {
+      id: 'powerise_tech',
+      label: t('nav_powerise_tech'),
+      icon: Smartphone,
+      badge: lang === 'ru' ? 'Видео' : 'Video',
+      badgeColor: 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/50 dark:border-rose-700/50',
+    },
+    {
+      id: 'official_real',
+      label: t('nav_official_real'),
+      icon: Scale,
+      badge: lang === 'ru' ? 'Аудит' : 'Denetim',
+      badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
+    },
+    {
+      id: 'quotas',
+      label: t('nav_quotas'),
+      icon: Briefcase,
+      badge: lang === 'ru' ? 'Квота' : 'Kota',
+      badgeColor: 'bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-700/50',
     },
     {
       id: 'sites',
