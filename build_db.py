@@ -7,6 +7,13 @@ import re
 import shutil
 import gzip
 from datetime import datetime, date
+import sys
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 EXCEL_PATH = r"C:\Users\nemat\Downloads\tum liste 18 10 2026.xlsx"
 DB_PATH = r"pondera_hr.db"
@@ -231,6 +238,11 @@ def build_database():
     conn = sqlite3.connect(temp_db_path)
     cursor = conn.cursor()
 
+    cursor.execute("PRAGMA synchronous = OFF;")
+    cursor.execute("PRAGMA journal_mode = MEMORY;")
+    cursor.execute("PRAGMA cache_size = 200000;")
+    cursor.execute("PRAGMA temp_store = MEMORY;")
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS system_info (
         key TEXT PRIMARY KEY,
@@ -298,21 +310,6 @@ def build_database():
         all_data_json TEXT
     );
     """)
-
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_genel_durum ON personnel(genel_durum);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_region ON personnel(region);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_proje ON personnel(proje_adi);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_departman ON personnel(departman);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_kategori ON personnel(kategori);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_uyruk ON personnel(uyruk);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_endirekt ON personnel(endirekt_direkt);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_giris_tarih ON personnel(ise_giris_tarihi);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_cikis_tarih ON personnel(cikis_tarihi);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_sicil ON personnel(sicil_no);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_rhi ON personnel(rhi_id);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_saren ON personnel(saren_no);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_ad_soyad ON personnel(ad_soyad);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_guncel_durum ON personnel(guncel_durum);")
 
     headers = []
     col_map = {}
@@ -560,6 +557,23 @@ def build_database():
         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, rows_to_insert)
         conn.commit()
+
+    # Create indexes after bulk insert for maximum speed
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_genel_durum ON personnel(genel_durum);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_region ON personnel(region);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_proje ON personnel(proje_adi);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_departman ON personnel(departman);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_kategori ON personnel(kategori);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_uyruk ON personnel(uyruk);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_endirekt ON personnel(endirekt_direkt);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_giris_tarih ON personnel(ise_giris_tarihi);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_cikis_tarih ON personnel(cikis_tarihi);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_sicil ON personnel(sicil_no);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_rhi ON personnel(rhi_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_saren ON personnel(saren_no);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_ad_soyad ON personnel(ad_soyad);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_p_guncel_durum ON personnel(guncel_durum);")
+    conn.commit()
 
     # Save system info
     cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)", (DATA_FRESHNESS,))

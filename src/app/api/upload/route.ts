@@ -11,9 +11,11 @@ const execFilePromise = util.promisify(execFile);
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 const PYTHON_BUILD_INLINE = [
   'import sys, build_db',
+  'if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8", errors="replace")',
   'build_db.EXCEL_PATH = sys.argv[1]',
   'build_db.DATA_FRESHNESS = sys.argv[2]',
   'build_db.SOURCE_FILE = sys.argv[3]',
@@ -69,8 +71,8 @@ export async function POST(request: Request) {
     try {
       await execFilePromise(primaryCmd, pyArgs, {
         cwd: process.cwd(),
-        timeout: 180000,
-        maxBuffer: 10 * 1024 * 1024,
+        timeout: 300000,
+        maxBuffer: 20 * 1024 * 1024,
       });
     } catch (err: any) {
       buildError = err?.stderr || err?.message || String(err);
@@ -78,8 +80,8 @@ export async function POST(request: Request) {
         const fallbackCmd = primaryCmd === 'python3' ? 'python' : 'python3';
         await execFilePromise(fallbackCmd, pyArgs, {
           cwd: process.cwd(),
-          timeout: 180000,
-          maxBuffer: 10 * 1024 * 1024,
+          timeout: 300000,
+          maxBuffer: 20 * 1024 * 1024,
         });
         buildError = null;
       } catch (fallbackErr: any) {
@@ -101,13 +103,20 @@ export async function POST(request: Request) {
     // Invalidate cached database connection so next query immediately loads the updated database
     resetDb();
 
-    // Ensure system_info is updated directly in SQLite
+    // Ensure system_info is updated directly in SQLite & read record counts
     const dbPath = path.join(process.cwd(), 'pondera_hr.db');
+    let totalRecords = '0';
+    let activeRecords = '0';
     try {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(dbPath);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)").run(safeFreshness);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', ?)").run(safeFileName);
+      const rows = db.prepare("SELECT key, value FROM system_info WHERE key IN ('total_records', 'active_records')").all() as { key: string; value: string }[];
+      for (const r of rows) {
+        if (r.key === 'total_records') totalRecords = r.value;
+        if (r.key === 'active_records') activeRecords = r.value;
+      }
       try { db.close(); } catch {}
     } catch {}
 
@@ -126,6 +135,8 @@ export async function POST(request: Request) {
       dataFreshness: safeFreshness,
       fileName: file.name,
       fileSize: file.size,
+      totalRecords,
+      activeRecords,
     });
   } catch {
     return NextResponse.json(
