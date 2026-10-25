@@ -465,9 +465,9 @@ export default function PoweriseInnovationView() {
           {/* TAB 3: MOBILE APP ID CARD (NFC & BARCODE) */}
           {activeSubTab === 'mobile_id' && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-                {/* Left: Real Mobile Reader Screenshot */}
-                <div className="lg:col-span-6 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131C31] shadow-xl p-5 flex flex-col justify-between space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Left: Real Mobile Reader Screenshot - Full Phone View */}
+                <div className="lg:col-span-5 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131C31] shadow-xl p-5 flex flex-col justify-between space-y-4">
                   <div>
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                       <div className="flex items-center gap-2">
@@ -476,18 +476,21 @@ export default function PoweriseInnovationView() {
                           {lang === 'ru' ? 'Интерфейс мобильного считывателя' : 'Mobil Okuyucu Arayüzü (Powerise App)'}
                         </span>
                       </div>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-mono">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono">
                         v3.2 iOS & Android
                       </span>
                     </div>
 
-                    <div className="mt-3 relative aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900">
-                      <Image
-                        src="/images/powerise/powerise_mobile_nfc.png"
-                        alt="Powerise Mobil NFC ve Barkod Ekranı"
-                        fill
-                        className="object-cover object-top"
-                      />
+                    <div className="mt-4 flex justify-center p-3 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-800/80">
+                      <div className="relative w-full max-w-[320px] aspect-[471/1024] rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-700 bg-white">
+                        <Image
+                          src="/images/powerise/powerise_mobile_nfc.png"
+                          alt="Powerise Mobil NFC ve Barkod Ekranı"
+                          fill
+                          className="object-contain"
+                          priority
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -502,7 +505,7 @@ export default function PoweriseInnovationView() {
                 </div>
 
                 {/* Right: Mobile Features Breakdown */}
-                <div className="lg:col-span-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex flex-col justify-between space-y-4">
+                <div className="lg:col-span-7 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex flex-col justify-between space-y-4">
                   <div>
                     <span className="text-xs uppercase tracking-wider text-cyan-600 dark:text-cyan-400 font-normal">
                       {lang === 'ru' ? 'Двойной режим считывания' : 'Çift Modlu Okuma Altyapısı'}
@@ -521,12 +524,12 @@ export default function PoweriseInnovationView() {
 
                   <div className="space-y-3">
                     <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-cyan-600 text-white flex items-center justify-center shrink-0">
+                      <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
                         <Smartphone className="w-4 h-4" />
                       </div>
                       <div>
                         <h4 className="text-xs text-slate-900 dark:text-white font-normal">
-                          {lang === 'ru' ? 'NFC Mifare & RFID бейджи' : 'NFC Mifare & RFID Yaka Kartı Desteği'}
+                          {lang === 'ru' ? 'NFC Taramayı Başlat (Mifare & RFID)' : 'NFC Taramayı Başlat (Mifare & RFID Yaka Kartı)'}
                         </h4>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                           {lang === 'ru'
@@ -542,7 +545,7 @@ export default function PoweriseInnovationView() {
                       </div>
                       <div>
                         <h4 className="text-xs text-slate-900 dark:text-white font-normal">
-                          {lang === 'ru' ? 'Камерное распознавание QR и Штрихкодов' : 'Kamera ile 1D Barkod ve 2D QR Kod Tarama'}
+                          {lang === 'ru' ? 'Barkod Taramayı Başlat (1D/2D QR)' : 'Barkod Taramayı Başlat (Kamera ile 1D Barkod ve 2D QR)'}
                         </h4>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                           {lang === 'ru'
@@ -553,17 +556,49 @@ export default function PoweriseInnovationView() {
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-cyan-600 text-white flex items-center justify-center shrink-0">
+                        <Cpu className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                          {lang === 'ru' ? 'Офлайн-режим и локальная SQLite' : 'İnternetsiz Mod ve Senkronizasyon'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                          {lang === 'ru'
+                            ? 'Кнопка "Синхронизировать все" отправляет накопленные записи на сервер при подключении к сети.'
+                            : '"Tümünü Senkronize Et" butonuyla internet olmayan bölgelerdeki yoklamalar tek tıkla merkeze aktarılır.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 flex items-start gap-3">
                       <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
                         <Clock className="w-4 h-4" />
                       </div>
                       <div>
                         <h4 className="text-xs text-slate-900 dark:text-white font-normal">
-                          {lang === 'ru' ? '2 сек автоматическая фиксация (Явка)' : '2 sn Otomatik Yoklama Kaydı (VAR)'}
+                          {lang === 'ru' ? '2 сек автоматическая фиксация (Явка / VAR)' : '2 sn Otomatik Yoklama Kaydı (VAR)'}
                         </h4>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                           {lang === 'ru'
                             ? 'Карта считывается, статус "ВАР (Я)" записывается, и экран готов для следующего сотрудника.'
                             : 'Kart okutulduğu an VAR (Я) damgası basılır ve beklemeden bir sonraki işçi taranır.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                          {lang === 'ru' ? 'Роли Пуантера и Бригадира (1.K / 2.K)' : 'Puantör Modu (Yoklama) & Formen Ayrımı'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                          {lang === 'ru'
+                            ? 'Разделение режимов 1-го утреннего контроля мастера и 2-го вечернего обхода независимого пуантера.'
+                            : 'Formen kendi ekibini yoklarken bağımsız puantör 1. ve 2. kontrollerle tüm şantiyeyi teyit eder.'}
                         </p>
                       </div>
                     </div>
