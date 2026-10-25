@@ -144,7 +144,7 @@ export default function CampManagementView() {
               <div className="text-[10px] text-slate-400 font-normal">
                 {lang === 'ru' ? 'Всего мест' : 'Toplam Yatak'}
               </div>
-              <div className="text-base text-teal-400 font-normal">4.850 Yatak</div>
+              <div className="text-base text-teal-400 font-normal">4.850 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
             </div>
             <div className="px-3.5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-800/60 text-right">
               <div className="text-[10px] text-emerald-400 font-normal">
@@ -171,15 +171,21 @@ export default function CampManagementView() {
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
             <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700 text-white text-[11px] font-normal flex items-center gap-1.5 shadow-sm">
               <Building className="w-3.5 h-3.5 text-teal-400" />
-              <span>3D Blok & Oda Doluluk Heatmap</span>
+              <span>{lang === 'ru' ? '3D-тепловая карта блоков и комнат' : '3D Blok & Oda Doluluk Heatmap'}</span>
             </div>
             <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white">
               <div>
-                <p className="text-xs text-slate-200 font-normal">Konteyner ve Prefabrik Kamp Yerleşimi</p>
-                <p className="text-[10.5px] text-slate-400 font-normal">Ust-Luga, Svobodny ve Kazan kamplarında tek tıkla oda ve yatak sorgulama</p>
+                <p className="text-xs text-slate-200 font-normal">
+                  {lang === 'ru' ? 'Модульные и контейнерные городки' : 'Konteyner ve Prefabrik Kamp Yerleşimi'}
+                </p>
+                <p className="text-[10.5px] text-slate-400 font-normal">
+                  {lang === 'ru'
+                    ? 'Заселение и проверка свободных комнат на объектах Усть-Луга, Свободный и Казань'
+                    : 'Ust-Luga, Svobodny ve Kazan kamplarında tek tıkla oda ve yatak sorgulama'}
+                </p>
               </div>
               <span className="text-[11px] px-2.5 py-1 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-500/30 font-normal">
-                Canlı Entegrasyon
+                {lang === 'ru' ? 'Живая интеграция' : 'Canlı Entegrasyon'}
               </span>
             </div>
           </div>
@@ -190,14 +196,18 @@ export default function CampManagementView() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs uppercase tracking-wider text-teal-600 dark:text-teal-400 font-normal">
-                Akıllı Kamp Lojistiği
+                {lang === 'ru' ? 'Умная логистика городков' : 'Akıllı Kamp Lojistiği'}
               </span>
             </div>
             <h3 className="text-lg text-slate-900 dark:text-white font-normal leading-snug">
-              Binlerce Çalışanın Konaklama ve Hijyen Süreçlerini Kusursuz Yönetin
+              {lang === 'ru'
+                ? 'Безупречное управление проживанием тысяч строителей'
+                : 'Binlerce Çalışanın Konaklama ve Hijyen Süreçlerini Kusursuz Yönetin'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed font-normal">
-              Şantiyeye yeni gelen kafilelerin kamp kayıtları saniyeler içinde tamamlanır. Boş yataklar ve oda konforu otomatik optimize edilir:
+              {lang === 'ru'
+                ? 'Регистрация прибывающих групп занимает считанные секунды. Автоматическая оптимизация свободных коек:'
+                : 'Şantiyeye yeni gelen kafilelerin kamp kayıtları saniyeler içinde tamamlanır. Boş yataklar ve oda konforu otomatik optimize edilir:'}
             </p>
           </div>
 
@@ -207,9 +217,13 @@ export default function CampManagementView() {
                 1
               </div>
               <div>
-                <h4 className="text-xs text-slate-900 dark:text-white font-normal">NFC Pasaportla Otomatik Check-in</h4>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                  {lang === 'ru' ? 'Заселение по NFC паспорту' : 'NFC Pasaportla Otomatik Check-in'}
+                </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                  İşçi kamp kapısına geldiğinde telefon NFC&apos;sine pasaportunu dokundurur; eBA siciliyle eşleşip oda anahtarı tahsis edilir.
+                  {lang === 'ru'
+                    ? 'Рабочий прикладывает паспорт к NFC телефону коменданта; система сверяет данные в eBA и выдает комнату.'
+                    : 'İşçi kamp kapısına geldiğinde telefon NFC’sine pasaportunu dokundurur; eBA siciliyle eşleşip oda anahtarı tahsis edilir.'}
                 </p>
               </div>
             </div>
@@ -219,9 +233,13 @@ export default function CampManagementView() {
                 2
               </div>
               <div>
-                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Vardiya & Ekip Uyum Algoritması</h4>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                  {lang === 'ru' ? 'Алгоритм совместимости смен и бригад' : 'Vardiya & Ekip Uyum Algoritması'}
+                </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                  Gece vardiyasında çalışan işçilerle gündüz çalışanlar aynı odaya verilmez; dinlenme kalitesi ve iş güvenliği maksimize edilir.
+                  {lang === 'ru'
+                    ? 'Сотрудники ночной и дневной смен не заселяются в одну комнату, что гарантирует полноценный отдых.'
+                    : 'Gece vardiyasında çalışan işçilerle gündüz çalışanlar aynı odaya verilmez; dinlenme kalitesi ve iş güvenliği maksimize edilir.'}
                 </p>
               </div>
             </div>
@@ -231,17 +249,23 @@ export default function CampManagementView() {
                 3
               </div>
               <div>
-                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Boş Yatak & Çıkış Tahliye Takibi</h4>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                  {lang === 'ru' ? 'Освобождение коек при увольнении' : 'Boş Yatak & Çıkış Tahliye Takibi'}
+                </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                  İşten ayrılan personelin lojmandaki yatağı anında düşer, dezenfeksiyon uyarısı verilir ve yeni gelen işçiye açılır.
+                  {lang === 'ru'
+                    ? 'При оформлении увольнения место в городке сразу переходит в статус "Санобработка" и готовится для нового рабочего.'
+                    : 'İşten ayrılan personelin lojmandaki yatağı anında düşer, dezenfeksiyon uyarısı verilir ve yeni gelen işçiye açılır.'}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Powerise Obshchezhitiye Kütüphanesi</span>
-            <span className="text-teal-600 dark:text-teal-400 font-normal">Satın Alınabilir Modül</span>
+            <span>{lang === 'ru' ? 'Библиотека Powerise Общежития' : 'Powerise Obshchezhitiye Kütüphanesi'}</span>
+            <span className="text-teal-600 dark:text-teal-400 font-normal">
+              {lang === 'ru' ? 'Коммерческий модуль' : 'Satın Alınabilir Modül'}
+            </span>
           </div>
         </div>
       </div>
@@ -250,38 +274,46 @@ export default function CampManagementView() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Toplam Yatak Kapasitesi</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'Коечный фонд' : 'Toplam Yatak Kapasitesi'}</span>
             <Bed className="w-4 h-4 text-teal-500" />
           </div>
-          <div className="text-2xl text-slate-900 dark:text-white font-normal">4.850 Yatak</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">3 Ana Şantiye Kamp Alanı</div>
+          <div className="text-2xl text-slate-900 dark:text-white font-normal">4.850 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            {lang === 'ru' ? '3 основных городка' : '3 Ana Şantiye Kamp Alanı'}
+          </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Fiilen Kalan İşçi</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'Фактически проживает' : 'Fiilen Kalan İşçi'}</span>
             <Users className="w-4 h-4 text-emerald-500" />
           </div>
-          <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">4.238 Kişi</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">Aktif Konaklama (%87.4)</div>
+          <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">4.238 {lang === 'ru' ? 'чел.' : 'Kişi'}</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            {lang === 'ru' ? 'Занятость: %87.4' : 'Aktif Konaklama (%87.4)'}
+          </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Anında Rezerve Edilebilir Boş</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'Свободных мест' : 'Anında Rezerve Edilebilir Boş'}</span>
             <DoorClosed className="w-4 h-4 text-indigo-500" />
           </div>
-          <div className="text-2xl text-indigo-600 dark:text-indigo-400 font-normal">528 Yatak</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">Yeni kafileler için hazır</div>
+          <div className="text-2xl text-indigo-600 dark:text-indigo-400 font-normal">528 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            {lang === 'ru' ? 'Готово к приему вахты' : 'Yeni kafileler için hazır'}
+          </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Bakım / Temizlikte</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'На санобработке / Ремонт' : 'Bakım / Temizlikte'}</span>
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl text-amber-600 dark:text-amber-400 font-normal">84 Yatak</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">Rutin hijyen ve tamirat</div>
+          <div className="text-2xl text-amber-600 dark:text-amber-400 font-normal">84 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            {lang === 'ru' ? 'Плановая дезинфекция' : 'Rutin hijyen ve tamirat'}
+          </div>
         </div>
       </div>
 
@@ -293,7 +325,9 @@ export default function CampManagementView() {
               {lang === 'ru' ? 'Реестр комнат и блоков' : 'Kamp Blokları & Örnek Oda Tahsis Listesi'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal">
-              Blok, oda ve kişi bazlı doluluk durumu ve ekip eşleşmeleri
+              {lang === 'ru'
+                ? 'Статус комнат, заполняемость и языковая совместимость бригад'
+                : 'Blok, oda ve kişi bazlı doluluk durumu ve ekip eşleşmeleri'}
             </p>
           </div>
 
@@ -307,7 +341,7 @@ export default function CampManagementView() {
                     : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
-                Tüm Bloklar
+                {lang === 'ru' ? 'Все блоки' : 'Tüm Bloklar'}
               </button>
               <button
                 onClick={() => setSelectedBlock('A Blok')}
@@ -317,7 +351,7 @@ export default function CampManagementView() {
                     : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
-                Ust-Luga Kampı
+                {lang === 'ru' ? 'Городок Усть-Луга' : 'Ust-Luga Kampı'}
               </button>
               <button
                 onClick={() => setSelectedBlock('C Blok')}
@@ -327,7 +361,7 @@ export default function CampManagementView() {
                     : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
-                Kazan Kampı
+                {lang === 'ru' ? 'Городок Казань' : 'Kazan Kampı'}
               </button>
             </div>
 
@@ -335,7 +369,7 @@ export default function CampManagementView() {
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Oda no, blok, şantiye..."
+                placeholder={lang === 'ru' ? 'Комната, блок, объект...' : 'Oda no, blok, şantiye...'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white focus:outline-hidden font-normal"
@@ -368,15 +402,27 @@ export default function CampManagementView() {
                       : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
                   }`}
                 >
-                  {room.status}
+                  {room.status === 'Dolu'
+                    ? lang === 'ru'
+                      ? 'Занята'
+                      : 'Dolu'
+                    : room.status === 'Müsait'
+                    ? lang === 'ru'
+                      ? 'Свободна'
+                      : 'Müsait'
+                    : lang === 'ru'
+                    ? 'Санобработка'
+                    : 'Bakım / Dezenfeksiyon'}
                 </span>
               </div>
 
               {/* Progress & Capacity */}
               <div className="space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                  <span>Kapasite Doluluğu</span>
-                  <span>{room.occupied} / {room.capacity} Yatak</span>
+                  <span>{lang === 'ru' ? 'Заполняемость' : 'Kapasite Doluluğu'}</span>
+                  <span>
+                    {room.occupied} / {room.capacity} {lang === 'ru' ? 'мест' : 'Yatak'}
+                  </span>
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                   <div
@@ -407,7 +453,9 @@ export default function CampManagementView() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-[10px] text-slate-400 italic font-normal">Kayıtlı sakin yok (Boş oda)</div>
+                  <div className="text-[10px] text-slate-400 italic font-normal">
+                    {lang === 'ru' ? 'Нет жильцов (Свободная комната)' : 'Kayıtlı sakin yok (Boş oda)'}
+                  </div>
                 )}
               </div>
             </div>

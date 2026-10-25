@@ -110,7 +110,7 @@ export default function InvitationsTrackingView() {
                     : 'Devlet Davetiyeleri Takip & Telegram Bildirim Merkezi'}
                 </h1>
                 <span className="px-2 py-0.5 text-[11px] rounded bg-sky-500/30 text-sky-200 border border-sky-400/30 font-normal">
-                  Zahid Bey Taskı • Planlanan İş
+                  {lang === 'ru' ? 'Задача Захида • В плане' : 'Zahid Bey Taskı • Planlanan İş'}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1 max-w-2xl font-normal leading-relaxed">
@@ -136,7 +136,12 @@ export default function InvitationsTrackingView() {
         <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-xs text-slate-300 flex items-start gap-2.5 font-normal">
           <Info className="w-4 h-4 text-sky-300 shrink-0 mt-0.5" />
           <div>
-            <strong className="text-white font-normal">Bu modül nasıl çalışır?</strong> MVD onayladığı her yabancı uzman davetiyesini e-posta ile iletir. Sistem bu e-postayı 10 saniye içinde okur, ekteki resmi PDF davetiyeyi indirip personelin kartına arşivler ve İK yöneticilerinin bulunduğu Telegram kanalına otomatik bildirim gönderir.
+            <strong className="text-white font-normal">
+              {lang === 'ru' ? 'Как работает этот модуль?' : 'Bu modül nasıl çalışır?'}
+            </strong>{' '}
+            {lang === 'ru'
+              ? 'МВД направляет электронные приглашения для иностранных специалистов по e-mail. Система автоматически считывает письмо в течение 10 секунд, скачивает прикрепленный PDF, сохраняет в профиле сотрудника и отправляет уведомление в Telegram-канал HR.'
+              : 'MVD onayladığı her yabancı uzman davetiyesini e-posta ile iletir. Sistem bu e-postayı 10 saniye içinde okur, ekteki resmi PDF davetiyeyi indirip personelin kartına arşivler ve İK yöneticilerinin bulunduğu Telegram kanalına otomatik bildirim gönderir.'}
           </div>
         </div>
       </div>
@@ -145,50 +150,66 @@ export default function InvitationsTrackingView() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-normal">
-            <span>Bekleyen Başvurular</span>
+            <span>{lang === 'ru' ? 'Заявления на рассмотрении' : 'Bekleyen Başvurular'}</span>
             <Clock className="w-3.5 h-3.5 text-amber-500" />
           </div>
-          <div className="text-2xl text-slate-900 dark:text-white font-normal">245 <span className="text-xs text-slate-400">Kişi</span></div>
-          <p className="text-[11px] text-slate-500 font-normal">MVD değerlendirme sürecinde</p>
+          <div className="text-2xl text-slate-900 dark:text-white font-normal">
+            245 <span className="text-xs text-slate-400">{lang === 'ru' ? 'чел.' : 'Kişi'}</span>
+          </div>
+          <p className="text-[11px] text-slate-500 font-normal">
+            {lang === 'ru' ? 'В обработке МВД' : 'MVD değerlendirme sürecinde'}
+          </p>
         </div>
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-normal">
-            <span>Onaylanan & Maili Gelen</span>
+            <span>{lang === 'ru' ? 'Получено по почте МВД' : 'Onaylanan & Maili Gelen'}</span>
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
           </div>
-          <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">184 <span className="text-xs text-emerald-600">Davetiye</span></div>
-          <p className="text-[11px] text-slate-500 font-normal">Bu ay e-posta ile teslim alındı</p>
+          <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">
+            184 <span className="text-xs text-emerald-600">{lang === 'ru' ? 'приглашений' : 'Davetiye'}</span>
+          </div>
+          <p className="text-[11px] text-slate-500 font-normal">
+            {lang === 'ru' ? 'Успешно получено в этом месяце' : 'Bu ay e-posta ile teslim alındı'}
+          </p>
         </div>
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-normal">
-            <span>Telegram Bildirimi</span>
+            <span>{lang === 'ru' ? 'Отправлено в Telegram' : 'Telegram Bildirimi'}</span>
             <Send className="w-3.5 h-3.5 text-sky-500" />
           </div>
-          <div className="text-2xl text-sky-600 dark:text-sky-400 font-normal">183 <span className="text-xs text-sky-600">(%99.5)</span></div>
-          <p className="text-[11px] text-slate-500 font-normal">İK kanalına anında iletildi</p>
+          <div className="text-2xl text-sky-600 dark:text-sky-400 font-normal">
+            183 <span className="text-xs text-sky-600">(%99.5)</span>
+          </div>
+          <p className="text-[11px] text-slate-500 font-normal">
+            {lang === 'ru' ? 'Мгновенно доставлено в группу HR' : 'İK kanalına anında iletildi'}
+          </p>
         </div>
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-normal">
-            <span>Ortalama Çıkış Süresi</span>
+            <span>{lang === 'ru' ? 'Средний срок выдачи' : 'Ortalama Çıkış Süresi'}</span>
             <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
           </div>
-          <div className="text-2xl text-slate-900 dark:text-white font-normal">18.4 <span className="text-xs text-slate-400">Gün</span></div>
-          <p className="text-[11px] text-slate-500 font-normal">Yasal süre sınırından önce</p>
+          <div className="text-2xl text-slate-900 dark:text-white font-normal">
+            18.4 <span className="text-xs text-slate-400">{lang === 'ru' ? 'дней' : 'Gün'}</span>
+          </div>
+          <p className="text-[11px] text-slate-500 font-normal">
+            {lang === 'ru' ? 'В рамках регламентного срока' : 'Yasal süre sınırından önce'}
+          </p>
         </div>
       </div>
 
       {/* Invitations Table Card */}
-      <div className="p-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-card space-y-4">
+      <div className="p-6 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <h3 className="text-sm text-slate-900 dark:text-white font-normal">
-              Son Gelen Elektronik MVD Davetiyeleri
+              {lang === 'ru' ? 'Реестр электронных приглашений МВД' : 'Son Gelen Elektronik MVD Davetiyeleri'}
             </h3>
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-normal">
-              {filtered.length} Kayıt
+              {filtered.length} {lang === 'ru' ? 'записей' : 'Kayıt'}
             </span>
           </div>
 
@@ -198,50 +219,68 @@ export default function InvitationsTrackingView() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="İsim veya Pasaport Ara..."
-              className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-sky-500 text-slate-800 dark:text-slate-200 font-normal"
+              placeholder={lang === 'ru' ? 'Поиск по ФИО, паспорту, коду...' : 'İsim, pasaport no, davetiye kodu...'}
+              className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white focus:outline-hidden font-normal"
             />
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
-          <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300 font-normal">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-normal">
-              <tr>
-                <th className="py-3 px-4">Personel & Pasaport</th>
-                <th className="py-3 px-4">Şantiye</th>
-                <th className="py-3 px-4">MVD Davetiye No</th>
-                <th className="py-3 px-4">Teslim Tarihi</th>
-                <th className="py-3 px-4">Telegram Bot</th>
-                <th className="py-3 px-4 text-center">Davetiye Belgesi</th>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-normal">
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Сотрудник и Паспорт' : 'Personel & Pasaport'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Гражданство / Объект' : 'Uyruk / Şantiye'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Подача / Выдача' : 'Başvuru / Onay'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Код приглашения МВД' : 'Davetiye Kodu'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Статус Telegram' : 'Telegram Durumu'}</th>
+                <th className="py-2.5 px-3 text-right">{lang === 'ru' ? 'Скачать PDF' : 'İndir'}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-normal">
               {filtered.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                  <td className="py-3 px-4">
+                <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                  <td className="py-3 px-3">
                     <div className="text-slate-900 dark:text-white font-normal">{item.name}</div>
-                    <div className="text-[11px] text-slate-400 font-normal">{item.passport_no} • {item.nationality}</div>
+                    <div className="text-[11px] text-slate-400 font-normal">{item.passport_no}</div>
                   </td>
-                  <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-normal">
-                    {item.site}
+                  <td className="py-3 px-3">
+                    <div className="text-slate-700 dark:text-slate-300 font-normal">{item.nationality}</div>
+                    <div className="text-[11px] text-slate-400 font-normal">{item.site}</div>
                   </td>
-                  <td className="py-3 px-4 font-normal text-sky-700 dark:text-sky-300">
-                    {item.invitation_code}
+                  <td className="py-3 px-3">
+                    <div className="text-slate-700 dark:text-slate-300 font-normal">{item.issued_date}</div>
+                    <div className="text-[11px] text-slate-400 font-normal">
+                      {lang === 'ru' ? 'Подача:' : 'Başvuru:'} {item.application_date}
+                    </div>
                   </td>
-                  <td className="py-3 px-4 text-slate-500 font-normal text-[11px]">
-                    {item.issued_date}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-                      <Send className="w-3 h-3 text-sky-500" />
-                      {item.telegram_status}
+                  <td className="py-3 px-3">
+                    <span className="font-mono text-[11px] text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-normal">
+                      {item.invitation_code}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-center">
+                  <td className="py-3 px-3">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-normal ${
+                        item.telegram_status === 'Gönderildi'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                      }`}
+                    >
+                      <Send className="w-3 h-3" />
+                      {item.telegram_status === 'Gönderildi'
+                        ? lang === 'ru'
+                          ? 'Отправлено'
+                          : 'Gönderildi'
+                        : lang === 'ru'
+                        ? 'В очереди'
+                        : 'Kuyrukta'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3 text-right">
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-[11px] cursor-pointer font-normal transition-colors"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60 text-xs hover:bg-sky-100 transition-colors cursor-pointer font-normal"
                     >
                       <Download className="w-3 h-3" />
                       <span>PDF ({item.pdf_size})</span>

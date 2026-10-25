@@ -36,7 +36,7 @@ interface TicketItem {
   project: string;
   travel_date: string;
   ticket_cost: string;
-  ai_status: 'Tarandı (%99.8)' | 'Kontrol Edildi';
+  ai_status: string;
   ticket_code: string;
 }
 
@@ -47,12 +47,12 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passport_no: 'FA 4210519',
     transport_type: 'flight',
     carrier: 'Uzbekistan Airways (HY-631)',
-    route_from: 'Taşkent (TAS)',
-    route_to: 'St. Petersburg Pulkovo (LED)',
-    project: 'Ust-Luga Gaz Kimya',
+    route_from: 'Ташкент (TAS)',
+    route_to: 'Санкт-Петербург (LED)',
+    project: 'Усть-Луга Комплекс',
     travel_date: '28.10.2026 04:30',
     ticket_cost: '28.450 ₽',
-    ai_status: 'Tarandı (%99.8)',
+    ai_status: '%99.8 OCR',
     ticket_code: 'AER-LED-9021',
   },
   {
@@ -61,12 +61,12 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passport_no: 'Z 8492019',
     transport_type: 'flight',
     carrier: 'Air India / Aeroflot (AI-1945)',
-    route_from: 'Delhi (DEL)',
-    route_to: 'Moskova Şeremetyevo (SVO)',
-    project: 'Kazan Gaz Kimya',
+    route_from: 'Дели (DEL)',
+    route_to: 'Москва Шереметьево (SVO)',
+    project: 'Казань Газ-Химия',
     travel_date: '29.10.2026 12:15',
     ticket_cost: '44.800 ₽',
-    ai_status: 'Tarandı (%99.8)',
+    ai_status: '%99.8 OCR',
     ticket_code: 'AER-SVO-1182',
   },
   {
@@ -74,13 +74,13 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passenger_name: 'SARDORBEK FOZILOV',
     passport_no: 'AA 1209384',
     transport_type: 'train',
-    carrier: 'RZD Sapsan (758A)',
-    route_from: 'Moskova (Leningradsky)',
-    route_to: 'St. Petersburg (Moskovsky)',
-    project: 'Ust-Luga Gaz Kimya',
+    carrier: 'РЖД Сапсан (758A)',
+    route_from: 'Москва (Ленинградский)',
+    route_to: 'Санкт-Петербург (Московский)',
+    project: 'Усть-Луга Комплекс',
     travel_date: '26.10.2026 07:00',
     ticket_cost: '4.850 ₽',
-    ai_status: 'Tarandı (%99.8)',
+    ai_status: '%99.8 OCR',
     ticket_code: 'RZD-SAP-8831',
   },
   {
@@ -88,13 +88,13 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passenger_name: 'BAKYTBEK ASANOV',
     passport_no: 'AC 551920',
     transport_type: 'train',
-    carrier: 'RZD Rossiya (002M)',
-    route_from: 'Moskova (Yaroslavsky)',
-    route_to: 'Belogorsk / Svobodny',
-    project: 'Svobodny AGHK',
+    carrier: 'РЖД Россия (002M)',
+    route_from: 'Москва (Ярославский)',
+    route_to: 'Белогорск / Свободный',
+    project: 'Свободный АГХК',
     travel_date: '30.10.2026 23:45',
     ticket_cost: '14.200 ₽',
-    ai_status: 'Tarandı (%99.8)',
+    ai_status: '%99.8 OCR',
     ticket_code: 'RZD-RUS-4409',
   },
   {
@@ -102,13 +102,13 @@ const SAMPLE_TICKETS: TicketItem[] = [
     passenger_name: 'SHAVKAT RAKHMATOV',
     passport_no: 'FA 1982736',
     transport_type: 'flight',
-    carrier: 'Aeroflot (SU-1240)',
-    route_from: 'Samara Kurumoch (KUF)',
-    route_to: 'Tyumen Roshchino (TJM)',
-    project: 'Tobolsk DGP-2',
+    carrier: 'Аэрофлот (SU-1240)',
+    route_from: 'Самара (KUF)',
+    route_to: 'Тюмень Рощино (TJM)',
+    project: 'Тобольск ДГП-2',
     travel_date: '27.10.2026 09:20',
     ticket_cost: '11.600 ₽',
-    ai_status: 'Tarandı (%99.8)',
+    ai_status: '%99.8 OCR',
     ticket_code: 'AER-TJM-3301',
   },
 ];
@@ -117,7 +117,6 @@ export default function TravelTicketsAdminView() {
   const { lang } = useLanguage();
   const [filterType, setFilterType] = useState<'all' | 'flight' | 'train'>('all');
   const [search, setSearch] = useState('');
-  const [uploadedCount, setUploadedCount] = useState(148);
 
   const filtered = SAMPLE_TICKETS.filter((t) => {
     if (filterType !== 'all' && t.transport_type !== filterType) return false;
@@ -168,7 +167,7 @@ export default function TravelTicketsAdminView() {
               <div className="text-[10px] text-slate-400 font-normal">
                 {lang === 'ru' ? 'Распознано ИИ' : 'AI ile Ayrıştırılan'}
               </div>
-              <div className="text-base text-indigo-400 font-normal">1.842 Bilet</div>
+              <div className="text-base text-indigo-400 font-normal">1.842 {lang === 'ru' ? 'билетов' : 'Bilet'}</div>
             </div>
             <div className="px-3.5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-800/60 text-right">
               <div className="text-[10px] text-emerald-400 font-normal">
@@ -195,15 +194,21 @@ export default function TravelTicketsAdminView() {
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
             <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700 text-white text-[11px] font-normal flex items-center gap-1.5 shadow-sm">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Yapay Zeka (AI Vision) OCR Motoru</span>
+              <span>{lang === 'ru' ? 'Модуль Vision AI OCR' : 'Yapay Zeka (AI Vision) OCR Motoru'}</span>
             </div>
             <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white">
               <div>
-                <p className="text-xs text-slate-200 font-normal">Toplu PDF ve E-Bilet İçe Aktarma</p>
-                <p className="text-[10.5px] text-slate-400 font-normal">İsim, Pasaport No, Kalkış-Varış, Koltuk, Tutar 1.5 saniyede çıkarılır</p>
+                <p className="text-xs text-slate-200 font-normal">
+                  {lang === 'ru' ? 'Пакетный импорт PDF и электронных билетов' : 'Toplu PDF ve E-Bilet İçe Aktarma'}
+                </p>
+                <p className="text-[10.5px] text-slate-400 font-normal">
+                  {lang === 'ru'
+                    ? 'ФИО, паспорт, маршрут, вагон/место и сумма извлекаются за 1.5 секунды'
+                    : 'İsim, Pasaport No, Kalkış-Varış, Koltuk, Tutar 1.5 saniyede çıkarılır'}
+                </p>
               </div>
               <span className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-normal">
-                Doğrulandı
+                {lang === 'ru' ? 'Проверено' : 'Doğrulandı'}
               </span>
             </div>
           </div>
@@ -214,14 +219,18 @@ export default function TravelTicketsAdminView() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400 font-normal">
-                Powerise İdari İşler Otomasyonu
+                {lang === 'ru' ? 'Автоматизация АХО Powerise' : 'Powerise İdari İşler Otomasyonu'}
               </span>
             </div>
             <h3 className="text-lg text-slate-900 dark:text-white font-normal leading-snug">
-              İdari İşler Departmanında Günler Süren Manuel Bilet Girişine Son
+              {lang === 'ru'
+                ? 'Конец многодневному ручному вводу билетов в отделе АХО'
+                : 'İdari İşler Departmanında Günler Süren Manuel Bilet Girişine Son'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed font-normal">
-              Büyük şantiyelere her ay yüzlerce usta ve mühendis taşınır. İdari işler yetkilisi gelen e-bilet PDF&apos;lerini sisteme sürükleyip bıraktığında AI motoru:
+              {lang === 'ru'
+                ? 'На крупные стройки ежемесячно прибывают сотни специалистов. Специалист АХО просто перетаскивает пачку PDF-билетов в систему, а Vision AI мгновенно обрабатывает их:'
+                : 'Büyük şantiyelere her ay yüzlerce usta ve mühendis taşınır. İdari işler yetkilisi gelen e-bilet PDF’lerini sisteme sürükleyip bıraktığında AI motoru:'}
             </p>
           </div>
 
@@ -231,9 +240,13 @@ export default function TravelTicketsAdminView() {
                 1
               </div>
               <div>
-                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Tek Seferde 100+ PDF Bilet Yükleme</h4>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                  {lang === 'ru' ? 'Загрузка 100+ билетов за раз' : 'Tek Seferde 100+ PDF Bilet Yükleme'}
+                </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                  RZD tren biletleri ve uçak biniş kartları format fark etmeksizin saniyeler içinde ayrıştırılır.
+                  {lang === 'ru'
+                    ? 'Билеты РЖД, посадочные талоны и электронные квитанции любых авиакомпаний распознаются без шаблонов.'
+                    : 'RZD tren biletleri ve uçak biniş kartları format fark etmeksizin saniyeler içinde ayrıştırılır.'}
                 </p>
               </div>
             </div>
@@ -243,9 +256,13 @@ export default function TravelTicketsAdminView() {
                 2
               </div>
               <div>
-                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Personel Sicili & Proje Eşleşmesi</h4>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                  {lang === 'ru' ? 'Связка с табельным номером и проектом' : 'Personel Sicili & Proje Eşleşmesi'}
+                </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                  Bilet üzerindeki pasaport no ve isim Pondera HR veri tabanı ile otomatik eşleşir, doğru şantiyeye zimmetlenir.
+                  {lang === 'ru'
+                    ? 'Паспортные данные из билета автоматически находят сотрудника в Pondera HR и закрепляют билет за его сметой.'
+                    : 'Bilet üzerindeki pasaport no ve isim Pondera HR veri tabanı ile otomatik eşleşir, doğru şantiyeye zimmetlenir.'}
                 </p>
               </div>
             </div>
@@ -255,17 +272,23 @@ export default function TravelTicketsAdminView() {
                 3
               </div>
               <div>
-                <h4 className="text-xs text-slate-900 dark:text-white font-normal">Lojistik Maliyet & Sevk Raporu</h4>
+                <h4 className="text-xs text-slate-900 dark:text-white font-normal">
+                  {lang === 'ru' ? 'Отчет по расходам и переброске' : 'Lojistik Maliyet & Sevk Raporu'}
+                </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                  Şantiye başına seyahat giderleri, harcanan bütçe ve yoldaki personel listesi anlık Excel veya grafik olarak alınır.
+                  {lang === 'ru'
+                    ? 'Расходы на логистику по объектам и списки сотрудников в пути выгружаются в Excel одним кликом.'
+                    : 'Şantiye başına seyahat giderleri, harcanan bütçe ve yoldaki personel listesi anlık Excel olarak alınır.'}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Entegrasyon: 1-2 İş Günü</span>
-            <span className="text-indigo-600 dark:text-indigo-400 font-normal">Satın Alma & Lisanslama İçin Hazır</span>
+            <span>{lang === 'ru' ? 'Внедрение: 1-2 рабочих дня' : 'Entegrasyon: 1-2 İş Günü'}</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-normal">
+              {lang === 'ru' ? 'Готово к лицензированию' : 'Satın Alma & Lisanslama İçin Hazır'}
+            </span>
           </div>
         </div>
       </div>
@@ -274,38 +297,48 @@ export default function TravelTicketsAdminView() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Bu Ay Kesilen Bilet</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'Билетов за месяц' : 'Bu Ay Kesilen Bilet'}</span>
             <Plane className="w-4 h-4 text-indigo-500" />
           </div>
-          <div className="text-2xl text-slate-900 dark:text-white font-normal">342 Adet</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">189 Uçak • 153 Tren (RZD)</div>
+          <div className="text-2xl text-slate-900 dark:text-white font-normal">342 {lang === 'ru' ? 'шт.' : 'Adet'}</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            189 {lang === 'ru' ? 'Авиа' : 'Uçak'} • 153 {lang === 'ru' ? 'Поезд (РЖД)' : 'Tren (RZD)'}
+          </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Seyahat Bütçesi (Ekim)</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'Командировочный бюджет' : 'Seyahat Bütçesi'}</span>
             <CreditCard className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl text-emerald-600 dark:text-emerald-400 font-normal">4.680.200 ₽</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">Bütçe Uyum: %94.2 (Optimum)</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            {lang === 'ru' ? 'Исполнение бюджета: %94.2' : 'Bütçe Uyum: %94.2 (Optimum)'}
+          </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Yoldaki / Transferde</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'В пути / На переброске' : 'Yoldaki / Transferde'}</span>
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl text-amber-600 dark:text-amber-400 font-normal">28 Personel</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">Bugün şantiyeye varış bekleniyor</div>
+          <div className="text-2xl text-amber-600 dark:text-amber-400 font-normal">28 {lang === 'ru' ? 'чел.' : 'Personel'}</div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            {lang === 'ru' ? 'Прибытие ожидается сегодня' : 'Bugün şantiyeye varış bekleniyor'}
+          </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">En Çok Sevk Alan Saha</span>
+            <span className="text-xs font-normal">{lang === 'ru' ? 'Основной пункт назначения' : 'En Çok Sevk Alan Saha'}</span>
             <Building2 className="w-4 h-4 text-teal-500" />
           </div>
-          <div className="text-2xl text-teal-600 dark:text-teal-400 font-normal">Ust-Luga</div>
-          <div className="text-[11px] text-slate-400 mt-1 font-normal">142 Bilet (%41.5 Pay)</div>
+          <div className="text-2xl text-teal-600 dark:text-teal-400 font-normal">
+            {lang === 'ru' ? 'Усть-Луга' : 'Ust-Luga'}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-1 font-normal">
+            142 {lang === 'ru' ? 'билета (доля 41.5%)' : 'Bilet (%41.5 Pay)'}
+          </div>
         </div>
       </div>
 
@@ -317,7 +350,9 @@ export default function TravelTicketsAdminView() {
               {lang === 'ru' ? 'Журнал электронных билетов' : 'Son Ayrıştırılan Biletler & Sevk Listesi'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal">
-              Yapay zeka tarafından PDF&apos;lerden otomatik çıkarılan güzergah, yolcu ve maliyet kayıtları
+              {lang === 'ru'
+                ? 'Маршруты, пассажиры и затраты, автоматически извлеченные ИИ из PDF-файлов'
+                : 'Yapay zeka tarafından PDF’lerden otomatik çıkarılan güzergah, yolcu ve maliyet kayıtları'}
             </p>
           </div>
 
@@ -332,7 +367,7 @@ export default function TravelTicketsAdminView() {
                     : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
-                Tümü (5)
+                {lang === 'ru' ? 'Все (5)' : 'Tümü (5)'}
               </button>
               <button
                 onClick={() => setFilterType('flight')}
@@ -343,7 +378,7 @@ export default function TravelTicketsAdminView() {
                 }`}
               >
                 <Plane className="w-3 h-3" />
-                Uçak (3)
+                {lang === 'ru' ? 'Авиа (3)' : 'Uçak (3)'}
               </button>
               <button
                 onClick={() => setFilterType('train')}
@@ -354,7 +389,7 @@ export default function TravelTicketsAdminView() {
                 }`}
               >
                 <Train className="w-3 h-3" />
-                Tren / RZD (2)
+                {lang === 'ru' ? 'РЖД (2)' : 'Tren / RZD (2)'}
               </button>
             </div>
 
@@ -363,7 +398,7 @@ export default function TravelTicketsAdminView() {
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Yolcu, pasaport, şantiye..."
+                placeholder={lang === 'ru' ? 'Пассажир, паспорт, объект...' : 'Yolcu, pasaport, şantiye...'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white focus:outline-hidden font-normal"
@@ -377,13 +412,13 @@ export default function TravelTicketsAdminView() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-normal">
-                <th className="py-2.5 px-3">Yolcu / Personel</th>
-                <th className="py-2.5 px-3">Ulaşım / Sefer</th>
-                <th className="py-2.5 px-3">Kalkış & Varış Güzergahı</th>
-                <th className="py-2.5 px-3">Atanan Şantiye</th>
-                <th className="py-2.5 px-3">Seyahat Tarihi</th>
-                <th className="py-2.5 px-3">Tutar</th>
-                <th className="py-2.5 px-3 text-right">AI Durumu</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Пассажир / Работник' : 'Yolcu / Personel'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Рейс / Перевозчик' : 'Ulaşım / Sefer'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Маршрут поездки' : 'Kalkış & Varış Güzergahı'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Объект назначения' : 'Atanan Şantiye'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Дата поездки' : 'Seyahat Tarihi'}</th>
+                <th className="py-2.5 px-3">{lang === 'ru' ? 'Стоимость' : 'Tutar'}</th>
+                <th className="py-2.5 px-3 text-right">{lang === 'ru' ? 'Статус ИИ' : 'AI Durumu'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-normal">
