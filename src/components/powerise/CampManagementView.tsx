@@ -141,25 +141,25 @@ export default function CampManagementView() {
   return (
     <div className="p-6 lg:p-8 space-y-8 font-normal max-w-7xl mx-auto">
       {/* Top Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white shadow-xl space-y-4">
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-teal-50/90 via-white to-emerald-50/60 dark:from-slate-900 dark:via-teal-950 dark:to-slate-900 border border-teal-100 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm dark:shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-400 shadow-inner">
+            <div className="w-12 h-12 rounded-2xl bg-teal-100 dark:bg-teal-500/20 border border-teal-200 dark:border-teal-400/30 flex items-center justify-center text-teal-600 dark:text-teal-400 shadow-inner">
               <Building className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl text-white tracking-tight font-normal">
+                <h1 className="text-2xl text-slate-900 dark:text-white tracking-tight font-normal">
                   {lang === 'ru'
                     ? 'Городок • Управление общежитиями и местами'
                     : 'Şantiye Kamp & Lojman (Obshchezhitiye) Yönetimi'}
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs bg-teal-500/20 text-teal-300 border border-teal-500/30 font-normal flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-teal-400" />
+                <span className="px-2.5 py-0.5 rounded-full text-xs bg-teal-100 dark:bg-teal-500/20 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-500/30 font-normal flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-teal-600 dark:text-teal-400" />
                   {lang === 'ru' ? 'Powerise Модуль' : 'Powerise Satılık İnovasyon Modülü'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1 font-normal">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 font-normal">
                 {lang === 'ru'
                   ? 'Учет коечного фонда, заселение по NFC паспорту, распределение по комнатам и контроль чистоты'
                   : 'Şantiye yatak kapasitesi, NFC pasaportla anında oda yerleşimi, vardiya-uyruk uyumu ve lojman doluluk kontrolü'}
@@ -168,17 +168,17 @@ export default function CampManagementView() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700/80 text-right">
-              <div className="text-[10px] text-slate-400 font-normal">
+            <div className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800/80 border border-teal-100 dark:border-slate-700/80 text-right shadow-2xs">
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
                 {lang === 'ru' ? 'Всего мест' : 'Toplam Yatak'}
               </div>
-              <div className="text-base text-teal-400 font-normal">4.850 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
+              <div className="text-base text-teal-600 dark:text-teal-400 font-normal">4.850 {lang === 'ru' ? 'мест' : 'Yatak'}</div>
             </div>
-            <div className="px-3.5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-800/60 text-right">
-              <div className="text-[10px] text-emerald-400 font-normal">
+            <div className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-right shadow-2xs">
+              <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-normal">
                 {lang === 'ru' ? 'Занятость' : 'Doluluk Oranı'}
               </div>
-              <div className="text-base text-emerald-300 font-normal">%87.4</div>
+              <div className="text-base text-emerald-600 dark:text-emerald-300 font-normal">%87.4</div>
             </div>
           </div>
         </div>

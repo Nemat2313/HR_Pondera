@@ -160,25 +160,25 @@ export default function TravelTicketsAdminView() {
   return (
     <div className="p-6 lg:p-8 space-y-8 font-normal max-w-7xl mx-auto">
       {/* Top Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-xl space-y-4">
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-50/90 via-white to-slate-50 dark:from-slate-900 dark:via-indigo-950 dark:to-slate-900 border border-indigo-100 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm dark:shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shadow-inner">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-400/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-inner">
               <Plane className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl text-white tracking-tight font-normal">
+                <h1 className="text-2xl text-slate-900 dark:text-white tracking-tight font-normal">
                   {lang === 'ru'
                     ? 'АХО • Умное распознавание билетов (AI OCR)'
                     : 'İdari İşler • AI ile Uçak & Tren Bilet Yönetimi'}
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-normal flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                <span className="px-2.5 py-0.5 rounded-full text-xs bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 font-normal flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
                   {lang === 'ru' ? 'Powerise AI Модуль' : 'Powerise Satılık İnovasyon Modülü'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1 font-normal">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 font-normal">
                 {lang === 'ru'
                   ? 'Автоматическое считывание PDF билетов (РЖД, Аэрофлот, S7), привязка к сотрудникам и учет расходов по объектам'
                   : 'RZD tren ve havayolu PDF biletlerini yapay zeka ile anında ayrıştırma, çalışana, şantiyeye ve bütçeye otomatik bağlama'}
@@ -187,17 +187,17 @@ export default function TravelTicketsAdminView() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700/80 text-right">
-              <div className="text-[10px] text-slate-400 font-normal">
+            <div className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800/80 border border-indigo-100 dark:border-slate-700/80 text-right shadow-2xs">
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
                 {lang === 'ru' ? 'Распознано ИИ' : 'AI ile Ayrıştırılan'}
               </div>
-              <div className="text-base text-indigo-400 font-normal">1.842 {lang === 'ru' ? 'билетов' : 'Bilet'}</div>
+              <div className="text-base text-indigo-600 dark:text-indigo-400 font-normal">1.842 {lang === 'ru' ? 'билетов' : 'Bilet'}</div>
             </div>
-            <div className="px-3.5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-800/60 text-right">
-              <div className="text-[10px] text-emerald-400 font-normal">
+            <div className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-right shadow-2xs">
+              <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-normal">
                 {lang === 'ru' ? 'Точность OCR' : 'OCR Başarısı'}
               </div>
-              <div className="text-base text-emerald-300 font-normal">%99.8</div>
+              <div className="text-base text-emerald-600 dark:text-emerald-300 font-normal">%99.8</div>
             </div>
           </div>
         </div>

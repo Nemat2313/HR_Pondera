@@ -298,6 +298,7 @@ export default function PowerBIWorkPermits({
 
             {/* Hover Tooltip with Full Legal Description */}
             <Tooltip
+              wrapperStyle={{ zIndex: 50 }}
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   const d = payload[0].payload as WorkPermitStat;
@@ -314,14 +315,14 @@ export default function PowerBIWorkPermits({
                   const pct = ((d.count / grandTotal) * 100).toFixed(1);
 
                   return (
-                    <div className="p-3 bg-slate-900/95 backdrop-blur-md border border-cyan-500/40 rounded-xl text-xs text-white shadow-2xl max-w-[280px] pointer-events-none z-50">
-                      <div className="flex items-center justify-between gap-2 mb-1.5 pb-1.5 border-b border-slate-800">
+                    <div className="p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-cyan-500/40 rounded-xl text-xs text-slate-900 dark:text-white shadow-xl dark:shadow-2xl max-w-[280px] pointer-events-none z-50">
+                      <div className="flex items-center justify-between gap-2 mb-1.5 pb-1.5 border-b border-slate-100 dark:border-slate-800">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span
                             className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
                             style={{ backgroundColor: d.color }}
                           />
-                          <span className="font-bold text-cyan-300 truncate text-[11px]">
+                          <span className="font-bold text-cyan-700 dark:text-cyan-300 truncate text-[11px]">
                             {shortCode}
                           </span>
                         </div>
@@ -332,19 +333,19 @@ export default function PowerBIWorkPermits({
                           %{pct}
                         </span>
                       </div>
-                      <p className="font-bold text-white text-xs mb-1 leading-snug">
+                      <p className="font-bold text-slate-900 dark:text-white text-xs mb-1 leading-snug">
                         {fullName}
                       </p>
                       {desc && (
-                        <p className="text-[10px] text-slate-400 mb-2 leading-relaxed">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-2 leading-relaxed">
                           {desc}
                         </p>
                       )}
-                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px]">
-                        <span className="text-slate-400">
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-[11px]">
+                        <span className="text-slate-500 dark:text-slate-400">
                           {lang === 'ru' ? 'Численность:' : 'Personel Sayısı:'}
                         </span>
-                        <span className="font-mono text-cyan-300 font-bold">
+                        <span className="font-mono text-cyan-700 dark:text-cyan-300 font-bold">
                           {d.count.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}{' '}
                           {lang === 'ru' ? 'чел.' : 'kişi'}
                         </span>
@@ -359,7 +360,7 @@ export default function PowerBIWorkPermits({
         </ResponsiveContainer>
 
         {/* Center Metric Text */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
           {activeCenterItem ? (
             <div className="flex flex-col items-center justify-center text-center px-2 animate-in fade-in duration-200">
               <span

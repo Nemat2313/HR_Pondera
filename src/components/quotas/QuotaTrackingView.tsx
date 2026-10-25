@@ -123,24 +123,24 @@ export default function QuotaTrackingView() {
   return (
     <div className="p-6 lg:p-8 space-y-6 font-normal max-w-7xl mx-auto">
       {/* Header & Purpose Guide Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white shadow-xl space-y-4">
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-teal-50/90 via-white to-emerald-50/60 dark:from-slate-900 dark:via-teal-950 dark:to-slate-900 border border-teal-100 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm dark:shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-teal-500/20 text-teal-400 border border-teal-400/30 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-teal-100 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-400/30 flex items-center justify-center">
               <Briefcase className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-normal tracking-tight text-white">
+                <h1 className="text-xl sm:text-2xl font-normal tracking-tight text-slate-900 dark:text-white">
                   {lang === 'ru'
                     ? 'Центр мониторинга и распределения квот на работу (РНР / ВКС)'
                     : 'Yasal Çalışma Kotaları Kullanım & Takip Merkezi'}
                 </h1>
-                <span className="px-2 py-0.5 text-[11px] rounded bg-teal-500/30 text-teal-200 border border-teal-400/30 font-normal">
+                <span className="px-2 py-0.5 text-[11px] rounded bg-teal-100 dark:bg-teal-500/30 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-400/30 font-normal">
                   {lang === 'ru' ? 'Квотный период 2026' : '2026 Kota Dönemi'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1 max-w-2xl font-normal leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-2xl font-normal leading-relaxed">
                 {lang === 'ru'
                   ? 'Контроль использования квот Министерства труда РФ и региональных квот: остатки, занятые места, бронирование виз и сроки действия разрешений.'
                   : 'Rusya Federasyonu Çalışma Bakanlığı ve bölgesel makamlardan alınan yabancı işçi kotalarının meslek, şantiye ve kalan kontenjan bazında canlı tüketim analitiği.'}
@@ -151,7 +151,7 @@ export default function QuotaTrackingView() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs border border-white/20 transition-all cursor-pointer font-normal shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-teal-50 dark:bg-white/10 dark:hover:bg-white/20 text-teal-700 dark:text-white text-xs border border-teal-200 dark:border-white/20 transition-all cursor-pointer font-normal shadow-2xs"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{lang === 'ru' ? 'Выгрузить отчет по квотам' : 'Kota Raporu İndir (Excel)'}</span>
@@ -160,10 +160,10 @@ export default function QuotaTrackingView() {
         </div>
 
         {/* Explainability Pill: What is this page? */}
-        <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-xs text-slate-300 flex items-start gap-2.5 font-normal">
-          <Info className="w-4 h-4 text-teal-300 shrink-0 mt-0.5" />
+        <div className="p-3.5 rounded-2xl bg-teal-50/70 dark:bg-white/5 border border-teal-100 dark:border-white/10 text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2.5 font-normal">
+          <Info className="w-4 h-4 text-teal-600 dark:text-teal-300 shrink-0 mt-0.5" />
           <div>
-            <strong className="text-white font-normal">
+            <strong className="text-slate-900 dark:text-white font-normal">
               {lang === 'ru' ? 'Для чего этот раздел?' : 'Bu sayfa ne işe yarar?'}
             </strong>{' '}
             {lang === 'ru'

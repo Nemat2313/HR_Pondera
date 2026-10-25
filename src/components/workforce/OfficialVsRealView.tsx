@@ -137,24 +137,24 @@ export default function OfficialVsRealView() {
   return (
     <div className="p-6 lg:p-8 space-y-6 font-normal max-w-7xl mx-auto">
       {/* Header & Purpose Guide Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white shadow-xl space-y-4">
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-50/90 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950 border border-indigo-100 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm dark:shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-400/30 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-400/30 flex items-center justify-center">
               <Scale className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-normal tracking-tight text-white">
+                <h1 className="text-xl sm:text-2xl font-normal tracking-tight text-slate-900 dark:text-white">
                   {lang === 'ru'
                     ? 'Сверка официальных и фактических данных персонала'
                     : 'Resmi ve Real Personel Veri Karşılaştırma Merkezi'}
                 </h1>
-                <span className="px-2 py-0.5 text-[11px] rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 font-normal">
+                <span className="px-2 py-0.5 text-[11px] rounded bg-indigo-100 dark:bg-indigo-500/30 text-indigo-700 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-400/30 font-normal">
                   {lang === 'ru' ? 'Перекрестный аудит' : 'Çapraz Denetim'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1 max-w-2xl font-normal leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-2xl font-normal leading-relaxed">
                 {lang === 'ru'
                   ? 'Сравнение официальных списков (Госуслуги МВД, трудовые договоры, EBA) с реальными данными строительной площадки (турникеты, табели). Выявление рисков нелегальной работы и расхождений.'
                   : 'Gosuslugi МВД resmi bildirimleri ve yasal bordro kayıtları ile şantiyedeki fiili turnike ve formen saha verilerini karşılaştırarak yasal uyumsuzluk ve denetim risklerini sıfıra indiren kontrol merkezi.'}
@@ -165,7 +165,7 @@ export default function OfficialVsRealView() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs border border-white/20 transition-all cursor-pointer font-normal shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-indigo-50 dark:bg-white/10 dark:hover:bg-white/20 text-indigo-700 dark:text-white text-xs border border-indigo-200 dark:border-white/20 transition-all cursor-pointer font-normal shadow-2xs"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{lang === 'ru' ? 'Экспорт отчета сверки' : 'Karşılaştırma Raporu (Excel)'}</span>
@@ -174,10 +174,10 @@ export default function OfficialVsRealView() {
         </div>
 
         {/* Explainability Pill: What is this page? */}
-        <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-xs text-slate-300 flex items-start gap-2.5 font-normal">
-          <Info className="w-4 h-4 text-indigo-300 shrink-0 mt-0.5" />
+        <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-white/5 border border-indigo-100 dark:border-white/10 text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2.5 font-normal">
+          <Info className="w-4 h-4 text-indigo-600 dark:text-indigo-300 shrink-0 mt-0.5" />
           <div>
-            <strong className="text-white font-normal">
+            <strong className="text-slate-900 dark:text-white font-normal">
               {lang === 'ru' ? 'Для чего этот раздел?' : 'Bu sayfa ne işe yarar?'}
             </strong>{' '}
             {lang === 'ru'

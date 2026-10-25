@@ -208,19 +208,19 @@ export default function PoweriseInnovationView() {
           {/* TAB 1: YOUTUBE VIDEO (PRIORITY) */}
           {activeSubTab === 'video' && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-2xl">
-                <div className="p-5 border-b border-slate-800 flex items-center justify-between text-white">
+              <div className="rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg dark:shadow-2xl">
+                <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-900 dark:text-white">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-500 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-500/20 text-rose-600 dark:text-rose-500 flex items-center justify-center border border-rose-200/60 dark:border-transparent">
                       <Play className="w-4 h-4 fill-current" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-normal">
+                      <h3 className="text-sm font-normal text-slate-900 dark:text-white">
                         {lang === 'ru'
                           ? 'Презентационный ролик полевых и мобильных технологий Powerise'
                           : 'Powerise Saha ve Şantiye Uygulamaları Tanıtım Filmi'}
                       </h3>
-                      <p className="text-[11px] text-slate-400 font-normal">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                         {lang === 'ru'
                           ? 'Интеграция мобильного приложения, считывания чипов, полигонов и автоматического табеля'
                           : 'Mobil uygulama, pasaport NFC, saha poligonları ve 3 katmanlı puantaj akışı'}
@@ -767,7 +767,7 @@ export default function PoweriseInnovationView() {
                 </div>
 
                 {/* The Actual Image: powerise_map_polygons.png */}
-                <div className="relative aspect-[16/9] w-full bg-slate-950 overflow-hidden">
+                <div className="relative aspect-[16/9] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
                   <Image
                     src="/images/powerise/powerise_map_polygons.png"
                     alt="Şantiye Poligon Haritası ve Fotoğraflı Personel Takibi"
@@ -834,7 +834,7 @@ export default function PoweriseInnovationView() {
                 </div>
 
                 {/* The Actual Image: powerise_web_timesheet.png */}
-                <div className="relative aspect-[16/9] w-full bg-slate-950 overflow-hidden">
+                <div className="relative aspect-[16/9] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
                   <Image
                     src="/images/powerise/powerise_web_timesheet.png"
                     alt="Powerise Web Puantaj Giriş Konsolu"

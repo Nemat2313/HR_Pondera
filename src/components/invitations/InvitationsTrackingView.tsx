@@ -106,24 +106,24 @@ export default function InvitationsTrackingView() {
   return (
     <div className="p-6 lg:p-8 space-y-6 font-normal max-w-7xl mx-auto">
       {/* Header Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white shadow-xl space-y-4">
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-sky-50/90 via-white to-indigo-50/60 dark:from-slate-900 dark:via-sky-950 dark:to-slate-900 border border-sky-100 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm dark:shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-400/30 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-sky-100 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/30 flex items-center justify-center">
               <Mail className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-normal tracking-tight text-white">
+                <h1 className="text-xl sm:text-2xl font-normal tracking-tight text-slate-900 dark:text-white">
                   {lang === 'ru'
                     ? 'Мониторинг официальных приглашений МВД (Авто-Email & Telegram)'
                     : 'Devlet Davetiyeleri Takip & Telegram Bildirim Merkezi'}
                 </h1>
-                <span className="px-2 py-0.5 text-[11px] rounded bg-sky-500/30 text-sky-200 border border-sky-400/30 font-normal">
+                <span className="px-2 py-0.5 text-[11px] rounded bg-sky-100 dark:bg-sky-500/30 text-sky-800 dark:text-sky-200 border border-sky-200 dark:border-sky-400/30 font-normal">
                   {lang === 'ru' ? 'Задача Захида • В плане' : 'Zahid Bey Taskı • Planlanan İş'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1 max-w-2xl font-normal leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-2xl font-normal leading-relaxed">
                 {lang === 'ru'
                   ? 'Автоматический парсинг входящих писем МВД/Госуслуг, извлечение электронных приглашений (Приглашение на въезд в РФ), регистрация в базе и моментальная отправка PDF в группу Telegram.'
                   : 'MVD ve Göç İdaresi resmi e-postalarını anında okuyarak gelen elektronik giriş davetiyelerini (PDF) alan, sicil ile eşleyen ve Telegram grubuna anlık bildirim atan robotik sistem.'}
@@ -143,10 +143,10 @@ export default function InvitationsTrackingView() {
         </div>
 
         {/* Explainability Banner */}
-        <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-xs text-slate-300 flex items-start gap-2.5 font-normal">
-          <Info className="w-4 h-4 text-sky-300 shrink-0 mt-0.5" />
+        <div className="p-3.5 rounded-2xl bg-sky-50/70 dark:bg-white/5 border border-sky-100 dark:border-white/10 text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2.5 font-normal">
+          <Info className="w-4 h-4 text-sky-600 dark:text-sky-300 shrink-0 mt-0.5" />
           <div>
-            <strong className="text-white font-normal">
+            <strong className="text-slate-900 dark:text-white font-normal">
               {lang === 'ru' ? 'Как работает этот модуль?' : 'Bu modül nasıl çalışır?'}
             </strong>{' '}
             {lang === 'ru'
