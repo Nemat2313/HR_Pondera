@@ -711,6 +711,17 @@ export default function GosuslugiAnalyticsView() {
     return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
   }, [user?.scope_type, user?.scope_value]);
 
+  const dataErrorTemplateExportUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('computer', 'all');
+    params.set('mode', 'only_data_errors');
+    if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
+      params.set('scopeType', user.scope_type);
+      params.set('scopeValue', user.scope_value);
+    }
+    return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
+  }, [user?.scope_type, user?.scope_value]);
+
   const filteredMasterPdfItems = useMemo(
     () => filteredMaster3088.filter((item) => item.hasPdf && item.pdf_filename),
     [filteredMaster3088]
@@ -2341,12 +2352,22 @@ export default function GosuslugiAnalyticsView() {
                   </button>
 
                   <a
+                    href={dataErrorTemplateExportUrl}
+                    download
+                    title="Gosuslugi portal ve timeout hatalarını hariç tutarak SADECE bizim eksik/hatalı girdiğimiz (ИНН, РНР, Blank, Sözleşme Tarihi) kayıtları açıklamalı ve renkli şablon olarak indir"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 no-underline shadow-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Sadece Veri Hatalı Şablon İndir (ИНН / РНР / Tarih)
+                  </a>
+
+                  <a
                     href={errorTemplateExportUrl}
                     download
                     className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 no-underline shadow-xs"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    Renkli VKS Şablon İndir ({allErrorItems.length})
+                    Tüm Ошибка Şablon İndir ({allErrorItems.length})
                   </a>
 
                   {user?.role !== 'viewer' && allErrorItems.length > 0 && (

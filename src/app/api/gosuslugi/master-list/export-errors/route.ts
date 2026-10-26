@@ -153,6 +153,18 @@ function isValidDateRu(val: string): boolean {
   return yyyy >= 1930 && yyyy <= 2050 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
 }
 
+function parseDateTsRu(val: string): number | null {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(val || '').trim());
+  if (!m) return null;
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (yyyy < 1930 || yyyy > 2050 || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+  if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) return null;
+  return d.getTime();
+}
+
 function diagnoseWorkerErrors(
   w: Record<string, any>,
   gosStatus: string
@@ -271,7 +283,7 @@ function diagnoseWorkerErrors(
     );
   }
 
-  // 6. Contract Dates
+  // 6. Contract Dates & Chronological Order
   if (!isValidDateRu(contractDate)) {
     redCols.add(19);
     explanations.push(`[ДатаЗаключения] Sözleşme tarihi hatalı ("${contractDate || 'Boş'}").`);
@@ -280,13 +292,44 @@ function diagnoseWorkerErrors(
     redCols.add(20);
     explanations.push(`[ДатаНачалаДействия] Sözleşme başlangıç tarihi hatalı ("${contractStart || 'Boş'}").`);
   }
-  if (
-    contractEnd &&
-    !/^(бессрочн|нет|-|süresiz|suresiz)$/i.test(contractEnd) &&
-    !isValidDateRu(contractEnd)
-  ) {
+  const isIndefiniteEnd =
+    !contractEnd || /^(бессрочн|нет|-|süresiz|suresiz)$/i.test(contractEnd);
+  if (!isIndefiniteEnd && !isValidDateRu(contractEnd)) {
     redCols.add(21);
     explanations.push(`[ДатаОканчанияДействия] Sözleşme bitiş tarihi hatalı ("${contractEnd}").`);
+  }
+
+  const cDateTs = parseDateTsRu(contractDate);
+  const cStartTs = parseDateTsRu(contractStart);
+  const cEndTs = !isIndefiniteEnd ? parseDateTsRu(contractEnd) : null;
+  const rnrDateTs = parseDateTsRu(rnrDate);
+
+  if (cDateTs !== null && cStartTs !== null && cStartTs < cDateTs) {
+    redCols.add(19);
+    redCols.add(20);
+    explanations.push(
+      `[ДатаНачалаДействия] Sözleşme başlangıç tarihi (${contractStart}), sözleşme imza tarihinden (${contractDate}) önce olamaz.`
+    );
+  }
+  if (cStartTs !== null && cEndTs !== null && cEndTs <= cStartTs) {
+    redCols.add(20);
+    redCols.add(21);
+    explanations.push(
+      `[ДатаОканчанияДействия] Sözleşme bitiş tarihi (${contractEnd}), başlangıç tarihinden (${contractStart}) önce veya eşit olamaz.`
+    );
+  } else if (cDateTs !== null && cEndTs !== null && cEndTs <= cDateTs) {
+    redCols.add(19);
+    redCols.add(21);
+    explanations.push(
+      `[ДатаОканчанияДействия] Sözleşme bitiş tarihi (${contractEnd}), sözleşme imza tarihinden (${contractDate}) önce veya eşit olamaz.`
+    );
+  }
+  if (rnrDateTs !== null && cEndTs !== null && cEndTs <= rnrDateTs) {
+    redCols.add(16);
+    redCols.add(21);
+    explanations.push(
+      `[ДатаОканчанияДействия] Sözleşme bitiş tarihi (${contractEnd}), çalışma izni veriliş tarihinden (${rnrDate}) önce veya eşit olamaz.`
+    );
   }
 
   // 7. Period & Salary
@@ -537,6 +580,9 @@ function buildStyledXlsxBuffer(
 
 function classifyGosuslugiErrorId(statusText: string, detailText = ''): string {
   const combined = `${statusText || ''} ${detailText || ''}`;
+  if (/ошибка отправки заявления|ошибка получения заявления|ошибка ведомства/i.test(combined)) {
+    return 'portal_delivery_error';
+  }
   if (/Шаг 12|Подразделение МВД|подразделение МВД/i.test(combined)) {
     return 'mvd_step12';
   }
@@ -545,6 +591,9 @@ function classifyGosuslugiErrorId(statusText: string, detailText = ''): string {
   }
   if (/Шаг 7|Паспортные данные/i.test(combined)) {
     return 'passport_step7';
+  }
+  if (/Шаг 8|ИНН иностранца|12-значный ИНН/i.test(combined)) {
+    return 'inn_step8';
   }
   if (/Шаг 9|Разрешение на работу ВКС/i.test(combined)) {
     return 'rnr_step9';
@@ -749,7 +798,10 @@ export async function GET(request: Request) {
     const seenExportSicils = new Set<string>();
 
     for (const m of combinedRows) {
-      if ((mode === 'only_oshibka' || mode === 'refused') && seenExportSicils.has(m.sicil_no)) {
+      if (
+        (mode === 'only_oshibka' || mode === 'refused' || mode === 'only_data_errors') &&
+        seenExportSicils.has(m.sicil_no)
+      ) {
         continue;
       }
       if (computerFilter !== 'all' && String(m.assigned_computer) !== String(computerFilter)) {
@@ -1021,6 +1073,11 @@ export async function GET(request: Request) {
 
       const explanationText = diag.explanations.join(' | ');
 
+      const rawInnCell = getField('inn', 'ИНН');
+      const exportInnCell = /^инн не найден$/i.test(rawInnCell) ? '' : rawInnCell;
+      const rawBlank2Cell = getField('blankNumber', 'СерийныйНомер2');
+      const exportBlank2Cell = /^\d{4}-\d{2}-\d{2}/.test(rawBlank2Cell) ? '' : rawBlank2Cell;
+
       const rowValues: string[] = [
         m.sicil_no, // 0: Sicil
         getField('code', 'Код', m.sicil_no), // 1: Код
@@ -1035,12 +1092,12 @@ export async function GET(request: Request) {
         getField('passportNumber', 'НомерПаспорта'), // 10: НомерПаспорта
         getField('passportIssueDate', 'ДатаВыдачи'), // 11: ДатаВыдачи
         getField('passportIssuedBy', 'ПаспортКемВыдан', 'МВД'), // 12: ПаспортКемВыдан
-        getField('inn', 'ИНН'), // 13: ИНН
+        exportInnCell, // 13: ИНН
         getField('rnrSeries', 'Серия'), // 14: Серия
         getField('rnrNumber', 'Номер'), // 15: Номер
         getField('rnrIssueDate', 'ДатаВыдачиВКС'), // 16: ДатаВыдачиВКС
         getField('blankSeries', 'СерийныйНомер1'), // 17: СерийныйНомер1
-        getField('blankNumber', 'СерийныйНомер2'), // 18: СерийныйНомер2
+        exportBlank2Cell, // 18: СерийныйНомер2
         getField('contractDate', 'ДатаЗаключения'), // 19: ДатаЗаключения
         getField('contractStartDate', 'ДатаНачалаДействия'), // 20: ДатаНачалаДействия
         getField('contractEndDate', 'ДатаОканчанияДействия'), // 21: ДатаОканчанияДействия
@@ -1072,7 +1129,12 @@ export async function GET(request: Request) {
     const xlsxBuffer = buildStyledXlsxBuffer(exportRows);
     const dateTag = new Date().toISOString().slice(0, 10);
     const catSuffix = errorCategoryFilter !== 'all' ? `_${errorCategoryFilter}` : refusalCategoryFilter !== 'all' ? `_${refusalCategoryFilter}` : '';
-    const prefix = mode === 'refused' ? 'Pondera_VKS_Red_Otkazano_Sablon' : 'Pondera_VKS_Hatali_Kayitlar_Sablon';
+    const prefix =
+      mode === 'refused'
+        ? 'Pondera_VKS_Red_Otkazano_Sablon'
+        : mode === 'only_data_errors'
+        ? 'Pondera_VKS_Sadece_Veri_Hatali_Sablon'
+        : 'Pondera_VKS_Hatali_Kayitlar_Sablon';
     const fileName = `${prefix}${catSuffix}_${exportRows.length}_Kayit_${dateTag}.xlsx`;
 
     return new NextResponse(new Uint8Array(xlsxBuffer), {

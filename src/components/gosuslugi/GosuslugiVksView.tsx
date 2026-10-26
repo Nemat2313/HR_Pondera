@@ -3345,13 +3345,23 @@ export default function GosuslugiVksView() {
             </button>
 
             <a
+              href={`/api/gosuslugi/master-list/export-errors?mode=only_data_errors&computer=${activeComputerFilter}`}
+              download
+              title="SADECE bizim eksik/hatalı girdiğimiz veri hatalarını (ИНН, РНР, Blank, Sözleşme Tarihi) açıklamalı ve renkli şablon formatında indir"
+              className="h-8 px-2.5 rounded-lg border border-amber-300/90 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>{lang === 'ru' ? 'Шаблон Ошибок Данных' : 'Veri Hatalı Şablon'}</span>
+            </a>
+
+            <a
               href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
               download
-              title="Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında indir"
+              title="Tüm Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında indir"
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-              <span>{lang === 'ru' ? 'Шаблон Ошибок' : 'Hatalı Şablon'}</span>
+              <span>{lang === 'ru' ? 'Шаблон Всех Ошибок' : 'Tüm Hatalı Şablon'}</span>
             </a>
 
             <a

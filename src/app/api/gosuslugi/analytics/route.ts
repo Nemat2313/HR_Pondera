@@ -48,12 +48,22 @@ const ERROR_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
     hintTr: 'Personelin pasaport numarası, seri veya geçerlilik tarihi Excel/veritabanında eksik ya da Gosuslugi formatına uymuyor.',
     severity: 'high',
   },
+  inn_step8: {
+    id: 'inn_step8',
+    titleTr: 'Adım 8: Yabancı Vergi Numarası (ИНН) Eksik veya 12 Hane Değil («ИНН не найден»)',
+    titleRu: 'Шаг 8: ИНН иностранца (требуется 12 цифр)',
+    stepLabel: 'Adım 8 (ИНН - Bizden Veri Hatası)',
+    hintTr:
+      'Personelin 12 haneli vergi numarası (ИНН) Excel şablonunda eksik veya «ИНН не найден» olarak girildiği için robot Adım 8de durdu. Şablonu indirip ИНН sütununu doldurarak tekrar yükleyin.',
+    severity: 'high',
+  },
   rnr_step9: {
     id: 'rnr_step9',
-    titleTr: 'Adım 9: VKS Çalışma İzni (РНР) Bilgisi Eksik veya Hatalı',
+    titleTr: 'Adım 9: VKS Çalışma İzni (РНР) / Blank Bilgisi Eksik veya Hatalı',
     titleRu: 'Шаг 9: Разрешение на работу ВКС (number / series)',
-    stepLabel: 'Adım 9 (ВКС РНР)',
-    hintTr: 'Personelin VKS çalışma izni (RNR) numarası, serisi veya veriliş/bitiş tarihi eksik ya da hatalı.',
+    stepLabel: 'Adım 9 (ВКС РНР - Bizden Veri Hatası)',
+    hintTr:
+      'Personelin VKS çalışma izni (РНР Номер) veya Blank numarası (СерийныйНомер2) Excel şablonunda eksik/hatalı olduğu için robot Adım 9da durdu. Şablonu indirip Номер ve СерийныйНомер2 sütunlarını doldurarak tekrar yükleyin.',
     severity: 'high',
   },
   series_timeout: {
@@ -160,6 +170,9 @@ function classifyGosuslugiError(statusText: string, detailText = ''): ErrorCateg
   }
   if (/Шаг 7|Паспортные данные/i.test(combined)) {
     return ERROR_CATEGORY_DEFINITIONS.passport_step7;
+  }
+  if (/Шаг 8|ИНН иностранца|12-значный ИНН/i.test(combined)) {
+    return ERROR_CATEGORY_DEFINITIONS.inn_step8;
   }
   if (/Шаг 9|Разрешение на работу ВКС/i.test(combined)) {
     return ERROR_CATEGORY_DEFINITIONS.rnr_step9;
