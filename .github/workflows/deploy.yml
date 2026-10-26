@@ -24,48 +24,16 @@ jobs:
           script_stop: true
           command_timeout: 15m
           script: |
-            echo "=== Pre-Deploy Server Diagnostics ==="
-            free -m || true
-            df -h / || true
-            pm2 list || true
-            tail -n 35 /root/.pm2/logs/*error*.log 2>/dev/null || true
-            rm -f /tmp/pondera_deploy.lock 2>/dev/null || true
-
-            # Ensure 2GB swapfile exists so Linux OOM-Killer never kills Node.js or builds
-            if [ "$(swapon --show | wc -l)" -eq 0 ]; then
-              echo "=== Creating 2GB Swapfile to prevent OOM ==="
-              fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
-              chmod 600 /swapfile
-              mkswap /swapfile
-              swapon /swapfile
-              grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-              free -m || true
-            fi
-
             echo "=== Starting Pondera HR Auto-Deploy ==="
+            pkill -f "next build" 2>/dev/null || true
+            sysctl -w vm.swappiness=10 2>/dev/null || true
             cd /var/www/hr_pondera || cd /root/HR_Pondera || cd ~/HR_Pondera
             echo "Current directory: $(pwd)"
             git fetch origin main
             git reset --hard origin/main
             npm install
-            NODE_OPTIONS="--max-old-space-size=1536" npm run build
+            npm run build
             cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
             cp -r public .next/standalone/ 2>/dev/null || true
-
-            pm2 restart hr-pondera || pm2 restart all || pm2 start npm --name "hr-pondera" -- start
-            pm2 save || true
-
-            printf 'SHELL=/bin/bash\nPATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin\n* * * * * root curl -sf --max-time 10 http://127.0.0.1:3000/api/version >/dev/null 2>&1 || (pm2 restart hr-pondera || pm2 restart all) >/dev/null 2>&1\n' > /etc/cron.d/pondera-watchdog
-            chmod 644 /etc/cron.d/pondera-watchdog
-
-            echo "=== Waiting for http://127.0.0.1:3000/api/version to respond ==="
-            for i in $(seq 1 15); do
-              if curl -sf http://127.0.0.1:3000/api/version; then
-                echo ""
-                echo "=== Server is UP and healthy! ==="
-                break
-              fi
-              sleep 2
-            done
-            pm2 list || true
+            pm2 restart hr-pondera || pm2 restart all
             echo "=== Auto-Deploy Completed Successfully ==="
