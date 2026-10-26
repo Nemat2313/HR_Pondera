@@ -153,6 +153,8 @@ export default function Sidebar({
                 id: 'database',
                 label: t('nav_database'),
                 icon: Database,
+                badge: 'SQLite',
+                badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
               },
             ]
           : []),
