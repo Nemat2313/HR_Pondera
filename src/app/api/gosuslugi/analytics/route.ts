@@ -840,10 +840,11 @@ export async function GET(request: Request) {
         else if (isSent) last60mSent++;
       }
 
-      // Hourly slot (e.g. "19.10 22:00")
-      if (subAt && subAt.length >= 13) {
-        const datePart = subAt.slice(5, 10).split('-').reverse().join('.');
-        const hourPart = `${subAt.slice(11, 13)}:00`;
+      // Hourly slot (e.g. "26.10 09:00") — use effectiveTime so both initial submissions and MVD status updates appear
+      const slotTime = effectiveTime || subAt;
+      if (slotTime && slotTime.length >= 13) {
+        const datePart = slotTime.slice(5, 10).split('-').reverse().join('.');
+        const hourPart = `${slotTime.slice(11, 13)}:00`;
         const slotKey = `${datePart} ${hourPart}`;
         if (!hourlyTimelineMap[slotKey]) {
           hourlyTimelineMap[slotKey] = { hourSlot: slotKey, sent: 0, errors: 0, total: 0 };

@@ -3016,8 +3016,10 @@ class GosuslugiVksBot:
             self.page.wait_for_timeout(800)
 
         self.check_and_stop_if_insufficient_permissions()
-        gosuslugi_order_no = self.extract_gosuslugi_order_number()
-        return gosuslugi_order_no
+        raise RuntimeError(
+            "Ошибка [Шаг 15: Отправка]: Не появился экран подтверждения «Уведомление отправлено» "
+            "(заявление осталось в черновиках и не было отправлено в МВД)."
+        )
 
     def click_otpravit_bulletproof(self):
         """

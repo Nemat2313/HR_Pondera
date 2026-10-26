@@ -229,7 +229,7 @@ export default function GosuslugiAnalyticsView() {
   const [masterComputerFilter, setMasterComputerFilter] = useState<string>('all');
   const [masterRegionFilter, setMasterRegionFilter] = useState<string>('all');
   const [masterCitizenshipFilter, setMasterCitizenshipFilter] = useState<string>('all');
-  const [masterDateField, setMasterDateField] = useState<'submitted_at' | 'response_at' | 'any'>('submitted_at');
+  const [masterDateField, setMasterDateField] = useState<'submitted_at' | 'response_at' | 'any'>('any');
   const [masterDateQuick, setMasterDateQuick] = useState<string>('all');
   const [masterDateFrom, setMasterDateFrom] = useState<string>('');
   const [masterDateTo, setMasterDateTo] = useState<string>('');
@@ -1372,7 +1372,7 @@ export default function GosuslugiAnalyticsView() {
                   <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-3">
                       <BarChart3 className="w-4 h-4 text-indigo-500" />
-                      Saatlik Gönderim Hızı (MSK)
+                      Saatlik İşlem & Statü Güncelleme Hızı (MSK)
                     </h3>
                     {!data?.hourlyTimeline || data.hourlyTimeline.length === 0 ? (
                       <p className="text-xs text-slate-500">Henüz saatlik veri yok.</p>
@@ -1626,8 +1626,10 @@ export default function GosuslugiAnalyticsView() {
 
                   {[
                     { id: 'all', label: 'Tüm Günler' },
-                    { id: '2026-10-24', label: 'Bugün (24.10)' },
-                    { id: '2026-10-23', label: 'Dün (23.10)' },
+                    { id: '2026-10-26', label: 'Bugün (26.10)' },
+                    { id: '2026-10-25', label: 'Dün (25.10)' },
+                    { id: '2026-10-24', label: '24.10' },
+                    { id: '2026-10-23', label: '23.10' },
                     { id: '2026-10-22', label: '22.10' },
                     { id: '2026-10-21', label: '21.10' },
                     { id: '2026-10-20', label: '20.10' },

@@ -61,6 +61,10 @@ function ensureTable(db: any) {
     UPDATE gosuslugi_submissions
     SET gosuslugi_status = 'Отправлено (PDF не скачан)'
     WHERE gosuslugi_status LIKE '%GosuslugiVksBot%' OR gosuslugi_status LIKE '%Step 16%';
+    UPDATE gosuslugi_submissions
+    SET gosuslugi_status = 'Услуга отказана'
+    WHERE status_detail LIKE '%Ошибка получения заявления ведомством%'
+      AND gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено', 'Ошибка получения заявления ведомством');
     DELETE FROM gosuslugi_submissions
     WHERE application_no = ''
       AND (
@@ -285,6 +289,8 @@ export async function POST(request: Request) {
       }
       const normalizedStatus = /GosuslugiVksBot|Step 16/i.test(rawStatus)
         ? 'Отправлено (PDF не скачан)'
+        : /ошибка получения заявления ведомством|ошибка отправки заявления|ошибка ведомства/i.test(rawStatus)
+        ? 'Услуга отказана'
         : rawStatus;
 
       if (!sicil && !appNo) continue;

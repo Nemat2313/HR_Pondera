@@ -108,6 +108,8 @@ def classify_gosuslugi_status_text(raw_title: str, raw_status_code: str = "") ->
         or "услуга отказана" in tl
         or "не оказана" in tl
         or "ошибка отправки" in tl
+        or "ошибка получения" in tl
+        or "ошибка ведомства" in tl
         or "возврат" in tl
         or sc in ("rejected", "error", "canceled", "cancelled")
     ):
@@ -1515,24 +1517,39 @@ def run_fast_json_status_sync_on_page(
             if p_sic and p_app and p_app.isdigit() and not is_superseded_or_archived_order(p_app, p_st, p_sub):
                 assigned_app_nos_to_sicil[p_app] = p_sic
 
-        # Prioritize pending/registered applications that have a 10-digit application_no (newest first!)
+        # Prioritize truly registered applications ('Заявление зарегистрировано') first,
+        # then other intermediate applications, then finalized applications (newest first!)
         def _fast_priority_key(r_it: Dict[str, Any]):
             st_it = str(r_it.get("gosuslugi_status") or "").strip()
             app_it = str(r_it.get("application_no") or "").strip()
+            pdf_it = str(r_it.get("pdf_filename") or "").strip()
             has_app = bool(app_it and app_it.isdigit())
-            is_pending_st = (
+            is_registered_st = (
+                st_it in ("Заявление зарегистрировано", "Промежуточные результаты по заявлению", "Отправлено в ведомство")
+                and has_app
+            )
+            is_other_pending_st = (
                 st_it not in ("Услуга оказана", "Услуга отказана")
                 and not st_it.lower().startswith("ошибк")
                 and has_app
             )
-            if is_pending_st:
+            if is_registered_st:
                 return (0, -int(app_it))
-            if has_app:
+            if is_other_pending_st and pdf_it:
                 return (1, -int(app_it))
-            return (2, 0)
+            if is_other_pending_st:
+                return (2, -int(app_it))
+            if has_app:
+                return (3, -int(app_it))
+            return (4, 0)
 
         sorted_target_records = sorted(target_records, key=_fast_priority_key)
         targeted_search_count = 0
+        skipped_unsent_draft_count = 0
+        checked_only_records: List[Dict[str, Any]] = []
+
+        numeric_bulk_ids = [int(k) for k in bulk_orders.keys() if k.isdigit() and len(k) == 10]
+        min_bulk_order_id = min(numeric_bulk_ids) if len(numeric_bulk_ids) >= 20 else 0
 
         for rec in sorted_target_records:
             raw_app_no = str(rec.get("application_no") or "").strip()
@@ -1541,6 +1558,7 @@ def run_fast_json_status_sync_on_page(
             worker_name = str(rec.get("worker_name") or "").strip()
             prev_status = str(rec.get("gosuslugi_status") or "").strip()
             submitted_at = str(rec.get("submitted_at") or "").strip()
+            prev_pdf_file = str(rec.get("pdf_filename") or "").strip()
 
             if app_no and is_superseded_or_archived_order(app_no, prev_status, submitted_at):
                 app_no = ""
@@ -1561,11 +1579,22 @@ def run_fast_json_status_sync_on_page(
 
             # 2) Targeted one-by-one search strictly by `app_no` ONLY when `app_no` is pending/registered
             # AND was NOT already found in `bulk_orders`!
+            # Skip unverified draft IDs ('Отправлено (PDF не скачан)' without PDF) that fall inside the
+            # already-scanned `bulk_orders` ID range, because those were unsent/deleted form drafts.
             is_intermediate_prev = (
                 prev_status not in ("Услуга оказана", "Услуга отказана")
                 and not prev_status.lower().startswith("ошибк")
             )
+            is_unverified_draft_id = (
+                prev_status in ("Отправлено (PDF не скачан)", "Отправлено")
+                and not prev_pdf_file
+                and min_bulk_order_id > 0
+                and int(app_no) > min_bulk_order_id
+            )
             if not matched_order and is_intermediate_prev:
+                if is_unverified_draft_id:
+                    skipped_unsent_draft_count += 1
+                    continue
                 targeted_search_count += 1
                 logger.info(
                     f"[{targeted_search_count}] Поштучный поиск по № Заявления {app_no} ({worker_name or sicil}, текущий статус: {prev_status or 'Отправлено'})..."
@@ -1611,6 +1640,16 @@ def run_fast_json_status_sync_on_page(
                     logger.info(
                         f"  [=] № {final_app_no} ({worker_name}) — проверено на Госуслугах: статус без изменений («{new_status}»)"
                     )
+                    checked_only_records.append({
+                        **rec,
+                        "sicil": sicil,
+                        "sicil_no": sicil,
+                        "worker_name": worker_name or matched_order.get("citizen_name") or "",
+                        "application_no": final_app_no,
+                        "gosuslugi_status": new_status,
+                        "status_detail": matched_order.get("status_detail", ""),
+                        "checked_at": now_str,
+                    })
                 continue
 
             status_changed_count += 1
@@ -1639,6 +1678,14 @@ def run_fast_json_status_sync_on_page(
             else:
                 logger.info(f"APPLICATION_SYNCED_CENTRAL: {json.dumps(updated_entry, ensure_ascii=False)}")
             sync_updates_to_pondera_api([updated_entry])
+
+        if checked_only_records:
+            sync_updates_to_pondera_api(checked_only_records)
+
+        if skipped_unsent_draft_count > 0:
+            logger.info(
+                f"  [i] Пропущено {skipped_unsent_draft_count} черновиков со статусом «Отправлено (PDF не скачан)» (не были отправлены в МВД / отсутствуют в ленте заявлений организации)."
+            )
 
         if updated_records:
             update_local_applications_ledger(updated_records)
