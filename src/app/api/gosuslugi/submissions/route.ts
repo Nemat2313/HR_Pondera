@@ -87,13 +87,16 @@ function ensureTable(db: any) {
       );
 
     DELETE FROM gosuslugi_submission_history
-    WHERE application_no != ''
-      AND id NOT IN (
-        SELECT MAX(id)
-        FROM gosuslugi_submission_history
-        WHERE application_no != ''
-        GROUP BY sicil_no, application_no
-      );
+    WHERE gosuslugi_status = 'vks_salary'
+       OR (
+         application_no != ''
+         AND id NOT IN (
+           SELECT MAX(id)
+           FROM gosuslugi_submission_history
+           WHERE application_no != '' AND gosuslugi_status != 'vks_salary'
+           GROUP BY sicil_no, application_no
+         )
+       );
 
     UPDATE gosuslugi_submission_history
     SET gosuslugi_status = (
@@ -400,11 +403,13 @@ export async function POST(request: Request) {
 
       if (!sicil && !appNo) continue;
 
+      const forceCorrection = Boolean(item.force_status_correction || item.forceStatusCorrection);
       const rawPdfCheck = String(item.pdf_filename || item.pdfFilename || '').trim();
       const rawIncomingSubAt = String(item.submitted_at || item.submittedAt || '').trim();
       // Only skip legacy pre-fix unsent draft records from before 2026-10-26 10:15:00 (< 8320000000);
       // accept all genuine Fast-Mode ('Быстрая отправка без PDF' -> 'Отправлено (PDF не скачан)') submissions!
       const isLegacyUnsentDraft =
+        !forceCorrection &&
         (normalizedStatus === 'Отправлено (PDF не скачан)' || normalizedStatus === 'Отправлено') &&
         !rawPdfCheck &&
         rawIncomingSubAt !== '' &&
@@ -415,14 +420,14 @@ export async function POST(request: Request) {
       }
 
       // 1. Skip old refused/re-opened application_no that was explicitly archived for re-sending
-      // (unless МВД later approved that exact application_no as 'Услуга оказана')
-      if (appNo && normalizedStatus !== 'Услуга оказана' && checkArchivedRefusalStmt.get(appNo)) {
+      // (unless МВД later approved that exact application_no as 'Услуга оказана' or forceCorrection is set)
+      if (!forceCorrection && appNo && normalizedStatus !== 'Услуга оказана' && checkArchivedRefusalStmt.get(appNo)) {
         continue;
       }
 
       // 1b. Skip old errored/refused/stale-registered record from a PC's local bridge state if this sicil was already archived/re-opened,
-      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) or 'Услуга оказана'.
-      if (sicil && normalizedStatus !== 'Услуга оказана') {
+      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) or 'Услуга оказана' or forceCorrection.
+      if (!forceCorrection && sicil && normalizedStatus !== 'Услуга оказана') {
         const archInfo = checkArchivedSicilStmt.get(sicil) as
           | { max_archived_at?: string; max_submitted_at?: string; max_archived_app_no?: string }
           | undefined;
@@ -441,7 +446,6 @@ export async function POST(request: Request) {
         }
       }
 
-      const forceCorrection = Boolean(item.force_status_correction || item.forceStatusCorrection);
       const isOfficialPortalErrorOrRefusal =
         normalizedStatus === 'Ошибка отправки заявления в ведомство' ||
         normalizedStatus === 'Ошибка получения заявления ведомством' ||
@@ -542,13 +546,21 @@ export async function POST(request: Request) {
         }
 
         // 6. If incoming has a strictly NEWER (larger integer) application_no than existingRow,
-        // or if existingRow is an 'Ошибка' and incoming is a valid sent submission,
+        // or if existingRow is a local 'Ошибка' (without exAppNo or with a different appNo) and incoming is a valid sent submission,
         // or if isSameAppOfficialCorrection is true, supersede existingRow completely
+        const isExistingOfficialPortalError =
+          exStatus.startsWith('Ошибка отправки заявления') ||
+          exStatus.startsWith('Ошибка получения заявления');
         if (
           isSameAppOfficialCorrection ||
           (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo) && Number(appNo) > Number(exAppNo)) ||
           (!exAppNo && /^\d{8,14}$/.test(appNo) && !/^ошибк/i.test(normalizedStatus)) ||
-          (/^ошибк/i.test(exStatus) && !/^ошибк/i.test(normalizedStatus) && (Boolean(appNo) || submittedAt >= exSubAt))
+          (
+            /^ошибк/i.test(exStatus) &&
+            !/^ошибк/i.test(normalizedStatus) &&
+            (!isExistingOfficialPortalError || (Boolean(appNo) && appNo !== exAppNo)) &&
+            (Boolean(appNo) || submittedAt >= exSubAt)
+          )
         ) {
           if (
             !isSameAppOfficialCorrection &&

@@ -201,7 +201,7 @@ def classify_cells(cells, recovered):
                     )
                 )
         # 4. gosuslugi_submission_history (9 cols)
-        elif n == 9 and isinstance(vals[1], str) and isinstance(vals[4], str):
+        elif n == 9 and isinstance(vals[1], str) and isinstance(vals[4], str) and vals[4] != "vks_salary":
             sic = str(vals[1] or "").strip()
             if sic and sic[0].isdigit():
                 rec_id = int(vals[0] if isinstance(vals[0], int) else rowid)
@@ -272,12 +272,81 @@ def needs_repair(db_path):
         return True
 
 
+def sync_verified_statuses():
+    if not os.path.exists(DB_PATH) or not os.path.exists(BUNDLE_PATH):
+        return
+    try:
+        with gzip.open(BUNDLE_PATH, "rt", encoding="utf-8") as gz:
+            bundle = json.load(gz)
+        local_subs = {str(s.get("sicil_no") or "").strip(): s for s in bundle.get("local_subs", []) if s.get("sicil_no")}
+        vps_idx_sicils = {str(r.get("sicil_no") or "").strip() for r in bundle.get("vps_idx", []) if r.get("sicil_no")}
+
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+
+        # 1. Remove any resurrected pre-18:19 rows not in local_subs and not in vps_idx
+        db_rows = cur.execute("SELECT id, sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, checked_at FROM gosuslugi_submissions").fetchall()
+        for row_id, sic, app_no, st, sd, sub_at, chk_at in db_rows:
+            if sic not in local_subs and str(sub_at or "") < "2026-10-26 18:19:00" and sic not in vps_idx_sicils:
+                cur.execute("DELETE FROM gosuslugi_submissions WHERE id = ?", (row_id,))
+                continue
+            l_row = local_subs.get(sic)
+            if l_row:
+                l_app = str(l_row.get("application_no") or "").strip()
+                l_st = str(l_row.get("gosuslugi_status") or "").strip()
+                l_sd = str(l_row.get("status_detail") or "").strip()
+                l_sub = str(l_row.get("submitted_at") or "").strip()
+                l_chk = str(l_row.get("checked_at") or "").strip()
+                # Restore 90 official portal errors & 37 verified pending rows & 9 local RPA error rows if overwritten by unvacuumed pages
+                if (
+                    (l_st == "Ошибка отправки заявления в ведомство" and app_no == l_app)
+                    or (l_st == "Заявление зарегистрировано" and "Заявление принято ведомством" in l_sd and app_no == l_app and str(chk_at or "") < "2026-10-26 18:20:00")
+                    or (not l_app and app_no and str(sub_at or "") < "2026-10-26 18:19:00")
+                ):
+                    cur.execute(
+                        "UPDATE gosuslugi_submissions SET application_no=?, gosuslugi_status=?, status_detail=?, submitted_at=?, checked_at=? WHERE id=?",
+                        (l_app, l_st, l_sd, l_sub, l_chk, row_id),
+                    )
+                    if l_app and l_st == "Ошибка отправки заявления в ведомство":
+                        cur.execute("DELETE FROM gosuslugi_refused_archive WHERE application_no = ? AND gosuslugi_status = 'Ошибка отправки заявления в ведомство'", (l_app,))
+
+        # 2. Promote Oct 26 Fast-Mode rows to Заявление зарегистрировано
+        cur.execute(
+            """
+            UPDATE gosuslugi_submissions
+            SET gosuslugi_status = 'Заявление зарегистрировано'
+            WHERE gosuslugi_status = 'Отправлено (PDF не скачан)'
+              AND (status_detail LIKE 'Заявление зарегистрировано%' OR submitted_at >= '2026-10-26 18:00:00')
+            """
+        )
+
+        # 3. Clean history anomalies
+        cur.execute("DELETE FROM gosuslugi_submission_history WHERE gosuslugi_status = 'vks_salary'")
+        cur.execute(
+            """
+            DELETE FROM gosuslugi_submission_history
+            WHERE gosuslugi_status = 'Услуга оказана'
+              AND status_detail LIKE 'Ошибка отправки заявления в ведомство%'
+            """
+        )
+
+        # 4. Reset Telegram snapshot so next check reflects exact counts
+        cur.execute("DELETE FROM system_info WHERE key LIKE 'telegram_vks_%'")
+
+        conn.commit()
+        conn.close()
+        print("Verified statuses synchronized cleanly.")
+    except Exception as e:
+        print(f"Warning in sync_verified_statuses: {e}")
+
+
 def repair_database():
     if not os.path.exists(DB_PATH):
         print("No pondera_hr.db found, skipping repair.")
         return
     if not needs_repair(DB_PATH):
-        print("pondera_hr.db passed integrity & row count checks! No repair needed.")
+        print("pondera_hr.db passed integrity & row count checks! Synchronizing verified statuses...")
+        sync_verified_statuses()
         return
 
     print("=== Starting pondera_hr.db Automated Recovery & Repair ===")
@@ -692,6 +761,7 @@ def repair_database():
                 print(f"Warning removing {p}: {e}")
 
     shutil.move(repaired_path, DB_PATH)
+    sync_verified_statuses()
     print(
         f"=== Repair Complete: master={len(final_master)}, subs={len(final_subs)}, "
         f"history={len(hist_tuples)}, archive={len(arch_tuples)} ==="
