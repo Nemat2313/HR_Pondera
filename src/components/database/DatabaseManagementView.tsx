@@ -76,6 +76,11 @@ const TABLE_DESCRIPTIONS: Record<string, { tr: string; ru: string; badge: string
     ru: 'Архив отклонённых заявлений (Услуга отказана)',
     badge: 'Arşiv',
   },
+  gosuslugi_vks_master_list: {
+    tr: '3.088 Kişilik VKS Maaş Bildirimi Ana Listesi',
+    ru: 'Мастер-список уведомлений ВКС (3 088 сотрудников)',
+    badge: 'VKS Master',
+  },
   gosuslugi_vks_master: {
     tr: '3.088 Kişilik VKS Maaş Bildirimi Ana Listesi',
     ru: 'Мастер-список уведомлений ВКС (3 088 сотрудников)',
@@ -101,6 +106,11 @@ const TABLE_DESCRIPTIONS: Record<string, { tr: string; ru: string; badge: string
     ru: 'Настройки подключения IMAP Mail.ru',
     badge: 'Ayarlar',
   },
+  system_info: {
+    tr: 'Sistem Durum Bilgileri, Telegram Rapor Zamanlayıcısı ve Kaynak Dosya',
+    ru: 'Системные параметры и планировщик отчётов Telegram',
+    badge: 'Sistem',
+  },
   system_meta: {
     tr: 'Sistem Veri Tazeliği, Kaynak Excel ve Yükleme Bilgileri',
     ru: 'Системные метаданные и информация об исходном Excel',
@@ -110,6 +120,11 @@ const TABLE_DESCRIPTIONS: Record<string, { tr: string; ru: string; badge: string
     tr: 'Excel 198 Kolon Şeması ve Kategori Eşleştirmeleri',
     ru: 'Схема 198 колонок Excel и категории',
     badge: 'Şema',
+  },
+  telegram_outbox: {
+    tr: 'Telegram Bildirim Kuyruğu (Outbox)',
+    ru: 'Очередь отправки уведомлений Telegram',
+    badge: 'Telegram',
   },
 };
 
@@ -265,7 +280,7 @@ export default function DatabaseManagementView({
     setPage(1);
   };
 
-  const openRowInspector = (row: Record<string, any>) => {
+  const openRowInspector = async (row: Record<string, any>) => {
     setInspectedRow(row);
     const initial: Record<string, string> = {};
     for (const [k, v] of Object.entries(row)) {
@@ -275,6 +290,25 @@ export default function DatabaseManagementView({
     }
     setEditedFields(initial);
     setRowFeedback(null);
+
+    if (row._rowid_) {
+      try {
+        const res = await fetch(
+          `/api/admin/db?action=row_detail&table=${encodeURIComponent(selectedTable)}&rowid=${row._rowid_}`
+        );
+        const data = await res.json();
+        if (data.success && data.row) {
+          setInspectedRow(data.row);
+          const fullFields: Record<string, string> = {};
+          for (const [k, v] of Object.entries(data.row)) {
+            if (k !== '_rowid_') {
+              fullFields[k] = v === null || v === undefined ? '' : String(v);
+            }
+          }
+          setEditedFields(fullFields);
+        }
+      } catch {}
+    }
   };
 
   const handleSaveRow = async () => {

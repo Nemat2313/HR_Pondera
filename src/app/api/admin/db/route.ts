@@ -78,18 +78,19 @@ export async function GET(request: Request) {
         };
       });
 
-      // Sort tables so most-used operational tables appear first
       const priorityOrder: Record<string, number> = {
         gosuslugi_submissions: 1,
         gosuslugi_submission_history: 2,
         gosuslugi_refused_archive: 3,
-        gosuslugi_vks_master: 4,
-        personnel: 5,
-        users: 6,
-        gosuslugi_mail_events: 7,
-        gosuslugi_mail_config: 8,
-        system_meta: 9,
-        columns_meta: 10,
+        gosuslugi_vks_master_list: 4,
+        gosuslugi_vks_master: 5,
+        personnel: 6,
+        users: 7,
+        gosuslugi_mail_events: 8,
+        gosuslugi_mail_config: 9,
+        system_info: 10,
+        system_meta: 11,
+        columns_meta: 12,
       };
       tablesMeta.sort((a, b) => {
         const pa = priorityOrder[a.name] ?? 99;
@@ -115,6 +116,23 @@ export async function GET(request: Request) {
       });
     }
 
+    if (action === 'row_detail') {
+      const table = (searchParams.get('table') || '').trim();
+      const rowid = Number(searchParams.get('rowid') || 0);
+      if (!table || !validTables.includes(table) || !rowid) {
+        return NextResponse.json({ success: false, message: 'Geçersiz parametre.' }, { status: 400 });
+      }
+      const row = db
+        .prepare(`SELECT rowid AS _rowid_, * FROM ${sanitizeIdentifier(table)} WHERE rowid = ? LIMIT 1`)
+        .get(rowid) as Record<string, any> | undefined;
+      if (!row) {
+        return NextResponse.json({ success: false, message: 'Kayıt bulunamadı.' }, { status: 404 });
+      }
+      if (table === 'users' && row.password) row.password = '•••••••• (scrypt hash)';
+      if (table === 'gosuslugi_mail_config' && row.app_password) row.app_password = '••••••••';
+      return NextResponse.json({ success: true, row });
+    }
+
     if (action === 'rows') {
       const table = (searchParams.get('table') || '').trim();
       if (!table || !validTables.includes(table)) {
@@ -122,7 +140,7 @@ export async function GET(request: Request) {
       }
 
       const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
-      const pageSize = Math.min(500, Math.max(10, parseInt(searchParams.get('pageSize') || '50', 10) || 50));
+      const pageSize = Math.min(250, Math.max(10, parseInt(searchParams.get('pageSize') || '50', 10) || 50));
       const search = (searchParams.get('search') || '').trim();
       const sortBy = (searchParams.get('sortBy') || '').trim();
       const sortOrder = (searchParams.get('sortOrder') || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
@@ -135,11 +153,20 @@ export async function GET(request: Request) {
       const validColNames = columns.map((c) => c.name);
       const pkCol = columns.find((c) => c.pk === 1)?.name || validColNames[0] || 'rowid';
 
+      // Exclude bulky extra_json from list view & full-table LIKE scans to keep memory usage tiny
+      const listCols = validColNames.filter((c) => c !== 'extra_json');
+      const selectColsSql =
+        listCols.length > 0
+          ? ['rowid AS _rowid_', ...listCols.map(sanitizeIdentifier)].join(', ')
+          : 'rowid AS _rowid_, *';
+
       const whereClauses: string[] = [];
       const params: Array<string | number> = [];
 
-      if (search && validColNames.length > 0) {
-        const searchableCols = validColNames.filter((c) => c !== 'password');
+      if (search && listCols.length > 0) {
+        const searchableCols = listCols
+          .filter((c) => c !== 'password' && c !== 'app_password')
+          .slice(0, 12);
         const subClauses = searchableCols.map(
           (c) => `CAST(${sanitizeIdentifier(c)} AS TEXT) LIKE ?`
         );
@@ -157,7 +184,11 @@ export async function GET(request: Request) {
       }
 
       const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-      const orderCol = validColNames.includes(sortBy) ? sanitizeIdentifier(sortBy) : sanitizeIdentifier(pkCol);
+      const orderCol = listCols.includes(sortBy)
+        ? sanitizeIdentifier(sortBy)
+        : validColNames.includes(pkCol)
+        ? sanitizeIdentifier(pkCol)
+        : 'rowid';
 
       const countStmt = db.prepare(
         `SELECT COUNT(*) AS total FROM ${sanitizeIdentifier(table)} ${whereSql}`
@@ -167,11 +198,10 @@ export async function GET(request: Request) {
 
       const offset = (page - 1) * pageSize;
       const dataStmt = db.prepare(
-        `SELECT rowid AS _rowid_, * FROM ${sanitizeIdentifier(table)} ${whereSql} ORDER BY ${orderCol} ${sortOrder} LIMIT ? OFFSET ?`
+        `SELECT ${selectColsSql} FROM ${sanitizeIdentifier(table)} ${whereSql} ORDER BY ${orderCol} ${sortOrder} LIMIT ? OFFSET ?`
       );
       const rawRows = dataStmt.all(...params, pageSize, offset) as Array<Record<string, any>>;
 
-      // Mask password hash in users table if present
       const rows = rawRows.map((r) => {
         if (table === 'users' && r.password) {
           return { ...r, password: '•••••••• (scrypt hash)' };
@@ -215,14 +245,19 @@ export async function POST(request: Request) {
     const db = getDb();
     const validTables = getValidTableNames(db);
 
-    // 1. Execute Read-Only SQL Query (SELECT / PRAGMA / EXPLAIN)
+    // 1. Execute Read-Only SQL Query (SELECT / PRAGMA / WITH) with automatic row cap to prevent OOM
     if (action === 'query') {
-      const sql = String(body?.sql || '').trim();
-      if (!sql) {
+      const rawSql = String(body?.sql || '').trim();
+      if (!rawSql) {
         return NextResponse.json({ success: false, message: 'SQL sorgusu boş olamaz.' }, { status: 400 });
       }
 
-      const normalized = sql.replace(/^\/\*[\s\S]*?\*\/\s*/g, '').replace(/^--.*$/gm, '').trim();
+      const normalized = rawSql
+        .replace(/^\/\*[\s\S]*?\*\/\s*/g, '')
+        .replace(/^--.*$/gm, '')
+        .trim()
+        .replace(/;+\s*$/, '');
+
       if (!/^(SELECT|PRAGMA|WITH)\b/i.test(normalized)) {
         return NextResponse.json(
           {
@@ -233,15 +268,23 @@ export async function POST(request: Request) {
         );
       }
 
+      const safeSql =
+        /^SELECT\b/i.test(normalized) && !/\bLIMIT\s+\d+/i.test(normalized)
+          ? `SELECT * FROM (${normalized}) LIMIT 500`
+          : normalized;
+
       const t0 = performance.now();
-      const stmt = db.prepare(sql);
+      const stmt = db.prepare(safeSql);
       const rawRows = stmt.all() as Array<Record<string, any>>;
       const elapsedMs = (performance.now() - t0).toFixed(2);
 
-      const limitedRows = rawRows.slice(0, 1000).map((r) => {
+      const limitedRows = rawRows.slice(0, 500).map((r) => {
         const clone = { ...r };
         if ('password' in clone) clone.password = '••••••••';
         if ('app_password' in clone) clone.app_password = '••••••••';
+        if ('extra_json' in clone && typeof clone.extra_json === 'string' && clone.extra_json.length > 300) {
+          clone.extra_json = clone.extra_json.slice(0, 300) + '...';
+        }
         return clone;
       });
 
@@ -252,12 +295,12 @@ export async function POST(request: Request) {
         columns,
         rows: limitedRows,
         totalReturned: rawRows.length,
-        truncated: rawRows.length > 1000,
+        truncated: rawRows.length > 500,
         elapsedMs,
       });
     }
 
-    // 2. Update a single row cell/fields by rowid or primary key
+    // 2. Update a single row cell/fields by rowid
     if (action === 'update_row') {
       const table = String(body?.table || '').trim();
       const rowid = body?.rowid;
