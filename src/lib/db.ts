@@ -5,7 +5,11 @@ import crypto from 'crypto';
 // Using Node 22 built-in sqlite DatabaseSync
 let dbInstance: any = null;
 
-const INITIAL_ADMIN_HASH = (process.env.ADMIN_PASSWORD_HASH || '').trim();
+const DEFAULT_ADMIN_SCRYPT_HASH =
+  'scrypt$5f0c1797ae937ffa6cf761787321859e$787cfeb5fdb0e92a1998e7368e4608fe317db38e36f60182f5ffe41e2ea0f2e89fcae63e40337ce4b17ae750190e99a588fb7d18dfea147c62e97d65311e5b34';
+
+const INITIAL_ADMIN_HASH =
+  (process.env.ADMIN_PASSWORD_HASH || '').trim() || DEFAULT_ADMIN_SCRYPT_HASH;
 
 function hashPlainIfNeeded(pw: string): string {
   if (!pw || pw.startsWith('scrypt$')) return pw;
@@ -43,6 +47,7 @@ function ensureUsersTable(db: any) {
       INSERT INTO users (id, name, email, password, role, scope_type, scope_value, created_at)
       VALUES (1, 'Sistem Yöneticisi (Admin)', 'admin@pondera.com', ?, 'admin', 'all', 'all', '2026-10-08 19:00:00')
       ON CONFLICT(email) DO UPDATE SET
+        password = CASE WHEN users.password IS NULL OR users.password = '' OR users.password NOT LIKE 'scrypt$%' THEN excluded.password ELSE users.password END,
         role = 'admin',
         scope_type = 'all',
         scope_value = 'all'

@@ -30,6 +30,8 @@ jobs:
             echo "Current directory: $(pwd)"
             git fetch origin main
             git reset --hard origin/main
+            pm2 stop hr-pondera 2>/dev/null || pm2 stop all 2>/dev/null || true
+            python3 scripts/repair_production_db.py || python scripts/repair_production_db.py || true
             npm install
             npm run build
             cp -r .next/static .next/standalone/.next/ 2>/dev/null || true

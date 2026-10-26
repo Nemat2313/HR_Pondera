@@ -28,6 +28,17 @@ export async function POST(request: Request) {
       );
     }
 
+    resetDb();
+
+    for (const suffix of ['-wal', '-shm']) {
+      const walPath = dbPath + suffix;
+      if (fs.existsSync(walPath)) {
+        try {
+          fs.unlinkSync(walPath);
+        } catch {}
+      }
+    }
+
     const compressed = fs.readFileSync(dbGzPath);
     const decompressed = zlib.gunzipSync(compressed);
     fs.writeFileSync(dbPath, decompressed);

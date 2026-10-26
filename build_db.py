@@ -245,18 +245,43 @@ def get_row_iterator(file_path):
 def build_database():
     start_time = time.time()
 
-    temp_db_path = DB_PATH + ".tmp"
-    if os.path.exists(temp_db_path):
-        try: os.remove(temp_db_path)
-        except Exception: pass
+    # If pondera_hr.db already exists and is healthy, update personnel & columns_meta IN-PLACE
+    # so we NEVER unlink pondera_hr.db out from under an active pondera_hr.db-wal file!
+    in_place = False
+    if os.path.exists(DB_PATH):
+        try:
+            chk_conn = sqlite3.connect(DB_PATH, timeout=60)
+            qc = chk_conn.execute("PRAGMA quick_check(1)").fetchone()
+            chk_conn.close()
+            if qc and qc[0] == "ok":
+                in_place = True
+        except Exception:
+            in_place = False
 
-    conn = sqlite3.connect(temp_db_path)
-    cursor = conn.cursor()
-
-    cursor.execute("PRAGMA synchronous = OFF;")
-    cursor.execute("PRAGMA journal_mode = MEMORY;")
-    cursor.execute("PRAGMA cache_size = 200000;")
-    cursor.execute("PRAGMA temp_store = MEMORY;")
+    if in_place:
+        conn = sqlite3.connect(DB_PATH, timeout=60)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA busy_timeout = 60000;")
+        cursor.execute("PRAGMA synchronous = NORMAL;")
+        cursor.execute("DELETE FROM columns_meta;")
+        cursor.execute("DELETE FROM personnel;")
+        try:
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'personnel';")
+        except Exception:
+            pass
+    else:
+        temp_db_path = DB_PATH + ".tmp"
+        if os.path.exists(temp_db_path):
+            try:
+                os.remove(temp_db_path)
+            except Exception:
+                pass
+        conn = sqlite3.connect(temp_db_path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA synchronous = OFF;")
+        cursor.execute("PRAGMA journal_mode = MEMORY;")
+        cursor.execute("PRAGMA cache_size = 200000;")
+        cursor.execute("PRAGMA temp_store = MEMORY;")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS system_info (
@@ -597,12 +622,12 @@ def build_database():
     cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('active_records', ?)", (str(active_count),))
     cursor.execute(f"INSERT OR REPLACE INTO system_info (key, value) VALUES ('last_updated', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}')")
 
-    # Preserve existing users and gosuslugi_submissions tables from previous DB if present
-    if os.path.exists(DB_PATH):
+    # Preserve existing users and gosuslugi_submissions tables from previous DB if not in_place
+    if not in_place and os.path.exists(DB_PATH):
         try:
             old_conn = sqlite3.connect(DB_PATH)
             old_cur = old_conn.cursor()
-            for tbl in ("users", "gosuslugi_submissions", "gosuslugi_vks_master_list", "gosuslugi_refused_archive", "gosuslugi_submission_history"):
+            for tbl in ("users", "gosuslugi_submissions", "gosuslugi_vks_master_list", "gosuslugi_refused_archive", "gosuslugi_submission_history", "gosuslugi_mail_config", "gosuslugi_mail_events", "telegram_outbox"):
                 row = old_cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()
                 if row and row[0]:
                     cursor.execute(row[0].replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "))
@@ -617,13 +642,16 @@ def build_database():
     conn.commit()
     conn.close()
 
-    # Atomic move
-    if os.path.exists(DB_PATH):
-        try:
-            os.remove(DB_PATH)
-        except Exception:
-            pass
-    shutil.move(temp_db_path, DB_PATH)
+    # If we built a separate temp file, remove stale -wal and -shm files BEFORE swapping!
+    if not in_place:
+        for suffix in ("-wal", "-shm", ""):
+            p = DB_PATH + suffix
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+        shutil.move(temp_db_path, DB_PATH)
 
     # Automatically compress to .gz when running locally (skip in Cloud Run production tmpfs to save RAM)
     if os.environ.get("NODE_ENV") != "production":
