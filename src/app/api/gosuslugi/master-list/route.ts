@@ -1042,6 +1042,95 @@ export async function PATCH(request: Request) {
       });
     }
 
+    if (action === 'reopen_registered') {
+      const scope = String(body?.scope || 'older_than_date').trim(); // 'selected' | 'older_than_date' | 'all'
+      const cutoffDate = String(body?.cutoffDate || '2026-10-23').trim(); // e.g. '2026-10-20', '2026-10-22', '2026-10-23', '2026-10-24'
+      const rawSicilList = Array.isArray(body?.sicils)
+        ? body.sicils
+        : Array.isArray(body?.sicilNos)
+        ? body.sicilNos
+        : [];
+      const sicilNos: string[] = rawSicilList
+        .map((s: any) => String(s || '').trim())
+        .filter(Boolean);
+      const targetComputer = Number(body?.targetComputer) || 0;
+
+      let targetSicils: string[] = [];
+
+      if (scope === 'selected' && sicilNos.length > 0) {
+        targetSicils = sicilNos;
+      } else if (scope === 'all') {
+        const regRows = db
+          .prepare(
+            `SELECT sicil_no FROM gosuslugi_submissions
+             WHERE gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')`
+          )
+          .all() as Array<{ sicil_no: string }>;
+        targetSicils = regRows.map((r) => r.sicil_no);
+      } else {
+        const cutoffTimestamp = `${cutoffDate.slice(0, 10)} 23:59:59`;
+        const regRows = db
+          .prepare(
+            `SELECT sicil_no FROM gosuslugi_submissions
+             WHERE gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')
+               AND submitted_at <= ?`
+          )
+          .all(cutoffTimestamp) as Array<{ sicil_no: string }>;
+        targetSicils = regRows.map((r) => r.sicil_no);
+      }
+
+      const archiveRegisteredStmt = db.prepare(`
+        INSERT INTO gosuslugi_refused_archive (
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+        )
+        SELECT
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
+        FROM gosuslugi_submissions
+        WHERE sicil_no = ?
+          AND gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')
+      `);
+
+      const delRegisteredStmt = db.prepare(`
+        DELETE FROM gosuslugi_submissions
+        WHERE sicil_no = ?
+          AND gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')
+      `);
+
+      const reassignCompStmt = db.prepare(`
+        UPDATE gosuslugi_vks_master_list
+        SET assigned_computer = ?, updated_at = ?
+        WHERE sicil_no = ?
+      `);
+
+      let reopenedCount = 0;
+      db.exec('BEGIN');
+      try {
+        for (const sic of targetSicils) {
+          archiveRegisteredStmt.run(nowStr, sic);
+          const res = delRegisteredStmt.run(sic);
+          reopenedCount += Number(res.changes || 0);
+          if ([1, 2, 3, 4].includes(targetComputer)) {
+            reassignCompStmt.run(targetComputer, nowStr, sic);
+          }
+        }
+        db.exec('COMMIT');
+      } catch (txErr) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        throw txErr;
+      }
+
+      return NextResponse.json({
+        success: true,
+        reopenedCount,
+        sicils: targetSicils,
+        message: `${reopenedCount} adet uzun süredir yanıt bekleyen («Заявление зарегистрировано») başvuru arşivlenerek tekrar gönderim kuyruğuna (Bekleyen) açıldı!`,
+      });
+    }
+
     return NextResponse.json({ success: false, message: 'Geçersiz işlem (action).' }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json(

@@ -1051,7 +1051,8 @@ export default function GosuslugiVksView() {
             if (!matchedSub) {
               if (
                 w.status === 'error' ||
-                /^ошибк|отказан/i.test(w.gosuslugiStatus || '') ||
+                (w.applicationNo && archivedAppsRef.current.has(w.applicationNo)) ||
+                /^ошибк|отказан|зарегистрирован|промежуточн/i.test(w.gosuslugiStatus || '') ||
                 (!w.pdfFilename && /отправлен/i.test(w.gosuslugiStatus || ''))
               ) {
                 return {

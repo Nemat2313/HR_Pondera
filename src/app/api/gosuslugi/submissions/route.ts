@@ -411,14 +411,15 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // 1. Skip old refused application_no that was explicitly archived/re-opened for re-sending
-      if (appNo && checkArchivedRefusalStmt.get(appNo)) {
+      // 1. Skip old refused/re-opened application_no that was explicitly archived for re-sending
+      // (unless МВД later approved that exact application_no as 'Услуга оказана')
+      if (appNo && normalizedStatus !== 'Услуга оказана' && checkArchivedRefusalStmt.get(appNo)) {
         continue;
       }
 
-      // 1b. Skip old errored/refused record from a PC's local bridge state if this sicil was already archived/re-opened,
-      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) that has genuinely received a status update.
-      if (sicil && (/^ошибк/i.test(normalizedStatus) || /отказан/i.test(normalizedStatus))) {
+      // 1b. Skip old errored/refused/stale-registered record from a PC's local bridge state if this sicil was already archived/re-opened,
+      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) or 'Услуга оказана'.
+      if (sicil && normalizedStatus !== 'Услуга оказана') {
         const archInfo = checkArchivedSicilStmt.get(sicil) as
           | { max_archived_at?: string; max_submitted_at?: string; max_archived_app_no?: string }
           | undefined;
