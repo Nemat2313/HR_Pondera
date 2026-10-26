@@ -166,7 +166,11 @@ export default function DatabaseManagementView({
   const isAdmin = user?.role === 'admin';
   const sys = stats?.systemInfo || {};
 
-  const [mode, setMode] = useState<'explorer' | 'sql'>('explorer');
+  const [mode, setMode] = useState<'explorer' | 'sql' | 'backups'>('explorer');
+  const [preBackups, setPreBackups] = useState<Array<any>>([]);
+  const [loadingBackups, setLoadingBackups] = useState<boolean>(false);
+  const [backupActionBusy, setBackupActionBusy] = useState<string | null>(null);
+  const [backupMessage, setBackupMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [selectedTable, setSelectedTable] = useState<string>('gosuslugi_submissions');
@@ -247,9 +251,87 @@ export default function DatabaseManagementView({
     }
   }, [selectedTable, page, pageSize, appliedSearch, sortBy, sortOrder]);
 
+  const fetchPreBackups = useCallback(async () => {
+    setLoadingBackups(true);
+    try {
+      const res = await fetch('/api/upload/restore');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.backups)) {
+        setPreBackups(data.backups);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingBackups(false);
+    }
+  }, []);
+
+  const handleCreatePreBackup = async () => {
+    if (!isAdmin) return;
+    setBackupActionBusy('create');
+    setBackupMessage(null);
+    try {
+      const res = await fetch('/api/upload/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_manual',
+          labelTr: 'Manuel İşlem Öncesi Koruma Yedeği (Admin)',
+          labelRu: 'Ручная защитная копия перед операцией (Admin)',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBackupMessage({ type: 'ok', text: data.message });
+        if (Array.isArray(data.backups)) setPreBackups(data.backups);
+        else fetchPreBackups();
+      } else {
+        setBackupMessage({ type: 'err', text: data.message || 'Yedek alınamadı.' });
+      }
+    } catch {
+      setBackupMessage({ type: 'err', text: 'Sunucu bağlantı hatası.' });
+    } finally {
+      setBackupActionBusy(null);
+    }
+  };
+
+  const handleRestorePreBackup = async (backupId: string, label: string) => {
+    if (!isAdmin) return;
+    const confirmMsg =
+      lang === 'ru'
+        ? `Восстановить базу данных из резервной копии «${label}»?\n(Перед восстановлением текущая база также будет автоматически сохранена)`
+        : `Veritabanını «${label}» koruma yedeğine geri döndürmek istediğinize emin misiniz?\n(Geri yüklemeden hemen önce mevcut durum da otomatik yedeklenecektir)`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setBackupActionBusy(backupId);
+    setBackupMessage(null);
+    try {
+      const res = await fetch('/api/upload/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restore', backupId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBackupMessage({ type: 'ok', text: data.message });
+        if (Array.isArray(data.backups)) setPreBackups(data.backups);
+        fetchOverview();
+        fetchTableRows();
+        onRefreshData();
+      } else {
+        setBackupMessage({ type: 'err', text: data.message || 'Geri yükleme başarısız oldu.' });
+      }
+    } catch {
+      setBackupMessage({ type: 'err', text: 'Geri yükleme sırasında bağlantı hatası oluştu.' });
+    } finally {
+      setBackupActionBusy(null);
+    }
+  };
+
   useEffect(() => {
     fetchOverview();
-  }, [fetchOverview]);
+    fetchPreBackups();
+  }, [fetchOverview, fetchPreBackups]);
 
   useEffect(() => {
     fetchTableRows();
@@ -571,6 +653,25 @@ export default function DatabaseManagementView({
           <Terminal className="w-4 h-4" />
           <span>{lang === 'ru' ? 'SQL-Консоль (Запросы SELECT)' : 'Canlı SQL Sorgu Konsolu'}</span>
         </button>
+
+        <button
+          onClick={() => {
+            setMode('backups');
+            fetchPreBackups();
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            mode === 'backups'
+              ? 'bg-teal-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <Save className="w-4 h-4" />
+          <span>
+            {lang === 'ru'
+              ? `Защитные копии перед операцией (${preBackups.length})`
+              : `İşlem Öncesi Koruma Yedekleri (${preBackups.length})`}
+          </span>
+        </button>
       </div>
 
       {mode === 'explorer' ? (
@@ -860,7 +961,7 @@ export default function DatabaseManagementView({
             </div>
           </div>
         </div>
-      ) : (
+      ) : mode === 'sql' ? (
         /* SQL QUERY CONSOLE MODE */
         <div className="bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -962,6 +1063,199 @@ export default function DatabaseManagementView({
               </table>
             </div>
           )}
+        </div>
+      ) : (
+        /* PRE-ACTION AUTOMATIC PROTECTION BACKUPS MODE */
+        <div className="bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Save className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span>
+                  {lang === 'ru'
+                    ? 'Защитные копии перед операциями (Pre-Action Backup & Restore)'
+                    : 'İşlem Öncesi Otomatik Koruma Yedekleri (Pre-Action Backup & Restore)'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {lang === 'ru'
+                  ? 'Перед каждой загрузкой Excel, массовым открытием заявлений или обновлением сервера автоматически создается проверенная копия БД (VACUUM INTO).'
+                  : 'Yeni İK Excel yüklemesi, VKS liste/şablon yüklemesi, toplu zayavka kuyruğa açma veya sunucu güncellemesinden hemen önce veritabanı otomatik yedeklenir (Son 15 koruma yedeği saklanır).'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchPreBackups}
+                disabled={loadingBackups}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingBackups ? 'animate-spin' : ''}`} />
+                <span>{lang === 'ru' ? 'Обновить' : 'Listeyi Yenile'}</span>
+              </button>
+
+              {isAdmin && (
+                <button
+                  onClick={handleCreatePreBackup}
+                  disabled={backupActionBusy !== null}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>
+                    {backupActionBusy === 'create'
+                      ? lang === 'ru'
+                        ? 'Создание копии...'
+                        : 'Yedek Alınıyor...'
+                      : lang === 'ru'
+                      ? 'Создать защитную копию сейчас'
+                      : 'Şimdi Koruma Yedeği Al'}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {backupMessage && (
+            <div
+              className={`p-3.5 rounded-xl border text-xs flex items-center gap-2 ${
+                backupMessage.type === 'ok'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                  : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+              }`}
+            >
+              {backupMessage.type === 'ok' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+              )}
+              <span className="font-medium">{backupMessage.text}</span>
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th className="py-2.5 px-3 font-semibold">{lang === 'ru' ? 'Дата / Время' : 'Tarih / Saat'}</th>
+                  <th className="py-2.5 px-3 font-semibold">{lang === 'ru' ? 'Операция (Причина копии)' : 'İşlem Öncesi Nedeni'}</th>
+                  <th className="py-2.5 px-3 font-semibold">{lang === 'ru' ? 'Персонал ИК' : 'İK Personel'}</th>
+                  <th className="py-2.5 px-3 font-semibold">{lang === 'ru' ? 'Госуслуги ВКС (Статусы)' : 'Gosuslugi VKS Özeti'}</th>
+                  <th className="py-2.5 px-3 font-semibold">{lang === 'ru' ? 'Размер' : 'Boyut'}</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">{lang === 'ru' ? 'Действия' : 'İşlemler'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-200">
+                {loadingBackups && preBackups.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500">
+                      {lang === 'ru' ? 'Загрузка списка резервных копий...' : 'Koruma yedekleri yükleniyor...'}
+                    </td>
+                  </tr>
+                ) : preBackups.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500">
+                      {lang === 'ru'
+                        ? 'Защитных копий пока нет. Нажмите «Создать защитную копию сейчас» или выполните загрузку Excel.'
+                        : 'Henüz kayıtlı işlem öncesi koruma yedeği yok. Yukarıdaki «Şimdi Koruma Yedeği Al» butonuna tıklayabilirsiniz.'}
+                    </td>
+                  </tr>
+                ) : (
+                  preBackups.map((b, idx) => {
+                    const st = b.stats || {};
+                    const label = lang === 'ru' ? b.actionLabelRu || b.actionLabelTr : b.actionLabelTr;
+                    const isRestoringThis = backupActionBusy === b.id;
+                    return (
+                      <tr key={b.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="py-2.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-1.5">
+                            {idx === 0 && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 rounded">
+                                {lang === 'ru' ? 'ПОСЛЕДНЯЯ' : 'EN GÜNCEL'}
+                              </span>
+                            )}
+                            <span>{b.createdAt}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-800 dark:text-slate-100">{label}</div>
+                          <div className="text-[11px] text-slate-400 font-mono truncate max-w-xs">{b.id}</div>
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {st.personnelTotal ? (
+                            <div>
+                              <span className="font-bold text-slate-900 dark:text-white">
+                                {Number(st.personnelTotal).toLocaleString('tr-TR')}
+                              </span>{' '}
+                              <span className="text-slate-500">
+                                ({lang === 'ru' ? 'Акт:' : 'Aktif:'} {Number(st.personnelActive || 0).toLocaleString('tr-TR')})
+                              </span>
+                              {st.sourceFile && (
+                                <div className="text-[11px] text-slate-400 truncate max-w-[180px]">{st.sourceFile}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {st.vksSubmissionsTotal ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 font-semibold">
+                                Оказана: {st.vksServiceRendered}
+                              </span>
+                              <span className="px-2 py-0.5 rounded bg-sky-50 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 font-semibold">
+                                Зарег.: {st.vksRegistered}
+                              </span>
+                              <span className="px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 font-semibold">
+                                Отказ: {st.vksRefused}
+                              </span>
+                              <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 font-semibold">
+                                Ошибка: {st.vksErrors}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap font-mono">{b.sizeMB} MB</td>
+                        <td className="py-2.5 px-3 whitespace-nowrap text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <a
+                              href={`/api/upload/restore?download=${encodeURIComponent(b.id)}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg transition-colors"
+                              title={lang === 'ru' ? 'Скачать архив .db.gz' : 'Yedek dosyasını (.db.gz) bilgisayara indir'}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>{lang === 'ru' ? 'Скачать' : 'İndir'}</span>
+                            </a>
+
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleRestorePreBackup(b.id, `${b.createdAt} - ${label}`)}
+                                disabled={backupActionBusy !== null}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isRestoringThis ? 'animate-spin' : ''}`} />
+                                <span>
+                                  {isRestoringThis
+                                    ? lang === 'ru'
+                                      ? 'Восстановление...'
+                                      : 'Yükleniyor...'
+                                    : lang === 'ru'
+                                    ? 'Восстановить'
+                                    : 'Geri Yükle (Restore)'}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

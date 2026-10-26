@@ -149,6 +149,9 @@ export function getDb() {
 export function resetDb() {
   if (dbInstance) {
     try {
+      dbInstance.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    } catch {}
+    try {
       dbInstance.close();
     } catch {}
     dbInstance = null;

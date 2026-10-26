@@ -410,15 +410,35 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             <button
               type="button"
               onClick={async () => {
-                if (!confirm(lang === 'ru' ? 'Восстановить полную базу данных компании (5.313 активных сотрудников)?' : '5.313 aktif personellik ana şirket veritabanı geri yüklensin mi?')) return;
+                if (
+                  !confirm(
+                    lang === 'ru'
+                      ? 'Восстановить последнюю защитную копию базы данных перед операцией (Pre-Action)?'
+                      : 'Son işlem öncesi otomatik koruma yedeğine (Pre-Action) geri dönülsün mü?'
+                  )
+                )
+                  return;
                 setUploading(true);
-                setStatusMessage(lang === 'ru' ? 'Восстановление полной базы...' : 'Ana şirket listesi geri yükleniyor...');
+                setStatusMessage(
+                  lang === 'ru'
+                    ? 'Восстановление защитной копии перед операцией...'
+                    : 'İşlem öncesi otomatik koruma yedeği geri yükleniyor...'
+                );
                 setIsError(false);
                 try {
-                  const res = await fetch('/api/upload/restore', { method: 'POST' });
+                  const res = await fetch('/api/upload/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'restore' }),
+                  });
                   const resData = await res.json();
                   if (resData.success) {
-                    setStatusMessage(lang === 'ru' ? 'Мастер-база (5.313 чел.) успешно восстановлена!' : '5.313 personellik ana şirket listesi başarıyla geri yüklendi!');
+                    setStatusMessage(
+                      resData.message ||
+                        (lang === 'ru'
+                          ? 'Защитная копия успешно восстановлена!'
+                          : 'İşlem öncesi koruma yedeği başarıyla geri yüklendi!')
+                    );
                     setTimeout(() => {
                       onUploadSuccess();
                       onClose();
@@ -437,10 +457,16 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
               }}
               disabled={uploading}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 rounded-xl border border-teal-200 dark:border-teal-800 transition-colors cursor-pointer"
-              title={lang === 'ru' ? 'Восстановить мастер-базу компании (5.313 чел.)' : 'Ana Şirket Listesini Geri Yükle (5.313 Kişi)'}
+              title={
+                lang === 'ru'
+                  ? 'Восстановить последнюю защитную копию БД перед операцией'
+                  : 'Son İşlem Öncesi Otomatik Koruma Yedeğine Geri Dön'
+              }
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Восстановить мастер-базу (5.313)' : 'Ana Listeyi Geri Yükle (5.313)'}</span>
+              <span>
+                {lang === 'ru' ? 'Откатить к копии (Pre-Action)' : 'Son İşlem Öncesi Yedeğe Dön'}
+              </span>
             </button>
           </div>
 

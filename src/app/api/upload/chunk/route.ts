@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import util from 'util';
 import { resetDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
+import { createPreActionBackup } from '@/lib/backup';
 
 const execFilePromise = util.promisify(execFile);
 
@@ -123,12 +124,19 @@ export async function POST(request: Request) {
       fs.rmSync(sessionDir, { recursive: true, force: true });
     } catch {}
 
-    // Close existing DB connection before rebuild; build_db.py will preserve users/submissions and atomically swap pondera_hr.db
+    const safeFreshness = dataFreshness.replace(/['"\\]/g, '');
+    const safeFileName = path.basename(rawFileName).replace(/['"\\]/g, '');
+
+    createPreActionBackup(
+      'excel_upload',
+      `İK Excel Yükleme Öncesi (${safeFileName})`,
+      `Перед загрузкой ИК Excel (${safeFileName})`
+    );
+
+    // Close existing DB connection before rebuild; build_db.py will preserve users/submissions and update in-place
     resetDb();
     const dbPath = path.join(process.cwd(), 'pondera_hr.db');
 
-    const safeFreshness = dataFreshness.replace(/['"\\]/g, '');
-    const safeFileName = path.basename(rawFileName).replace(/['"\\]/g, '');
     const pyArgs = ['-c', PYTHON_BUILD_INLINE, assembledFilePath, safeFreshness, safeFileName];
 
     const isWin = process.platform === 'win32';

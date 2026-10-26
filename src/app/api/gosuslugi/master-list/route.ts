@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { createPreActionBackup } from '@/lib/backup';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -486,6 +487,14 @@ export async function POST(request: Request) {
       );
     }
 
+    if (rawRecords.length > 5) {
+      createPreActionBackup(
+        'vks_master_upload',
+        `VKS Liste / Şablon Yükleme Öncesi (${rawRecords.length} Kayıt)`,
+        `Перед загрузкой списка ВКС (${rawRecords.length} зап.)`
+      );
+    }
+
     const db = getDb();
     ensureTables(db);
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -755,6 +764,28 @@ export async function PATCH(request: Request) {
   try {
     const body = await request.json();
     const action = String(body?.action || '').trim();
+
+    if (action === 'retry_errors' || action === 'reopen_refused' || action === 'reopen_registered') {
+      const labelMap: Record<string, { tr: string; ru: string }> = {
+        retry_errors: {
+          tr: 'Toplu Hatalı (Ошибка) Kayıtları Tekrar Kuyruğa Alma Öncesi',
+          ru: 'Перед возвратом ошибочных записей в очередь',
+        },
+        reopen_refused: {
+          tr: 'Toplu Red (Услуга отказана) Kayıtları Tekrar Gönderime Açma Öncesi',
+          ru: 'Перед повторным открытием отклонённых записей',
+        },
+        reopen_registered: {
+          tr: 'Bekleyen (Заявление зарегистрировано) Kayıtları Tekrar Gönderime Açma Öncesi',
+          ru: 'Перед повторным открытием ожидающих заявлений',
+        },
+      };
+      createPreActionBackup(
+        action,
+        labelMap[action]?.tr || `İşlem Öncesi (${action})`,
+        labelMap[action]?.ru || `Перед операцией (${action})`
+      );
+    }
 
     const db = getDb();
     ensureTables(db);

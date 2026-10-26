@@ -6,6 +6,7 @@ import util from 'util';
 import zlib from 'zlib';
 import { resetDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
+import { createPreActionBackup } from '@/lib/backup';
 
 const execFilePromise = util.promisify(execFile);
 
@@ -63,6 +64,17 @@ export async function POST(request: Request) {
 
     const safeFreshness = dataFreshness.replace(/['"\\]/g, '');
     const safeFileName = path.basename(file.name).replace(/['"\\]/g, '');
+
+    // 1. Automatic Pre-Action Protection Backup (VACUUM INTO -> .db.gz) before modifying database
+    const preBackup = createPreActionBackup(
+      'excel_upload',
+      `İK Excel Yükleme Öncesi (${safeFileName})`,
+      `Перед загрузкой ИК Excel (${safeFileName})`
+    );
+
+    // 2. Checkpoint WAL and close active Node SQLite handle before Python build_db updates personnel
+    resetDb();
+
     const pyArgs = ['-c', PYTHON_BUILD_INLINE, tempFilePath, safeFreshness, safeFileName];
 
     const isWin = process.platform === 'win32';
@@ -131,17 +143,11 @@ export async function POST(request: Request) {
         if (r.key === 'total_records') totalRecords = r.value;
         if (r.key === 'active_records') activeRecords = r.value;
       }
+      try { db.exec('PRAGMA wal_checkpoint(TRUNCATE);'); } catch {}
       try { db.close(); } catch {}
     } catch {}
 
-    // Auto-update compressed archive pondera_hr.db.gz for Cloud deployments & backups
-    try {
-      if (fs.existsSync(dbPath)) {
-        const rawDb = fs.readFileSync(dbPath);
-        const gzipped = zlib.gzipSync(rawDb);
-        fs.writeFileSync(path.join(process.cwd(), 'pondera_hr.db.gz'), gzipped);
-      }
-    } catch {}
+    resetDb();
 
     return NextResponse.json({
       success: true,
@@ -151,6 +157,8 @@ export async function POST(request: Request) {
       fileSize: file.size,
       totalRecords,
       activeRecords,
+      preBackupId: preBackup?.id || null,
+      preBackupCreatedAt: preBackup?.createdAt || null,
     });
   } catch {
     return NextResponse.json(
