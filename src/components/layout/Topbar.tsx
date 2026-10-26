@@ -403,7 +403,6 @@ export default function Topbar({
                     onClick={() => {
                       setShowProfileMenu(false);
                       logout();
-                      onOpenLogin();
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-colors text-left cursor-pointer"
                   >

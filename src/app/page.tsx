@@ -102,6 +102,12 @@ export default function Home() {
     fetchStats();
   }, [fetchStats]);
 
+  useEffect(() => {
+    if (user) {
+      setIsLoginModalOpen(false);
+    }
+  }, [user]);
+
   // Global search submit -> switches to Personnel List with search
   const handleSearchSubmit = (query: string) => {
     if (query.trim()) {
