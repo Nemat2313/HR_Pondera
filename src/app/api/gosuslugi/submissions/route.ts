@@ -321,6 +321,14 @@ export async function POST(request: Request) {
         END,
         gosuslugi_status = CASE
           WHEN gosuslugi_submissions.gosuslugi_status = 'Услуга оказана'
+            AND (
+              excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)', 'В обработке')
+              OR (
+                excluded.gosuslugi_status LIKE 'Ошибка%'
+                AND excluded.gosuslugi_status NOT LIKE 'Ошибка отправки заявления%'
+                AND excluded.gosuslugi_status NOT LIKE 'Ошибка получения заявления%'
+              )
+            )
           THEN 'Услуга оказана'
           WHEN excluded.gosuslugi_status LIKE 'Ошибка%'
             AND excluded.gosuslugi_status NOT LIKE 'Ошибка отправки заявления%'
@@ -433,10 +441,11 @@ export async function POST(request: Request) {
         }
       }
 
-      // 2. Skip Oct 21 morning MVD outage refusals (8295xxxxxx - 8297xxxxxx) that were already re-submitted
-      if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(normalizedStatus)) {
-        continue;
-      }
+      const forceCorrection = Boolean(item.force_status_correction || item.forceStatusCorrection);
+      const isOfficialPortalErrorOrRefusal =
+        normalizedStatus === 'Ошибка отправки заявления в ведомство' ||
+        normalizedStatus === 'Ошибка получения заявления ведомством' ||
+        normalizedStatus === 'Услуга отказана';
 
       const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
       const periodCode = String(item.period_code || item.periodCode || '2026-3').trim() || '2026-3';
@@ -445,7 +454,7 @@ export async function POST(request: Request) {
       const statusDetail = String(item.status_detail || item.statusDetail || '').trim();
 
       // Reject non-VKS migration arrival/departure ('прибытии и убытии') or work permit ('разрешение на работу') orders
-      if (/уведомления о прибытии|прибытии и убытии|разрешение на работу иг/i.test(statusDetail)) {
+      if (appNo === '8316972551' || /уведомления о прибытии|прибытии и убытии|разрешение на работу иг/i.test(statusDetail)) {
         continue;
       }
       let pdfFilename = String(item.pdf_filename || item.pdfFilename || '').trim();
@@ -497,21 +506,28 @@ export async function POST(request: Request) {
           existingRow.checked_at || exSubAt || nowStr
         );
 
-        // 2b. Once a worker's notification has reached 'Услуга оказана', NEVER let any other computer's cached/intermediate status downgrade it
-        if (exStatus === 'Услуга оказана' && normalizedStatus !== 'Услуга оказана') {
+        const isSameAppOfficialCorrection =
+          forceCorrection ||
+          (Boolean(appNo) && appNo === exAppNo && isOfficialPortalErrorOrRefusal);
+
+        // 2b. Once a worker's notification has reached 'Услуга оказана', do not let another computer's cached/intermediate status downgrade it,
+        // EXCEPT when correcting the exact same application_no with an official Gosuslugi portal error/refusal or explicit force_status_correction
+        if (exStatus === 'Услуга оказана' && normalizedStatus !== 'Услуга оказана' && !isSameAppOfficialCorrection) {
           continue;
         }
 
-        // 3. Never downgrade to an older (smaller integer) Gosuslugi application_no
-        if (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo)) {
+        // 3. Never downgrade to an older (smaller integer) Gosuslugi application_no (unless forceCorrection is set)
+        if (!forceCorrection && /^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo)) {
           if (Number(appNo) < Number(exAppNo)) {
             continue;
           }
         }
 
-        // 4. If worker was submitted/re-submitted on or after 2026-10-21 21:00:00, its Gosuslugi application_no must be >= 8300000000.
-        // Do not let stale local ledgers or old PDFs attach a pre-outage (< 8300000000) application_no unless it is already 'Услуга оказана'.
+        // 4. If worker was submitted/re-submitted on or after 2026-10-21 21:00:00 and has NO application_no yet,
+        // do not let stale local ledgers attach a pre-outage (< 8300000000) application_no unless forceCorrection or 'Услуга оказана'
         if (
+          !forceCorrection &&
+          !exAppNo &&
           exSubAt >= '2026-10-21 21:00:00' &&
           /^\d{10}$/.test(appNo) &&
           Number(appNo) < 8300000000 &&
@@ -521,18 +537,25 @@ export async function POST(request: Request) {
         }
 
         // 5. Never let a stale refusal checked BEFORE the row's submitted_at overwrite a newer re-submission
-        if (checkedAt && exSubAt && checkedAt < exSubAt && /отказан/i.test(normalizedStatus)) {
+        if (!forceCorrection && checkedAt && exSubAt && checkedAt < exSubAt && /отказан/i.test(normalizedStatus)) {
           continue;
         }
 
         // 6. If incoming has a strictly NEWER (larger integer) application_no than existingRow,
-        // or if existingRow is an 'Ошибка' and incoming is a valid sent submission, supersede existingRow completely
+        // or if existingRow is an 'Ошибка' and incoming is a valid sent submission,
+        // or if isSameAppOfficialCorrection is true, supersede existingRow completely
         if (
+          isSameAppOfficialCorrection ||
           (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo) && Number(appNo) > Number(exAppNo)) ||
           (!exAppNo && /^\d{8,14}$/.test(appNo) && !/^ошибк/i.test(normalizedStatus)) ||
           (/^ошибк/i.test(exStatus) && !/^ошибк/i.test(normalizedStatus) && (Boolean(appNo) || submittedAt >= exSubAt))
         ) {
-          if ((/отказан/i.test(exStatus) || /^ошибк/i.test(exStatus)) && exAppNo && !checkArchivedRefusalStmt.get(exAppNo)) {
+          if (
+            !isSameAppOfficialCorrection &&
+            (/отказан/i.test(exStatus) || /^ошибк/i.test(exStatus)) &&
+            exAppNo &&
+            !checkArchivedRefusalStmt.get(exAppNo)
+          ) {
             archiveSingleRowStmt.run(
               existingRow.sicil_no,
               existingRow.worker_name,
@@ -547,15 +570,22 @@ export async function POST(request: Request) {
               nowStr
             );
           }
-          const validNewPdf = pdfFilename && (!appNo || pdfFilename.includes(appNo)) ? pdfFilename : '';
+          const validNewPdf =
+            item.clear_pdf_filename
+              ? ''
+              : pdfFilename && (!appNo || pdfFilename.includes(appNo))
+              ? pdfFilename
+              : isSameAppOfficialCorrection
+              ? existingRow.pdf_filename
+              : '';
           forceUpdateSupersedingStmt.run(
             workerName,
             citizenship,
             appNo,
             normalizedStatus,
-            statusDetail,
+            statusDetail || existingRow.status_detail,
             validNewPdf,
-            submittedAt > exSubAt ? submittedAt : exSubAt,
+            forceCorrection && submittedAt ? submittedAt : submittedAt > exSubAt ? submittedAt : exSubAt,
             checkedAt || nowStr,
             nowStr,
             existingRow.id
@@ -783,6 +813,7 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const appNo = searchParams.get('applicationNo') || '';
     const sicil = searchParams.get('sicil') || '';
+    const shouldArchive = searchParams.get('archive') === '1';
 
     if (!appNo && !sicil) {
       return NextResponse.json({ success: false, message: 'Silinecek parametre belirtilmedi.' }, { status: 400 });
@@ -790,9 +821,21 @@ export async function DELETE(request: Request) {
 
     const db = getDb();
     ensureTable(db);
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     let deleted = 0;
     if (appNo) {
+      if (shouldArchive) {
+        db.prepare(`
+          INSERT INTO gosuslugi_refused_archive (
+            sicil_no, worker_name, citizenship, notification_type, period_code,
+            application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+          )
+          SELECT sicil_no, worker_name, citizenship, notification_type, period_code,
+                 application_no, 'Услуга отказана', 'Неверная услуга (архивировано)', pdf_filename, submitted_at, ?
+          FROM gosuslugi_submissions WHERE application_no = ?
+        `).run(nowStr, appNo);
+      }
       const res = db.prepare('DELETE FROM gosuslugi_submissions WHERE application_no = ?').run(appNo);
       deleted += res.changes;
     }

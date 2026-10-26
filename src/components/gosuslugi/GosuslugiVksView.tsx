@@ -864,7 +864,7 @@ function normalizeSentGosuslugiStatus(rawStatus?: string): string {
 
 function isProgressedGosuslugiStatus(st?: string): boolean {
   const s = String(st || '').trim();
-  return /Услуга оказана|Услуга отказана|Промежуточные результаты|Заявление зарегистрировано|Отправлено в ведомство/i.test(s);
+  return /Услуга оказана|Услуга отказана|Промежуточные результаты|Заявление зарегистрировано|Отправлено в ведомство|Ошибка отправки заявления|Ошибка получения заявления/i.test(s);
 }
 
 function pickBetterGosuslugiStatus(existing?: string, incoming?: string): string {
@@ -1083,8 +1083,8 @@ export default function GosuslugiVksView() {
               gosuslugiStatus: nextGosStatus,
               pdfFilename: nextPdf,
               status: alreadySent ? 'success' : isErr ? 'error' : 'pending',
-              // Uncheck already-sent workers so their Zayavka is not accidentally re-submitted!
-              selected: alreadySent ? false : w.selected,
+              // Uncheck already-sent workers so their Zayavka is not accidentally re-submitted; check errored workers so they can be retried!
+              selected: alreadySent ? false : isErr ? true : w.selected,
             };
           })
         );

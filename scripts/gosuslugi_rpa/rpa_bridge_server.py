@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.6.90"
+BRIDGE_VERSION = "2.6.91"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
@@ -87,14 +87,10 @@ def is_browser_closed_error_text(st: str) -> bool:
 
 
 def is_outage_or_archived_app(app_no: str, status: str = "") -> bool:
-    import re
     a = str(app_no or "").strip()
     if not a:
         return False
     if a in CENTRAL_ARCHIVED_APP_NOS:
-        return True
-    st_low = str(status or "").lower()
-    if re.match(r"^829[567]\d{6}$", a) and "отказан" in st_low:
         return True
     return False
 

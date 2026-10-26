@@ -1284,27 +1284,12 @@ CENTRAL_ARCHIVED_APP_NOS = set()
 
 def is_superseded_or_archived_order(app_no: str, status: str = "", submitted_at: str = "") -> bool:
     """
-    Returns True if `app_no` belongs to:
-    1) `gosuslugi_refused_archive` (`CENTRAL_ARCHIVED_APP_NOS`)
-    2) The Oct 21 Morning MVD System Outage (03:27-11:25 MSK, application_no 8295xxxxxx-8297xxxxxx) with refusal status
-    3) An older pre-Oct-21-night application (< 8300000000) when the worker was re-submitted on/after 2026-10-21 21:00:00
+    Returns True if `app_no` was explicitly archived in `gosuslugi_refused_archive` (`CENTRAL_ARCHIVED_APP_NOS`).
     """
     clean_no = str(app_no or "").strip()
     if not clean_no:
         return False
     if clean_no in CENTRAL_ARCHIVED_APP_NOS:
-        return True
-    st_lower = str(status or "").strip().lower()
-    if re.match(r"^829[567]\d{6}$", clean_no) and "отказан" in st_lower:
-        return True
-    sub_at = str(submitted_at or "").strip()
-    if (
-        sub_at >= "2026-10-21 21:00:00"
-        and clean_no.isdigit()
-        and len(clean_no) == 10
-        and int(clean_no) < 8300000000
-        and str(status or "").strip() != "Услуга оказана"
-    ):
         return True
     return False
 
@@ -1712,17 +1697,12 @@ def run_fast_json_status_sync_on_page(
                 assigned_app_nos_to_sicil[final_app_no] = sicil
 
             new_status = str(matched_order.get("gosuslugi_status") or "").strip()
-            # Prevent downgrading an already final status ('Услуга оказана' / 'Услуга отказана') to an intermediate status,
-            # EXCEPT when correcting a misclassified 'Услуга отказана' to 'Ошибка отправки заявления в ведомство'
-            is_correcting_refusal_to_portal_error = (
-                prev_status == "Услуга отказана"
-                and new_status.lower().startswith("ошибк")
-            )
+            # Prevent downgrading an already final status ('Услуга оказана' / 'Услуга отказана') ONLY when new_status
+            # is an unverified local fallback ('Отправлено', 'В обработке'); always allow official Gosuslugi statuses!
             if (
                 raw_app_no == final_app_no
                 and prev_status in ("Услуга оказана", "Услуга отказана")
-                and new_status not in ("Услуга оказана", "Услуга отказана")
-                and not is_correcting_refusal_to_portal_error
+                and new_status in ("Отправлено", "Отправлено (PDF не скачан)", "В обработке")
             ):
                 continue
 
@@ -1763,6 +1743,7 @@ def run_fast_json_status_sync_on_page(
                 "gosuslugi_status": new_status,
                 "status_detail": matched_order.get("status_detail", ""),
                 "checked_at": now_str,
+                "force_status_correction": True,
             }
             updated_records.append(updated_entry)
             if is_local_bridge_up_to_date():
@@ -2161,8 +2142,7 @@ def main():
                     if (
                         raw_app_no == final_app_no
                         and cur_status in ("Услуга оказана", "Услуга отказана")
-                        and new_st_val not in ("Услуга оказана", "Услуга отказана")
-                        and not (cur_status == "Услуга отказана" and new_st_val.lower().startswith("ошибк"))
+                        and new_st_val in ("Отправлено", "Отправлено (PDF не скачан)", "В обработке")
                     ):
                         new_st_val = cur_status
 
@@ -2190,6 +2170,7 @@ def main():
                         "gosuslugi_status": new_st_val,
                         "status_detail": matched_order.get("status_detail", ""),
                         "checked_at": now_str,
+                        "force_status_correction": True,
                     }
                     updated_records.append(updated_entry)
                     if is_local_bridge_up_to_date():
