@@ -25,7 +25,6 @@ jobs:
           command_timeout: 15m
           script: |
             echo "=== Starting Pondera HR Auto-Deploy ==="
-            pkill -f "next build" 2>/dev/null || true
             sysctl -w vm.swappiness=10 2>/dev/null || true
             cd /var/www/hr_pondera || cd /root/HR_Pondera || cd ~/HR_Pondera
             echo "Current directory: $(pwd)"
