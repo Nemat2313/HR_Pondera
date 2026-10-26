@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.6.82"
+BRIDGE_VERSION = "2.6.88"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
@@ -112,6 +112,7 @@ def load_saved_applications():
                         if isinstance(it, dict):
                             st = str(it.get("gosuslugi_status") or "")
                             app_no = str(it.get("application_no") or "").strip()
+                            pdf_fn = str(it.get("pdf_filename") or "").strip()
                             if not app_no and is_browser_closed_error_text(st):
                                 changed = True
                                 continue
@@ -119,8 +120,12 @@ def load_saved_applications():
                                 changed = True
                                 continue
                             if "GosuslugiVksBot" in st or "Step 16" in st:
-                                it["gosuslugi_status"] = "Отправлено (PDF не скачан)"
+                                st = "Отправлено (PDF не скачан)"
+                                it["gosuslugi_status"] = st
                                 changed = True
+                            if st in ("Отправлено (PDF не скачан)", "Отправлено") and not pdf_fn:
+                                changed = True
+                                continue
                             cleaned_list.append(it)
                     items = cleaned_list
                     if changed:
@@ -827,18 +832,26 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                     for r in records
                     if isinstance(r, dict) and str(r.get("Sicil") or r.get("Код") or "").strip()
                 }
-                if queued_sicils and isinstance(RPAState.submissions, dict):
-                    keys_to_del = []
-                    for k, v in list(RPAState.submissions.items()):
-                        if isinstance(v, dict):
-                            v_sic = str(v.get("sicil_no") or "").strip()
-                            v_st = str(v.get("gosuslugi_status") or "").strip().lower()
-                            if v_sic in queued_sicils and (v_st.startswith("ошибк") or "отказ" in v_st):
-                                keys_to_del.append(k)
-                    if keys_to_del:
-                        for k in keys_to_del:
-                            RPAState.submissions.pop(k, None)
-                        save_applications_to_disk(RPAState.submissions)
+                if queued_sicils and isinstance(RPAState.submissions, list):
+                    before_len = len(RPAState.submissions)
+                    RPAState.submissions = [
+                        v
+                        for v in RPAState.submissions
+                        if not (
+                            isinstance(v, dict)
+                            and str(v.get("sicil") or v.get("sicil_no") or "").strip() in queued_sicils
+                            and (
+                                str(v.get("gosuslugi_status") or "").strip().lower().startswith("ошибк")
+                                or "отказ" in str(v.get("gosuslugi_status") or "").strip().lower()
+                                or (
+                                    str(v.get("gosuslugi_status") or "").strip() in ("Отправлено (PDF не скачан)", "Отправлено")
+                                    and not str(v.get("pdf_filename") or "").strip()
+                                )
+                            )
+                        )
+                    ]
+                    if len(RPAState.submissions) != before_len:
+                        save_applications_ledger(RPAState.submissions)
                 if mode == "vks" and len(records) > 1:
                     sync_vks_queue_to_central_master_list_async(records)
 

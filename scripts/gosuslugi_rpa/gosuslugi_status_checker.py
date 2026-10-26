@@ -104,16 +104,22 @@ def classify_gosuslugi_status_text(raw_title: str, raw_status_code: str = "") ->
     if "услуга оказана" in tl or sc == "executed" or "исполнено" in tl:
         return "Услуга оказана"
     if (
+        "ошибка отправки" in tl
+        or "ошибка получения" in tl
+        or "ошибка ведомства" in tl
+        or ("ошибк" in tl and "отказ" not in tl)
+    ):
+        return t if t.lower().startswith("ошибк") else f"Ошибка: {t}"
+    if (
         "отказано" in tl
         or "услуга отказана" in tl
         or "не оказана" in tl
-        or "ошибка отправки" in tl
-        or "ошибка получения" in tl
-        or "ошибка ведомства" in tl
         or "возврат" in tl
-        or sc in ("rejected", "error", "canceled", "cancelled")
+        or sc in ("rejected", "canceled", "cancelled")
     ):
         return "Услуга отказана"
+    if sc == "error":
+        return t if (t and t.lower().startswith("ошибк")) else "Ошибка отправки заявления в ведомство"
     if "промежуточные результаты" in tl:
         return "Промежуточные результаты по заявлению"
     if "зарегистрировано" in tl:
@@ -192,6 +198,7 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     detail_parts = [
         p
         for p in [
+            raw_title,
             sub_title,
             f"Гражданин: {citizen_name}" if citizen_name else "",
             f"Инициатор: {initiator}" if initiator else "",
@@ -1626,11 +1633,17 @@ def run_fast_json_status_sync_on_page(
                 assigned_app_nos_to_sicil[final_app_no] = sicil
 
             new_status = str(matched_order.get("gosuslugi_status") or "").strip()
-            # Prevent downgrading an already final status ('Услуга оказана' / 'Услуга отказана') to an intermediate status
+            # Prevent downgrading an already final status ('Услуга оказана' / 'Услуга отказана') to an intermediate status,
+            # EXCEPT when correcting a misclassified 'Услуга отказана' to 'Ошибка отправки заявления в ведомство'
+            is_correcting_refusal_to_portal_error = (
+                prev_status == "Услуга отказана"
+                and new_status.lower().startswith("ошибк")
+            )
             if (
                 raw_app_no == final_app_no
                 and prev_status in ("Услуга оказана", "Услуга отказана")
                 and new_status not in ("Услуга оказана", "Услуга отказана")
+                and not is_correcting_refusal_to_portal_error
             ):
                 continue
 
@@ -2070,6 +2083,7 @@ def main():
                         raw_app_no == final_app_no
                         and cur_status in ("Услуга оказана", "Услуга отказана")
                         and new_st_val not in ("Услуга оказана", "Услуга отказана")
+                        and not (cur_status == "Услуга отказана" and new_st_val.lower().startswith("ошибк"))
                     ):
                         new_st_val = cur_status
 

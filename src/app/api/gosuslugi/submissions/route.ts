@@ -61,10 +61,76 @@ function ensureTable(db: any) {
     UPDATE gosuslugi_submissions
     SET gosuslugi_status = 'Отправлено (PDF не скачан)'
     WHERE gosuslugi_status LIKE '%GosuslugiVksBot%' OR gosuslugi_status LIKE '%Step 16%';
+
     UPDATE gosuslugi_submissions
-    SET gosuslugi_status = 'Услуга отказана'
-    WHERE status_detail LIKE '%Ошибка получения заявления ведомством%'
-      AND gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено', 'Ошибка получения заявления ведомством');
+    SET gosuslugi_status = 'Ошибка отправки заявления в ведомство'
+    WHERE gosuslugi_status != 'Услуга оказана'
+      AND (
+        status_detail LIKE '%Ошибка отправки заявления%'
+        OR application_no IN (
+          SELECT DISTINCT application_no FROM gosuslugi_submission_history
+          WHERE application_no != ''
+            AND (status_detail LIKE '%Ошибка отправки заявления%' OR gosuslugi_status LIKE '%Ошибка отправки заявления%')
+        )
+      );
+
+    UPDATE gosuslugi_submissions
+    SET gosuslugi_status = 'Ошибка получения заявления ведомством'
+    WHERE gosuslugi_status != 'Услуга оказана'
+      AND (
+        status_detail LIKE '%Ошибка получения заявления%'
+        OR application_no IN (
+          SELECT DISTINCT application_no FROM gosuslugi_submission_history
+          WHERE application_no != ''
+            AND (status_detail LIKE '%Ошибка получения заявления%' OR gosuslugi_status LIKE '%Ошибка получения заявления%')
+        )
+      );
+
+    INSERT INTO gosuslugi_refused_archive (
+      sicil_no, worker_name, citizenship, notification_type, period_code,
+      application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+    )
+    SELECT
+      sicil_no, worker_name, citizenship, notification_type, period_code,
+      application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, '2026-10-26 10:15:00'
+    FROM gosuslugi_submissions
+    WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
+      AND TRIM(COALESCE(pdf_filename, '')) = '';
+
+    DELETE FROM gosuslugi_submissions
+    WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
+      AND TRIM(COALESCE(pdf_filename, '')) = '';
+
+    DELETE FROM gosuslugi_submission_history
+    WHERE application_no = ''
+      AND gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
+      AND TRIM(COALESCE(pdf_filename, '')) = '';
+
+    DELETE FROM gosuslugi_submission_history
+    WHERE application_no != ''
+      AND id NOT IN (
+        SELECT MAX(id)
+        FROM gosuslugi_submission_history
+        WHERE application_no != ''
+        GROUP BY sicil_no, application_no
+      );
+
+    UPDATE gosuslugi_submission_history
+    SET gosuslugi_status = (
+      SELECT s.gosuslugi_status
+      FROM gosuslugi_submissions s
+      WHERE s.sicil_no = gosuslugi_submission_history.sicil_no
+        AND s.application_no = gosuslugi_submission_history.application_no
+      LIMIT 1
+    )
+    WHERE application_no != ''
+      AND EXISTS (
+        SELECT 1
+        FROM gosuslugi_submissions s
+        WHERE s.sicil_no = gosuslugi_submission_history.sicil_no
+          AND s.application_no = gosuslugi_submission_history.application_no
+      );
+
     DELETE FROM gosuslugi_submissions
     WHERE application_no = ''
       AND (
@@ -182,11 +248,29 @@ export async function POST(request: Request) {
     `);
 
     const checkLastHistoryStmt = db.prepare(`
-      SELECT application_no, gosuslugi_status
+      SELECT id, application_no, gosuslugi_status
       FROM gosuslugi_submission_history
       WHERE sicil_no = ?
       ORDER BY id DESC
       LIMIT 1
+    `);
+
+    const checkHistoryByAppStmt = db.prepare(`
+      SELECT id, gosuslugi_status
+      FROM gosuslugi_submission_history
+      WHERE sicil_no = ? AND application_no = ? AND application_no != ''
+      ORDER BY id DESC
+      LIMIT 1
+    `);
+
+    const updateHistoryByIdStmt = db.prepare(`
+      UPDATE gosuslugi_submission_history
+      SET worker_name = COALESCE(NULLIF(?, ''), worker_name),
+          gosuslugi_status = ?,
+          status_detail = COALESCE(NULLIF(?, ''), status_detail),
+          pdf_filename = COALESCE(NULLIF(?, ''), pdf_filename),
+          event_at = ?
+      WHERE id = ?
     `);
 
     const insertHistoryStmt = db.prepare(`
@@ -208,8 +292,19 @@ export async function POST(request: Request) {
     ) => {
       if (!hSicil || !hStatus) return;
       try {
+        if (hAppNo) {
+          const existingForApp = checkHistoryByAppStmt.get(hSicil, hAppNo) as
+            | { id: number; gosuslugi_status: string }
+            | undefined;
+          if (existingForApp) {
+            if (existingForApp.gosuslugi_status !== hStatus) {
+              updateHistoryByIdStmt.run(hWorker, hStatus, hDetail, hPdf, hEventAt, existingForApp.id);
+            }
+            return;
+          }
+        }
         const lastH = checkLastHistoryStmt.get(hSicil) as
-          | { application_no: string; gosuslugi_status: string }
+          | { id: number; application_no: string; gosuslugi_status: string }
           | undefined;
         if (!lastH || lastH.application_no !== hAppNo || lastH.gosuslugi_status !== hStatus) {
           insertHistoryStmt.run(hSicil, hWorker, hAppNo, hStatus, hDetail, hPdf, hSubAt, hEventAt);
@@ -248,14 +343,24 @@ export async function POST(request: Request) {
           WHEN gosuslugi_submissions.gosuslugi_status = 'Услуга оказана'
           THEN 'Услуга оказана'
           WHEN excluded.gosuslugi_status LIKE 'Ошибка%'
+            AND excluded.gosuslugi_status NOT LIKE 'Ошибка отправки заявления%'
+            AND excluded.gosuslugi_status NOT LIKE 'Ошибка получения заявления%'
             AND gosuslugi_submissions.application_no != ''
             AND gosuslugi_submissions.gosuslugi_status NOT LIKE 'Ошибка%'
           THEN gosuslugi_submissions.gosuslugi_status
           WHEN excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)', 'В обработке')
-            AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство', 'Заявление зарегистрировано')
+            AND (
+              gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство', 'Заявление зарегистрировано')
+              OR gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка отправки заявления%'
+              OR gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка получения заявления%'
+            )
           THEN gosuslugi_submissions.gosuslugi_status
           WHEN excluded.gosuslugi_status IN ('Заявление зарегистрировано', 'Отправлено в ведомство')
-            AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению')
+            AND (
+              gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению')
+              OR gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка отправки заявления%'
+              OR gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка получения заявления%'
+            )
           THEN gosuslugi_submissions.gosuslugi_status
           WHEN excluded.gosuslugi_status = 'Промежуточные результаты по заявлению'
             AND gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана')
@@ -289,11 +394,22 @@ export async function POST(request: Request) {
       }
       const normalizedStatus = /GosuslugiVksBot|Step 16/i.test(rawStatus)
         ? 'Отправлено (PDF не скачан)'
-        : /ошибка получения заявления ведомством|ошибка отправки заявления|ошибка ведомства/i.test(rawStatus)
-        ? 'Услуга отказана'
+        : /ошибка отправки заявления/i.test(rawStatus)
+        ? 'Ошибка отправки заявления в ведомство'
+        : /ошибка получения заявления/i.test(rawStatus)
+        ? 'Ошибка получения заявления ведомством'
         : rawStatus;
 
       if (!sicil && !appNo) continue;
+
+      const rawPdfCheck = String(item.pdf_filename || item.pdfFilename || '').trim();
+      // Never accept unverified draft records ('Отправлено (PDF не скачан)' / 'Отправлено' without PDF)
+      if (
+        (normalizedStatus === 'Отправлено (PDF не скачан)' || normalizedStatus === 'Отправлено') &&
+        !rawPdfCheck
+      ) {
+        continue;
+      }
 
       // 1. Skip old refused application_no that was explicitly archived/re-opened for re-sending
       if (appNo && checkArchivedRefusalStmt.get(appNo)) {
@@ -531,14 +647,26 @@ export async function POST(request: Request) {
         checkedAt,
         nowStr
       );
+      const savedAfter = getExistingBySicilStmt.get(sicil, notifType, periodCode) as
+        | {
+            application_no: string;
+            gosuslugi_status: string;
+            status_detail: string;
+            pdf_filename: string;
+            submitted_at: string;
+            checked_at: string;
+          }
+        | undefined;
+      const finalSavedStatus = savedAfter?.gosuslugi_status || normalizedStatus;
+      const finalSavedAppNo = savedAfter?.application_no || appNo || existingRow?.application_no || '';
       logHistoryIfChanged(
         sicil,
         workerName || existingRow?.worker_name || '',
-        appNo || existingRow?.application_no || '',
-        normalizedStatus,
-        statusDetail,
-        pdfFilename,
-        submittedAt,
+        finalSavedAppNo,
+        finalSavedStatus,
+        savedAfter?.status_detail || statusDetail,
+        savedAfter?.pdf_filename || pdfFilename,
+        savedAfter?.submitted_at || submittedAt,
         checkedAt || submittedAt || nowStr
       );
       upserted++;

@@ -1049,7 +1049,11 @@ export default function GosuslugiVksView() {
             const matchedSub =
               (doesSubMatchWorker(subByCode, w) ? subByCode : undefined) || subByApp;
             if (!matchedSub) {
-              if (w.status === 'error' || /^ошибк|отказан/i.test(w.gosuslugiStatus || '')) {
+              if (
+                w.status === 'error' ||
+                /^ошибк|отказан/i.test(w.gosuslugiStatus || '') ||
+                (!w.pdfFilename && /отправлен/i.test(w.gosuslugiStatus || ''))
+              ) {
                 return {
                   ...w,
                   applicationNo: '',
@@ -1371,9 +1375,11 @@ export default function GosuslugiVksView() {
                       .filter((s) => {
                         const appNo = String(s.application_no || '').trim();
                         const st = String(s.gosuslugi_status || '').trim();
+                        const pdfFn = String(s.pdf_filename || '').trim();
                         if (appNo && archivedAppsRef.current.has(appNo)) return false;
                         if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
                         if (/^ошибк/i.test(st)) return false;
+                        if (!pdfFn && (st === 'Отправлено (PDF не скачан)' || st === 'Отправлено')) return false;
                         return true;
                       })
                       .sort((a, b) => {

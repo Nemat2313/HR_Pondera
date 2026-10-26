@@ -15,6 +15,15 @@ interface ErrorCategoryDef {
 }
 
 const ERROR_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
+  portal_delivery_error: {
+    id: 'portal_delivery_error',
+    titleTr: 'Gosuslugi Portal Gönderim Hatası («Ошибка отправки заявления в ведомство»)',
+    titleRu: 'Ошибка отправки заявления в ведомство / Ошибка получения заявления ведомством',
+    stepLabel: 'Gosuslugi ➔ МВД (СМЭВ)',
+    hintTr:
+      'Başvuru Gosuslugi üzerinde oluşturuldu ancak Gosuslugi–МВД (СМЭВ) servisi arasındaki teknik/ağ hatası nedeniyle МВД sistemine iletilemedi (Red değildir, personel verisinde hata yoktur). Doğrudan tekrar gönderime açılabilir.',
+    severity: 'medium',
+  },
   mvd_step12: {
     id: 'mvd_step12',
     titleTr: 'Adım 12: МВД Birimi Seçimi Hatası',
@@ -140,6 +149,9 @@ const REFUSAL_CATEGORY_DEFINITIONS: Record<string, ErrorCategoryDef> = {
 
 function classifyGosuslugiError(statusText: string, detailText = ''): ErrorCategoryDef {
   const combined = `${statusText || ''} ${detailText || ''}`;
+  if (/ошибка отправки заявления|ошибка получения заявления|ошибка ведомства/i.test(combined)) {
+    return ERROR_CATEGORY_DEFINITIONS.portal_delivery_error;
+  }
   if (/Шаг 12|Подразделение МВД|подразделение МВД/i.test(combined)) {
     return ERROR_CATEGORY_DEFINITIONS.mvd_step12;
   }
@@ -243,6 +255,78 @@ export async function GET(request: Request) {
     `);
     try {
       db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
+    } catch {}
+    try {
+      db.exec(`
+        UPDATE gosuslugi_submissions
+        SET gosuslugi_status = 'Ошибка отправки заявления в ведомство'
+        WHERE gosuslugi_status != 'Услуга оказана'
+          AND (
+            status_detail LIKE '%Ошибка отправки заявления%'
+            OR application_no IN (
+              SELECT DISTINCT application_no FROM gosuslugi_submission_history
+              WHERE application_no != ''
+                AND (status_detail LIKE '%Ошибка отправки заявления%' OR gosuslugi_status LIKE '%Ошибка отправки заявления%')
+            )
+          );
+
+        UPDATE gosuslugi_submissions
+        SET gosuslugi_status = 'Ошибка получения заявления ведомством'
+        WHERE gosuslugi_status != 'Услуга оказана'
+          AND (
+            status_detail LIKE '%Ошибка получения заявления%'
+            OR application_no IN (
+              SELECT DISTINCT application_no FROM gosuslugi_submission_history
+              WHERE application_no != ''
+                AND (status_detail LIKE '%Ошибка получения заявления%' OR gosuslugi_status LIKE '%Ошибка получения заявления%')
+            )
+          );
+
+        INSERT INTO gosuslugi_refused_archive (
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+        )
+        SELECT
+          sicil_no, worker_name, citizenship, notification_type, period_code,
+          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, '2026-10-26 10:15:00'
+        FROM gosuslugi_submissions
+        WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
+          AND TRIM(COALESCE(pdf_filename, '')) = '';
+
+        DELETE FROM gosuslugi_submissions
+        WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
+          AND TRIM(COALESCE(pdf_filename, '')) = '';
+
+        DELETE FROM gosuslugi_submission_history
+        WHERE application_no = ''
+          AND gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
+          AND TRIM(COALESCE(pdf_filename, '')) = '';
+
+        DELETE FROM gosuslugi_submission_history
+        WHERE application_no != ''
+          AND id NOT IN (
+            SELECT MAX(id)
+            FROM gosuslugi_submission_history
+            WHERE application_no != ''
+            GROUP BY sicil_no, application_no
+          );
+
+        UPDATE gosuslugi_submission_history
+        SET gosuslugi_status = (
+          SELECT s.gosuslugi_status
+          FROM gosuslugi_submissions s
+          WHERE s.sicil_no = gosuslugi_submission_history.sicil_no
+            AND s.application_no = gosuslugi_submission_history.application_no
+          LIMIT 1
+        )
+        WHERE application_no != ''
+          AND EXISTS (
+            SELECT 1
+            FROM gosuslugi_submissions s
+            WHERE s.sicil_no = gosuslugi_submission_history.sicil_no
+              AND s.application_no = gosuslugi_submission_history.application_no
+          );
+      `);
     } catch {}
 
     // 1. Load & cache active VKS personnel from personnel table so 15MB of all_data_json is not re-parsed on every poll
@@ -551,25 +635,6 @@ export async function GET(request: Request) {
       const respTime = curChkAt || curUpdAt || curSubAt;
 
       if (curStatus) {
-        // If current status is final/registered and submitted_at < response_at, include initial 'Отправлено' step if not already present
-        if (
-          curKey &&
-          curKey !== 'error' &&
-          curKey !== 'sent_pending' &&
-          curSubAt &&
-          respTime &&
-          respTime > curSubAt
-        ) {
-          priorList.push({
-            application_no: curAppNo,
-            status: 'Отправлено',
-            status_key: 'sent_pending',
-            detail: 'Gosuslugi üzerinden МВД sistemine gönderildi',
-            submitted_at: curSubAt,
-            event_at: curSubAt,
-            source: 'current',
-          });
-        }
         priorList.push({
           application_no: curAppNo,
           status: curStatus,
@@ -594,6 +659,25 @@ export async function GET(request: Request) {
       }> = [];
 
       for (const stp of priorList) {
+        if (!stp.application_no && stp.status_key === 'sent_pending') {
+          continue;
+        }
+        if (stp.application_no) {
+          const existingForApp = deduped.find((d) => d.application_no === stp.application_no);
+          if (existingForApp) {
+            if (stp.source === 'current' || existingForApp.status_key === 'sent_pending') {
+              existingForApp.status = stp.status;
+              existingForApp.status_key = stp.status_key;
+            }
+            if (stp.event_at && (!existingForApp.event_at || stp.event_at > existingForApp.event_at)) {
+              existingForApp.event_at = stp.event_at;
+            }
+            if (stp.detail) {
+              existingForApp.detail = stp.detail;
+            }
+            continue;
+          }
+        }
         const prev = deduped[deduped.length - 1];
         if (prev && prev.application_no === stp.application_no && prev.status === stp.status) {
           if (stp.event_at && (!prev.event_at || stp.event_at > prev.event_at)) {
