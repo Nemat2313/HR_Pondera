@@ -282,26 +282,6 @@ export async function GET(request: Request) {
             )
           );
 
-        INSERT INTO gosuslugi_refused_archive (
-          sicil_no, worker_name, citizenship, notification_type, period_code,
-          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
-        )
-        SELECT
-          sicil_no, worker_name, citizenship, notification_type, period_code,
-          application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, '2026-10-26 10:15:00'
-        FROM gosuslugi_submissions
-        WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
-          AND TRIM(COALESCE(pdf_filename, '')) = '';
-
-        DELETE FROM gosuslugi_submissions
-        WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
-          AND TRIM(COALESCE(pdf_filename, '')) = '';
-
-        DELETE FROM gosuslugi_submission_history
-        WHERE application_no = ''
-          AND gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
-          AND TRIM(COALESCE(pdf_filename, '')) = '';
-
         DELETE FROM gosuslugi_submission_history
         WHERE application_no != ''
           AND id NOT IN (

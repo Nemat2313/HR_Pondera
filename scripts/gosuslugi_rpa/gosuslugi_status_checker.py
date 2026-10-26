@@ -1334,11 +1334,12 @@ def fetch_central_master_list_records() -> List[Dict[str, Any]]:
                     rows = data.get("data") or []
                     if isinstance(rows, list) and len(rows) > 0:
                         mapped = []
+                        mapped_by_sicil = {}
                         for w in rows:
                             sic = str(w.get("sicil") or w.get("code") or "").strip()
                             parts = [str(w.get("lastName") or "").strip(), str(w.get("firstName") or "").strip(), str(w.get("middleName") or "").strip()]
                             full_name = " ".join([p for p in parts if p and p.lower() != "нет"]).strip()
-                            mapped.append({
+                            rec_obj = {
                                 "sicil": sic,
                                 "sicil_no": sic,
                                 "worker_name": full_name,
@@ -1349,7 +1350,83 @@ def fetch_central_master_list_records() -> List[Dict[str, Any]]:
                                 "gosuslugi_status": str(w.get("gosuslugiStatus") or "").strip(),
                                 "pdf_filename": str(w.get("pdfFilename") or "").strip(),
                                 "submitted_at": str(w.get("submittedAt") or "").strip(),
-                            })
+                            }
+                            mapped.append(rec_obj)
+                            if sic:
+                                mapped_by_sicil[sic] = rec_obj
+                        # Merge & recover any local Fast-Mode ('Отправлено (PDF не скачан)') or other submissions
+                        # from local gosuslugi_applications.json and local bridge /health
+                        local_candidates = []
+                        ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+                        if os.path.exists(ledger_path):
+                            try:
+                                with open(ledger_path, "r", encoding="utf-8") as lf:
+                                    l_raw = json.load(lf)
+                                    if isinstance(l_raw, list):
+                                        local_candidates.extend([x for x in l_raw if isinstance(x, dict)])
+                            except Exception:
+                                pass
+                        try:
+                            req_b = urllib.request.Request("http://127.0.0.1:8088/health")
+                            with urllib.request.urlopen(req_b, timeout=1.5) as resp_b:
+                                if resp_b.status == 200:
+                                    b_data = json.loads(resp_b.read().decode("utf-8"))
+                                    b_subs = b_data.get("submissions") or []
+                                    if isinstance(b_subs, list):
+                                        local_candidates.extend([x for x in b_subs if isinstance(x, dict)])
+                        except Exception:
+                            pass
+                        to_recover = []
+                        seen_rec_keys = set()
+                        for lc in local_candidates:
+                            l_sic = str(lc.get("sicil") or lc.get("sicil_no") or "").strip()
+                            l_app = str(lc.get("application_no") or "").strip()
+                            l_st = str(lc.get("gosuslugi_status") or "").strip()
+                            l_sub = str(lc.get("submitted_at") or "").strip()
+                            l_pdf = str(lc.get("pdf_filename") or "").strip()
+                            if not l_sic or not l_app or not l_app.isdigit() or l_st.lower().startswith("ошибк"):
+                                continue
+                            if is_superseded_or_archived_order(l_app, l_st, l_sub):
+                                continue
+                            # Skip only legacy Oct 21-25 unsent drafts (< 8320000000 and < 2026-10-26 10:15:00)
+                            if (
+                                l_st in ("Отправлено (PDF не скачан)", "Отправлено")
+                                and not l_pdf
+                                and l_sub < "2026-10-26 10:15:00"
+                                and int(l_app) < 8320000000
+                            ):
+                                continue
+                            srv_rec = mapped_by_sicil.get(l_sic)
+                            srv_app = str(srv_rec.get("application_no") or "").strip() if srv_rec else ""
+                            srv_st = str(srv_rec.get("gosuslugi_status") or "").strip() if srv_rec else ""
+                            if (
+                                not srv_rec
+                                or not srv_app
+                                or srv_st.lower().startswith("ошибк")
+                                or (l_app.isdigit() and srv_app.isdigit() and int(l_app) > int(srv_app))
+                            ):
+                                rec_payload = {
+                                    "sicil": l_sic,
+                                    "sicil_no": l_sic,
+                                    "worker_name": str(lc.get("worker_name") or (srv_rec.get("worker_name") if srv_rec else "") or "").strip(),
+                                    "citizenship": str(lc.get("citizenship") or (srv_rec.get("citizenship") if srv_rec else "") or "").strip(),
+                                    "notification_type": str(lc.get("notification_type") or "vks_salary"),
+                                    "period_code": str(lc.get("period_code") or "2026-3"),
+                                    "application_no": l_app,
+                                    "gosuslugi_status": l_st,
+                                    "pdf_filename": l_pdf,
+                                    "submitted_at": l_sub,
+                                }
+                                if srv_rec is not None:
+                                    srv_rec.update(rec_payload)
+                                else:
+                                    mapped.append(rec_payload)
+                                    mapped_by_sicil[l_sic] = rec_payload
+                                if (l_sic, l_app) not in seen_rec_keys:
+                                    seen_rec_keys.add((l_sic, l_app))
+                                    to_recover.append(rec_payload)
+                        if to_recover:
+                            sync_updates_to_pondera_api(to_recover)
                         return mapped
         except Exception:
             pass
@@ -1595,6 +1672,8 @@ def run_fast_json_status_sync_on_page(
             is_unverified_draft_id = (
                 prev_status in ("Отправлено (PDF не скачан)", "Отправлено")
                 and not prev_pdf_file
+                and submitted_at < "2026-10-26 10:15:00"
+                and int(app_no) < 8320000000
                 and min_bulk_order_id > 0
                 and int(app_no) > min_bulk_order_id
             )

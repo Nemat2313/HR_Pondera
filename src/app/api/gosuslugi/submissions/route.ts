@@ -86,26 +86,6 @@ function ensureTable(db: any) {
         )
       );
 
-    INSERT INTO gosuslugi_refused_archive (
-      sicil_no, worker_name, citizenship, notification_type, period_code,
-      application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
-    )
-    SELECT
-      sicil_no, worker_name, citizenship, notification_type, period_code,
-      application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, '2026-10-26 10:15:00'
-    FROM gosuslugi_submissions
-    WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
-      AND TRIM(COALESCE(pdf_filename, '')) = '';
-
-    DELETE FROM gosuslugi_submissions
-    WHERE gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
-      AND TRIM(COALESCE(pdf_filename, '')) = '';
-
-    DELETE FROM gosuslugi_submission_history
-    WHERE application_no = ''
-      AND gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено')
-      AND TRIM(COALESCE(pdf_filename, '')) = '';
-
     DELETE FROM gosuslugi_submission_history
     WHERE application_no != ''
       AND id NOT IN (
@@ -369,6 +349,16 @@ export async function POST(request: Request) {
         END,
         status_detail = COALESCE(NULLIF(excluded.status_detail, ''), gosuslugi_submissions.status_detail),
         pdf_filename = COALESCE(NULLIF(excluded.pdf_filename, ''), gosuslugi_submissions.pdf_filename),
+        submitted_at = CASE
+          WHEN excluded.submitted_at != ''
+            AND (
+              gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка%'
+              OR excluded.application_no != gosuslugi_submissions.application_no
+              OR excluded.submitted_at > gosuslugi_submissions.submitted_at
+            )
+          THEN excluded.submitted_at
+          ELSE gosuslugi_submissions.submitted_at
+        END,
         checked_at = CASE
           WHEN excluded.checked_at != '' THEN excluded.checked_at
           ELSE gosuslugi_submissions.checked_at
@@ -403,11 +393,16 @@ export async function POST(request: Request) {
       if (!sicil && !appNo) continue;
 
       const rawPdfCheck = String(item.pdf_filename || item.pdfFilename || '').trim();
-      // Never accept unverified draft records ('Отправлено (PDF не скачан)' / 'Отправлено' without PDF)
-      if (
+      const rawIncomingSubAt = String(item.submitted_at || item.submittedAt || '').trim();
+      // Only skip legacy pre-fix unsent draft records from before 2026-10-26 10:15:00 (< 8320000000);
+      // accept all genuine Fast-Mode ('Быстрая отправка без PDF' -> 'Отправлено (PDF не скачан)') submissions!
+      const isLegacyUnsentDraft =
         (normalizedStatus === 'Отправлено (PDF не скачан)' || normalizedStatus === 'Отправлено') &&
-        !rawPdfCheck
-      ) {
+        !rawPdfCheck &&
+        rawIncomingSubAt !== '' &&
+        rawIncomingSubAt < '2026-10-26 10:15:00' &&
+        (!/^\d{10}$/.test(appNo) || Number(appNo) < 8320000000);
+      if (isLegacyUnsentDraft) {
         continue;
       }
 
@@ -427,7 +422,6 @@ export async function POST(request: Request) {
           /^\d{10}$/.test(appNo) &&
           Number(appNo) >= 8300000000 &&
           (!archInfo?.max_archived_app_no || appNo > archInfo.max_archived_app_no);
-        const rawIncomingSubAt = String(item.submitted_at || item.submittedAt || '').trim();
         if (archInfo?.max_archived_at && !isNewerValidAppNo) {
           if (
             !rawIncomingSubAt ||
@@ -531,9 +525,14 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // 6. If incoming has a strictly NEWER (larger integer) application_no than existingRow, supersede existingRow completely
-        if (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo) && Number(appNo) > Number(exAppNo)) {
-          if (/отказан/i.test(exStatus) && !checkArchivedRefusalStmt.get(exAppNo)) {
+        // 6. If incoming has a strictly NEWER (larger integer) application_no than existingRow,
+        // or if existingRow is an 'Ошибка' and incoming is a valid sent submission, supersede existingRow completely
+        if (
+          (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo) && Number(appNo) > Number(exAppNo)) ||
+          (!exAppNo && /^\d{8,14}$/.test(appNo) && !/^ошибк/i.test(normalizedStatus)) ||
+          (/^ошибк/i.test(exStatus) && !/^ошибк/i.test(normalizedStatus) && (Boolean(appNo) || submittedAt >= exSubAt))
+        ) {
+          if ((/отказан/i.test(exStatus) || /^ошибк/i.test(exStatus)) && exAppNo && !checkArchivedRefusalStmt.get(exAppNo)) {
             archiveSingleRowStmt.run(
               existingRow.sicil_no,
               existingRow.worker_name,
@@ -548,7 +547,7 @@ export async function POST(request: Request) {
               nowStr
             );
           }
-          const validNewPdf = pdfFilename && pdfFilename.includes(appNo) ? pdfFilename : '';
+          const validNewPdf = pdfFilename && (!appNo || pdfFilename.includes(appNo)) ? pdfFilename : '';
           forceUpdateSupersedingStmt.run(
             workerName,
             citizenship,

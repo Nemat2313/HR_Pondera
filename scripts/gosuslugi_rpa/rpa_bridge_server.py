@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.6.88"
+BRIDGE_VERSION = "2.6.90"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
@@ -123,7 +123,14 @@ def load_saved_applications():
                                 st = "Отправлено (PDF не скачан)"
                                 it["gosuslugi_status"] = st
                                 changed = True
-                            if st in ("Отправлено (PDF не скачан)", "Отправлено") and not pdf_fn:
+                            sub_at = str(it.get("submitted_at") or "").strip()
+                            if (
+                                st in ("Отправлено (PDF не скачан)", "Отправлено")
+                                and not pdf_fn
+                                and sub_at != ""
+                                and sub_at < "2026-10-26 10:15:00"
+                                and (not app_no.isdigit() or int(app_no) < 8320000000)
+                            ):
                                 changed = True
                                 continue
                             cleaned_list.append(it)
@@ -843,10 +850,6 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                             and (
                                 str(v.get("gosuslugi_status") or "").strip().lower().startswith("ошибк")
                                 or "отказ" in str(v.get("gosuslugi_status") or "").strip().lower()
-                                or (
-                                    str(v.get("gosuslugi_status") or "").strip() in ("Отправлено (PDF не скачан)", "Отправлено")
-                                    and not str(v.get("pdf_filename") or "").strip()
-                                )
                             )
                         )
                     ]
@@ -899,6 +902,43 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
         pass
 
 
+def sync_all_local_submissions_to_central_async():
+    """Pushes all local non-error submissions from RPAState.submissions to https://hr.pondera.network/api/gosuslugi/submissions."""
+    def _worker():
+        import urllib.request
+        import ssl
+        try:
+            subs = list(RPAState.submissions or [])
+            valid_batch = [
+                it for it in subs
+                if isinstance(it, dict)
+                and not str(it.get("gosuslugi_status") or "").strip().lower().startswith("ошибк")
+                and (
+                    str(it.get("application_no") or "").strip()
+                    or str(it.get("submitted_at") or "").strip() >= "2026-10-26 10:15:00"
+                    or str(it.get("pdf_filename") or "").strip()
+                )
+            ]
+            if not valid_batch:
+                return
+            payload = json.dumps({"records": valid_batch}, ensure_ascii=False).encode("utf-8")
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                "https://hr.pondera.network/api/gosuslugi/submissions",
+                data=payload,
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as _:
+                pass
+        except Exception:
+            pass
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def start_telegram_outbox_relay_thread():
     """
     Polls central backend /api/telegram/cron every 60 seconds so the backend computes
@@ -920,6 +960,7 @@ def start_telegram_outbox_relay_thread():
             if tick_cnt % 15 == 0:
                 try:
                     auto_update_scripts_from_server()
+                    sync_all_local_submissions_to_central_async()
                 except Exception:
                     pass
             try:
@@ -1058,6 +1099,7 @@ def main():
     # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts locally
     for d in scan_downloads_pdfs():
         RPAState.upsert_submission(d, sync_central=False)
+    sync_all_local_submissions_to_central_async()
     # If an active VKS queue (> 1 record) exists on this computer, merge it into the central master list
     try:
         active_q_path = os.path.join(CURRENT_DIR, "active_vks_queue.json")

@@ -1702,9 +1702,16 @@ class GosuslugiVksBot:
                                 if box and box["width"] > 5 and box["height"] > 5:
                                     self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
                                 else:
-                                    create_btn.evaluate("el => (el.closest('button') || el).click()")
+                                    self.page.evaluate(
+                                        """() => {
+                                            const b = Array.from(document.querySelectorAll('button')).find(
+                                                el => (el.innerText || '').includes('Создать заявление') || (el.innerText || '').includes('Создать новое')
+                                            );
+                                            if (b) b.click();
+                                        }"""
+                                    )
                             except Exception:
-                                create_btn.evaluate("el => (el.closest('button') || el).click()")
+                                pass
                 self.page.wait_for_timeout(900)
                 continue
 
@@ -1724,7 +1731,17 @@ class GosuslugiVksBot:
                 try:
                     start_btn.click(timeout=2500)
                 except Exception:
-                    start_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                    try:
+                        self.page.evaluate(
+                            """() => {
+                                const b = Array.from(document.querySelectorAll('button, a.button')).find(
+                                    el => (el.innerText || '').trim() === 'Начать'
+                                );
+                                if (b) b.click();
+                            }"""
+                        )
+                    except Exception:
+                        pass
                 self.page.wait_for_timeout(900)
                 continue
 
@@ -1744,7 +1761,17 @@ class GosuslugiVksBot:
                 try:
                     vks_option.click(timeout=3000)
                 except Exception:
-                    vks_option.evaluate("el => (el.closest('button, epgu-cf-ui-long-button') || el).click()")
+                    try:
+                        self.page.evaluate(
+                            """() => {
+                                const b = Array.from(document.querySelectorAll('epgu-cf-ui-long-button, button, div.long-button')).find(
+                                    el => (el.innerText || '').includes('О выплате зарплаты')
+                                );
+                                if (b) b.click();
+                            }"""
+                        )
+                    except Exception:
+                        pass
                 step3_selected = True
                 self.page.wait_for_timeout(1200)
                 break
@@ -4350,6 +4377,7 @@ class GosuslugiVksBot:
 
         # 2) Save to local JSON ledger
         ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+        batch_to_sync = [entry]
         try:
             existing = []
             if os.path.exists(ledger_path):
@@ -4367,16 +4395,28 @@ class GosuslugiVksBot:
                 existing.append(entry)
             with open(ledger_path, "w", encoding="utf-8") as lf:
                 json.dump(existing, lf, ensure_ascii=False, indent=2)
+            for it in existing:
+                if (
+                    isinstance(it, dict)
+                    and str(it.get("sicil")) != sicil
+                    and not str(it.get("gosuslugi_status") or "").lower().startswith("ошибк")
+                    and (
+                        str(it.get("submitted_at") or "") >= "2026-10-26"
+                        or (str(it.get("application_no") or "").isdigit() and int(str(it.get("application_no"))) >= 8320000000)
+                    )
+                ):
+                    batch_to_sync.append(it)
         except Exception as e:
             logger.debug(f"Could not write gosuslugi_applications.json: {e}")
 
         # 3) Post to Pondera HR Central Server & Local Next.js API (non-blocking)
-        self._post_submission_to_backend(entry)
+        self._post_submission_to_backend(batch_to_sync)
 
-    def _post_submission_to_backend(self, entry: Dict[str, Any]):
+    def _post_submission_to_backend(self, entry_or_list: Any):
         import urllib.request
         import ssl
-        payload = json.dumps({"records": [entry]}, ensure_ascii=False).encode("utf-8")
+        records_list = entry_or_list if isinstance(entry_or_list, list) else [entry_or_list]
+        payload = json.dumps({"records": records_list}, ensure_ascii=False).encode("utf-8")
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE

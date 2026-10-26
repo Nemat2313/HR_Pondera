@@ -1052,8 +1052,7 @@ export default function GosuslugiVksView() {
               if (
                 w.status === 'error' ||
                 (w.applicationNo && archivedAppsRef.current.has(w.applicationNo)) ||
-                /^ошибк|отказан|зарегистрирован|промежуточн/i.test(w.gosuslugiStatus || '') ||
-                (!w.pdfFilename && /отправлен/i.test(w.gosuslugiStatus || ''))
+                /^ошибк|отказан|зарегистрирован|промежуточн/i.test(w.gosuslugiStatus || '')
               ) {
                 return {
                   ...w,
@@ -1377,10 +1376,19 @@ export default function GosuslugiVksView() {
                         const appNo = String(s.application_no || '').trim();
                         const st = String(s.gosuslugi_status || '').trim();
                         const pdfFn = String(s.pdf_filename || '').trim();
+                        const subAt = String(s.submitted_at || '').trim();
                         if (appNo && archivedAppsRef.current.has(appNo)) return false;
                         if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
                         if (/^ошибк/i.test(st)) return false;
-                        if (!pdfFn && (st === 'Отправлено (PDF не скачан)' || st === 'Отправлено')) return false;
+                        if (
+                          !pdfFn &&
+                          (st === 'Отправлено (PDF не скачан)' || st === 'Отправлено') &&
+                          subAt !== '' &&
+                          subAt < '2026-10-26 10:15:00' &&
+                          (!/^\d{10}$/.test(appNo) || Number(appNo) < 8320000000)
+                        ) {
+                          return false;
+                        }
                         return true;
                       })
                       .sort((a, b) => {
