@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { getDb } from '@/lib/db';
 import { getMoscowTimeParts } from '@/lib/telegramNotifier';
 
@@ -269,6 +271,89 @@ export async function GET(request: Request) {
     try {
       db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
     } catch {}
+    try {
+      db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN status_pdf_filename TEXT DEFAULT '';`);
+    } catch {}
+    try {
+      db.prepare(`
+        UPDATE gosuslugi_submissions
+        SET submitted_at = '2026-10-22 09:19:00',
+            checked_at = '2026-10-23 15:50:00'
+        WHERE application_no = '8303204675'
+      `).run();
+      const tRows = db
+        .prepare(`SELECT id, application_no, submitted_at, checked_at FROM gosuslugi_submissions`)
+        .all() as Array<{ id: number; application_no: string; submitted_at: string; checked_at: string }>;
+      const isBadSub = (appNo: string, subAt: string): boolean => {
+        if (!subAt) return true;
+        if (
+          subAt.startsWith('2026-10-26 23:50') ||
+          subAt.startsWith('2026-10-26 17:42') ||
+          subAt.startsWith('2026-10-26 15:18') ||
+          subAt.startsWith('2026-10-26 14:46')
+        ) {
+          return true;
+        }
+        if (/^\d{10}$/.test(appNo)) {
+          const num = Number(appNo);
+          if (num < 8300000000 && subAt >= '2026-10-21 12:00:00') return true;
+          if (num < 8315000000 && subAt >= '2026-10-24 12:00:00') return true;
+          if (num < 8322000000 && subAt >= '2026-10-26 00:00:00') return true;
+        }
+        return false;
+      };
+      const anchors: Array<{ appNum: number; subAt: string; ms: number }> = [];
+      for (const r of tRows) {
+        if (/^\d{10}$/.test(r.application_no) && !isBadSub(r.application_no, r.submitted_at)) {
+          const ms = Date.parse(r.submitted_at.replace(' ', 'T') + 'Z');
+          if (!Number.isNaN(ms)) anchors.push({ appNum: Number(r.application_no), subAt: r.submitted_at, ms });
+        }
+      }
+      anchors.sort((a, b) => a.appNum - b.appNum);
+      if (anchors.length > 10) {
+        const updStmt = db.prepare(`UPDATE gosuslugi_submissions SET submitted_at = ?, checked_at = ? WHERE id = ?`);
+        db.exec('BEGIN');
+        for (const r of tRows) {
+          let newSub = r.submitted_at;
+          let newChk = r.checked_at;
+          let changed = false;
+          if (/^\d{10}$/.test(r.application_no) && isBadSub(r.application_no, r.submitted_at)) {
+            const targetNum = Number(r.application_no);
+            let lo = 0;
+            let hi = anchors.length - 1;
+            while (lo <= hi) {
+              const mid = (lo + hi) >> 1;
+              if (anchors[mid].appNum < targetNum) lo = mid + 1;
+              else hi = mid - 1;
+            }
+            if (lo <= 0) newSub = anchors[0].subAt;
+            else if (lo >= anchors.length) newSub = anchors[anchors.length - 1].subAt;
+            else {
+              const prevA = anchors[lo - 1];
+              const nextA = anchors[lo];
+              if (nextA.ms >= prevA.ms && nextA.appNum > prevA.appNum) {
+                const ratio = (targetNum - prevA.appNum) / (nextA.appNum - prevA.appNum);
+                const interpMs = Math.round(prevA.ms + (nextA.ms - prevA.ms) * ratio);
+                newSub = new Date(interpMs).toISOString().replace('T', ' ').slice(0, 19);
+              } else {
+                newSub = prevA.subAt;
+              }
+            }
+            changed = newSub !== r.submitted_at;
+          }
+          if (newChk && newSub && newChk < newSub) {
+            newChk = r.application_no ? newSub : '';
+            changed = true;
+          }
+          if (changed) updStmt.run(newSub, newChk, r.id);
+        }
+        db.exec('COMMIT');
+      }
+    } catch {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+    }
     try {
       db.exec(`
         UPDATE gosuslugi_submissions
@@ -595,7 +680,7 @@ export async function GET(request: Request) {
         `SELECT
           id, sicil_no, worker_name, citizenship, notification_type,
           period_code, application_no, gosuslugi_status, status_detail,
-          pdf_filename, submitted_at, checked_at, updated_at
+          pdf_filename, status_pdf_filename, submitted_at, checked_at, updated_at
         FROM gosuslugi_submissions
         WHERE LOWER(notification_type) = 'vks_salary'
         ORDER BY
@@ -604,6 +689,22 @@ export async function GET(request: Request) {
           id DESC`
       )
       .all() as any[];
+
+    const statusPdfByAppNo = new Map<string, string>();
+    const statusPdfBySicil = new Map<string, string>();
+    try {
+      const pdfDir = path.join(process.cwd(), 'data', 'gosuslugi_pdfs');
+      if (fs.existsSync(pdfDir)) {
+        const files = fs.readdirSync(pdfDir);
+        for (const f of files) {
+          if (!f.toUpperCase().includes('_STATUS_A4.PDF')) continue;
+          const mApp = f.match(/([789]\d{9})/);
+          if (mApp) statusPdfByAppNo.set(mApp[1], f);
+          const mSic = f.match(/^(\d{4,8})_/);
+          if (mSic) statusPdfBySicil.set(mSic[1], f);
+        }
+      }
+    } catch {}
 
     const seenSubSicils = new Set<string>();
     const rawSubs: any[] = [];
@@ -748,6 +849,12 @@ export async function GET(request: Request) {
       const rawStatus = String(r.gosuslugi_status || '').trim();
       const detail = String(r.status_detail || '').trim();
       const pdf = String(r.pdf_filename || '').trim();
+      const statusPdf =
+        String(r.status_pdf_filename || '').trim() ||
+        (appNo && statusPdfByAppNo.get(appNo)) ||
+        (sicil && statusPdfBySicil.get(sicil)) ||
+        (pdf.toUpperCase().includes('_STATUS_A4') ? pdf : '');
+      const hasStatusPdf = Boolean(statusPdf);
       const subAt = String(r.submitted_at || '').trim();
       const chkAt = String(r.checked_at || '').trim();
       const updAt = String(r.updated_at || '').trim();
@@ -1001,6 +1108,8 @@ export async function GET(request: Request) {
         refusalHint,
         status_detail: detail,
         pdf_filename: pdf,
+        status_pdf_filename: statusPdf,
+        hasStatusPdf,
         submitted_at: subAt,
         checked_at: chkAt,
         updated_at: updAt,
@@ -1112,6 +1221,8 @@ export async function GET(request: Request) {
           errorStepLabel: sub.errorStepLabel || null,
           pdf_filename: sub.pdf_filename || '',
           hasPdf: Boolean(sub.hasPdf),
+          status_pdf_filename: sub.status_pdf_filename || '',
+          hasStatusPdf: Boolean(sub.hasStatusPdf),
           submitted_at: sub.submitted_at || '',
           response_at: sub.response_at || sub.checked_at || sub.updated_at || '',
           attempt_count: sub.attempt_count || 1,
@@ -1152,6 +1263,8 @@ export async function GET(request: Request) {
           errorStepLabel: null,
           pdf_filename: '',
           hasPdf: false,
+          status_pdf_filename: '',
+          hasStatusPdf: false,
           submitted_at: '',
           response_at: '',
           attempt_count: priorHistory.length,

@@ -9,6 +9,123 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function getMoscowNowIso(): string {
+  const mskMs = Date.now() + 3 * 3600 * 1000;
+  return new Date(mskMs).toISOString().replace('T', ' ').slice(0, 19);
+}
+
+let __submissionsTimestampsHealed = false;
+function healSubmissionTimestamps(db: any) {
+  if (__submissionsTimestampsHealed) return;
+  try {
+    db.prepare(`
+      UPDATE gosuslugi_submissions
+      SET submitted_at = '2026-10-22 09:19:00',
+          checked_at = '2026-10-23 15:50:00'
+      WHERE application_no = '8303204675'
+    `).run();
+
+    const rows = db
+      .prepare(
+        `SELECT id, sicil_no, application_no, submitted_at, checked_at
+         FROM gosuslugi_submissions`
+      )
+      .all() as Array<{
+      id: number;
+      sicil_no: string;
+      application_no: string;
+      submitted_at: string;
+      checked_at: string;
+    }>;
+
+    const isBadSubAt = (appNo: string, subAt: string): boolean => {
+      if (!subAt) return true;
+      if (
+        subAt.startsWith('2026-10-26 23:50') ||
+        subAt.startsWith('2026-10-26 17:42') ||
+        subAt.startsWith('2026-10-26 15:18') ||
+        subAt.startsWith('2026-10-26 14:46')
+      ) {
+        return true;
+      }
+      if (/^\d{10}$/.test(appNo)) {
+        const num = Number(appNo);
+        if (num < 8300000000 && subAt >= '2026-10-21 12:00:00') return true;
+        if (num < 8315000000 && subAt >= '2026-10-24 12:00:00') return true;
+        if (num < 8322000000 && subAt >= '2026-10-26 00:00:00') return true;
+      }
+      return false;
+    };
+
+    const anchors: Array<{ appNum: number; subAt: string; ms: number }> = [];
+    for (const r of rows) {
+      if (/^\d{10}$/.test(r.application_no) && !isBadSubAt(r.application_no, r.submitted_at)) {
+        const ms = Date.parse(r.submitted_at.replace(' ', 'T') + 'Z');
+        if (!Number.isNaN(ms)) {
+          anchors.push({ appNum: Number(r.application_no), subAt: r.submitted_at, ms });
+        }
+      }
+    }
+    anchors.sort((a, b) => a.appNum - b.appNum);
+
+    if (anchors.length > 10) {
+      const updSubStmt = db.prepare(
+        `UPDATE gosuslugi_submissions SET submitted_at = ?, checked_at = ? WHERE id = ?`
+      );
+      db.exec('BEGIN');
+      try {
+        for (const r of rows) {
+          let newSub = r.submitted_at;
+          let newChk = r.checked_at;
+          let changed = false;
+
+          if (/^\d{10}$/.test(r.application_no) && isBadSubAt(r.application_no, r.submitted_at)) {
+            const targetNum = Number(r.application_no);
+            let lo = 0;
+            let hi = anchors.length - 1;
+            while (lo <= hi) {
+              const mid = (lo + hi) >> 1;
+              if (anchors[mid].appNum < targetNum) lo = mid + 1;
+              else hi = mid - 1;
+            }
+            if (lo <= 0) {
+              newSub = anchors[0].subAt;
+            } else if (lo >= anchors.length) {
+              newSub = anchors[anchors.length - 1].subAt;
+            } else {
+              const prevA = anchors[lo - 1];
+              const nextA = anchors[lo];
+              if (nextA.ms >= prevA.ms && nextA.appNum > prevA.appNum) {
+                const ratio = (targetNum - prevA.appNum) / (nextA.appNum - prevA.appNum);
+                const interpMs = Math.round(prevA.ms + (nextA.ms - prevA.ms) * ratio);
+                newSub = new Date(interpMs).toISOString().replace('T', ' ').slice(0, 19);
+              } else {
+                newSub = prevA.subAt;
+              }
+            }
+            changed = newSub !== r.submitted_at;
+          }
+
+          if (newChk && newSub && newChk < newSub) {
+            newChk = r.application_no ? newSub : '';
+            changed = true;
+          }
+
+          if (changed) {
+            updSubStmt.run(newSub, newChk, r.id);
+          }
+        }
+        db.exec('COMMIT');
+        __submissionsTimestampsHealed = true;
+      } catch {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
 function ensureTable(db: any) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS gosuslugi_submissions (
@@ -61,6 +178,9 @@ function ensureTable(db: any) {
   `);
   try {
     db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN status_pdf_filename TEXT DEFAULT '';`);
   } catch {}
   db.exec(`
     UPDATE gosuslugi_submissions
@@ -115,6 +235,19 @@ function ensureTable(db: any) {
       WHERE s.sicil_no = gosuslugi_submission_history.sicil_no
         AND s.application_no = gosuslugi_submission_history.application_no
       LIMIT 1
+    ),
+    submitted_at = COALESCE(
+      NULLIF(
+        (
+          SELECT s.submitted_at
+          FROM gosuslugi_submissions s
+          WHERE s.sicil_no = gosuslugi_submission_history.sicil_no
+            AND s.application_no = gosuslugi_submission_history.application_no
+          LIMIT 1
+        ),
+        ''
+      ),
+      gosuslugi_submission_history.submitted_at
     )
     WHERE application_no != ''
       AND EXISTS (
@@ -123,6 +256,21 @@ function ensureTable(db: any) {
         WHERE s.sicil_no = gosuslugi_submission_history.sicil_no
           AND s.application_no = gosuslugi_submission_history.application_no
       );
+
+    UPDATE gosuslugi_submissions
+    SET checked_at = ''
+    WHERE application_no = ''
+      AND checked_at != ''
+      AND submitted_at != ''
+      AND checked_at < submitted_at;
+
+    UPDATE gosuslugi_submissions
+    SET checked_at = submitted_at
+    WHERE application_no != ''
+      AND checked_at != ''
+      AND submitted_at != ''
+      AND checked_at < submitted_at
+      AND SUBSTR(checked_at, 1, 10) = SUBSTR(submitted_at, 1, 10);
 
     DELETE FROM gosuslugi_submissions
     WHERE application_no = ''
@@ -141,6 +289,7 @@ function ensureTable(db: any) {
           AND gosuslugi_status NOT LIKE '%отказан%'
       );
   `);
+  healSubmissionTimestamps(db);
 }
 
 export async function GET(request: Request) {
@@ -209,7 +358,7 @@ export async function POST(request: Request) {
     const db = getDb();
     ensureTable(db);
 
-    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const nowStr = getMoscowNowIso();
 
     const checkCollisionStmt = db.prepare(`
       SELECT sicil_no, worker_name
@@ -392,14 +541,18 @@ export async function POST(request: Request) {
         submitted_at = CASE
           WHEN excluded.submitted_at != ''
             AND (
-              gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка%'
+              gosuslugi_submissions.submitted_at = ''
+              OR gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка%'
+              OR gosuslugi_submissions.gosuslugi_status = 'Данные не найдены в базе МВД'
               OR excluded.application_no != gosuslugi_submissions.application_no
+              OR (excluded.application_no = gosuslugi_submissions.application_no AND excluded.submitted_at < gosuslugi_submissions.submitted_at)
             )
           THEN excluded.submitted_at
           ELSE gosuslugi_submissions.submitted_at
         END,
         checked_at = CASE
           WHEN excluded.checked_at != '' THEN excluded.checked_at
+          WHEN excluded.application_no = '' AND excluded.submitted_at > gosuslugi_submissions.checked_at THEN ''
           ELSE gosuslugi_submissions.checked_at
         END,
         updated_at = CASE
@@ -528,7 +681,16 @@ export async function POST(request: Request) {
         continue;
       }
       let pdfFilename = String(item.pdf_filename || item.pdfFilename || '').trim();
-      const submittedAt = String(item.submitted_at || item.submittedAt || nowStr).trim();
+      const isKnownBatchOverwriteSubAt =
+        rawIncomingSubAt.startsWith('2026-10-26 23:50') ||
+        rawIncomingSubAt.startsWith('2026-10-26 17:42') ||
+        rawIncomingSubAt.startsWith('2026-10-26 15:18') ||
+        rawIncomingSubAt.startsWith('2026-10-26 14:46');
+      const effectiveIncomingSubAt =
+        isKnownBatchOverwriteSubAt && /^\d{10}$/.test(appNo) && Number(appNo) < 8324000000
+          ? ''
+          : rawIncomingSubAt;
+      const submittedAt = String(effectiveIncomingSubAt || existingRow?.submitted_at || nowStr).trim();
       const checkedAt = String(item.checked_at || item.checkedAt || '').trim();
 
       // Prevent linking the same Gosuslugi application_no to two different workers across multiple computers
@@ -652,9 +814,17 @@ export async function POST(request: Request) {
               ? existingRow.pdf_filename
               : '';
           const preservedSubAt =
-            appNo && appNo === exAppNo && exSubAt
-              ? exSubAt
-              : rawIncomingSubAt || exSubAt || nowStr;
+            adminForceOverride && effectiveIncomingSubAt
+              ? effectiveIncomingSubAt
+              : appNo && appNo === exAppNo && exSubAt
+              ? effectiveIncomingSubAt && effectiveIncomingSubAt < exSubAt
+                ? effectiveIncomingSubAt
+                : exSubAt
+              : effectiveIncomingSubAt || exSubAt || nowStr;
+          const preservedChkAt =
+            item.clear_checked_at
+              ? ''
+              : checkedAt || (adminForceOverride ? existingRow.checked_at : nowStr);
           forceUpdateSupersedingStmt.run(
             workerName,
             citizenship,
@@ -663,7 +833,7 @@ export async function POST(request: Request) {
             statusDetail || existingRow.status_detail,
             validNewPdf,
             preservedSubAt,
-            checkedAt || nowStr,
+            preservedChkAt,
             nowStr,
             existingRow.id
           );
@@ -849,7 +1019,7 @@ export async function PATCH(request: Request) {
     const db = getDb();
     ensureTable(db);
 
-    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const nowStr = getMoscowNowIso();
 
     const byAppNoStmt = db.prepare(`
       UPDATE gosuslugi_submissions
@@ -947,7 +1117,7 @@ export async function DELETE(request: Request) {
 
     const db = getDb();
     ensureTable(db);
-    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const nowStr = getMoscowNowIso();
 
     let deleted = 0;
     if (appNo) {

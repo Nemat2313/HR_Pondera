@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Bot,
   FileSpreadsheet,
+  FileText,
   Download,
   Upload,
   Play,
@@ -4561,30 +4562,46 @@ export default function GosuslugiVksView() {
                                 № {w.applicationNo}
                               </div>
                             )}
-                            {w.pdfFilename && (
-                              <a
-                                href={`/api/gosuslugi/pdf?file=${encodeURIComponent(
-                                  w.pdfFilename
-                                )}&appNo=${encodeURIComponent(
-                                  w.applicationNo || ''
-                                )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-[10px] font-medium text-teal-800 dark:text-teal-300 hover:underline truncate max-w-[220px]"
-                                title={
-                                  lang === 'ru'
-                                    ? `Скачать PDF / Скриншот с сервера: ${w.pdfFilename}`
-                                    : `PDF / A4 Ekran Görüntüsünü sunucudan indir: ${w.pdfFilename}`
-                                }
-                              >
-                                <Download className="w-2.5 h-2.5 shrink-0" />
-                                <span className="truncate">
-                                  {w.pdfFilename.toUpperCase().includes('_STATUS_A4')
-                                    ? `📸 A4 Statü: ${w.pdfFilename}`
-                                    : `PDF: ${w.pdfFilename}`}
-                                </span>
-                              </a>
-                            )}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {w.pdfFilename && !w.pdfFilename.toUpperCase().includes('_STATUS_A4') && (
+                                <a
+                                  href={`/api/gosuslugi/pdf?file=${encodeURIComponent(
+                                    w.pdfFilename
+                                  )}&appNo=${encodeURIComponent(
+                                    w.applicationNo || ''
+                                  )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-700 dark:text-teal-300 hover:underline"
+                                  title={
+                                    lang === 'ru'
+                                      ? `Открыть квитанцию PDF: ${w.pdfFilename}`
+                                      : `Başvuru Makbuzu PDF Aç: ${w.pdfFilename}`
+                                  }
+                                >
+                                  <Download className="w-2.5 h-2.5 shrink-0" />
+                                  <span>{lang === 'ru' ? 'PDF Aç' : 'PDF Aç'}</span>
+                                </a>
+                              )}
+                              {w.applicationNo && (
+                                <a
+                                  href={`/api/gosuslugi/pdf?appNo=${encodeURIComponent(
+                                    w.applicationNo
+                                  )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}&screenshot=1`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
+                                  title={
+                                    lang === 'ru'
+                                      ? `Открыть A4 статус / скриншот Госуслуг (№ ${w.applicationNo})`
+                                      : `Gosuslugi A4 Statü Ekran Görüntüsünü / Kartını Aç (№ ${w.applicationNo})`
+                                  }
+                                >
+                                  <FileText className="w-2.5 h-2.5 shrink-0" />
+                                  <span>{lang === 'ru' ? 'Статус PDF' : 'Statü PDF Aç'}</span>
+                                </a>
+                              )}
+                            </div>
                           </div>
                         ) : isWorkerMvdNotFound(w) ? (
                           <div className="space-y-0.5 leading-tight">

@@ -109,6 +109,8 @@ interface MasterList3088Item {
   errorStepLabel?: string | null;
   pdf_filename: string;
   hasPdf: boolean;
+  status_pdf_filename?: string;
+  hasStatusPdf?: boolean;
   submitted_at: string;
   response_at: string;
   attempt_count: number;
@@ -1918,24 +1920,46 @@ export default function GosuslugiAnalyticsView() {
                                     <Copy className="w-3.5 h-3.5 opacity-60" />
                                   )}
                                 </button>
-                                {item.hasPdf && item.pdf_filename ? (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {item.hasPdf && item.pdf_filename ? (
+                                    <a
+                                      href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(
+                                        item.pdf_filename
+                                      )}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10.5px] text-teal-600 dark:text-teal-400 font-semibold hover:underline"
+                                    >
+                                      <FileText className="w-3 h-3" />
+                                      PDF Aç
+                                    </a>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                                      <Zap className="w-2.5 h-2.5" />
+                                      Hızlı Gönderim
+                                    </span>
+                                  )}
                                   <a
-                                    href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(
-                                      item.pdf_filename
-                                    )}`}
+                                    href={`/api/gosuslugi/pdf?appNo=${encodeURIComponent(
+                                      item.application_no
+                                    )}&sicil=${encodeURIComponent(item.sicil_no)}&screenshot=1`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-[10.5px] text-teal-600 dark:text-teal-400 font-semibold hover:underline"
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors ${
+                                      item.hasStatusPdf
+                                        ? 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                                        : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                    }`}
+                                    title={
+                                      item.hasStatusPdf
+                                        ? `Gosuslugi A4 Statü Ekran Görüntüsünü Aç (${item.status_pdf_filename || item.application_no})`
+                                        : `Gosuslugi A4 Statü Kartını / Ekran Görüntüsünü Aç (№ ${item.application_no})`
+                                    }
                                   >
-                                    <FileText className="w-3 h-3" />
-                                    PDF Aç
+                                    <FileText className="w-2.5 h-2.5" />
+                                    {item.hasStatusPdf ? '📸 Statü PDF Aç ✓' : 'Statü PDF Aç'}
                                   </a>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
-                                    <Zap className="w-2.5 h-2.5" />
-                                    Hızlı Gönderim
-                                  </span>
-                                )}
+                                </div>
                               </div>
                             ) : (
                               <span className="text-slate-400 font-mono text-[11px]">Henüz Yok</span>

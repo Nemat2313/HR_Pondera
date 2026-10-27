@@ -153,6 +153,9 @@ function ensureTables(db: any) {
     CREATE INDEX IF NOT EXISTS idx_refused_arch_appno ON gosuslugi_refused_archive(application_no);
     CREATE INDEX IF NOT EXISTS idx_refused_arch_sicil ON gosuslugi_refused_archive(sicil_no);
   `);
+  try {
+    db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN status_pdf_filename TEXT DEFAULT '';`);
+  } catch {}
 
   if (!__masterListAutoHealed) {
     __masterListAutoHealed = true;
@@ -327,7 +330,7 @@ export async function GET(request: Request) {
 
     const subRows = db
       .prepare(
-        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, submitted_at, checked_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
+        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, status_pdf_filename, submitted_at, checked_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
       )
       .all() as Array<any>;
 
@@ -441,6 +444,8 @@ export async function GET(request: Request) {
         gosuslugi_status: sub?.gosuslugi_status || '',
         pdfFilename: sub?.pdf_filename || '',
         pdf_filename: sub?.pdf_filename || '',
+        statusPdfFilename: sub?.status_pdf_filename || '',
+        status_pdf_filename: sub?.status_pdf_filename || '',
         submittedAt: sub?.submitted_at || '',
         submitted_at: sub?.submitted_at || '',
         checkedAt: sub?.checked_at || '',

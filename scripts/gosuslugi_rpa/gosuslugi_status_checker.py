@@ -130,6 +130,64 @@ def classify_gosuslugi_status_text(raw_title: str, raw_status_code: str = "") ->
     return "В обработке"
 
 
+def parse_gosuslugi_datetime(raw_date: str = "", text_fallback: str = "") -> str:
+    """
+    Extracts and normalizes the Gosuslugi status/order timestamp into 'YYYY-MM-DD HH:MM:SS' (Moscow time).
+    Supports:
+    - ISO strings from /api/lk/v1/feeds ('2026-10-23T15:50:12.000+0300' or '2026-10-23 15:50:12')
+    - Russian numeric dates ('23.10.26 в 15:50', '23.10.2026 в 15:50', '23.10.2026, 15:50')
+    - Russian relative dates ('Сегодня в 14:22', 'Вчера в 14:22')
+    - Russian month names ('23 октября в 15:50', '23 окт. в 15:50')
+    """
+    from datetime import timedelta
+
+    combined = f"{raw_date or ''} | {text_fallback or ''}".strip()
+    if not combined:
+        return ""
+
+    # 1. ISO 'YYYY-MM-DDTHH:MM(:SS)' or 'YYYY-MM-DD HH:MM(:SS)'
+    m_iso = re.search(r"(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}(?::\d{2})?)", combined)
+    if m_iso:
+        d_part = m_iso.group(1)
+        t_part = m_iso.group(2)
+        if len(t_part) == 5:
+            t_part = f"{t_part}:00"
+        return f"{d_part} {t_part}"
+
+    # 2. 'DD.MM.YY(YY) в HH:MM'
+    m_num = re.search(r"(\d{2})\.(\d{2})\.(\d{2,4})\s*(?:в|,)?\s*(\d{1,2}):(\d{2})", combined, re.IGNORECASE)
+    if m_num:
+        dd, mm, yy, hh, mi = m_num.groups()
+        yr = f"20{yy}" if len(yy) == 2 else yy
+        return f"{yr}-{mm}-{dd} {int(hh):02d}:{mi}:00"
+
+    # 3. 'Сегодня в HH:MM' / 'Вчера в HH:MM'
+    m_rel = re.search(r"(сегодня|вчера)\s*(?:в|,)?\s*(\d{1,2}):(\d{2})", combined, re.IGNORECASE)
+    if m_rel:
+        word, hh, mi = m_rel.groups()
+        base_dt = datetime.now() if word.lower() == "сегодня" else (datetime.now() - timedelta(days=1))
+        return f"{base_dt.strftime('%Y-%m-%d')} {int(hh):02d}:{mi}:00"
+
+    # 4. '23 октября в 15:50'
+    month_map = {
+        "янв": "01", "фев": "02", "мар": "03", "апр": "04",
+        "мая": "05", "май": "05", "июн": "06", "июл": "07",
+        "авг": "08", "сен": "09", "окт": "10", "ноя": "11", "дек": "12",
+    }
+    m_mon = re.search(
+        r"(\d{1,2})\s+(янв|фев|мар|апр|ма[йя]|июн|июл|авг|сен|окт|ноя|дек)[а-я.]*\s*(?:(\d{4})\s*)?(?:в|,)?\s*(\d{1,2}):(\d{2})",
+        combined,
+        re.IGNORECASE,
+    )
+    if m_mon:
+        dd, mon_prefix, yr_opt, hh, mi = m_mon.groups()
+        mm = month_map.get(mon_prefix[:3].lower(), "10")
+        yr = yr_opt or str(datetime.now().year)
+        return f"{yr}-{mm}-{int(dd):02d} {int(hh):02d}:{mi}:00"
+
+    return ""
+
+
 def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Extracts structured fields from a single item in Gosuslugi's /api/lk/v1/feeds/ response:
@@ -194,6 +252,7 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     pass
 
     normalized_status = classify_gosuslugi_status_text(raw_title, raw_status)
+    parsed_order_dt = parse_gosuslugi_datetime(date_str, f"{raw_title} {raw_status}")
     detail_parts = [
         p
         for p in [
@@ -217,7 +276,7 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "citizen_name": citizen_name,
         "address": address,
         "initiator": initiator,
-        "order_date": date_str,
+        "order_date": parsed_order_dt or date_str,
         "status_detail": " | ".join(detail_parts)[:240],
     }
 
@@ -370,7 +429,7 @@ def extract_orders_from_dom(page: Page) -> Dict[str, Dict[str, Any]]:
                     "citizen_name": citizen_name,
                     "address": "",
                     "initiator": "",
-                    "order_date": "",
+                    "order_date": parse_gosuslugi_datetime("", c_text),
                     "status_detail": c_text.replace("\n", " | ")[:240],
                 }
                 dom_orders[app_no] = entry
@@ -1947,6 +2006,16 @@ def run_fast_json_status_sync_on_page(
                     if not prev_pdf or "_STATUS_A4" in prev_pdf:
                         prev_pdf = captured_sc_file
 
+            gosuslugi_event_dt = parse_gosuslugi_datetime(
+                str(matched_order.get("order_date") or ""),
+                str(matched_order.get("status_detail") or ""),
+            )
+            effective_checked_at = (
+                gosuslugi_event_dt
+                if gosuslugi_event_dt and (not submitted_at or gosuslugi_event_dt >= submitted_at[:16])
+                else now_str
+            )
+
             if prev_status == new_status and raw_app_no == final_app_no and not captured_sc_file:
                 if is_intermediate_prev or (allow_single_search and search_scope == "all_from_start"):
                     verified_same_pending_count += 1
@@ -1966,7 +2035,7 @@ def run_fast_json_status_sync_on_page(
                         "pdf_filename": prev_pdf,
                         "gosuslugi_status": new_status,
                         "status_detail": matched_order.get("status_detail", ""),
-                        "checked_at": now_str,
+                        "checked_at": effective_checked_at,
                     })
                 continue
 
@@ -1985,7 +2054,7 @@ def run_fast_json_status_sync_on_page(
                 "pdf_filename": prev_pdf,
                 "gosuslugi_status": new_status,
                 "status_detail": matched_order.get("status_detail", ""),
-                "checked_at": now_str,
+                "checked_at": effective_checked_at,
                 "force_status_correction": True,
             }
             updated_records.append(updated_entry)
@@ -2434,6 +2503,16 @@ def main():
                             pdf_file = dl_pdf
                             pdfs_downloaded_count += 1
 
+                    gosuslugi_event_dt = parse_gosuslugi_datetime(
+                        str(matched_order.get("order_date") or ""),
+                        str(matched_order.get("status_detail") or ""),
+                    )
+                    effective_checked_at = (
+                        gosuslugi_event_dt
+                        if gosuslugi_event_dt and (not submitted_at or gosuslugi_event_dt >= submitted_at[:16])
+                        else now_str
+                    )
+
                     updated_entry = {
                         **rec,
                         "sicil": sicil,
@@ -2443,7 +2522,7 @@ def main():
                         "pdf_filename": pdf_file,
                         "gosuslugi_status": new_st_val,
                         "status_detail": matched_order.get("status_detail", ""),
-                        "checked_at": now_str,
+                        "checked_at": effective_checked_at,
                         "force_status_correction": True,
                     }
                     updated_records.append(updated_entry)
