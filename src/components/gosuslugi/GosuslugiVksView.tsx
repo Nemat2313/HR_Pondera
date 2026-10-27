@@ -941,6 +941,9 @@ export default function GosuslugiVksView() {
   const [isLaunchingChrome, setIsLaunchingChrome] = useState(false);
   const [isStartingRobot, setIsStartingRobot] = useState(false);
   const [isCheckingStatuses, setIsCheckingStatuses] = useState(false);
+  const [showSingleStatusSearchModal, setShowSingleStatusSearchModal] = useState(false);
+  const [singleSearchScope, setSingleSearchScope] = useState<'pending_only' | 'all_from_start'>('pending_only');
+  const [captureStatusScreenshots, setCaptureStatusScreenshots] = useState(false);
   const [savedSubmissions, setSavedSubmissions] = useState<Record<string, GosuslugiSubmissionEntry>>({});
   const syncedAppsRef = useRef<Set<string>>(new Set());
   const uploadedPdfsRef = useRef<Set<string>>(new Set());
@@ -2971,6 +2974,121 @@ export default function GosuslugiVksView() {
     }
   };
 
+  // Manual One-by-One Status Search ('Tek Tek Statü Ara') with Scope & A4 Cropped Screenshot Option
+  const handleStartSingleStatusSearch = async () => {
+    if (bridgeStatus.status !== 'online') {
+      setShowSingleStatusSearchModal(false);
+      setShowAgentGuide(true);
+      showNotice(
+        'error',
+        lang === 'ru'
+          ? 'Локальный RPA агент не запущен! Скачайте обновлённый агент и запустите START_PONDERA_RPA_BRIDGE.bat'
+          : 'Yerel RPA Ajanı çalışmıyor! Lütfen güncel ajan paketini indirip START_PONDERA_RPA_BRIDGE.bat dosyasını çalıştırın.'
+      );
+      return;
+    }
+
+    setIsCheckingStatuses(true);
+    try {
+      const orderedRecords: GosuslugiSubmissionEntry[] = [];
+      const seenAppNos = new Set<string>();
+
+      for (const w of workers) {
+        const appNo = String(w.applicationNo || '').trim();
+        if (!appNo || !/^\d{8,14}$/.test(appNo)) continue;
+        const st = String(w.gosuslugiStatus || '').trim();
+        const isFinalOrError =
+          st === 'Услуга оказана' ||
+          st === 'Услуга отказана' ||
+          /^ошибк/i.test(st) ||
+          w.status === 'error';
+
+        if (singleSearchScope === 'pending_only' && isFinalOrError) {
+          continue;
+        }
+        if (seenAppNos.has(appNo)) continue;
+        seenAppNos.add(appNo);
+
+        const fullWorkerName = [w.lastName, w.firstName, w.middleName]
+          .filter((p) => p && p.trim().toLowerCase() !== 'нет')
+          .join(' ')
+          .trim();
+
+        orderedRecords.push({
+          sicil_no: w.sicil || w.code,
+          worker_name: fullWorkerName || `${w.lastName} ${w.firstName}`.trim(),
+          citizenship: w.citizenship,
+          notification_type: 'VKS_SALARY',
+          period_code: periodCode,
+          application_no: appNo,
+          gosuslugi_status: st || 'Отправлено',
+          pdf_filename: w.pdfFilename || '',
+        });
+      }
+
+      // If table is not loaded yet, fall back to savedSubmissions
+      if (orderedRecords.length === 0) {
+        for (const s of Object.values(savedSubmissions)) {
+          const appNo = String(s.application_no || '').trim();
+          if (!appNo || !/^\d{8,14}$/.test(appNo) || seenAppNos.has(appNo)) continue;
+          const st = String(s.gosuslugi_status || '').trim();
+          const isFinalOrError =
+            st === 'Услуга оказана' || st === 'Услуга отказана' || /^ошибк/i.test(st);
+          if (singleSearchScope === 'pending_only' && isFinalOrError) continue;
+          seenAppNos.add(appNo);
+          orderedRecords.push(s);
+        }
+      }
+
+      if (orderedRecords.length === 0) {
+        showNotice(
+          'info',
+          lang === 'ru'
+            ? 'Нет заявлений, подходящих под выбранный фильтр для поштучного поиска.'
+            : 'Seçilen kritere uygun tek tek aranacak başvuru numarası bulunamadı.'
+        );
+        return;
+      }
+
+      const res = await fetch(`${activeBridgeUrl}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'check_status_single',
+          search_scope: singleSearchScope,
+          capture_screenshots: captureStatusScreenshots,
+          records: orderedRecords,
+        }),
+      });
+
+      if (res.ok) {
+        setShowSingleStatusSearchModal(false);
+        showNotice(
+          'success',
+          lang === 'ru'
+            ? `Запущен поштучный поиск статусов (${orderedRecords.length} заявл.)${
+                captureStatusScreenshots ? ' + сохранение A4 скриншотов' : ''
+              }...`
+            : `Tek tek statü sorgulama (${orderedRecords.length} başvuru)${
+                captureStatusScreenshots ? ' + A4 Print Screen kaydı' : ''
+              } başlatıldı...`
+        );
+      } else {
+        const err = await res.json();
+        showNotice('error', err.error || 'Tek tek statü arama başlatılamadı.');
+      }
+    } catch {
+      showNotice(
+        'error',
+        lang === 'ru'
+          ? 'Ошибка запуска поштучного поиска статусов.'
+          : 'Tek tek statü sorgulama başlatılırken hata oluştu.'
+      );
+    } finally {
+      setIsCheckingStatuses(false);
+    }
+  };
+
   const isOnline = bridgeStatus.status === 'online';
   const isRunning = bridgeStatus.running;
   const isWaitingManual = Boolean(bridgeStatus.waiting_for_manual && isRunning);
@@ -4019,11 +4137,21 @@ export default function GosuslugiVksView() {
               <button
                 onClick={() => handleCheckGosuslugiStatuses(true)}
                 disabled={isCheckingStatuses}
-                title="PDF indirmeden Gosuslugi JSON üzerinden statüleri hızlıca sorgula"
+                title="PDF indirmeden ve tek tek arama yapmadan Gosuslugi JSON üzerinden statüleri birkaç saniyede hızlıca sorgula"
                 className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
                 <span>{lang === 'ru' ? 'Быстрый статус' : 'Hızlı Statü'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowSingleStatusSearchModal(true)}
+                disabled={isCheckingStatuses}
+                title="Gosuslugi üzerinde başvuru numaralarını tek tek aratarak statü kontrol et (ve isteğe bağlı A4 Print Screen kaydet)"
+                className="h-9 px-3 rounded-xl border border-indigo-300/90 dark:border-indigo-700 bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+              >
+                <Search className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>{lang === 'ru' ? 'Поштучный поиск' : 'Tek Tek Statü Ara'}</span>
               </button>
 
               <button
@@ -4265,12 +4393,16 @@ export default function GosuslugiVksView() {
                                 className="inline-flex items-center gap-1 text-[10px] font-medium text-teal-800 dark:text-teal-300 hover:underline truncate max-w-[220px]"
                                 title={
                                   lang === 'ru'
-                                    ? `Скачать PDF с сервера: ${w.pdfFilename}`
-                                    : `PDF'i sunucudan indir: ${w.pdfFilename}`
+                                    ? `Скачать PDF / Скриншот с сервера: ${w.pdfFilename}`
+                                    : `PDF / A4 Ekran Görüntüsünü sunucudan indir: ${w.pdfFilename}`
                                 }
                               >
                                 <Download className="w-2.5 h-2.5 shrink-0" />
-                                <span className="truncate">PDF: {w.pdfFilename}</span>
+                                <span className="truncate">
+                                  {w.pdfFilename.toUpperCase().includes('_STATUS_A4')
+                                    ? `📸 A4 Statü: ${w.pdfFilename}`
+                                    : `PDF: ${w.pdfFilename}`}
+                                </span>
                               </a>
                             )}
                           </div>
@@ -5685,6 +5817,155 @@ export default function GosuslugiVksView() {
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANUAL ONE-BY-ONE STATUS SEARCH ('TEK TEK STATÜ ARA') MODAL */}
+      {showSingleStatusSearchModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Search className="w-5 h-5" />
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold">
+                    {lang === 'ru'
+                      ? 'Поштучный поиск статуса на Госуслугах'
+                      : 'Gosuslugi Tek Tek Statü Arama'}
+                  </h3>
+                  <p className="text-[11px] text-indigo-100">
+                    {lang === 'ru'
+                      ? 'Проверка заявлений по № на lk.gosuslugi.ru/orders'
+                      : 'Başvuru numaralarını (№ Заявления) tek tek aratarak statü sorgulama'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSingleStatusSearchModal(false)}
+                className="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center text-white font-bold cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              <div className="space-y-2.5">
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {lang === 'ru'
+                    ? 'Выберите режим поштучного поиска:'
+                    : 'Arama Kapsamını Seçin:'}
+                </div>
+
+                {/* Option 1 (Default): Statü Bekleyenler */}
+                <label
+                  className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
+                    singleSearchScope === 'pending_only'
+                      ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40'
+                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="singleSearchScope"
+                    checked={singleSearchScope === 'pending_only'}
+                    onChange={() => setSingleSearchScope('pending_only')}
+                    className="mt-0.5 accent-indigo-600 cursor-pointer"
+                  />
+                  <div className="text-xs space-y-0.5">
+                    <div className="font-bold text-slate-900 dark:text-white">
+                      {lang === 'ru'
+                        ? '1. Ожидающие статуса (по умолчанию)'
+                        : '1. Statü Bekleyenler (Varsayılan)'}
+                    </div>
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                      {lang === 'ru'
+                        ? 'Проверяет только заявления в ожидании ответа МВД (исключая «Услуга оказана», «Услуга отказана» и «Ошибка»).'
+                        : 'Sadece sonucu beklenen başvuruları («Услуга оказана», «Услуга отказана» ve Hatalı olanlar hariç) tek tek arar.'}
+                    </div>
+                  </div>
+                </label>
+
+                {/* Option 2: Tüm Listeyi Baştan */}
+                <label
+                  className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
+                    singleSearchScope === 'all_from_start'
+                      ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40'
+                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="singleSearchScope"
+                    checked={singleSearchScope === 'all_from_start'}
+                    onChange={() => setSingleSearchScope('all_from_start')}
+                    className="mt-0.5 accent-indigo-600 cursor-pointer"
+                  />
+                  <div className="text-xs space-y-0.5">
+                    <div className="font-bold text-slate-900 dark:text-white">
+                      {lang === 'ru'
+                        ? '2. Весь список сначала'
+                        : '2. Tüm Listeyi Baştan'}
+                    </div>
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                      {lang === 'ru'
+                        ? 'Проверяет все заявления с номерами с самого начала списка (включая «Услуга оказана» и «Услуга отказана»).'
+                        : 'Başvuru numarası (№ Заявления) olan tüm listeyi baştan sona tek tek kontrol eder.'}
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Bottom Checkbox: A4 Cropped Print Screen */}
+              <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                <label className="flex items-start gap-3 p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/60 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={captureStatusScreenshots}
+                    onChange={(e) => setCaptureStatusScreenshots(e.target.checked)}
+                    className="mt-0.5 rounded accent-teal-600 cursor-pointer"
+                  />
+                  <div className="text-xs space-y-0.5">
+                    <div className="font-bold text-teal-950 dark:text-teal-200">
+                      {lang === 'ru'
+                        ? '📸 Сделать Print Screen статусов (формат A4) и сохранить в систему'
+                        : '📸 Statülerin Print Screen (Ekran Görüntüsü) kaydını A4 formatına uygun keserek al ve sisteme kaydet'}
+                    </div>
+                    <div className="text-[11px] text-teal-800/90 dark:text-teal-300/80 leading-relaxed">
+                      {lang === 'ru'
+                        ? 'Обрезает только карточку статуса Госуслуг под пропорции листа A4 (без лишних краёв экрана) и сохраняет в систему как A4 PDF.'
+                        : 'Tüm geniş ekranı değil, sadece Gosuslugi başvuru/statü alanını A4 dikey sayfa formatına uygun kırparak keser ve sisteme kaydeder.'}
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Modal Footer Buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSingleStatusSearchModal(false)}
+                  className="h-9 px-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs cursor-pointer transition"
+                >
+                  {lang === 'ru' ? 'Отмена' : 'İptal'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartSingleStatusSearch}
+                  disabled={isCheckingStatuses}
+                  className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 transition"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>
+                    {lang === 'ru'
+                      ? 'Начать поштучный поиск'
+                      : 'Tek Tek Statü Aramayı Başlat'}
+                  </span>
+                </button>
               </div>
             </div>
           </div>

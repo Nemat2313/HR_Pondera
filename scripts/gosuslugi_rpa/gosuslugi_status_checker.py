@@ -382,13 +382,14 @@ def extract_orders_from_dom(page: Page) -> Dict[str, Dict[str, Any]]:
     return dom_orders
 
 
-def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict[str, Any]]:
+def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15, fast_json_only: bool = False) -> Dict[str, Dict[str, Any]]:
     """
     Fetches orders from https://lk.gosuslugi.ru/orders using a 3-layer approach:
     1) Direct XHR/fetch to `/api/lk/v1/feeds/`
     2) Playwright network response interception (`INTERCEPTED_FEED_ORDERS`)
     3) DOM `<a href*='/order/'>` card scraping + clicking 'Показать ещё' when WAF 428 blocks direct JS fetch
     Returns a dict keyed by `application_no` (extId).
+    When `fast_json_only=True` (30-min background sync / Hızlı Statü), skips slow DOM pagination loops.
     """
     attach_feeds_network_listener(page)
     cur_url = (page.url or "").lower()
@@ -487,15 +488,15 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
                 INTERCEPTED_FEED_ORDERS[parsed["application_no"]] = parsed
 
     # Fallback when Gosuslugi WAF (428) blocks direct JS XHR/fetch:
-    # Reload/read DOM on lk.gosuslugi.ru/orders and click 'Показать ещё' so Angular's own HttpClient loads the feed!
-    if len(orders_by_no) < max(max_pages * 15, 60):
+    # When fast_json_only=True, do at most 2 quick clicks (~2 seconds total) so 30-min sync never slows down VKS sending!
+    if len(orders_by_no) < (20 if fast_json_only else max(max_pages * 15, 60)):
         try:
             if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
                 page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=35000)
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(1800 if fast_json_only else 2500)
             elif len(orders_by_no) == 0:
                 page.reload(wait_until="domcontentloaded", timeout=35000)
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(1800 if fast_json_only else 2500)
 
             orders_by_no.update(INTERCEPTED_FEED_ORDERS)
             orders_by_no.update(extract_orders_from_dom(page))
@@ -508,14 +509,14 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
                     page.keyboard.press("Control+A")
                     page.keyboard.press("Backspace")
                     page.keyboard.press("Enter")
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(1200)
                     orders_by_no.update(INTERCEPTED_FEED_ORDERS)
                     orders_by_no.update(extract_orders_from_dom(page))
             except Exception:
                 pass
 
-            # Click 'Показать ещё' up to max_pages (e.g. 60 pages = 1,200 applications) to load all orders via Angular
-            for _ in range(max(max_pages, 25)):
+            max_dom_clicks = 2 if fast_json_only else max(max_pages, 25)
+            for _ in range(max_dom_clicks):
                 show_more = page.locator(
                     "button:has-text('Показать ещё'):visible, "
                     "button:has-text('Показать еще'):visible, "
@@ -532,7 +533,7 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15) -> Dict[str, Dict
                     show_more.click(timeout=2000)
                 except Exception:
                     break
-                page.wait_for_timeout(650)
+                page.wait_for_timeout(550 if fast_json_only else 650)
                 orders_by_no.update(INTERCEPTED_FEED_ORDERS)
                 orders_by_no.update(extract_orders_from_dom(page))
         except Exception as dom_err:
@@ -1240,8 +1241,14 @@ def download_missing_pdf_for_order(
         return downloaded_path.name
 
 
-def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str, gosuslugi_status: str = ""):
-    """Uploads the downloaded PDF receipt directly to Pondera HR Central Server (/api/gosuslugi/pdf) so all 4 PCs share PDFs."""
+def upload_pdf_to_central_server(
+    pdf_path: Path,
+    app_no: str,
+    sicil_no: str,
+    gosuslugi_status: str = "",
+    is_screenshot: bool = False,
+):
+    """Uploads the downloaded PDF receipt or A4 status screenshot directly to Pondera HR Central Server (/api/gosuslugi/pdf)."""
     try:
         if not pdf_path or not pdf_path.exists():
             return
@@ -1255,6 +1262,7 @@ def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str, gos
             "application_no": str(app_no or "").strip(),
             "sicil_no": str(sicil_no or "").strip(),
             "gosuslugi_status": str(gosuslugi_status or "").strip(),
+            "is_screenshot": bool(is_screenshot),
         }).encode("utf-8")
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
@@ -1271,12 +1279,212 @@ def upload_pdf_to_central_server(pdf_path: Path, app_no: str, sicil_no: str, gos
                     method="POST",
                 )
                 with urllib.request.urlopen(req, timeout=10.0, context=ctx if api_url.startswith("https") else None) as _:
-                    logger.info(f"  -> Uploaded PDF to central server: {pdf_path.name}")
+                    logger.info(f"  -> Uploaded {'A4 Status Screenshot' if is_screenshot else 'PDF'} to central server: {pdf_path.name}")
                     break
             except Exception:
                 pass
     except Exception:
         pass
+
+
+def _parse_jpeg_dimensions(jpeg_bytes: bytes) -> tuple[int, int]:
+    """Extracts (width, height) from raw JPEG bytes using SOF markers without external dependencies."""
+    n = len(jpeg_bytes)
+    i = 2
+    while i < n - 9:
+        if jpeg_bytes[i] != 0xFF:
+            i += 1
+            continue
+        while i < n and jpeg_bytes[i] == 0xFF:
+            i += 1
+        if i >= n:
+            break
+        marker = jpeg_bytes[i]
+        i += 1
+        if marker in (0xD8, 0xD9) or (0xD0 <= marker <= 0xD7):
+            continue
+        if i + 2 > n:
+            break
+        seg_len = int.from_bytes(jpeg_bytes[i:i + 2], "big")
+        if marker in (0xC0, 0xC1, 0xC2, 0xC3) and i + 7 <= n:
+            h = int.from_bytes(jpeg_bytes[i + 3:i + 5], "big")
+            w = int.from_bytes(jpeg_bytes[i + 5:i + 7], "big")
+            if w > 0 and h > 0:
+                return w, h
+        if seg_len < 2:
+            break
+        i += seg_len
+    return 794, 1123
+
+
+def build_a4_pdf_from_jpeg_bytes(jpeg_bytes: bytes) -> bytes:
+    """
+    Wraps a cropped JPEG image into a standard 1-page A4 Portrait PDF (595.28 x 841.89 pt)
+    using native PDF DCTDecode stream with zero external dependencies.
+    """
+    img_w, img_h = _parse_jpeg_dimensions(jpeg_bytes)
+    page_w, page_h = 595.28, 841.89
+    margin = 20.0
+    avail_w = page_w - 2 * margin
+    avail_h = page_h - 2 * margin
+    scale = min(avail_w / max(img_w, 1), avail_h / max(img_h, 1))
+    draw_w = img_w * scale
+    draw_h = img_h * scale
+    x_pos = (page_w - draw_w) / 2.0
+    y_pos = page_h - margin - draw_h
+
+    content_stream = f"q\n{draw_w:.2f} 0 0 {draw_h:.2f} {x_pos:.2f} {y_pos:.2f} cm\n/Im0 Do\nQ\n".encode("ascii")
+
+    objects: List[bytes] = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        (
+            f"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w:.2f} {page_h:.2f}] "
+            f"/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n"
+        ).encode("ascii"),
+        (
+            f"4 0 obj\n<< /Type /XObject /Subtype /Image /Width {img_w} /Height {img_h} "
+            f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {len(jpeg_bytes)} >>\nstream\n"
+        ).encode("ascii")
+        + jpeg_bytes
+        + b"\nendstream\nendobj\n",
+        (
+            f"5 0 obj\n<< /Length {len(content_stream)} >>\nstream\n"
+        ).encode("ascii")
+        + content_stream
+        + b"endstream\nendobj\n",
+    ]
+
+    pdf_out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets: List[int] = []
+    for obj in objects:
+        offsets.append(len(pdf_out))
+        pdf_out.extend(obj)
+
+    xref_offset = len(pdf_out)
+    pdf_out.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("ascii"))
+    for off in offsets:
+        pdf_out.extend(f"{off:010d} 00000 n \n".encode("ascii"))
+    pdf_out.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+    )
+    return bytes(pdf_out)
+
+
+def capture_a4_cropped_status_screenshot(
+    page: Page,
+    app_no: str,
+    sicil: str,
+    worker_name: str,
+    period_code: str,
+    gosuslugi_status: str = "",
+) -> str:
+    """
+    Captures an A4-proportioned cropped screenshot of the Gosuslugi order status area (NOT the full wide screen!),
+    converts it into a standard A4 PDF (<Sicil>_<AppNo>_<WorkerName>_STATUS_A4.pdf), saves it locally in
+    ~/Downloads/Gosuslugi_Status_A4/, and uploads it to the central Pondera HR server (/api/gosuslugi/pdf).
+    """
+    clean_no = str(app_no or "").strip()
+    if not clean_no:
+        return ""
+
+    downloads_dir = Path.home() / "Downloads"
+    screenshots_dir = downloads_dir / "Gosuslugi_Status_A4"
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
+
+    clean_name = clean_worker_name_for_pdf(worker_name)
+    clean_sicil = re.sub(r'[<>:"/\\|?*]+', "", str(sicil or "").strip())
+    pdf_filename = (
+        f"{clean_sicil}_{clean_no}_{clean_name}_STATUS_A4.pdf"
+        if clean_sicil
+        else f"{clean_no}_{clean_name}_STATUS_A4.pdf"
+    )
+    jpg_filename = pdf_filename.replace(".pdf", ".jpg")
+    pdf_path = screenshots_dir / pdf_filename
+    jpg_path = screenshots_dir / jpg_filename
+
+    try:
+        # Compute the bounding box of the central Gosuslugi order card + search header in A4 Portrait proportions
+        clip_box = page.evaluate(
+            """(appNo) => {
+                const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+                const vh = window.innerHeight || document.documentElement.clientHeight || 900;
+
+                // Scroll matched card or search input near the top-center of viewport first
+                const allCards = Array.from(document.querySelectorAll("a[href*='/order/'], div.feed-item, main"));
+                let targetCard = allCards.find(el => (el.innerText || "").includes(appNo)) || null;
+                const searchInp = document.querySelector("input.search-input, lib-search input, input[type='search']");
+
+                if (searchInp) {
+                    try { searchInp.scrollIntoView({ block: "start", inline: "nearest" }); } catch (e) {}
+                } else if (targetCard) {
+                    try { targetCard.scrollIntoView({ block: "start", inline: "nearest" }); } catch (e) {}
+                }
+                window.scrollBy(0, -24);
+
+                let refRect = null;
+                if (targetCard) {
+                    const r = targetCard.getBoundingClientRect();
+                    if (r.width >= 260 && r.height >= 40) refRect = r;
+                }
+                if (!refRect && searchInp) {
+                    const container = searchInp.closest("main, .orders-container, .container, .content") || searchInp.parentElement;
+                    if (container) {
+                        const r = container.getBoundingClientRect();
+                        if (r.width >= 260) refRect = r;
+                    }
+                }
+
+                // Crop width: strictly the central Gosuslugi document column (~794px A4 width, never full wide monitor!)
+                const a4Width = Math.min(820, Math.max(680, refRect ? Math.round(refRect.width + 48) : 794));
+                const cropW = Math.min(a4Width, vw);
+                let cropX = refRect
+                    ? Math.round(refRect.left + refRect.width / 2 - cropW / 2)
+                    : Math.round((vw - cropW) / 2);
+                cropX = Math.max(0, Math.min(cropX, vw - cropW));
+
+                let topY = 0;
+                if (searchInp) {
+                    const sr = searchInp.getBoundingClientRect();
+                    topY = Math.max(0, Math.round(sr.top - 28));
+                } else if (refRect) {
+                    topY = Math.max(0, Math.round(refRect.top - 28));
+                }
+                if (topY > vh - 250) topY = 0;
+
+                // A4 portrait ratio height (1 : 1.4142), clamped to visible viewport below topY
+                const idealA4H = Math.round(cropW * 1.4142);
+                const maxAvailH = Math.max(240, vh - topY);
+                const cropH = Math.min(idealA4H, maxAvailH);
+
+                return { x: cropX, y: topY, width: cropW, height: cropH };
+            }""",
+            clean_no,
+        )
+        page.wait_for_timeout(180)
+        jpeg_bytes = page.screenshot(type="jpeg", quality=92, clip=clip_box)
+        jpg_path.write_bytes(jpeg_bytes)
+
+        pdf_bytes = build_a4_pdf_from_jpeg_bytes(jpeg_bytes)
+        pdf_path.write_bytes(pdf_bytes)
+        # Also place a copy in ~/Downloads so local bridge /pdf-base64 can serve it immediately
+        try:
+            (downloads_dir / pdf_filename).write_bytes(pdf_bytes)
+        except Exception:
+            pass
+
+        upload_pdf_to_central_server(
+            pdf_path,
+            clean_no,
+            clean_sicil,
+            gosuslugi_status=gosuslugi_status,
+            is_screenshot=True,
+        )
+        logger.info(f"  -> [A4 PrintScreen] Saved & uploaded cropped A4 status screenshot: {pdf_filename}")
+        return pdf_filename
+    except Exception as sc_err:
+        logger.warning(f"  -> Could not capture A4 status screenshot for № {clean_no}: {sc_err}")
+        return ""
 
 
 CENTRAL_ARCHIVED_APP_NOS = set()
@@ -1536,17 +1744,20 @@ def run_fast_json_status_sync_on_page(
     page: Page,
     max_pages: int = 100,
     records: Optional[List[Dict[str, Any]]] = None,
+    allow_single_search: bool = False,
+    search_scope: str = "pending_only",
+    capture_screenshots: bool = False,
 ) -> int:
     """
     Fast, non-intrusive status sync (NO PDF download, NO /order/<feed_id> navigation):
-    1) Fetches up to `max_pages * 20` (e.g. 2,000) applications directly from Gosuslugi's JSON API
-       (/api/lk/v1/feeds/) using the current browser session cookies in ~3-5 seconds.
-    2) Matches records STRICTLY by their latest `application_no` (never by worker FIO name, so an older
-       refused application can never be matched by name).
-    3) For any pending/registered application ('Отправлено', 'Заявление зарегистрировано', etc.) that has
-       a 10-digit `application_no` and was not in the bulk JSON feed, searches strictly by `application_no`
-       on https://lk.gosuslugi.ru/orders and waits for the exact `/api/lk/v1/feeds/?...&q=<app_no>` response
-       before moving to the next number.
+    - When `allow_single_search=False` (default for 30-min interval during VKS sending & 'Hızlı Statü'):
+      Fetches applications purely via Gosuslugi's JSON API (/api/lk/v1/feeds/) in ~3-5 seconds with ZERO
+      one-by-one typing (`query_single_order_by_no`), so VKS sending continues immediately without delay.
+    - When `allow_single_search=True` (manual 'Tek Tek Statü Ara' mode):
+      1) `search_scope == 'pending_only'` (default): checks only applications waiting for final status
+         (excludes 'Услуга оказана', 'Услуга отказана', and 'Ошибка%').
+      2) `search_scope == 'all_from_start'`: checks all applications with an `application_no` from the start of the list.
+      3) When `capture_screenshots=True`, captures an A4-cropped screenshot of the Gosuslugi status card and uploads it.
     """
     try:
         attach_feeds_network_listener(page)
@@ -1567,16 +1778,21 @@ def run_fast_json_status_sync_on_page(
                     wait_until="domcontentloaded",
                     timeout=30000,
                 )
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(2000)
             except Exception as nav_err:
                 logger.debug(f"Orders navigation note: {nav_err}")
 
-        bulk_orders = fetch_bulk_orders_via_api(page, max_pages=max_pages)
+        bulk_orders = fetch_bulk_orders_via_api(
+            page,
+            max_pages=max_pages,
+            fast_json_only=not allow_single_search,
+        )
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         updated_records: List[Dict[str, Any]] = []
         status_changed_count = 0
         verified_same_pending_count = 0
+        screenshots_captured_count = 0
         assigned_app_nos_to_sicil: Dict[str, str] = {}
         for r_pre in target_records:
             p_sic = str(r_pre.get("sicil") or r_pre.get("sicil_no") or "").strip()
@@ -1586,33 +1802,35 @@ def run_fast_json_status_sync_on_page(
             if p_sic and p_app and p_app.isdigit() and not is_superseded_or_archived_order(p_app, p_st, p_sub):
                 assigned_app_nos_to_sicil[p_app] = p_sic
 
-        # Prioritize truly registered applications ('Заявление зарегистрировано') first,
-        # then other intermediate applications, then finalized applications (newest first!)
-        def _fast_priority_key(r_it: Dict[str, Any]):
-            st_it = str(r_it.get("gosuslugi_status") or "").strip()
-            app_it = str(r_it.get("application_no") or "").strip()
-            pdf_it = str(r_it.get("pdf_filename") or "").strip()
-            has_app = bool(app_it and app_it.isdigit())
-            is_registered_st = (
-                st_it in ("Заявление зарегистрировано", "Промежуточные результаты по заявлению", "Отправлено в ведомство")
-                and has_app
-            )
-            is_other_pending_st = (
-                st_it not in ("Услуга оказана", "Услуга отказана")
-                and not st_it.lower().startswith("ошибк")
-                and has_app
-            )
-            if is_registered_st:
-                return (0, -int(app_it))
-            if is_other_pending_st and pdf_it:
-                return (1, -int(app_it))
-            if is_other_pending_st:
-                return (2, -int(app_it))
-            if has_app:
-                return (3, -int(app_it))
-            return (4, 0)
+        if allow_single_search and search_scope == "all_from_start":
+            sorted_target_records = list(target_records)
+        else:
+            def _fast_priority_key(r_it: Dict[str, Any]):
+                st_it = str(r_it.get("gosuslugi_status") or "").strip()
+                app_it = str(r_it.get("application_no") or "").strip()
+                pdf_it = str(r_it.get("pdf_filename") or "").strip()
+                has_app = bool(app_it and app_it.isdigit())
+                is_registered_st = (
+                    st_it in ("Заявление зарегистрировано", "Промежуточные результаты по заявлению", "Отправлено в ведомство")
+                    and has_app
+                )
+                is_other_pending_st = (
+                    st_it not in ("Услуга оказана", "Услуга отказана")
+                    and not st_it.lower().startswith("ошибк")
+                    and has_app
+                )
+                if is_registered_st:
+                    return (0, -int(app_it))
+                if is_other_pending_st and pdf_it:
+                    return (1, -int(app_it))
+                if is_other_pending_st:
+                    return (2, -int(app_it))
+                if has_app:
+                    return (3, -int(app_it))
+                return (4, 0)
 
-        sorted_target_records = sorted(target_records, key=_fast_priority_key)
+            sorted_target_records = sorted(target_records, key=_fast_priority_key)
+
         targeted_search_count = 0
         skipped_unsent_draft_count = 0
         checked_only_records: List[Dict[str, Any]] = []
@@ -1621,6 +1839,7 @@ def run_fast_json_status_sync_on_page(
         min_bulk_order_id = min(numeric_bulk_ids) if len(numeric_bulk_ids) >= 20 else 0
 
         for rec in sorted_target_records:
+            prevent_windows_sleep()
             raw_app_no = str(rec.get("application_no") or "").strip()
             app_no = raw_app_no if raw_app_no.isdigit() else ""
             sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
@@ -1632,28 +1851,26 @@ def run_fast_json_status_sync_on_page(
             if app_no and is_superseded_or_archived_order(app_no, prev_status, submitted_at):
                 app_no = ""
 
-            # Strictly require a valid latest `application_no` — NEVER search or match by worker_name!
             if not app_no:
+                continue
+
+            is_intermediate_prev = (
+                prev_status not in ("Услуга оказана", "Услуга отказана")
+                and not prev_status.lower().startswith("ошибк")
+            )
+
+            if allow_single_search and search_scope == "pending_only" and not is_intermediate_prev:
                 continue
 
             matched_order: Optional[Dict[str, Any]] = None
 
-            # 1) Check exact `app_no` in `bulk_orders` (just fetched live from /api/lk/v1/feeds/)
-            if app_no in bulk_orders:
+            if app_no in bulk_orders and not (allow_single_search and capture_screenshots):
                 candidate = bulk_orders[app_no]
                 if is_acceptable_order_for_exact_app_no(candidate) and not is_superseded_or_archived_order(
                     app_no, candidate.get("gosuslugi_status", ""), submitted_at
                 ):
                     matched_order = candidate
 
-            # 2) Targeted one-by-one search strictly by `app_no` ONLY when `app_no` is pending/registered
-            # AND was NOT already found in `bulk_orders`!
-            # Skip unverified draft IDs ('Отправлено (PDF не скачан)' without PDF) that fall inside the
-            # already-scanned `bulk_orders` ID range, because those were unsent/deleted form drafts.
-            is_intermediate_prev = (
-                prev_status not in ("Услуга оказана", "Услуга отказана")
-                and not prev_status.lower().startswith("ошибк")
-            )
             is_unverified_draft_id = (
                 prev_status in ("Отправлено (PDF не скачан)", "Отправлено")
                 and not prev_pdf_file
@@ -1662,13 +1879,20 @@ def run_fast_json_status_sync_on_page(
                 and min_bulk_order_id > 0
                 and int(app_no) > min_bulk_order_id
             )
-            if not matched_order and is_intermediate_prev:
-                if is_unverified_draft_id:
+            should_run_single_query = allow_single_search and (
+                not matched_order or capture_screenshots
+            ) and (
+                search_scope == "all_from_start" or is_intermediate_prev
+            )
+
+            if should_run_single_query:
+                if is_unverified_draft_id and search_scope == "pending_only":
                     skipped_unsent_draft_count += 1
                     continue
                 targeted_search_count += 1
                 logger.info(
-                    f"[{targeted_search_count}] Поштучный поиск по № Заявления {app_no} ({worker_name or sicil}, текущий статус: {prev_status or 'Отправлено'})..."
+                    f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
+                    f"(Код: {sicil or '—'}, № Заявления: {app_no}) — [{targeted_search_count}] поштучный поиск (текущий: {prev_status or 'Отправлено'})..."
                 )
                 candidate = query_single_order_by_no(page, app_no, force_live_search=True)
                 if (
@@ -1697,8 +1921,6 @@ def run_fast_json_status_sync_on_page(
                 assigned_app_nos_to_sicil[final_app_no] = sicil
 
             new_status = str(matched_order.get("gosuslugi_status") or "").strip()
-            # Prevent downgrading an already final status ('Услуга оказана' / 'Услуга отказана') ONLY when new_status
-            # is an unverified local fallback ('Отправлено', 'В обработке'); always allow official Gosuslugi statuses!
             if (
                 raw_app_no == final_app_no
                 and prev_status in ("Услуга оказана", "Услуга отказана")
@@ -1706,32 +1928,53 @@ def run_fast_json_status_sync_on_page(
             ):
                 continue
 
-            if prev_status == new_status and raw_app_no == final_app_no:
-                if is_intermediate_prev:
+            prev_pdf = str(rec.get("pdf_filename") or "").strip()
+            if prev_pdf and final_app_no and final_app_no not in prev_pdf and re.search(r"[789]\d{9}", prev_pdf):
+                prev_pdf = ""
+
+            captured_sc_file = ""
+            if allow_single_search and capture_screenshots:
+                captured_sc_file = capture_a4_cropped_status_screenshot(
+                    page=page,
+                    app_no=final_app_no,
+                    sicil=sicil,
+                    worker_name=worker_name or matched_order.get("citizen_name") or "",
+                    period_code=str(rec.get("period_code") or "2026-3"),
+                    gosuslugi_status=new_status,
+                )
+                if captured_sc_file:
+                    screenshots_captured_count += 1
+                    if not prev_pdf or "_STATUS_A4" in prev_pdf:
+                        prev_pdf = captured_sc_file
+
+            if prev_status == new_status and raw_app_no == final_app_no and not captured_sc_file:
+                if is_intermediate_prev or (allow_single_search and search_scope == "all_from_start"):
                     verified_same_pending_count += 1
                     logger.info(
                         f"  [=] № {final_app_no} ({worker_name}) — проверено на Госуслугах: статус без изменений («{new_status}»)"
                     )
+                    if allow_single_search:
+                        logger.info(
+                            f"SUCCESS: Status checked for {worker_name} (№ {final_app_no}: {new_status})!"
+                        )
                     checked_only_records.append({
                         **rec,
                         "sicil": sicil,
                         "sicil_no": sicil,
                         "worker_name": worker_name or matched_order.get("citizen_name") or "",
                         "application_no": final_app_no,
+                        "pdf_filename": prev_pdf,
                         "gosuslugi_status": new_status,
                         "status_detail": matched_order.get("status_detail", ""),
                         "checked_at": now_str,
                     })
                 continue
 
-            status_changed_count += 1
-            logger.info(
-                f"  [✓] СТАТУС ОБНОВЛЁН: № {final_app_no} ({worker_name}) -> «{prev_status or 'Отправлено'}» ==> «{new_status}»"
-            )
-
-            prev_pdf = str(rec.get("pdf_filename") or "").strip()
-            if prev_pdf and final_app_no and final_app_no not in prev_pdf and re.search(r"[789]\d{9}", prev_pdf):
-                prev_pdf = ""
+            if prev_status != new_status:
+                status_changed_count += 1
+                logger.info(
+                    f"  [✓] СТАТУС ОБНОВЛЁН: № {final_app_no} ({worker_name}) -> «{prev_status or 'Отправлено'}» ==> «{new_status}»"
+                )
 
             updated_entry = {
                 **rec,
@@ -1751,6 +1994,11 @@ def run_fast_json_status_sync_on_page(
             else:
                 logger.info(f"APPLICATION_SYNCED_CENTRAL: {json.dumps(updated_entry, ensure_ascii=False)}")
             sync_updates_to_pondera_api([updated_entry])
+            if allow_single_search:
+                logger.info(
+                    f"SUCCESS: Status checked for {updated_entry['worker_name']} "
+                    f"(№ {final_app_no}: {new_status}, A4 PrintScreen: {captured_sc_file or '—'})!"
+                )
 
         if checked_only_records:
             sync_updates_to_pondera_api(checked_only_records)
@@ -1764,13 +2012,15 @@ def run_fast_json_status_sync_on_page(
             update_local_applications_ledger(updated_records)
             sync_updates_to_pondera_api(updated_records)
             logger.info(
-                f">>> Fast JSON Status Sync: Просканировано {len(bulk_orders)} заявлений в этом аккаунте Госуслуг | "
-                f"Изменился статус: {status_changed_count} | Ожидают ответа МВД (без изменений): {verified_same_pending_count} <<<"
+                f">>> Status Sync Complete: Просканировано {len(bulk_orders)} заявлений | "
+                f"Поштучно проверено: {targeted_search_count} | Изменился статус: {status_changed_count} | "
+                f"Скриншотов A4: {screenshots_captured_count} | Без изменений: {verified_same_pending_count} <<<"
             )
         else:
             logger.info(
-                f">>> Fast JSON Status Sync: Просканировано {len(bulk_orders)} заявлений в этом аккаунте Госуслуг | "
-                f"Изменился статус: 0 | Проверено в ожидании ответа МВД (без изменений): {verified_same_pending_count} <<<"
+                f">>> Status Sync Complete: Просканировано {len(bulk_orders)} заявлений | "
+                f"Поштучно проверено: {targeted_search_count} | Изменился статус: 0 | "
+                f"Скриншотов A4: {screenshots_captured_count} | Проверено без изменений: {verified_same_pending_count} <<<"
             )
         restart_local_bridge_if_outdated()
         return len(updated_records)
@@ -1787,6 +2037,9 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="Limit number of records to check")
     parser.add_argument("--max-pages", type=int, default=100, help="Max bulk pages (20 orders/page, 100 = 2000 orders) to fetch without searching")
     parser.add_argument("--status-only", action="store_true", help="Fast JSON-only status check without downloading PDFs or opening individual order pages")
+    parser.add_argument("--single-search", action="store_true", help="Enable manual one-by-one status search by application_no on lk.gosuslugi.ru/orders")
+    parser.add_argument("--search-scope", default="pending_only", choices=["pending_only", "all_from_start"], help="Scope for manual one-by-one search: pending_only or all_from_start")
+    parser.add_argument("--capture-screenshots", action="store_true", help="Capture A4-cropped screenshot of status on Gosuslugi and upload to system")
     args = parser.parse_args()
 
     # 1. Always fetch the authoritative Central Master List FIRST so CENTRAL_ARCHIVED_APP_NOS and central statuses are loaded!
@@ -1941,8 +2194,15 @@ def main():
 
         # Navigate to https://lk.gosuslugi.ru/orders if not already there (unless --status-only and already on gosuslugi.ru)
         cur_page_url = (page.url or "").lower()
-        if args.status_only and "gosuslugi.ru" in cur_page_url and "esia.gosuslugi.ru" not in cur_page_url:
-            run_fast_json_status_sync_on_page(page, max_pages=args.max_pages, records=records)
+        if (args.status_only or args.single_search) and "gosuslugi.ru" in cur_page_url and "esia.gosuslugi.ru" not in cur_page_url:
+            run_fast_json_status_sync_on_page(
+                page,
+                max_pages=args.max_pages,
+                records=records,
+                allow_single_search=bool(args.single_search),
+                search_scope=args.search_scope,
+                capture_screenshots=bool(args.capture_screenshots),
+            )
             return
 
         if "lk.gosuslugi.ru/orders" not in (page.url or ""):
@@ -1953,8 +2213,15 @@ def main():
             except Exception as e:
                 logger.warning(f"Navigation to lk.gosuslugi.ru/orders note: {e}")
 
-        if args.status_only:
-            run_fast_json_status_sync_on_page(page, max_pages=args.max_pages, records=records)
+        if args.status_only or args.single_search:
+            run_fast_json_status_sync_on_page(
+                page,
+                max_pages=args.max_pages,
+                records=records,
+                allow_single_search=bool(args.single_search),
+                search_scope=args.search_scope,
+                capture_screenshots=bool(args.capture_screenshots),
+            )
             return
 
         # If Gosuslugi redirected to login (esia.gosuslugi.ru/login), wait until user logs in
@@ -2100,11 +2367,10 @@ def main():
                             f"  -> Matched № {app_no} in bulk feed: {matched_order['gosuslugi_status']}"
                         )
 
-                # 2) One-by-one search strictly by `application_no` on lk.gosuslugi.ru/orders ONLY when not in `bulk_orders`
-                #    (or when `feed_id` is missing and PDF download is required)!
+                # 2) In bulk PDF & Status mode, only run single search if `matched_order` is missing `feed_id` for PDF download
+                #    (full one-by-one status search is triggered manually via 'Tek Tek Statü Ara' / --single-search)!
                 needs_feed_id_for_pdf = bool(matched_order and not matched_order.get("feed_id") and not pdf_file)
-                needs_live_single_search = (not matched_order) or needs_feed_id_for_pdf
-                if needs_live_single_search and (not pdf_file or needs_status_refresh or not is_large_batch):
+                if needs_feed_id_for_pdf or (not matched_order and not is_large_batch):
                     logger.info(
                         f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
                         f"(Код: {sicil or '—'}, № Заявления: {app_no}) — поштучный поиск по № Заявления на lk.gosuslugi.ru/orders..."

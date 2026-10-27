@@ -27,6 +27,7 @@ export async function GET(request: Request) {
     let appNo = searchParams.get('appNo') || searchParams.get('application_no') || '';
     let sicilNo = searchParams.get('sicil') || searchParams.get('sicil_no') || '';
     const forceDownload = searchParams.get('download') === '1';
+    const wantScreenshot = searchParams.get('screenshot') === '1';
 
     if (rawFile) {
       const mBoth = rawFile.match(/^(\d{4,8})_([789]\d{8,12})_/);
@@ -41,6 +42,18 @@ export async function GET(request: Request) {
 
     const storageDir = getPdfStorageDir();
     let targetFile = rawFile ? sanitizePdfFilename(rawFile) : '';
+
+    if (wantScreenshot && (!targetFile || !fs.existsSync(path.join(storageDir, targetFile))) && (appNo || sicilNo)) {
+      const allFiles = fs.readdirSync(storageDir);
+      const foundSc = allFiles.find(
+        (f) =>
+          f.toUpperCase().includes('_STATUS_A4.PDF') &&
+          ((appNo && f.includes(appNo)) || (sicilNo && f.startsWith(`${sicilNo}_`)))
+      );
+      if (foundSc) {
+        targetFile = foundSc;
+      }
+    }
 
     if ((!targetFile || !fs.existsSync(path.join(storageDir, targetFile))) && (appNo || sicilNo)) {
       try {
@@ -115,6 +128,7 @@ export async function POST(request: Request) {
     const applicationNo = String(body?.application_no || '').trim();
     const sicilNo = String(body?.sicil_no || '').trim();
     const incomingStatus = String(body?.gosuslugi_status || '').trim();
+    const isScreenshot = Boolean(body?.is_screenshot) || rawFilename.toUpperCase().includes('_STATUS_A4');
 
     if (!rawFilename || !pdfBase64) {
       return NextResponse.json(
@@ -159,7 +173,10 @@ export async function POST(request: Request) {
         if (applicationNo) {
           db.prepare(
             `UPDATE gosuslugi_submissions
-             SET pdf_filename = ?,
+             SET pdf_filename = CASE
+                   WHEN ? = 1 AND pdf_filename IS NOT NULL AND pdf_filename != '' AND pdf_filename NOT LIKE '%_STATUS_A4%' THEN pdf_filename
+                   ELSE ?
+                 END,
                  gosuslugi_status = CASE
                    WHEN ? != '' THEN ?
                    WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
@@ -169,6 +186,7 @@ export async function POST(request: Request) {
                  updated_at = ?
              WHERE application_no = ?`
           ).run(
+            isScreenshot ? 1 : 0,
             safeFilename,
             isFinalOrAdvancedStatus ? incomingStatus : '',
             incomingStatus,

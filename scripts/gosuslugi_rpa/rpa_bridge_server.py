@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.6.91"
+BRIDGE_VERSION = "2.6.99"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
@@ -516,7 +516,15 @@ def auto_update_scripts_from_server():
         print(f"[RPA BRIDGE] Проверка обновлений: {e}")
 
 
-def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", json_file: str = "", config_file: str = ""):
+def run_robot_worker(
+    mode: str = "vks",
+    limit: int = 0,
+    sheet: str = "Sheet1",
+    json_file: str = "",
+    config_file: str = "",
+    search_scope: str = "pending_only",
+    capture_screenshots: bool = False,
+):
     RPAState.is_running = True
     RPAState.mode = mode
     auto_update_scripts_from_server()
@@ -524,7 +532,7 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
 
     if mode == "dismissal":
         script_name = "gosuslugi_dismissal_robot.py"
-    elif mode in ("check_status", "check_status_fast"):
+    elif mode in ("check_status", "check_status_fast", "check_status_single"):
         script_name = "gosuslugi_status_checker.py"
     else:
         script_name = "gosuslugi_vks_robot.py"
@@ -533,13 +541,19 @@ def run_robot_worker(mode: str = "vks", limit: int = 0, sheet: str = "Sheet1", j
     cmd = [sys.executable, script_path]
 
     if mode == "check_status_fast":
-        cmd.extend(["--status-only", "--max-pages", "100"])
+        cmd.extend(["--status-only", "--max-pages", "60"])
+    elif mode == "check_status_single":
+        if json_file and os.path.exists(json_file):
+            cmd.extend(["--json", json_file])
+        cmd.extend(["--single-search", "--search-scope", search_scope, "--max-pages", "60"])
+        if capture_screenshots:
+            cmd.append("--capture-screenshots")
     elif json_file and os.path.exists(json_file):
         cmd.extend(["--json", json_file])
     elif mode != "check_status":
         cmd.extend(["--sheet", sheet])
 
-    if config_file and os.path.exists(config_file) and mode not in ("check_status", "check_status_fast"):
+    if config_file and os.path.exists(config_file) and mode not in ("check_status", "check_status_fast", "check_status_single"):
         cmd.extend(["--config-json", config_file])
 
     if limit > 0 and mode != "check_status_fast":
@@ -810,13 +824,15 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             sheet = str(payload.get("sheet", "Sheet1"))
             records = payload.get("records")
             config_overrides = payload.get("config")
+            search_scope = str(payload.get("search_scope") or "pending_only")
+            capture_screenshots = bool(payload.get("capture_screenshots"))
             json_file = ""
             config_file = ""
 
             if mode == "dismissal":
                 queue_filename = "active_dismissal_queue.json"
                 cfg_filename = "active_dismissal_config.json"
-            elif mode == "check_status":
+            elif mode in ("check_status", "check_status_single"):
                 queue_filename = "active_status_check_queue.json"
                 cfg_filename = "active_status_check_config.json"
             else:
@@ -861,7 +877,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
 
             t = threading.Thread(
                 target=run_robot_worker,
-                args=(mode, limit, sheet, json_file, config_file),
+                args=(mode, limit, sheet, json_file, config_file, search_scope, capture_screenshots),
                 daemon=True
             )
             RPAState.thread = t
