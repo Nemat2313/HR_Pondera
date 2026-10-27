@@ -345,8 +345,7 @@ def repair_database():
         print("No pondera_hr.db found, skipping repair.")
         return
     if not needs_repair(DB_PATH):
-        print("pondera_hr.db passed integrity & row count checks! Synchronizing verified statuses...")
-        sync_verified_statuses()
+        print("pondera_hr.db passed integrity & row count checks! Skipping repair.")
         return
 
     print("=== Starting pondera_hr.db Automated Recovery & Repair ===")
@@ -425,7 +424,13 @@ def repair_database():
                 "checked_at": tup[11] or (ex["checked_at"] if ex else ""),
                 "updated_at": tup[12] or (ex["updated_at"] if ex else ""),
             }
-        elif ex and tup[7] == "Услуга оказана" and ex["gosuslugi_status"] == "Заявление зарегистрировано":
+        elif (
+            ex
+            and tup[6]
+            and tup[6] == ex["application_no"]
+            and tup[7] == "Услуга оказана"
+            and ex["gosuslugi_status"] == "Заявление зарегистрировано"
+        ):
             ex["gosuslugi_status"] = "Услуга оказана"
             if tup[11]:
                 ex["checked_at"] = tup[11]

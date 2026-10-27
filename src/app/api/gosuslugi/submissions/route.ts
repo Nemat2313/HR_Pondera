@@ -358,14 +358,21 @@ export async function POST(request: Request) {
           THEN gosuslugi_submissions.gosuslugi_status
           ELSE COALESCE(NULLIF(excluded.gosuslugi_status, ''), gosuslugi_submissions.gosuslugi_status)
         END,
-        status_detail = COALESCE(NULLIF(excluded.status_detail, ''), gosuslugi_submissions.status_detail),
+        status_detail = CASE
+          WHEN gosuslugi_submissions.gosuslugi_status = 'Услуга оказана'
+            AND excluded.gosuslugi_status != 'Услуга оказана'
+            AND excluded.gosuslugi_status != 'Услуга отказана'
+            AND excluded.gosuslugi_status NOT LIKE 'Ошибка отправки заявления%'
+            AND excluded.gosuslugi_status NOT LIKE 'Ошибка получения заявления%'
+          THEN gosuslugi_submissions.status_detail
+          ELSE COALESCE(NULLIF(excluded.status_detail, ''), gosuslugi_submissions.status_detail)
+        END,
         pdf_filename = COALESCE(NULLIF(excluded.pdf_filename, ''), gosuslugi_submissions.pdf_filename),
         submitted_at = CASE
           WHEN excluded.submitted_at != ''
             AND (
               gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка%'
               OR excluded.application_no != gosuslugi_submissions.application_no
-              OR excluded.submitted_at > gosuslugi_submissions.submitted_at
             )
           THEN excluded.submitted_at
           ELSE gosuslugi_submissions.submitted_at
@@ -510,12 +517,26 @@ export async function POST(request: Request) {
           existingRow.checked_at || exSubAt || nowStr
         );
 
-        const isSameAppOfficialCorrection =
-          forceCorrection ||
-          (Boolean(appNo) && appNo === exAppNo && isOfficialPortalErrorOrRefusal);
+        const isIntermediateIncoming =
+          normalizedStatus === 'Заявление зарегистрировано' ||
+          normalizedStatus === 'Отправлено в ведомство' ||
+          normalizedStatus === 'Промежуточные результаты по заявлению' ||
+          normalizedStatus === 'Отправлено' ||
+          normalizedStatus === 'Отправлено (PDF не скачан)' ||
+          normalizedStatus === 'В обработке';
 
-        // 2b. Once a worker's notification has reached 'Услуга оказана', do not let another computer's cached/intermediate status downgrade it,
-        // EXCEPT when correcting the exact same application_no with an official Gosuslugi portal error/refusal or explicit force_status_correction
+        const isExistingFalseOkazana =
+          exStatus === 'Услуга оказана' &&
+          (existingRow.status_detail.startsWith('Заявление зарегистрировано') ||
+            existingRow.status_detail.startsWith('Ошибка'));
+
+        const isSameAppOfficialCorrection =
+          Boolean(item.admin_force_override) ||
+          (Boolean(appNo) && appNo === exAppNo && isOfficialPortalErrorOrRefusal) ||
+          (forceCorrection && (!isIntermediateIncoming || exStatus !== 'Услуга оказана' || isExistingFalseOkazana));
+
+        // 2b. Once a worker's notification has genuinely reached 'Услуга оказана', do not let another computer's cached/intermediate status downgrade it,
+        // EXCEPT when correcting the exact same application_no with an official Gosuslugi portal error/refusal or fixing a mismatched status_detail
         if (exStatus === 'Услуга оказана' && normalizedStatus !== 'Услуга оказана' && !isSameAppOfficialCorrection) {
           continue;
         }
@@ -590,6 +611,10 @@ export async function POST(request: Request) {
               : isSameAppOfficialCorrection
               ? existingRow.pdf_filename
               : '';
+          const preservedSubAt =
+            appNo && appNo === exAppNo && exSubAt
+              ? exSubAt
+              : rawIncomingSubAt || exSubAt || nowStr;
           forceUpdateSupersedingStmt.run(
             workerName,
             citizenship,
@@ -597,7 +622,7 @@ export async function POST(request: Request) {
             normalizedStatus,
             statusDetail || existingRow.status_detail,
             validNewPdf,
-            forceCorrection && submittedAt ? submittedAt : submittedAt > exSubAt ? submittedAt : exSubAt,
+            preservedSubAt,
             checkedAt || nowStr,
             nowStr,
             existingRow.id
@@ -609,7 +634,7 @@ export async function POST(request: Request) {
             normalizedStatus,
             statusDetail,
             validNewPdf,
-            submittedAt > exSubAt ? submittedAt : exSubAt,
+            preservedSubAt,
             checkedAt || nowStr
           );
           upserted++;
