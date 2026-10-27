@@ -3723,18 +3723,6 @@ export default function GosuslugiVksView() {
               <span>{lang === 'ru' ? 'Поровну (4 ПК)' : '4 PC Eşit Böl'}</span>
             </button>
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
-              title="Düzeltilmiş Excel şablonunu yükleyerek merkezi 3088 listedeki verileri günceller ve («Услуга оказана» olanlara dokunmadan) tekrar gönderim kuyruğuna hazır hale getirir"
-            >
-              <Upload className="w-3 h-3" />
-              <span>
-                {lang === 'ru'
-                  ? 'Загрузить исправл. Excel (в очередь)'
-                  : 'Düzeltilmiş Excel Yükle (Güncelle & Kuyruğa Al)'}
-              </span>
-            </button>
-            <button
               onClick={() =>
                 handleRetryErrors(activeComputerFilter === 'all' ? 'all' : 'computer')
               }

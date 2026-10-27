@@ -426,15 +426,17 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // 1. Skip old refused/re-opened application_no that was explicitly archived for re-sending
-      // (unless МВД later approved that exact application_no as 'Услуга оказана' or forceCorrection is set)
-      if (!forceCorrection && appNo && normalizedStatus !== 'Услуга оказана' && checkArchivedRefusalStmt.get(appNo)) {
+      const adminForceOverride = Boolean(item.admin_force_override || item.adminForceOverride);
+
+      // 1. Skip old refused/re-opened/errored application_no that was explicitly archived for re-sending
+      // (unless МВД later approved that exact application_no as 'Услуга оказана' or adminForceOverride is set)
+      if (!adminForceOverride && appNo && normalizedStatus !== 'Услуга оказана' && checkArchivedRefusalStmt.get(appNo)) {
         continue;
       }
 
       // 1b. Skip old errored/refused/stale-registered record from a PC's local bridge state if this sicil was already archived/re-opened,
-      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) or 'Услуга оказана' or forceCorrection.
-      if (!forceCorrection && sicil && normalizedStatus !== 'Услуга оказана') {
+      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) or 'Услуга оказана'.
+      if (!adminForceOverride && sicil && normalizedStatus !== 'Услуга оказана') {
         const archInfo = checkArchivedSicilStmt.get(sicil) as
           | { max_archived_at?: string; max_submitted_at?: string; max_archived_app_no?: string }
           | undefined;

@@ -702,8 +702,11 @@ export async function POST(request: Request) {
         const dbFallback = personnelRnrMap.get(norm.sicilNo);
 
         if (existingMatch) {
-          // If seeding from raw master Excel and this row was already updated by Zahid bey's Excel or UI edit, keep the updated fields!
-          if (mode === 'seed' && existingMatch.source_tag && existingMatch.source_tag !== 'master_excel') {
+          // Never let a background RPA bridge queue sync or raw seed overwrite an existing row in the central master list!
+          if (
+            sourceTag === 'rpa_bridge_queue' ||
+            (mode === 'seed' && existingMatch.source_tag && existingMatch.source_tag !== 'master_excel')
+          ) {
             return;
           }
 
@@ -729,11 +732,19 @@ export async function POST(request: Request) {
             ...norm.workerObj,
             sicil: targetRowKey,
             // Preserve non-empty fields from safePrev or personnel DB if incoming field is empty
+            inn: norm.workerObj.inn || safePrev.inn || '',
+            passportSeries: norm.workerObj.passportSeries || safePrev.passportSeries || '',
+            passportNumber: norm.workerObj.passportNumber || safePrev.passportNumber || '',
+            passportIssueDate: norm.workerObj.passportIssueDate || safePrev.passportIssueDate || '',
+            passportIssuedBy: norm.workerObj.passportIssuedBy || safePrev.passportIssuedBy || '',
             rnrSeries: norm.workerObj.rnrSeries || safePrev.rnrSeries || dbFallback?.rnrSeries || '',
             rnrNumber: norm.workerObj.rnrNumber || safePrev.rnrNumber || dbFallback?.rnrNumber || '',
             rnrIssueDate: norm.workerObj.rnrIssueDate || safePrev.rnrIssueDate || dbFallback?.rnrIssueDate || '',
             blankSeries: norm.workerObj.blankSeries || safePrev.blankSeries || dbFallback?.blankSeries || '',
             blankNumber: norm.workerObj.blankNumber || safePrev.blankNumber || dbFallback?.blankNumber || '',
+            contractDate: norm.workerObj.contractDate || safePrev.contractDate || '',
+            contractStartDate: norm.workerObj.contractStartDate || safePrev.contractStartDate || '',
+            contractEndDate: norm.workerObj.contractEndDate || safePrev.contractEndDate || '',
             rowOrder: finalRowOrder,
             rowKey: targetRowKey,
             assignedComputer: finalComputer,

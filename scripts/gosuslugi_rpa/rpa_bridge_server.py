@@ -1014,35 +1014,8 @@ def start_telegram_outbox_relay_thread():
 
 
 def sync_vks_queue_to_central_master_list_async(records: list):
-    """Pushes an active VKS queue from this computer to https://hr.pondera.network/api/gosuslugi/master-list (mode: merge)."""
-    if not records or not isinstance(records, list) or len(records) <= 1:
-        return
-
-    def _worker():
-        import urllib.request
-        import ssl
-        try:
-            payload = json.dumps({
-                "records": records,
-                "mode": "merge",
-                "sourceTag": "rpa_bridge_queue",
-            }, ensure_ascii=False).encode("utf-8")
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            req = urllib.request.Request(
-                "https://hr.pondera.network/api/gosuslugi/master-list",
-                data=payload,
-                headers={"Content-Type": "application/json; charset=utf-8"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
-                if resp.status == 200:
-                    print(f"[RPA BRIDGE] Synced {len(records)} active VKS queue records to central master list.")
-        except Exception:
-            pass
-
-    threading.Thread(target=_worker, daemon=True).start()
+    """Disabled: central master list is updated strictly via Excel upload or inline UI edit."""
+    return
 
 
 def start_auto_30min_gosuslugi_status_sync_thread():
