@@ -191,7 +191,7 @@ function ensureTables(db: any) {
 function isSentSubmission(sub: any): boolean {
   if (!sub) return false;
   const status = String(sub.gosuslugi_status || '').trim();
-  if (/^ошибк/i.test(status)) return false;
+  if (/^ошибк|не найден[ыо]?\s+в\s+базе\s+мвд/i.test(status)) return false;
   const appNo = String(sub.application_no || '').trim();
   const pdf = String(sub.pdf_filename || '').trim();
   if (appNo !== '' || pdf !== '') return true;
@@ -201,8 +201,14 @@ function isSentSubmission(sub: any): boolean {
   return false;
 }
 
-function isErrorSubmission(sub: any): boolean {
+function isMvdNotFoundSubmission(sub: any): boolean {
   if (!sub || isSentSubmission(sub)) return false;
+  const status = String(sub.gosuslugi_status || '').trim();
+  return /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(status);
+}
+
+function isErrorSubmission(sub: any): boolean {
+  if (!sub || isSentSubmission(sub) || isMvdNotFoundSubmission(sub)) return false;
   const status = String(sub.gosuslugi_status || '').trim();
   return /^ошибк/i.test(status);
 }
@@ -367,11 +373,14 @@ export async function GET(request: Request) {
         : 1;
       const sub = subBySicil.get(m.sicil_no);
       const sent = isSentSubmission(sub);
+      const mvdNotFound = isMvdNotFoundSubmission(sub);
       const errored = isErrorSubmission(sub);
-      const refused = Boolean(sub && !errored && /отказан/i.test(String(sub.gosuslugi_status || '')));
+      const refused = Boolean(sub && !errored && !mvdNotFound && /отказан/i.test(String(sub.gosuslugi_status || '')));
 
-      const rowStatus: 'success' | 'error' | 'pending' = sent
+      const rowStatus: 'success' | 'error' | 'mvd_not_found' | 'pending' = sent
         ? 'success'
+        : mvdNotFound
+        ? 'mvd_not_found'
         : errored
         ? 'error'
         : 'pending';
@@ -402,8 +411,9 @@ export async function GET(request: Request) {
       }
       if (statusFilter === 'sent' && !sent) continue;
       if (statusFilter === 'refused' && !refused) continue;
+      if (statusFilter === 'mvd_not_found' && !mvdNotFound) continue;
       if (statusFilter === 'error' && !errored) continue;
-      if (statusFilter === 'pending' && (sent || errored)) continue;
+      if (statusFilter === 'pending' && (sent || errored || mvdNotFound)) continue;
 
       let parsed: Record<string, any> = {};
       try {
@@ -424,7 +434,7 @@ export async function GET(request: Request) {
         assignedComputer: comp,
         assigned_computer: comp,
         status: rowStatus,
-        selected: rowStatus !== 'success',
+        selected: rowStatus === 'pending' || rowStatus === 'error',
         applicationNo: sub?.application_no || '',
         application_no: sub?.application_no || '',
         gosuslugiStatus: sub?.gosuslugi_status || '',

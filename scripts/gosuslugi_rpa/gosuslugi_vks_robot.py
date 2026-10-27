@@ -77,7 +77,12 @@ class InsufficientPermissionsError(Exception):
 
 
 class MvdServiceDownError(Exception):
-    """Raised when Gosuslugi shows 'Сервис МВД не отвечает — Попробуйте подать заявление позже'. Stops form submission without marking the worker as an error and switches to PDF download & status check."""
+    """Raised when Gosuslugi shows 'Сервис МВД не отвечает — Попробуйте подать заявление позже'. Stops form submission without marking the worker as an error."""
+    pass
+
+
+class MvdDataNotFoundError(Exception):
+    """Raised when Gosuslugi Step 9 modal shows 'Данные не найдены в базе МВД'. Records 'Данные не найдены в базе МВД' as a separate group (not an error) and moves immediately to the next worker."""
     pass
 
 
@@ -400,28 +405,22 @@ class GosuslugiVksBot:
                 "span:has-text('Данные не найдены в базе МВД'):visible"
             )
             if mvd_warning.count() > 0 and mvd_warning.first.is_visible():
-                if not self.current_worker_had_mvd_warning:
-                    self.current_worker_had_mvd_warning = True
-                    self.consecutive_mvd_not_found_warnings += 1
                 logger.warning(
-                    f"Detected MVD warning modal ('Данные не найдены в базе МВД' — подряд: {self.consecutive_mvd_not_found_warnings}/3)."
+                    "MVD_DATA_NOT_FOUND: Обнаружено окно «Данные не найдены в базе МВД». "
+                    "Фиксируем статус «Данные не найдены в базе МВД» (в отдельную группу) и сразу переходим к следующему сотруднику!"
                 )
-                if self.consecutive_mvd_not_found_warnings >= 3:
-                    err_mvd_outage = (
-                        "База МВД (ЦБДУИГ / СМЭВ) не отвечает: 3 сотрудника подряд получили предупреждение "
-                        "«Данные не найдены в базе МВД — МВД может отказать». Отправка новых уведомлений автоматически "
-                        "приостановлена для защиты от массовых отказов «Услуга отказана». Переключаемся на скачивание PDF и проверку статусов!"
-                    )
-                    logger.warning(f"MVD_SERVICE_DOWN: {err_mvd_outage}")
-                    raise MvdServiceDownError(err_mvd_outage)
-                cont_btn = self.page.locator(
-                    "button:has-text('Продолжить'), button:has-text('Все равно продолжить'), button:has-text('Продолжить без проверки')"
-                ).first
-                if cont_btn.count() > 0 and cont_btn.is_visible():
-                    cont_btn.click(timeout=2500)
-                    self.page.wait_for_timeout(2000)
-                    handled = True
-        except MvdServiceDownError:
+                try:
+                    izm_btn = self.page.locator(
+                        "button:has-text('Изменить данные'):visible, button.close:visible, .close-modal:visible"
+                    ).first
+                    if izm_btn.count() > 0 and izm_btn.is_visible():
+                        izm_btn.click(timeout=1500)
+                        self.page.wait_for_timeout(400)
+                except Exception:
+                    pass
+                self.register_worker_mvd_not_found(self.current_row or {})
+                raise MvdDataNotFoundError("Данные не найдены в базе МВД")
+        except (MvdDataNotFoundError, MvdServiceDownError):
             raise
         except Exception:
             pass
@@ -1446,8 +1445,8 @@ class GosuslugiVksBot:
                         app_no = str(s.get("application_no") or "").strip()
                         st = str(s.get("gosuslugi_status") or "").strip()
                         st_low = st.lower()
-                        if st_low.startswith("ошибк") or "отказ" in st_low:
-                            # Never skip errored ('Ошибка') or refused ('Услуга отказана') rows that were placed in the active send queue
+                        if st_low.startswith("ошибк") or "отказ" in st_low or "не найден" in st_low:
+                            # Never skip errored ('Ошибка'), refused ('Услуга отказана'), or 'Данные не найдены в базе МВД' rows that were placed in the active send queue
                             continue
                         if app_no or any(
                             k in st_low
@@ -1491,8 +1490,12 @@ class GosuslugiVksBot:
         except InsufficientPermissionsError:
             # Never retry when the Gosuslugi account lacks authority ('У вас недостаточно полномочий для отправки уведомлений')
             raise
+        except MvdDataNotFoundError:
+            # Record in separate 'Данные не найдены в базе МВД' group (not an error) and move to next worker
+            self.register_worker_mvd_not_found(row)
+            raise
         except MvdServiceDownError:
-            # Never mark worker as errored when MVD service is down ('Сервис МВД не отвечает') — switch to PDF downloader!
+            # Never mark worker as errored when MVD service is down ('Сервис МВД не отвечает')
             raise
         except Exception as ex:
             # Never mark the worker as errored if the Chrome tab/browser closed or PC slept — let main() reconnect & retry!
@@ -1507,6 +1510,9 @@ class GosuslugiVksBot:
                     return self._execute_vks_notification_attempt(
                         row, full_name, code, last_name, first_name, middle_name, form_attempt=1
                     )
+                except MvdDataNotFoundError:
+                    self.register_worker_mvd_not_found(row)
+                    raise
                 except MvdServiceDownError:
                     raise
                 except Exception as retry_ex:
@@ -1551,9 +1557,30 @@ class GosuslugiVksBot:
         if raw_blank_num:
             row["СерийныйНомер2"] = raw_blank_num
 
+        raw_rnr_series = re.sub(r"\s+", "", str(row.get("Серия", "")).replace(".0", "").strip())
+        if raw_rnr_series:
+            row["Серия"] = raw_rnr_series
+
         raw_rnr_num = re.sub(r"\s+", "", str(row.get("Номер", "")).replace(".0", "").strip())
         if raw_rnr_num:
             row["Номер"] = raw_rnr_num
+
+        raw_blank_series = str(row.get("СерийныйНомер1", "")).strip()
+
+        if (
+            not re.match(r"^\d{2}$", raw_rnr_series)
+            or not re.match(r"^\d{10}$", raw_rnr_num)
+            or not raw_blank_series
+            or not re.match(r"^\d{7}$", raw_blank_num)
+        ):
+            err_rnr_msg = (
+                f"Ошибка [Шаг 9: Разрешение на работу ВКС]: Не заполнены данные РНР ВКС "
+                f"(Серия: «{raw_rnr_series or 'пусто'}», Номер: «{raw_rnr_num or 'пусто'}», "
+                f"Бланк: «{raw_blank_series or 'пусто'} {raw_blank_num or 'пусто'}»)"
+            )
+            logger.error(err_rnr_msg)
+            self.register_worker_error(row, err_rnr_msg)
+            raise RuntimeError(err_rnr_msg)
 
         raw_inn_check = str(row.get("ИНН", "")).replace(".0", "").strip()
         clean_inn_digits = re.sub(r"\D+", "", raw_inn_check)
@@ -4493,6 +4520,61 @@ class GosuslugiVksBot:
 
         self._post_submission_to_backend(entry)
 
+    def register_worker_mvd_not_found(self, row: Dict[str, Any]):
+        """
+        Records 'Данные не найдены в базе МВД' as a separate status group (NOT an error)
+        so Pondera HR displays it in its own 'MVD Bazasında Bulunamadı' tab and the robot
+        immediately continues with the next worker in the queue.
+        """
+        if not row:
+            return
+        sicil = str(row.get("Sicil") or row.get("Код") or "").strip()
+        worker_name = self.build_clean_worker_name(row)
+        citizenship = str(row.get("ТекущееГражданство", "")).strip()
+        period_code = self.compute_vks_period_code(row)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        entry = {
+            "sicil": sicil,
+            "sicil_no": sicil,
+            "worker_name": worker_name,
+            "citizenship": citizenship,
+            "notification_type": "vks_salary",
+            "period_code": period_code,
+            "application_no": "",
+            "gosuslugi_status": "Данные не найдены в базе МВД",
+            "status_detail": "Данные разрешения на работу ВКС не найдены в базе МВД (Шаг 9)",
+            "pdf_filename": "",
+            "submitted_at": now_str,
+        }
+
+        logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(entry, ensure_ascii=False)}")
+
+        ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+        try:
+            existing = []
+            if os.path.exists(ledger_path):
+                with open(ledger_path, "r", encoding="utf-8") as lf:
+                    existing = json.load(lf)
+                    if not isinstance(existing, list):
+                        existing = []
+            updated = False
+            for idx, item in enumerate(existing):
+                if str(item.get("sicil")) == sicil and str(item.get("period_code")) == period_code:
+                    if item.get("application_no"):
+                        return
+                    existing[idx] = {**item, **entry}
+                    updated = True
+                    break
+            if not updated:
+                existing.append(entry)
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                json.dump(existing, lf, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.debug(f"Could not write MVD not found status to gosuslugi_applications.json: {e}")
+
+        self._post_submission_to_backend(entry)
+
 
 def load_excel_records(file_path: str, sheet_name: str = "Sheet1") -> List[Dict[str, Any]]:
     logger.info(f"Loading records from Excel: {file_path} (Sheet: {sheet_name})")
@@ -4596,6 +4678,58 @@ def connect_or_launch_chrome_page(p, cdp_port: int):
         return browser, context, page
 
 
+def run_mvd_warning_status_sync_and_cooldown(bot: GosuslugiVksBot, cooldown_seconds: int = 600):
+    """
+    When Gosuslugi displays 'Данные не найдены в базе МВД — МВД может отказать' (or 'Сервис МВД не отвечает'):
+    1) Immediately updates statuses of all submitted notifications via fast JSON status sync
+    2) Starts a 10-minute (600s) countdown timer and notifies the Pondera HR UI
+    3) Allows the user to click 'Hemen Şimdi Devam Et' ('Продолжить прямо сейчас') via MANUAL_CONTINUE_SIGNAL
+       to skip the remaining countdown at any moment
+    4) Automatically resumes VKS notification sending after the countdown completes!
+    """
+    if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+        try:
+            os.remove(MANUAL_CONTINUE_SIGNAL)
+        except Exception:
+            pass
+
+    logger.info(
+        "MVD_WARNING_STATUS_SYNC: Обнаружено предупреждение «МВД может отказать / Данные не найдены в базе МВД». "
+        "Обновляем статусы текущих заявлений..."
+    )
+    try:
+        import importlib
+        import gosuslugi_status_checker
+        importlib.reload(gosuslugi_status_checker)
+        gosuslugi_status_checker.run_fast_json_status_sync_on_page(bot.page, max_pages=60)
+    except Exception as sync_err:
+        logger.debug(f"MVD warning status sync note: {sync_err}")
+
+    logger.warning(
+        f"MVD_COOLDOWN_START: {cooldown_seconds} | Статусы заявлений обновлены! "
+        f"Пауза 10 минут ({cooldown_seconds} сек) после предупреждения «МВД может отказать», затем робот автоматически продолжит отправку."
+    )
+
+    for elapsed in range(cooldown_seconds):
+        prevent_windows_sleep()
+        if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+            try:
+                os.remove(MANUAL_CONTINUE_SIGNAL)
+            except Exception:
+                pass
+            logger.info(
+                "MVD_COOLDOWN_END: Получен сигнал «Продолжить прямо сейчас» от пользователя — немедленно продолжаем отправку уведомлений ВКС!"
+            )
+            return
+        remaining = cooldown_seconds - elapsed
+        if elapsed > 0 and elapsed % 30 == 0:
+            mins, secs = divmod(remaining, 60)
+            logger.info(f"MVD_COOLDOWN_TICK: {remaining} | До автоматического продолжения отправки осталось {mins:02d}:{secs:02d}...")
+        time.sleep(1)
+
+    logger.info("MVD_COOLDOWN_END: 10 минут ожидания завершены — автоматически продолжаем отправку следующих уведомлений ВКС!")
+
+
 def main():
     prevent_windows_sleep()
     parser = argparse.ArgumentParser(description="Pondera HR Gosuslugi VKS Notification RPA Bot")
@@ -4652,8 +4786,8 @@ def main():
         bot = GosuslugiVksBot(page, custom_cfg)
         success_count = 0
         fail_count = 0
+        mvd_not_found_count = 0
         last_json_status_sync_ts = 0.0
-        switch_to_pdf_download_mode = False
 
         for idx, record in enumerate(records):
             prevent_windows_sleep()
@@ -4684,14 +4818,28 @@ def main():
                     fail_count += 1
                     if args.excel and row_idx is not None and os.path.exists(args.excel):
                         mark_row_completed(args.excel, row_idx, False, "Submission failed")
+            except MvdDataNotFoundError:
+                mvd_not_found_count += 1
+                logger.warning(
+                    f"MVD_DATA_NOT_FOUND: Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} "
+                    f"(Код: {record.get('Код', '')}) помечен как «Данные не найдены в базе МВД»."
+                )
+                if args.excel and row_idx is not None and os.path.exists(args.excel):
+                    mark_row_completed(args.excel, row_idx, False, "Данные не найдены в базе МВД")
+                if idx + 1 < len(records):
+                    run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
+                    last_json_status_sync_ts = time.time()
+                continue
             except MvdServiceDownError as mvd_ex:
                 logger.warning(f"=== СЕРВИС МВД НЕ ОТВЕЧАЕТ: {mvd_ex} ===")
                 logger.info(
                     f"Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} (Код: {record.get('Код', '')}) "
                     f"НЕ помечен ошибкой и останется в очереди Ожидание (Pending)."
                 )
-                switch_to_pdf_download_mode = True
-                break
+                if idx + 1 < len(records):
+                    run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
+                    last_json_status_sync_ts = time.time()
+                continue
             except InsufficientPermissionsError as perm_ex:
                 fail_count += 1
                 logger.error(f"Error processing {record.get('Фамилия')} {record.get('Имя')}: {perm_ex}")
@@ -4734,10 +4882,20 @@ def main():
                                 mark_row_completed(args.excel, row_idx, True)
                         else:
                             fail_count += 1
+                    except MvdDataNotFoundError:
+                        mvd_not_found_count += 1
+                        logger.warning(
+                            f"MVD_DATA_NOT_FOUND: Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} "
+                            f"(Код: {record.get('Код', '')}) помечен как «Данные не найдены в базе МВД»."
+                        )
+                        if idx + 1 < len(records):
+                            run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
+                            last_json_status_sync_ts = time.time()
                     except MvdServiceDownError as mvd_ex2:
                         logger.warning(f"=== СЕРВИС МВД НЕ ОТВЕЧАЕТ: {mvd_ex2} ===")
-                        switch_to_pdf_download_mode = True
-                        break
+                        if idx + 1 < len(records):
+                            run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
+                            last_json_status_sync_ts = time.time()
                     except Exception as retry_after_recon_ex:
                         if is_browser_closed_error(retry_after_recon_ex):
                             logger.error("FATAL_STOP: Соединение с Chrome снова прервалось. Остановка робота.")
@@ -4770,25 +4928,17 @@ def main():
 
             time.sleep(2)
 
-        # Final fast JSON status sync at the end of the batch (no PDF download)
-        if not switch_to_pdf_download_mode:
-            try:
-                from gosuslugi_status_checker import run_fast_json_status_sync_on_page
-                run_fast_json_status_sync_on_page(bot.page, max_pages=60)
-            except Exception:
-                pass
+        # Final fast JSON status sync at the end of the batch (no PDF download, no single-order search)
+        try:
+            from gosuslugi_status_checker import run_fast_json_status_sync_on_page
+            run_fast_json_status_sync_on_page(bot.page, max_pages=60)
+        except Exception:
+            pass
 
-        logger.info(f"\n=== RPA Batch Complete ===\nTotal: {len(records)}, Success: {success_count}, Failed: {fail_count}")
-
-    if switch_to_pdf_download_mode:
-        logger.info(">>> Автоматический запуск скачивания PDF-квитанций и проверки статусов (gosuslugi_status_checker.py)... <<<")
-        checker_script = os.path.join(CURRENT_DIR, "gosuslugi_status_checker.py")
-        if os.path.exists(checker_script):
-            import subprocess
-            subprocess.run(
-                [sys.executable, checker_script, "--cdp-port", str(args.cdp_port), "--max-pages", "60"],
-                check=False,
-            )
+        logger.info(
+            f"\n=== RPA Batch Complete ===\nTotal: {len(records)}, Success: {success_count}, "
+            f"MVD Not Found: {mvd_not_found_count}, Failed: {fail_count}"
+        )
 
 
 if __name__ == "__main__":

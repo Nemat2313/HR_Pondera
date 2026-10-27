@@ -63,6 +63,11 @@ function ensureTable(db: any) {
     WHERE gosuslugi_status LIKE '%GosuslugiVksBot%' OR gosuslugi_status LIKE '%Step 16%';
 
     UPDATE gosuslugi_submissions
+    SET gosuslugi_status = 'Данные не найдены в базе МВД'
+    WHERE application_no = ''
+      AND (gosuslugi_status LIKE '%Данные не найдены в базе МВД%' OR gosuslugi_status LIKE '%не найдены в базе МВД%');
+
+    UPDATE gosuslugi_submissions
     SET gosuslugi_status = 'Ошибка отправки заявления в ведомство'
     WHERE gosuslugi_status != 'Услуга оказана'
       AND (
@@ -325,7 +330,7 @@ export async function POST(request: Request) {
         gosuslugi_status = CASE
           WHEN gosuslugi_submissions.gosuslugi_status = 'Услуга оказана'
             AND (
-              excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)', 'В обработке')
+              excluded.gosuslugi_status IN ('Отправлено', 'Отправлено (PDF не скачан)', 'В обработке', 'Данные не найдены в базе МВД')
               OR (
                 excluded.gosuslugi_status LIKE 'Ошибка%'
                 AND excluded.gosuslugi_status NOT LIKE 'Ошибка отправки заявления%'
@@ -333,7 +338,10 @@ export async function POST(request: Request) {
               )
             )
           THEN 'Услуга оказана'
-          WHEN excluded.gosuslugi_status LIKE 'Ошибка%'
+          WHEN (
+              excluded.gosuslugi_status LIKE 'Ошибка%'
+              OR excluded.gosuslugi_status = 'Данные не найдены в базе МВД'
+            )
             AND excluded.gosuslugi_status NOT LIKE 'Ошибка отправки заявления%'
             AND excluded.gosuslugi_status NOT LIKE 'Ошибка получения заявления%'
             AND gosuslugi_submissions.application_no != ''
@@ -406,6 +414,8 @@ export async function POST(request: Request) {
         ? 'Ошибка отправки заявления в ведомство'
         : /ошибка получения заявления/i.test(rawStatus)
         ? 'Ошибка получения заявления ведомством'
+        : /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(rawStatus)
+        ? 'Данные не найдены в базе МВД'
         : rawStatus;
 
       if (!sicil && !appNo) continue;
@@ -579,7 +589,7 @@ export async function POST(request: Request) {
           (/^\d{8,14}$/.test(exAppNo) && /^\d{8,14}$/.test(appNo) && Number(appNo) > Number(exAppNo)) ||
           (!exAppNo && /^\d{8,14}$/.test(appNo) && !/^ошибк/i.test(normalizedStatus)) ||
           (
-            /^ошибк/i.test(exStatus) &&
+            (/^ошибк/i.test(exStatus) || exStatus === 'Данные не найдены в базе МВД') &&
             !/^ошибк/i.test(normalizedStatus) &&
             (!isExistingOfficialPortalError || (Boolean(appNo) && appNo !== exAppNo)) &&
             (Boolean(appNo) || submittedAt >= exSubAt)

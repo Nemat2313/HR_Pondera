@@ -76,6 +76,8 @@ interface BridgeStatus {
   active_worker_name?: string | null;
   waiting_for_manual?: boolean;
   manual_message?: string | null;
+  mvd_cooldown_remaining?: number;
+  mvd_cooldown_message?: string | null;
   fatal_error?: string | null;
   completed_codes?: string[];
   error_codes?: string[];
@@ -140,7 +142,7 @@ export interface VksValidationResult {
   fieldErrors: Partial<Record<VksValidationIssue['field'], string[]>>;
 }
 
-type QueueFilterMode = 'all' | 'ready' | 'invalid' | 'sent' | 'error';
+type QueueFilterMode = 'all' | 'ready' | 'invalid' | 'sent' | 'mvd_not_found' | 'error';
 
 const BRIDGE_URLS = ['http://127.0.0.1:8088', 'http://localhost:8088'];
 
@@ -876,6 +878,17 @@ function pickBetterGosuslugiStatus(existing?: string, incoming?: string): string
   return normIn || normEx;
 }
 
+function isWorkerMvdNotFound(w: {
+  status?: string;
+  gosuslugiStatus?: string;
+}): boolean {
+  const normStatus = normalizeSentGosuslugiStatus(w.gosuslugiStatus);
+  return (
+    w.status === 'mvd_not_found' ||
+    /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(normStatus)
+  );
+}
+
 function isWorkerAlreadySentToGosuslugi(w: {
   status?: string;
   applicationNo?: string;
@@ -883,7 +896,9 @@ function isWorkerAlreadySentToGosuslugi(w: {
   pdfFilename?: string;
 }): boolean {
   const normStatus = normalizeSentGosuslugiStatus(w.gosuslugiStatus);
-  if (w.status === 'error' || /^ошибк/i.test(normStatus)) return false;
+  if (w.status === 'error' || w.status === 'mvd_not_found' || /^ошибк|не найден[ыо]?\s+в\s+базе\s+мвд/i.test(normStatus)) {
+    return false;
+  }
   if (w.status === 'success') return true;
   if (w.applicationNo && String(w.applicationNo).trim() !== '') return true;
   if (w.pdfFilename && String(w.pdfFilename).trim() !== '') return true;
@@ -944,6 +959,7 @@ export default function GosuslugiVksView() {
   const [showSingleStatusSearchModal, setShowSingleStatusSearchModal] = useState(false);
   const [singleSearchScope, setSingleSearchScope] = useState<'pending_only' | 'all_from_start'>('pending_only');
   const [captureStatusScreenshots, setCaptureStatusScreenshots] = useState(false);
+  const [mvdCooldownSeconds, setMvdCooldownSeconds] = useState(0);
   const [savedSubmissions, setSavedSubmissions] = useState<Record<string, GosuslugiSubmissionEntry>>({});
   const syncedAppsRef = useRef<Set<string>>(new Set());
   const uploadedPdfsRef = useRef<Set<string>>(new Set());
@@ -1051,11 +1067,13 @@ export default function GosuslugiVksView() {
                 : undefined;
             const matchedSub =
               (doesSubMatchWorker(subByCode, w) ? subByCode : undefined) || subByApp;
+            const isRowValid = validateVksWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr').isValid;
             if (!matchedSub) {
               if (
                 w.status === 'error' ||
+                w.status === 'mvd_not_found' ||
                 (w.applicationNo && archivedAppsRef.current.has(w.applicationNo)) ||
-                /^ошибк|отказан|зарегистрирован|промежуточн/i.test(w.gosuslugiStatus || '')
+                /^ошибк|отказан|зарегистрирован|промежуточн|не найден/i.test(w.gosuslugiStatus || '')
               ) {
                 return {
                   ...w,
@@ -1063,10 +1081,10 @@ export default function GosuslugiVksView() {
                   gosuslugiStatus: undefined,
                   pdfFilename: undefined,
                   status: 'pending',
-                  selected: true,
+                  selected: isRowValid,
                 };
               }
-              return w;
+              return isRowValid ? w : { ...w, selected: false };
             }
             const nextAppNo = matchedSub.application_no || '';
             const nextGosStatus = normalizeSentGosuslugiStatus(
@@ -1079,15 +1097,26 @@ export default function GosuslugiVksView() {
               gosuslugiStatus: nextGosStatus,
               pdfFilename: nextPdf,
             });
-            const isErr = !alreadySent && /^ошибк/i.test(nextGosStatus);
+            const isMvdNotFound = !alreadySent && /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(nextGosStatus);
+            const isErr = !alreadySent && !isMvdNotFound && /^ошибк/i.test(nextGosStatus);
             return {
               ...w,
               applicationNo: nextAppNo,
               gosuslugiStatus: nextGosStatus,
               pdfFilename: nextPdf,
-              status: alreadySent ? 'success' : isErr ? 'error' : 'pending',
-              // Uncheck already-sent workers so their Zayavka is not accidentally re-submitted; check errored workers so they can be retried!
-              selected: alreadySent ? false : isErr ? true : w.selected,
+              status: alreadySent
+                ? 'success'
+                : isMvdNotFound
+                ? 'mvd_not_found'
+                : isErr
+                ? 'error'
+                : 'pending',
+              selected:
+                alreadySent || isMvdNotFound || !isRowValid
+                  ? false
+                  : isErr
+                  ? true
+                  : w.selected,
             };
           })
         );
@@ -1329,8 +1358,11 @@ export default function GosuslugiVksView() {
         gosuslugiStatus: nextGosStatus,
         pdfFilename: nextPdf,
       });
+      const isMvdNotFound =
+        !alreadySent &&
+        (w.status === 'mvd_not_found' || /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(nextGosStatus));
       const isErr =
-        !alreadySent && (w.status === 'error' || /^ошибк/i.test(nextGosStatus));
+        !alreadySent && !isMvdNotFound && (w.status === 'error' || /^ошибк/i.test(nextGosStatus));
 
       const enriched: GosuslugiVksWorkerRecord = savedSub
         ? {
@@ -1338,7 +1370,13 @@ export default function GosuslugiVksView() {
             applicationNo: nextAppNo,
             gosuslugiStatus: nextGosStatus || 'Отправлено',
             pdfFilename: nextPdf,
-            status: alreadySent ? 'success' : isErr ? 'error' : w.status,
+            status: alreadySent
+              ? 'success'
+              : isMvdNotFound
+              ? 'mvd_not_found'
+              : isErr
+              ? 'error'
+              : w.status,
           }
         : w;
 
@@ -1348,8 +1386,8 @@ export default function GosuslugiVksView() {
       } else {
         invalidCnt++;
       }
-      // Always select all unsent/re-queued rows (selected: !alreadySent) so retrying errors is never blocked!
-      return { ...enriched, selected: !alreadySent };
+      // Only select rows that are unsent, not in 'Данные не найдены в базе МВД', AND pass required field validation (VKS RNR, 12-digit INN, etc.)!
+      return { ...enriched, selected: !alreadySent && !isMvdNotFound && v.isValid };
     });
     return { processed, validCnt, invalidCnt };
   };
@@ -1366,6 +1404,11 @@ export default function GosuslugiVksView() {
             if (isMounted) {
               setActiveBridgeUrl(url);
               setBridgeStatus(data);
+              if (typeof data.mvd_cooldown_remaining === 'number' && data.mvd_cooldown_remaining > 0) {
+                setMvdCooldownSeconds(data.mvd_cooldown_remaining);
+              } else if (!data.mvd_cooldown_remaining && !data.mvd_cooldown_message) {
+                setMvdCooldownSeconds(0);
+              }
 
               // Sync any newly registered applications or updated statuses from RPA bridge to Pondera DB
               const validBridgeSubs =
@@ -1499,24 +1542,32 @@ export default function GosuslugiVksView() {
                         gosuslugiStatus: nextGosStatus,
                         pdfFilename: nextPdf,
                       });
+                      const isSubMvdNotFound =
+                        !alreadySent &&
+                        /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(String(nextGosStatus || '').trim());
                       const isSubErr =
                         !alreadySent &&
+                        !isSubMvdNotFound &&
                         (isErrored ||
                           (!nextAppNo && /^ошибк/i.test(String(nextGosStatus || '').trim())));
                       if (
                         nextAppNo !== w.applicationNo ||
                         nextGosStatus !== w.gosuslugiStatus ||
                         nextPdf !== w.pdfFilename ||
-                        ((alreadySent || isSubErr) && w.selected)
+                        ((alreadySent || isSubErr || isSubMvdNotFound) && w.selected)
                       ) {
                         nextW = {
                           ...nextW,
                           applicationNo: nextAppNo,
                           gosuslugiStatus: nextGosStatus,
                           pdfFilename: nextPdf,
-                          status: isSubErr ? 'error' : 'success',
-                          // Automatically uncheck checkbox once notification has been sent OR errored (errors are retried separately at the end)!
-                          selected: alreadySent || isSubErr ? false : nextW.selected,
+                          status: isSubMvdNotFound
+                            ? 'mvd_not_found'
+                            : isSubErr
+                            ? 'error'
+                            : 'success',
+                          selected:
+                            alreadySent || isSubErr || isSubMvdNotFound ? false : nextW.selected,
                         };
                       }
                     }
@@ -1573,6 +1624,15 @@ export default function GosuslugiVksView() {
       clearInterval(interval);
     };
   }, []);
+
+  // Smooth 1-second local countdown tick for MVD 10-minute cooldown timer
+  useEffect(() => {
+    if (mvdCooldownSeconds <= 0) return;
+    const t = setInterval(() => {
+      setMvdCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [mvdCooldownSeconds > 0]);
 
   // Ensure page starts at the top when opening Gosuslugi view
   useEffect(() => {
@@ -1788,6 +1848,8 @@ export default function GosuslugiVksView() {
           status:
             item.status === 'success'
               ? 'success'
+              : item.status === 'mvd_not_found'
+              ? 'mvd_not_found'
               : item.status === 'error'
               ? 'error'
               : 'pending',
@@ -2489,9 +2551,11 @@ export default function GosuslugiVksView() {
           postalCode,
         };
         const alreadySent = isWorkerAlreadySentToGosuslugi(updated);
+        const isMvdNotFound = isWorkerMvdNotFound(updated);
+        const isValidRow = validateVksWorkerRecord(updated, lang === 'ru' ? 'ru' : 'tr').isValid;
         return {
           ...updated,
-          selected: !alreadySent ? w.selected || true : false,
+          selected: !alreadySent && !isMvdNotFound && isValidRow ? w.selected || true : false,
         };
       })
     );
@@ -2524,9 +2588,10 @@ export default function GosuslugiVksView() {
           }
         }
         const alreadySent = isWorkerAlreadySentToGosuslugi(updated);
+        const isValidRow = validateVksWorkerRecord(updated, lang === 'ru' ? 'ru' : 'tr').isValid;
         return {
           ...updated,
-          selected: alreadySent ? false : true,
+          selected: alreadySent || !isValidRow ? false : true,
         };
       })
     );
@@ -2600,13 +2665,23 @@ export default function GosuslugiVksView() {
     );
   };
 
-  // Toggle select all — toggles all rows that have NOT been sent yet!
+  // Toggle select all — toggles all VALID, non-MVD-not-found rows that have NOT been sent yet!
   const handleToggleSelectAll = () => {
-    const unsentRows = workers.filter((w) => !isWorkerAlreadySentToGosuslugi(w));
-    const allUnsentSelected = unsentRows.length > 0 && unsentRows.every((w) => w.selected);
+    const unsentValidRows = workers.filter(
+      (w) =>
+        !isWorkerAlreadySentToGosuslugi(w) &&
+        !isWorkerMvdNotFound(w) &&
+        (validationMap[w.id]?.isValid ?? true)
+    );
+    const allUnsentSelected =
+      unsentValidRows.length > 0 && unsentValidRows.every((w) => w.selected);
     setWorkers((prev) =>
       prev.map((w) => {
-        if (isWorkerAlreadySentToGosuslugi(w)) {
+        if (
+          isWorkerAlreadySentToGosuslugi(w) ||
+          isWorkerMvdNotFound(w) ||
+          !(validationMap[w.id]?.isValid ?? true)
+        ) {
           return { ...w, selected: false };
         }
         return { ...w, selected: !allUnsentSelected };
@@ -2736,7 +2811,12 @@ export default function GosuslugiVksView() {
     try {
       const candidates = singleWorker
         ? [singleWorker]
-        : workers.filter((w) => w.selected && !isWorkerAlreadySentToGosuslugi(w));
+        : workers.filter(
+            (w) =>
+              w.selected &&
+              !isWorkerAlreadySentToGosuslugi(w) &&
+              (validationMap[w.id]?.isValid ?? true)
+          );
       const recordsToSend = limit > 0 ? candidates.slice(0, limit) : candidates;
 
       if (recordsToSend.length === 0) {
@@ -3094,27 +3174,42 @@ export default function GosuslugiVksView() {
   const isWaitingManual = Boolean(bridgeStatus.waiting_for_manual && isRunning);
 
   // Validation & Queue Statistics
-  const validWorkers = workers.filter((w) => !isWorkerAlreadySentToGosuslugi(w));
+  const validWorkers = workers.filter(
+    (w) =>
+      !isWorkerAlreadySentToGosuslugi(w) &&
+      !isWorkerMvdNotFound(w) &&
+      (validationMap[w.id]?.isValid ?? true)
+  );
   const invalidWorkers = workers.filter(
     (w) => !isWorkerAlreadySentToGosuslugi(w) && !validationMap[w.id]?.isValid
   );
   const selectedValidCount = workers.filter(
-    (w) => w.selected && !isWorkerAlreadySentToGosuslugi(w)
+    (w) =>
+      w.selected &&
+      !isWorkerAlreadySentToGosuslugi(w) &&
+      !isWorkerMvdNotFound(w) &&
+      (validationMap[w.id]?.isValid ?? true)
   ).length;
   const validCount = selectedValidCount;
   const invalidCount = invalidWorkers.length;
   const completedCount =
     workers.filter((w) => w.status === 'success').length || bridgeStatus.success;
-  const errorCount = workers.filter((w) => w.status === 'error').length || bridgeStatus.errors;
+  const mvdNotFoundCount = workers.filter((w) => isWorkerMvdNotFound(w)).length;
+  const errorCount =
+    workers.filter((w) => w.status === 'error' && !isWorkerMvdNotFound(w)).length ||
+    bridgeStatus.errors;
 
-  // Filtered rows by tab ('all' | 'ready' | 'invalid' | 'sent' | 'error') + search query
+  // Filtered rows by tab ('all' | 'ready' | 'invalid' | 'sent' | 'mvd_not_found' | 'error') + search query
   const filteredWorkers = workers.filter((w) => {
     const isRowValid = validationMap[w.id]?.isValid ?? true;
     const isSentRow = w.status === 'success' || isWorkerAlreadySentToGosuslugi(w);
-    if (queueFilter === 'ready' && (isSentRow || !w.selected)) return false;
+    const isMvdNotFoundRow = isWorkerMvdNotFound(w);
+    if (queueFilter === 'ready' && (isSentRow || isMvdNotFoundRow || !isRowValid || !w.selected))
+      return false;
     if (queueFilter === 'invalid' && (isSentRow || isRowValid)) return false;
     if (queueFilter === 'sent' && !isSentRow) return false;
-    if (queueFilter === 'error' && w.status !== 'error') return false;
+    if (queueFilter === 'mvd_not_found' && !isMvdNotFoundRow) return false;
+    if (queueFilter === 'error' && (w.status !== 'error' || isMvdNotFoundRow)) return false;
 
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -3654,6 +3749,52 @@ export default function GosuslugiVksView() {
           </div>
         )}
 
+        {/* MVD WARNING / 10-MINUTE COOLDOWN BANNER WITH LIVE COUNTDOWN & "CONTINUE NOW" BUTTON */}
+        {isRunning && (mvdCooldownSeconds > 0 || Boolean(bridgeStatus.mvd_cooldown_message)) && (
+          <div className="mt-3 p-4 rounded-xl bg-purple-50 dark:bg-purple-950/70 border-2 border-purple-400 dark:border-purple-500/70 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                <Clock className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="text-xs font-extrabold uppercase tracking-wider text-purple-900 dark:text-purple-200 flex flex-wrap items-center gap-2">
+                  <span>
+                    {lang === 'ru'
+                      ? 'ПРЕДУПРЕЖДЕНИЕ «МВД МОЖЕТ ОТКАЗАТЬ» — СТАТУСЫ ОБНОВЛЕНЫ, ОЖИДАНИЕ 10 МИНУТ'
+                      : '«MVD RED EDEBİLİR» UYARISI ALGILANDI — STATÜLER GÜNCELLENDİ, 10 DK SONRA DEVAM EDİLECEK'}
+                  </span>
+                  {mvdCooldownSeconds > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-purple-700 text-white font-mono text-xs font-black shadow-2xs">
+                      ⏱ {String(Math.floor(mvdCooldownSeconds / 60)).padStart(2, '0')}:
+                      {String(mvdCooldownSeconds % 60).padStart(2, '0')}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-purple-800 dark:text-purple-200 mt-1 font-medium">
+                  {lang === 'ru'
+                    ? 'На Госуслугах появилось окно «Данные не найдены в базе МВД — МВД может отказать». Статусы поданных заявлений обновлены. Робот автоматически продолжит отправку новых уведомлений через 10 минут (или нажмите кнопку справа, чтобы продолжить прямо сейчас).'
+                    : 'Gosuslugi ekranında «MVD bazasında bulunamadı / MVD red edebilir» uyarısı çıktı. Mevcut başvuru statüleri güncellendi; robot 10 dakika bekledikten sonra yeni sözleşme/bildirim gönderimine otomatik devam edecektir. Beklemeden devam etmek için sağdaki butona tıklayabilirsiniz.'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setMvdCooldownSeconds(0);
+                  handleManualContinue();
+                }}
+                className="h-9 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+              >
+                <Play className="w-3.5 h-3.5 fill-white" />
+                <span>
+                  {lang === 'ru' ? '⚡ Продолжить прямо сейчас' : '⚡ Hemen Şimdi Devam Et'}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* HUMAN-IN-THE-LOOP: MANUAL INTERVENTION BANNER WHEN GOSUSLUGI SHOWS RED VALIDATION ERROR OR DISABLED CONTINUE */}
         {isWaitingManual && (
           <div className="mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/70 border-2 border-amber-400 dark:border-amber-500/70 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse">
@@ -4013,6 +4154,24 @@ export default function GosuslugiVksView() {
                 </span>
               </button>
               <button
+                onClick={() => setQueueFilter('mvd_not_found')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
+                  queueFilter === 'mvd_not_found'
+                    ? 'bg-purple-600 text-white shadow-2xs font-semibold'
+                    : mvdNotFoundCount > 0
+                    ? 'text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+                title="Gosuslugi Adım 9'da «Данные не найдены в базе МВД» uyarısı veren ve gönderilmeyen kayıtlar"
+              >
+                <AlertCircle className="w-3 h-3" />
+                <span>
+                  {lang === 'ru'
+                    ? `Не найдено в МВД (${mvdNotFoundCount})`
+                    : `MVD Bulunamadı (${mvdNotFoundCount})`}
+                </span>
+              </button>
+              <button
                 onClick={() => setQueueFilter('error')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'error'
@@ -4238,17 +4397,27 @@ export default function GosuslugiVksView() {
                     <input
                       type="checkbox"
                       checked={
-                        workers.some((w) => !isWorkerAlreadySentToGosuslugi(w)) &&
+                        workers.some(
+                          (w) =>
+                            !isWorkerAlreadySentToGosuslugi(w) &&
+                            !isWorkerMvdNotFound(w) &&
+                            (validationMap[w.id]?.isValid ?? true)
+                        ) &&
                         workers
-                          .filter((w) => !isWorkerAlreadySentToGosuslugi(w))
+                          .filter(
+                            (w) =>
+                              !isWorkerAlreadySentToGosuslugi(w) &&
+                              !isWorkerMvdNotFound(w) &&
+                              (validationMap[w.id]?.isValid ?? true)
+                          )
                           .every((w) => w.selected)
                       }
                       onChange={handleToggleSelectAll}
                       className="rounded border-slate-300 dark:border-slate-600 accent-emerald-600 cursor-pointer"
                       title={
                         lang === 'ru'
-                          ? 'Выбрать все неотправленные строки'
-                          : 'Henüz gönderilmemiş tüm satırları seç/kaldır'
+                          ? 'Выбрать все готовые к отправке строки (без ошибок и пропусков)'
+                          : 'Eksik verisi olmayan gönderime hazır tüm satırları seç/kaldır'
                       }
                     />
                   </th>
@@ -4299,6 +4468,8 @@ export default function GosuslugiVksView() {
                           ? 'bg-rose-50/60 dark:bg-rose-950/25 border-l-4 border-l-rose-500'
                           : w.status === 'success' || isWorkerAlreadySentToGosuslugi(w)
                           ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
+                          : isWorkerMvdNotFound(w)
+                          ? 'bg-purple-50/60 dark:bg-purple-950/25 border-l-4 border-l-purple-500'
                           : w.status === 'error'
                           ? 'bg-rose-50/50 dark:bg-rose-950/20'
                           : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/40'
@@ -4406,6 +4577,23 @@ export default function GosuslugiVksView() {
                               </a>
                             )}
                           </div>
+                        ) : isWorkerMvdNotFound(w) ? (
+                          <div className="space-y-0.5 leading-tight">
+                            <span
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold bg-purple-100 dark:bg-purple-500/20 border border-purple-300 dark:border-purple-500/40 text-purple-900 dark:text-purple-200 whitespace-nowrap"
+                              title="Gosuslugi Adım 9'da «Данные не найдены в базе МВД» uyarısı çıktı; hatalı kayıt olmaması için gönderilmedi."
+                            >
+                              <AlertCircle className="w-3 h-3 shrink-0" />
+                              {lang === 'ru'
+                                ? 'Данные не найдены в базе МВД'
+                                : 'MVD Bazasında Bulunamadı'}
+                            </span>
+                            <div className="text-[9.5px] text-purple-700 dark:text-purple-300 truncate max-w-[225px]">
+                              {lang === 'ru'
+                                ? 'Отправка пропущена (проверьте РНР/паспорт)'
+                                : 'Gönderilmedi (VKS izni / pasaport kontrol edin)'}
+                            </div>
+                          </div>
                         ) : w.status === 'error' ? (
                           <div className="space-y-0.5 leading-tight">
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 text-rose-800 dark:text-rose-300 whitespace-nowrap">
@@ -4423,11 +4611,11 @@ export default function GosuslugiVksView() {
                           </div>
                         ) : !isRowValid ? (
                           <div className="space-y-0.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-300 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-300 whitespace-nowrap">
                               <AlertTriangle className="w-3 h-3 shrink-0" />
                               {lang === 'ru'
-                                ? `Готов (предупр.: ${rowVal.issues.length})`
-                                : `Gönderime Hazır (Uyarı: ${rowVal.issues.length})`}
+                                ? `Неполные данные (${rowVal.issues.length})`
+                                : `Eksik Veri — Gönderime Kapalı (${rowVal.issues.length})`}
                             </span>
                             <ul className="text-[10px] leading-tight text-amber-800 dark:text-amber-300 space-y-0.5 pl-0.5">
                               {rowVal.issues.slice(0, 2).map((iss, iIdx) => (

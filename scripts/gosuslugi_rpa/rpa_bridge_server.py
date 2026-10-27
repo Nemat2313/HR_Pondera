@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.6.99"
+BRIDGE_VERSION = "2.7.0"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
@@ -307,6 +307,8 @@ class RPAState:
     error_codes = []
     submissions = load_saved_applications()
     last_json_status_sync_ts = 0.0
+    mvd_cooldown_until = 0.0
+    mvd_cooldown_message = None
 
     @classmethod
     def upsert_submission(cls, entry: dict, sync_central: bool = True):
@@ -406,6 +408,8 @@ class RPAState:
         cls.active_worker_name = None
         cls.completed_codes = []
         cls.error_codes = []
+        cls.mvd_cooldown_until = 0.0
+        cls.mvd_cooldown_message = None
 
 
 def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
@@ -591,6 +595,8 @@ def run_robot_worker(
                             RPAState.active_worker_code = code
                             RPAState.waiting_for_manual = False
                             RPAState.manual_message = None
+                            RPAState.mvd_cooldown_until = 0.0
+                            RPAState.mvd_cooldown_message = None
                         except Exception:
                             pass
 
@@ -608,13 +614,42 @@ def run_robot_worker(
                     RPAState.last_json_status_sync_ts = time.time()
                     RPAState.submissions = load_saved_applications()
 
-                # Detect MVD Service Outage -> Automatic switch to PDF Download & Status Checker mode
+                # Detect MVD Service Outage
                 if "MVD_SERVICE_DOWN:" in clean_line:
-                    RPAState.mode = "check_status"
                     RPAState.active_worker_code = None
-                    RPAState.active_worker_name = "Сервис МВД не отвечает -> Скачивание PDF"
+                    RPAState.active_worker_name = "Сервис МВД не отвечает"
                     RPAState.waiting_for_manual = False
                     RPAState.manual_message = None
+
+                # Detect 'Данные не найдены в базе МВД' (separate group, not an error)
+                if "MVD_DATA_NOT_FOUND: Сотрудник" in clean_line:
+                    RPAState.waiting_for_manual = False
+                    RPAState.manual_message = None
+                    RPAState.processed += 1
+                    if RPAState.active_worker_code and RPAState.active_worker_code in RPAState.error_codes:
+                        RPAState.error_codes.remove(RPAState.active_worker_code)
+
+                if "MVD_WARNING_STATUS_SYNC:" in clean_line:
+                    RPAState.mvd_cooldown_message = (
+                        "Обнаружено предупреждение «МВД может отказать / Данные не найдены в базе МВД». "
+                        "Обновляем статусы текущих заявлений перед 10-минутной паузой..."
+                    )
+
+                if "MVD_COOLDOWN_START:" in clean_line:
+                    try:
+                        sec_str = clean_line.split("MVD_COOLDOWN_START:", 1)[1].split("|")[0].strip()
+                        cooldown_secs = int(sec_str)
+                    except Exception:
+                        cooldown_secs = 600
+                    RPAState.mvd_cooldown_until = time.time() + cooldown_secs
+                    RPAState.mvd_cooldown_message = (
+                        "На Госуслугах появилось предупреждение «Данные не найдены в базе МВД — МВД может отказать». "
+                        "Статусы заявлений обновлены. Робот автоматически продолжит отправку через 10 минут."
+                    )
+
+                if "MVD_COOLDOWN_END:" in clean_line:
+                    RPAState.mvd_cooldown_until = 0.0
+                    RPAState.mvd_cooldown_message = None
 
                 # Detect Fatal Stop (e.g. Insufficient permissions on Gosuslugi: 'У вас недостаточно полномочий для отправки уведомлений')
                 if "FATAL_STOP:" in clean_line:
@@ -676,6 +711,8 @@ def run_robot_worker(
         RPAState.is_running = False
         RPAState.waiting_for_manual = False
         RPAState.manual_message = None
+        RPAState.mvd_cooldown_until = 0.0
+        RPAState.mvd_cooldown_message = None
         RPAState.process = None
         RPAState.active_worker_code = None
         RPAState.active_worker_name = None
@@ -711,12 +748,19 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ["/health", "/status"]:
             chrome_ready = is_port_open(CHROME_CDP_PORT)
+            cooldown_rem = (
+                max(0, int(RPAState.mvd_cooldown_until - time.time()))
+                if RPAState.is_running and RPAState.mvd_cooldown_until > time.time()
+                else 0
+            )
             data = {
                 "status": "online",
                 "bridge_version": BRIDGE_VERSION,
                 "running": RPAState.is_running,
                 "waiting_for_manual": RPAState.waiting_for_manual,
                 "manual_message": RPAState.manual_message,
+                "mvd_cooldown_remaining": cooldown_rem,
+                "mvd_cooldown_message": RPAState.mvd_cooldown_message if (cooldown_rem > 0 or RPAState.mvd_cooldown_message) else None,
                 "fatal_error": RPAState.fatal_error,
                 "mode": RPAState.mode,
                 "chrome_ready": chrome_ready,
@@ -799,7 +843,9 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                     sf.write("continue")
                 RPAState.waiting_for_manual = False
                 RPAState.manual_message = None
-                RPAState.add_log("Пользователь подтвердил ручное исправление — продолжаем выполнение...")
+                RPAState.mvd_cooldown_until = 0.0
+                RPAState.mvd_cooldown_message = None
+                RPAState.add_log("Пользователь нажал «Продолжить прямо сейчас» — продолжаем выполнение без ожидания...")
             except Exception as e:
                 RPAState.add_log(f"Ошибка сигнала продолжения: {e}")
 

@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 export interface GosuslugiVksWorkerRecord {
   id: string;
   selected: boolean;
-  status: 'pending' | 'processing' | 'success' | 'error';
+  status: 'pending' | 'processing' | 'success' | 'error' | 'mvd_not_found';
   statusNote?: string;
   sicil: string;
   code: string;
