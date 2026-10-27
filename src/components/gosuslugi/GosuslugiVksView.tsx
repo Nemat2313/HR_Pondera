@@ -3749,52 +3749,6 @@ export default function GosuslugiVksView() {
           </div>
         )}
 
-        {/* MVD WARNING / 10-MINUTE COOLDOWN BANNER WITH LIVE COUNTDOWN & "CONTINUE NOW" BUTTON */}
-        {isRunning && (mvdCooldownSeconds > 0 || Boolean(bridgeStatus.mvd_cooldown_message)) && (
-          <div className="mt-3 p-4 rounded-xl bg-purple-50 dark:bg-purple-950/70 border-2 border-purple-400 dark:border-purple-500/70 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
-                <Clock className="w-5 h-5 animate-pulse" />
-              </div>
-              <div>
-                <div className="text-xs font-extrabold uppercase tracking-wider text-purple-900 dark:text-purple-200 flex flex-wrap items-center gap-2">
-                  <span>
-                    {lang === 'ru'
-                      ? 'ПРЕДУПРЕЖДЕНИЕ «МВД МОЖЕТ ОТКАЗАТЬ» — СТАТУСЫ ОБНОВЛЕНЫ, ОЖИДАНИЕ 10 МИНУТ'
-                      : '«MVD RED EDEBİLİR» UYARISI ALGILANDI — STATÜLER GÜNCELLENDİ, 10 DK SONRA DEVAM EDİLECEK'}
-                  </span>
-                  {mvdCooldownSeconds > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-purple-700 text-white font-mono text-xs font-black shadow-2xs">
-                      ⏱ {String(Math.floor(mvdCooldownSeconds / 60)).padStart(2, '0')}:
-                      {String(mvdCooldownSeconds % 60).padStart(2, '0')}
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-purple-800 dark:text-purple-200 mt-1 font-medium">
-                  {lang === 'ru'
-                    ? 'На Госуслугах появилось окно «Данные не найдены в базе МВД — МВД может отказать». Статусы поданных заявлений обновлены. Робот автоматически продолжит отправку новых уведомлений через 10 минут (или нажмите кнопку справа, чтобы продолжить прямо сейчас).'
-                    : 'Gosuslugi ekranında «MVD bazasında bulunamadı / MVD red edebilir» uyarısı çıktı. Mevcut başvuru statüleri güncellendi; robot 10 dakika bekledikten sonra yeni sözleşme/bildirim gönderimine otomatik devam edecektir. Beklemeden devam etmek için sağdaki butona tıklayabilirsiniz.'}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setMvdCooldownSeconds(0);
-                  handleManualContinue();
-                }}
-                className="h-9 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition"
-              >
-                <Play className="w-3.5 h-3.5 fill-white" />
-                <span>
-                  {lang === 'ru' ? '⚡ Продолжить прямо сейчас' : '⚡ Hemen Şimdi Devam Et'}
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* HUMAN-IN-THE-LOOP: MANUAL INTERVENTION BANNER WHEN GOSUSLUGI SHOWS RED VALIDATION ERROR OR DISABLED CONTINUE */}
         {isWaitingManual && (
           <div className="mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/70 border-2 border-amber-400 dark:border-amber-500/70 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse">

@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import {
+  sendTelegramMessage,
+  enqueueTelegramOutbox,
+  getMoscowTimeParts,
+} from '@/lib/telegramNotifier';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -401,6 +406,11 @@ export async function POST(request: Request) {
 
     let upserted = 0;
     let skippedCollisions = 0;
+    const newlyMvdNotFoundAlerts: Array<{
+      sicil: string;
+      workerName: string;
+      citizenship: string;
+    }> = [];
     for (const item of items) {
       const sicil = String(item.sicil_no || item.sicil || item.code || '').trim();
       const appNo = String(item.application_no || item.applicationNo || '').trim();
@@ -639,6 +649,16 @@ export async function POST(request: Request) {
             nowStr,
             existingRow.id
           );
+          if (
+            normalizedStatus === 'Данные не найдены в базе МВД' &&
+            exStatus !== 'Данные не найдены в базе МВД'
+          ) {
+            newlyMvdNotFoundAlerts.push({
+              sicil,
+              workerName: workerName || existingRow.worker_name || '—',
+              citizenship: citizenship || existingRow.citizenship || '—',
+            });
+          }
           logHistoryIfChanged(
             sicil,
             workerName || existingRow.worker_name,
@@ -738,6 +758,16 @@ export async function POST(request: Request) {
         | undefined;
       const finalSavedStatus = savedAfter?.gosuslugi_status || normalizedStatus;
       const finalSavedAppNo = savedAfter?.application_no || appNo || existingRow?.application_no || '';
+      if (
+        finalSavedStatus === 'Данные не найдены в базе МВД' &&
+        existingRow?.gosuslugi_status !== 'Данные не найдены в базе МВД'
+      ) {
+        newlyMvdNotFoundAlerts.push({
+          sicil,
+          workerName: workerName || existingRow?.worker_name || '—',
+          citizenship: citizenship || existingRow?.citizenship || '—',
+        });
+      }
       logHistoryIfChanged(
         sicil,
         workerName || existingRow?.worker_name || '',
@@ -749,6 +779,35 @@ export async function POST(request: Request) {
         checkedAt || submittedAt || nowStr
       );
       upserted++;
+    }
+
+    if (newlyMvdNotFoundAlerts.length > 0) {
+      const msk = getMoscowTimeParts();
+      const lines = newlyMvdNotFoundAlerts
+        .slice(0, 15)
+        .map(
+          (w, idx) =>
+            `${idx + 1}. <b>${w.workerName}</b> — Сицил: <code>${w.sicil}</code> (${w.citizenship})`
+        )
+        .join('\n');
+      const alertHtml = [
+        `⚠️ <b>ГОСУСЛУГИ ВКС — Данные не найдены в базе МВД</b>`,
+        `🕒 <b>Время (МСК):</b> ${msk.dateDisplay} ${msk.timeDisplay}`,
+        ``,
+        lines,
+        ``,
+        `📋 <b>Статус:</b> Данные не найдены в базе МВД (МВД может отказать)`,
+        `⚡ <i>Заявление не отправлено и выделено в вкладку «MVD Bulunamadı». Робот без остановки продолжает отправку следующих сотрудников.</i>`,
+      ].join('\n');
+
+      try {
+        const tgRes = await sendTelegramMessage(alertHtml);
+        if (!tgRes.ok) {
+          enqueueTelegramOutbox(db, 'mvd_not_found', alertHtml);
+        }
+      } catch {
+        enqueueTelegramOutbox(db, 'mvd_not_found', alertHtml);
+      }
     }
 
     return NextResponse.json({

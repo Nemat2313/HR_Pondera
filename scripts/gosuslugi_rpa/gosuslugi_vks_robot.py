@@ -4787,7 +4787,8 @@ def main():
         success_count = 0
         fail_count = 0
         mvd_not_found_count = 0
-        last_json_status_sync_ts = 0.0
+        # Start the 30-minute timer from now so fast JSON status sync runs strictly every 30 minutes (never after the 1st worker)
+        last_json_status_sync_ts = time.time()
 
         for idx, record in enumerate(records):
             prevent_windows_sleep()
@@ -4822,24 +4823,16 @@ def main():
                 mvd_not_found_count += 1
                 logger.warning(
                     f"MVD_DATA_NOT_FOUND: Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} "
-                    f"(Код: {record.get('Код', '')}) помечен как «Данные не найдены в базе МВД»."
+                    f"(Код: {record.get('Код', '')}) помечен как «Данные не найдены в базе МВД» (отправлено уведомление в Telegram, без паузы переходим к следующему)."
                 )
                 if args.excel and row_idx is not None and os.path.exists(args.excel):
                     mark_row_completed(args.excel, row_idx, False, "Данные не найдены в базе МВД")
-                if idx + 1 < len(records):
-                    run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
-                    last_json_status_sync_ts = time.time()
-                continue
             except MvdServiceDownError as mvd_ex:
                 logger.warning(f"=== СЕРВИС МВД НЕ ОТВЕЧАЕТ: {mvd_ex} ===")
                 logger.info(
                     f"Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} (Код: {record.get('Код', '')}) "
-                    f"НЕ помечен ошибкой и останется в очереди Ожидание (Pending)."
+                    f"НЕ помечен ошибкой и останется в очереди Ожидание (Pending). Переходим к следующему сотруднику."
                 )
-                if idx + 1 < len(records):
-                    run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
-                    last_json_status_sync_ts = time.time()
-                continue
             except InsufficientPermissionsError as perm_ex:
                 fail_count += 1
                 logger.error(f"Error processing {record.get('Фамилия')} {record.get('Имя')}: {perm_ex}")
@@ -4886,16 +4879,10 @@ def main():
                         mvd_not_found_count += 1
                         logger.warning(
                             f"MVD_DATA_NOT_FOUND: Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} "
-                            f"(Код: {record.get('Код', '')}) помечен как «Данные не найдены в базе МВД»."
+                            f"(Код: {record.get('Код', '')}) помечен как «Данные не найдены в базе МВД» (без паузы переходим к следующему)."
                         )
-                        if idx + 1 < len(records):
-                            run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
-                            last_json_status_sync_ts = time.time()
                     except MvdServiceDownError as mvd_ex2:
                         logger.warning(f"=== СЕРВИС МВД НЕ ОТВЕЧАЕТ: {mvd_ex2} ===")
-                        if idx + 1 < len(records):
-                            run_mvd_warning_status_sync_and_cooldown(bot, cooldown_seconds=600)
-                            last_json_status_sync_ts = time.time()
                     except Exception as retry_after_recon_ex:
                         if is_browser_closed_error(retry_after_recon_ex):
                             logger.error("FATAL_STOP: Соединение с Chrome снова прервалось. Остановка робота.")
@@ -4914,14 +4901,14 @@ def main():
                     pass
 
             # Every 30 minutes (1800s), right AFTER the current worker's Zayavka finishes (never interrupting an active form!),
-            # run the fast Gosuslugi JSON status check (up to 1,200 orders, 0 PDFs downloaded) to update statuses on central DB.
+            # run ONLY the fast Gosuslugi JSON status check (up to 1,200 orders, 0 PDFs downloaded, ~3-5 seconds) and continue immediately.
             if time.time() - last_json_status_sync_ts >= 1800:
                 last_json_status_sync_ts = time.time()
                 try:
                     import importlib
                     import gosuslugi_status_checker
                     importlib.reload(gosuslugi_status_checker)
-                    logger.info(">>> 30-Minute Interval Reached (Current Zayavka Completed): Running fast JSON status check (1200 orders, no PDF download)... <<<")
+                    logger.info(">>> 30-Minute Interval Reached: Running fast JSON status check (~3s, no PDF download) and continuing immediately... <<<")
                     gosuslugi_status_checker.run_fast_json_status_sync_on_page(bot.page, max_pages=60)
                 except Exception as sync_err:
                     logger.debug(f"30-min fast JSON status sync note: {sync_err}")
