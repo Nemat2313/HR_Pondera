@@ -858,7 +858,12 @@ export async function GET(request: Request) {
       const subAt = String(r.submitted_at || '').trim();
       const chkAt = String(r.checked_at || '').trim();
       const updAt = String(r.updated_at || '').trim();
-      const responseAt = chkAt || (updAt && updAt > subAt ? updAt : '');
+      const responseAt =
+        chkAt && (!subAt || chkAt >= subAt)
+          ? chkAt
+          : updAt && (!subAt || updAt >= subAt)
+          ? updAt
+          : subAt;
 
       // Skip browser-closed pseudo errors
       if (
@@ -1224,7 +1229,7 @@ export async function GET(request: Request) {
           status_pdf_filename: sub.status_pdf_filename || '',
           hasStatusPdf: Boolean(sub.hasStatusPdf),
           submitted_at: sub.submitted_at || '',
-          response_at: sub.response_at || sub.checked_at || sub.updated_at || '',
+          response_at: sub.response_at || '',
           attempt_count: sub.attempt_count || 1,
           had_previous_failure: Boolean(sub.had_previous_failure),
           history: sub.history || [],
