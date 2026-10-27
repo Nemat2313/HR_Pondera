@@ -585,6 +585,35 @@ export async function POST(request: Request) {
         updated_at = excluded.updated_at
     `);
 
+    const isSubsetRequeueUpload =
+      Boolean(body?.reopenNonOkazana) ||
+      (clearErrorsForUpdated && sourceTag !== 'ui_inline_edit' && rawRecords.length > 0 && rawRecords.length < 1500);
+
+    const checkSubBySicilStmt = db.prepare(`
+      SELECT id, application_no, gosuslugi_status
+      FROM gosuslugi_submissions
+      WHERE sicil_no = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `);
+
+    const archiveNonOkazanaBySicilStmt = db.prepare(`
+      INSERT INTO gosuslugi_refused_archive (
+        sicil_no, worker_name, citizenship, notification_type, period_code,
+        application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, archived_at
+      )
+      SELECT
+        sicil_no, worker_name, citizenship, notification_type, period_code,
+        application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
+      FROM gosuslugi_submissions
+      WHERE sicil_no = ? AND gosuslugi_status != 'Услуга оказана'
+    `);
+
+    const clearNonOkazanaBySicilStmt = db.prepare(`
+      DELETE FROM gosuslugi_submissions
+      WHERE sicil_no = ? AND gosuslugi_status != 'Услуга оказана'
+    `);
+
     const clearErrorStmt = db.prepare(`
       DELETE FROM gosuslugi_submissions
       WHERE sicil_no = ? AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%' OR gosuslugi_status LIKE '%ошибк%')
@@ -611,7 +640,40 @@ export async function POST(request: Request) {
     let updated = 0;
     let clearedErrors = 0;
     let reopenedRefused = 0;
+    let reopenedPending = 0;
+    let skippedOkazana = 0;
     const seenSicilCounts = new Map<string, number>();
+
+    const processStatusResetForSicil = (sicilKey: string) => {
+      if (!clearErrorsForUpdated) return;
+      const curSub = checkSubBySicilStmt.get(sicilKey) as
+        | { id: number; application_no: string; gosuslugi_status: string }
+        | undefined;
+      if (!curSub) return;
+      const st = String(curSub.gosuslugi_status || '').trim();
+      if (st === 'Услуга оказана') {
+        skippedOkazana++;
+        return;
+      }
+      if (isSubsetRequeueUpload) {
+        archiveNonOkazanaBySicilStmt.run(nowStr, sicilKey);
+        const delRes = clearNonOkazanaBySicilStmt.run(sicilKey);
+        const changes = Number(delRes.changes || 0);
+        if (/отказан/i.test(st)) {
+          reopenedRefused += changes;
+        } else if (/ошибк/i.test(st)) {
+          clearedErrors += changes;
+        } else {
+          reopenedPending += changes;
+        }
+      } else {
+        archiveRefusedBySicilStmt.run(nowStr, sicilKey);
+        const delRes = clearErrorStmt.run(sicilKey);
+        clearedErrors += Number(delRes.changes || 0);
+        const refRes = clearRefusedBySicilStmt.run(sicilKey);
+        reopenedRefused += Number(refRes.changes || 0);
+      }
+    };
 
     db.exec('BEGIN');
     try {
@@ -688,13 +750,7 @@ export async function POST(request: Request) {
           );
           updated++;
 
-          if (clearErrorsForUpdated) {
-            archiveRefusedBySicilStmt.run(nowStr, targetRowKey);
-            const delRes = clearErrorStmt.run(targetRowKey);
-            clearedErrors += Number(delRes.changes || 0);
-            const refRes = clearRefusedBySicilStmt.run(targetRowKey);
-            reopenedRefused += Number(refRes.changes || 0);
-          }
+          processStatusResetForSicil(targetRowKey);
         } else {
           const finalRowOrder = mode === 'seed' ? norm.rowOrder : ++maxRowOrder;
           const finalComputer =
@@ -724,13 +780,7 @@ export async function POST(request: Request) {
           );
           inserted++;
 
-          if (clearErrorsForUpdated) {
-            archiveRefusedBySicilStmt.run(nowStr, norm.sicilNo);
-            const delRes = clearErrorStmt.run(norm.sicilNo);
-            clearedErrors += Number(delRes.changes || 0);
-            const refRes = clearRefusedBySicilStmt.run(norm.sicilNo);
-            reopenedRefused += Number(refRes.changes || 0);
-          }
+          processStatusResetForSicil(norm.sicilNo);
         }
       });
       db.exec('COMMIT');
@@ -747,6 +797,9 @@ export async function POST(request: Request) {
       updated,
       clearedErrors,
       reopenedRefused,
+      reopenedPending,
+      skippedOkazana,
+      readyToQueue: (updated + inserted) - skippedOkazana,
     });
   } catch (err: any) {
     return NextResponse.json(

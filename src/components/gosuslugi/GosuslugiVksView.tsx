@@ -2382,11 +2382,14 @@ export default function GosuslugiVksView() {
           });
         });
 
-        // 1) First sync uploaded rows into the 3,088 Central Master List and clear 'Ошибка' / 'Услуга отказана' statuses for updated sicils
+        // 1) First sync uploaded rows into the 3,088 Central Master List and clear non-'Услуга оказана' statuses for updated sicils
         const payloadForMaster = buildPayloadRecords(rawMapped);
         let updatedMasterCnt = 0;
         let clearedErrorsCnt = 0;
         let reopenedRefusedCnt = 0;
+        let reopenedPendingCnt = 0;
+        let skippedOkazanaCnt = 0;
+        let readyToQueueCnt = 0;
         try {
           const masterRes = await fetch('/api/gosuslugi/master-list', {
             method: 'POST',
@@ -2395,6 +2398,7 @@ export default function GosuslugiVksView() {
               records: payloadForMaster,
               mode: 'merge',
               clearErrorsForUpdated: true,
+              reopenNonOkazana: rawMapped.length < 1500,
               sourceTag: `excel_${file.name}`,
             }),
           });
@@ -2403,64 +2407,57 @@ export default function GosuslugiVksView() {
             updatedMasterCnt = Number(mJson.updated || 0) + Number(mJson.inserted || 0);
             clearedErrorsCnt = Number(mJson.clearedErrors || 0);
             reopenedRefusedCnt = Number(mJson.reopenedRefused || 0);
+            reopenedPendingCnt = Number(mJson.reopenedPending || 0);
+            skippedOkazanaCnt = Number(mJson.skippedOkazana || 0);
+            readyToQueueCnt = Number(mJson.readyToQueue || 0);
           }
         } catch {}
 
-        // 2) Re-fetch submissions after clearing 'Ошибка' / 'Услуга отказана' so edited rows are unlocked!
+        // 2) Re-fetch submissions & master list after clearing non-'Услуга оказана' rows so edited rows are unlocked and ready in queue!
         const freshSubsAfterMerge = await refreshSavedSubmissionsFromDb();
         await refreshMasterListSummary();
 
-        const { processed, validCnt, invalidCnt } = applyInitialValidationSelection(
+        const { processed, invalidCnt } = applyInitialValidationSelection(
           rawMapped,
           freshSubsAfterMerge,
           true
         );
 
-        // If user already had the larger central list loaded on screen (e.g. 772 or 3088 rows) and uploaded a smaller fixed subset,
-        // update matching sicils inside the loaded list AND keep them selected; otherwise display the uploaded list directly.
-        if (workers.length > processed.length && processed.length < 600) {
-          const updatedBySicil = new Map<string, GosuslugiVksWorkerRecord>();
-          for (const pRow of processed) {
-            updatedBySicil.set(String(pRow.sicil || pRow.code).trim(), pRow);
-          }
-          setWorkers((prev) =>
-            prev.map((existingW) => {
-              const k = String(existingW.sicil || existingW.code).trim();
-              const replacement = updatedBySicil.get(k);
-              if (!replacement) return existingW;
-              return {
-                ...replacement,
-                id: existingW.id,
-              };
-            })
-          );
+        if (rawMapped.length < 1500) {
+          await handleLoadFromMasterList(activeComputerFilter, 'all', true);
+          setQueueFilter('ready');
         } else {
           setWorkers(processed);
           setQueueFilter('all');
         }
 
-        const alreadySentCnt = processed.filter((w) => isWorkerAlreadySentToGosuslugi(w)).length;
-        const readyUnsentCnt = processed.filter((w) => w.selected).length;
-        const unlockedExtraText =
-          reopenedRefusedCnt > 0
+        const readyUnsentCnt = readyToQueueCnt || processed.filter((w) => w.selected).length;
+        const okazanaNote =
+          skippedOkazanaCnt > 0
             ? lang === 'ru'
-              ? `, разблокировано Отказов: ${reopenedRefusedCnt}`
-              : `, ${reopenedRefusedCnt} Услуга отказана tekrar gönderime açıldı`
+              ? ` (${skippedOkazanaCnt} со статусом «Услуга оказана» не затронуты)`
+              : ` (${skippedOkazanaCnt} «Услуга оказана» kaydına dokunulmadı)`
+            : '';
+        const unlockedExtraText =
+          reopenedRefusedCnt + reopenedPendingCnt > 0
+            ? lang === 'ru'
+              ? `, возвращено в очередь: ${clearedErrorsCnt + reopenedRefusedCnt + reopenedPendingCnt}`
+              : `, toplam ${clearedErrorsCnt + reopenedRefusedCnt + reopenedPendingCnt} eski statü sıfırlanıp kuyruğa alındı`
             : '';
 
         if (invalidCnt > 0) {
           showNotice(
             'info',
             lang === 'ru'
-              ? `Обновлено в базе (3088): ${updatedMasterCnt || processed.length} стр. (снято Ошибка: ${clearedErrorsCnt}${unlockedExtraText}). Готовы к отправке: ${readyUnsentCnt}, ещё требуют правки: ${invalidCnt}.`
-              : `Merkezi 3.088 listede ${updatedMasterCnt || processed.length} kayıt güncellendi (${clearedErrorsCnt} Ошибка temizlendi${unlockedExtraText}). ${readyUnsentCnt} kayıt gönderime hazır seçildi, ${invalidCnt} kayıtta hala eksik veri var.`
+              ? `Обновлено в базе (3088): ${updatedMasterCnt || processed.length} стр.${okazanaNote}${unlockedExtraText}. Готовы к отправке: ${readyUnsentCnt}, ещё требуют правки: ${invalidCnt}.`
+              : `Merkezi 3.088 listede ${updatedMasterCnt || processed.length} kayıt güncellendi${okazanaNote}${unlockedExtraText}. ${readyUnsentCnt} kayıt gönderime hazır kuyruğa alındı, ${invalidCnt} kayıtta hala eksik veri var.`
           );
         } else {
           showNotice(
             'success',
             lang === 'ru'
-              ? `В центральном списке (3088) успешно обновлено ${updatedMasterCnt || processed.length} записей (снято Ошибка: ${clearedErrorsCnt}${unlockedExtraText}) — ${readyUnsentCnt} готовы к отправке!`
-              : `Merkezi 3.088 kişilik listede ${updatedMasterCnt || processed.length} kayıt başarıyla güncellendi (${clearedErrorsCnt} Ошибка statüsü sıfırlandı${unlockedExtraText}, ${readyUnsentCnt} kayıt gönderime hazır seçildi)!`
+              ? `В центральном списке (3088) успешно обновлено ${updatedMasterCnt || processed.length} записей${okazanaNote}${unlockedExtraText} — ${readyUnsentCnt} готовы к отправке в очереди!`
+              : `Merkezi 3.088 kişilik listede ${updatedMasterCnt || processed.length} kayıt başarıyla güncellendi${okazanaNote}${unlockedExtraText} — ${readyUnsentCnt} kayıt gönderime hazır kuyruğa alındı!`
           );
         }
       } catch {
@@ -3726,6 +3723,18 @@ export default function GosuslugiVksView() {
               <span>{lang === 'ru' ? 'Поровну (4 ПК)' : '4 PC Eşit Böl'}</span>
             </button>
             <button
+              onClick={() => fileInputRef.current?.click()}
+              className="h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
+              title="Düzeltilmiş Excel şablonunu yükleyerek merkezi 3088 listedeki verileri günceller ve («Услуга оказана» olanlara dokunmadan) tekrar gönderim kuyruğuna hazır hale getirir"
+            >
+              <Upload className="w-3 h-3" />
+              <span>
+                {lang === 'ru'
+                  ? 'Загрузить исправл. Excel (в очередь)'
+                  : 'Düzeltilmiş Excel Yükle (Güncelle & Kuyruğa Al)'}
+              </span>
+            </button>
+            <button
               onClick={() =>
                 handleRetryErrors(activeComputerFilter === 'all' ? 'all' : 'computer')
               }
@@ -3931,16 +3940,26 @@ export default function GosuslugiVksView() {
           )}
 
           {workers.length > 0 && (
-            <button
-              onClick={() => {
-                setWorkers([]);
-                setQueueFilter('all');
-              }}
-              className="h-9 px-2.5 rounded-xl border border-slate-300/80 dark:border-slate-700 text-slate-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs inline-flex items-center gap-1 cursor-pointer transition"
-              title={lang === 'ru' ? 'Очистить список' : 'Listeyi Temizle'}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="h-9 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
+                title="Düzeltilmiş Excel dosyasını yükleyerek verileri günceller ve («Услуга оказана» hariç) gönderime hazır kuyruğa alır"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{lang === 'ru' ? 'Обновить из Excel' : 'Excel ile Güncelle'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setWorkers([]);
+                  setQueueFilter('all');
+                }}
+                className="h-9 px-2.5 rounded-xl border border-slate-300/80 dark:border-slate-700 text-slate-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs inline-flex items-center gap-1 cursor-pointer transition"
+                title={lang === 'ru' ? 'Очистить список' : 'Listeyi Temizle'}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
           )}
         </div>
 
