@@ -132,6 +132,14 @@ function ensureTable(db: any) {
         OR gosuslugi_status LIKE '%Context or browser has been closed%'
         OR gosuslugi_status LIKE '%epgu-cf-ui-long-button:has-text(%'
       );
+
+    DELETE FROM gosuslugi_refused_archive
+    WHERE application_no != ''
+      AND application_no IN (
+        SELECT application_no FROM gosuslugi_submissions
+        WHERE application_no != ''
+          AND gosuslugi_status NOT LIKE '%отказан%'
+      );
   `);
 }
 
@@ -448,15 +456,50 @@ export async function POST(request: Request) {
 
       const adminForceOverride = Boolean(item.admin_force_override || item.adminForceOverride);
 
+      const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
+      const periodCode = String(item.period_code || item.periodCode || '2026-3').trim() || '2026-3';
+      const workerName = String(item.worker_name || item.workerName || '').trim();
+      const citizenship = String(item.citizenship || '').trim();
+      const statusDetail = String(item.status_detail || item.statusDetail || '').trim();
+
+      const existingRow = sicil
+        ? (getExistingBySicilStmt.get(sicil, notifType, periodCode) as
+            | {
+                id: number;
+                sicil_no: string;
+                worker_name: string;
+                citizenship: string;
+                notification_type: string;
+                period_code: string;
+                application_no: string;
+                gosuslugi_status: string;
+                status_detail: string;
+                pdf_filename: string;
+                submitted_at: string;
+                checked_at: string;
+              }
+            | undefined)
+        : undefined;
+
+      const isUpdatingCurrentActiveApp = Boolean(
+        existingRow && appNo && String(existingRow.application_no || '').trim() === appNo
+      );
+
       // 1. Skip old refused/re-opened/errored application_no that was explicitly archived for re-sending
-      // (unless МВД later approved that exact application_no as 'Услуга оказана' or adminForceOverride is set)
-      if (!adminForceOverride && appNo && normalizedStatus !== 'Услуга оказана' && checkArchivedRefusalStmt.get(appNo)) {
+      // (unless it is the currently active application_no in gosuslugi_submissions, or МВД approved it as 'Услуга оказана', or adminForceOverride is set)
+      if (
+        !adminForceOverride &&
+        !isUpdatingCurrentActiveApp &&
+        appNo &&
+        normalizedStatus !== 'Услуга оказана' &&
+        checkArchivedRefusalStmt.get(appNo)
+      ) {
         continue;
       }
 
       // 1b. Skip old errored/refused/stale-registered record from a PC's local bridge state if this sicil was already archived/re-opened,
-      // EXCEPT when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) or 'Услуга оказана'.
-      if (!adminForceOverride && sicil && normalizedStatus !== 'Услуга оказана') {
+      // EXCEPT when updating the currently active application_no, or when appNo is a newer 10-digit Gosuslugi application number (> max_archived_app_no) or 'Услуга оказана'.
+      if (!adminForceOverride && !isUpdatingCurrentActiveApp && sicil && normalizedStatus !== 'Услуга оказана') {
         const archInfo = checkArchivedSicilStmt.get(sicil) as
           | { max_archived_at?: string; max_submitted_at?: string; max_archived_app_no?: string }
           | undefined;
@@ -480,12 +523,6 @@ export async function POST(request: Request) {
         normalizedStatus === 'Ошибка получения заявления ведомством' ||
         normalizedStatus === 'Услуга отказана';
 
-      const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
-      const periodCode = String(item.period_code || item.periodCode || '2026-3').trim() || '2026-3';
-      const workerName = String(item.worker_name || item.workerName || '').trim();
-      const citizenship = String(item.citizenship || '').trim();
-      const statusDetail = String(item.status_detail || item.statusDetail || '').trim();
-
       // Reject non-VKS migration arrival/departure ('прибытии и убытии') or work permit ('разрешение на работу') orders
       if (appNo === '8316972551' || /уведомления о прибытии|прибытии и убытии|разрешение на работу иг/i.test(statusDetail)) {
         continue;
@@ -502,25 +539,6 @@ export async function POST(request: Request) {
           continue;
         }
       }
-
-      const existingRow = sicil
-        ? (getExistingBySicilStmt.get(sicil, notifType, periodCode) as
-            | {
-                id: number;
-                sicil_no: string;
-                worker_name: string;
-                citizenship: string;
-                notification_type: string;
-                period_code: string;
-                application_no: string;
-                gosuslugi_status: string;
-                status_detail: string;
-                pdf_filename: string;
-                submitted_at: string;
-                checked_at: string;
-              }
-            | undefined)
-        : undefined;
 
       if (existingRow) {
         const exAppNo = String(existingRow.application_no || '').trim();
@@ -888,7 +906,6 @@ export async function PATCH(request: Request) {
       const status = String(u.gosuslugi_status || u.gosuslugiStatus || '').trim();
       const detail = String(u.status_detail || u.statusDetail || '').trim();
       if (!status) continue;
-      if (appNo && checkArchivedRefusalStmt.get(appNo)) continue;
       if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(status)) continue;
 
       if (appNo) {
@@ -898,6 +915,7 @@ export async function PATCH(request: Request) {
           continue;
         }
       }
+      if (appNo && checkArchivedRefusalStmt.get(appNo)) continue;
       if (sicil) {
         const res = bySicilStmt.run(status, status, detail, appNo, nowStr, sicil, appNo, appNo);
         updated += res.changes;

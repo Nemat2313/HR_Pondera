@@ -103,12 +103,11 @@ def classify_gosuslugi_status_text(raw_title: str, raw_status_code: str = "") ->
 
     if "услуга оказана" in tl or sc == "executed" or "исполнено" in tl:
         return "Услуга оказана"
-    if (
-        "ошибка отправки" in tl
-        or "ошибка получения" in tl
-        or "ошибка ведомства" in tl
-        or ("ошибк" in tl and "отказ" not in tl)
-    ):
+    if "ошибка отправки" in tl:
+        return "Ошибка отправки заявления в ведомство"
+    if "ошибка получения" in tl:
+        return "Ошибка получения заявления ведомством"
+    if "ошибка ведомства" in tl or ("ошибк" in tl and "отказ" not in tl):
         return t if t.lower().startswith("ошибк") else f"Ошибка: {t}"
     if (
         "отказано" in tl
@@ -1543,6 +1542,7 @@ def fetch_central_master_list_records() -> List[Dict[str, Any]]:
                                 "gosuslugi_status": str(w.get("gosuslugiStatus") or "").strip(),
                                 "pdf_filename": str(w.get("pdfFilename") or "").strip(),
                                 "submitted_at": str(w.get("submittedAt") or "").strip(),
+                                "checked_at": str(w.get("checkedAt") or w.get("checked_at") or "").strip(),
                             }
                             mapped.append(rec_obj)
                             if sic:
@@ -1808,26 +1808,26 @@ def run_fast_json_status_sync_on_page(
             def _fast_priority_key(r_it: Dict[str, Any]):
                 st_it = str(r_it.get("gosuslugi_status") or "").strip()
                 app_it = str(r_it.get("application_no") or "").strip()
-                pdf_it = str(r_it.get("pdf_filename") or "").strip()
+                chk_it = str(r_it.get("checked_at") or "").strip()
                 has_app = bool(app_it and app_it.isdigit())
-                is_registered_st = (
-                    st_it in ("Заявление зарегистрировано", "Промежуточные результаты по заявлению", "Отправлено в ведомство")
-                    and has_app
-                )
-                is_other_pending_st = (
-                    st_it not in ("Услуга оказана", "Услуга отказана")
+                if not has_app:
+                    return (5, "", 0)
+                # Priority 0 (Checked 1st): 'Отправлено (PDF не скачан)' / 'Отправлено' / 'В обработке' (never checked or awaiting initial status)
+                if st_it in ("", "Отправлено (PDF не скачан)", "Отправлено", "В обработке"):
+                    return (0, chk_it, -int(app_it))
+                # Priority 1 (Checked 2nd): 'Отправлено в ведомство' (awaiting MVD gateway acceptance or gateway error)
+                if st_it == "Отправлено в ведомство":
+                    return (1, chk_it, -int(app_it))
+                # Priority 2 (Checked 3rd): 'Заявление зарегистрировано' / 'Промежуточные результаты по заявлению' (oldest checked_at first!)
+                if st_it in ("Заявление зарегистрировано", "Промежуточные результаты по заявлению"):
+                    return (2, chk_it, -int(app_it))
+                # Priority 3: Any other non-final status
+                if (
+                    st_it not in ("Услуга оказана", "Услуга отказана", "Данные не найдены в базе МВД")
                     and not st_it.lower().startswith("ошибк")
-                    and has_app
-                )
-                if is_registered_st:
-                    return (0, -int(app_it))
-                if is_other_pending_st and pdf_it:
-                    return (1, -int(app_it))
-                if is_other_pending_st:
-                    return (2, -int(app_it))
-                if has_app:
-                    return (3, -int(app_it))
-                return (4, 0)
+                ):
+                    return (3, chk_it, -int(app_it))
+                return (4, chk_it, -int(app_it))
 
             sorted_target_records = sorted(target_records, key=_fast_priority_key)
 
@@ -2099,6 +2099,7 @@ def main():
                 existing_r = by_sicil[csic]
                 ex_app = str(existing_r.get("application_no") or "").strip()
                 existing_r["submitted_at"] = c_sub or str(existing_r.get("submitted_at") or "").strip()
+                existing_r["checked_at"] = str(cr.get("checked_at") or existing_r.get("checked_at") or "").strip()
                 if ex_app and is_superseded_or_archived_order(
                     ex_app,
                     str(existing_r.get("gosuslugi_status") or "").strip(),
@@ -2199,7 +2200,7 @@ def main():
                 page,
                 max_pages=args.max_pages,
                 records=records,
-                allow_single_search=bool(args.single_search),
+                allow_single_search=True,
                 search_scope=args.search_scope,
                 capture_screenshots=bool(args.capture_screenshots),
             )
@@ -2218,7 +2219,7 @@ def main():
                 page,
                 max_pages=args.max_pages,
                 records=records,
-                allow_single_search=bool(args.single_search),
+                allow_single_search=True,
                 search_scope=args.search_scope,
                 capture_screenshots=bool(args.capture_screenshots),
             )
@@ -2290,29 +2291,36 @@ def main():
             def _record_sort_key(r: Dict[str, Any]):
                 r_app = str(r.get("application_no") or "").strip()
                 r_st = str(r.get("gosuslugi_status") or "").strip()
+                r_chk = str(r.get("checked_at") or "").strip()
                 has_app = bool(r_app and r_app.isdigit())
+                if not has_app:
+                    return (7, "", 0)
                 missing_pdf = not bool(str(r.get("pdf_filename") or "").strip())
-                in_bulk = has_app and (r_app in bulk_orders)
+                in_bulk = r_app in bulk_orders
                 r_sic = str(r.get("sicil") or r.get("sicil_no") or "").strip()
                 is_local = bool(r.get("is_local_worker")) or (r_sic in local_sicils)
+
+                # Priority 0: Any pending record already matched in bulk_orders (instant)
                 is_pending_st = (
-                    has_app
-                    and r_st not in ("Услуга оказана", "Услуга отказана")
+                    r_st not in ("Услуга оказана", "Услуга отказана", "Данные не найдены в базе МВД")
                     and not r_st.lower().startswith("ошибк")
                 )
                 if is_pending_st and in_bulk:
-                    return (0, -int(r_app))
+                    return (0, r_chk, -int(r_app))
+                # Priority 1: 'Отправлено (PDF не скачан)' / 'Отправлено' / 'В обработке' (check these first!)
+                if r_st in ("", "Отправлено (PDF не скачан)", "Отправлено", "В обработке"):
+                    return (1, r_chk, -int(r_app))
+                # Priority 2: 'Отправлено в ведомство' (check these second!)
+                if r_st == "Отправлено в ведомство":
+                    return (2, r_chk, -int(r_app))
+                # Priority 3: 'Заявление зарегистрировано' / 'Промежуточные результаты по заявлению' (oldest checked_at first!)
                 if is_pending_st:
-                    return (1, -int(r_app))
+                    return (3, r_chk, -int(r_app))
                 if in_bulk and missing_pdf:
-                    return (2, 0 if is_local else 1)
-                if has_app and missing_pdf and is_local:
-                    return (3, -int(r_app))
-                if has_app and missing_pdf:
-                    return (4, -int(r_app))
-                if in_bulk:
-                    return (5, 0)
-                return (6, 0 if is_local else 1)
+                    return (4, "0" if is_local else "1", -int(r_app))
+                if missing_pdf and is_local:
+                    return (5, r_chk, -int(r_app))
+                return (6, r_chk, -int(r_app))
 
             records.sort(key=_record_sort_key)
 
@@ -2367,10 +2375,10 @@ def main():
                             f"  -> Matched № {app_no} in bulk feed: {matched_order['gosuslugi_status']}"
                         )
 
-                # 2) In bulk PDF & Status mode, only run single search if `matched_order` is missing `feed_id` for PDF download
-                #    (full one-by-one status search is triggered manually via 'Tek Tek Statü Ara' / --single-search)!
+                # 2) Run targeted search by application_no for any pending application (`needs_status_refresh`)
+                #    not found in the initial bulk feed, or when `matched_order` is missing `feed_id` for PDF download!
                 needs_feed_id_for_pdf = bool(matched_order and not matched_order.get("feed_id") and not pdf_file)
-                if needs_feed_id_for_pdf or (not matched_order and not is_large_batch):
+                if needs_feed_id_for_pdf or (not matched_order and (needs_status_refresh or not is_large_batch)):
                     logger.info(
                         f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
                         f"(Код: {sicil or '—'}, № Заявления: {app_no}) — поштучный поиск по № Заявления на lk.gosuslugi.ru/orders..."

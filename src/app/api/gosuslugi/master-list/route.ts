@@ -327,7 +327,7 @@ export async function GET(request: Request) {
 
     const subRows = db
       .prepare(
-        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, submitted_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
+        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, submitted_at, checked_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
       )
       .all() as Array<any>;
 
@@ -442,6 +442,9 @@ export async function GET(request: Request) {
         pdfFilename: sub?.pdf_filename || '',
         pdf_filename: sub?.pdf_filename || '',
         submittedAt: sub?.submitted_at || '',
+        submitted_at: sub?.submitted_at || '',
+        checkedAt: sub?.checked_at || '',
+        checked_at: sub?.checked_at || '',
         updatedAt: m.updated_at || '',
       });
     }

@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.7.1"
+BRIDGE_VERSION = "2.7.2"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
@@ -369,10 +369,20 @@ class RPAState:
                     updated = True
                     break
                 merged = {**existing, **entry}
-                if ex_app == app_no and ex_st in ("Услуга оказана", "Услуга отказана", "Промежуточные результаты по заявлению") and st in (
-                    "Заявление зарегистрировано",
-                    "Отправлено",
-                    "Отправлено (PDF не скачан)",
+                if (
+                    ex_app == app_no
+                    and (
+                        ex_st in ("Услуга оказана", "Услуга отказана")
+                        or ex_st.startswith("Ошибка отправки заявления")
+                        or ex_st.startswith("Ошибка получения заявления")
+                    )
+                    and st in (
+                        "Заявление зарегистрировано",
+                        "Отправлено в ведомство",
+                        "Отправлено",
+                        "Отправлено (PDF не скачан)",
+                        "В обработке",
+                    )
                 ):
                     merged["gosuslugi_status"] = ex_st
                 cls.submissions[idx] = merged
@@ -545,7 +555,7 @@ def run_robot_worker(
     cmd = [sys.executable, script_path]
 
     if mode == "check_status_fast":
-        cmd.extend(["--status-only", "--max-pages", "60"])
+        cmd.extend(["--status-only", "--single-search", "--search-scope", "pending_only", "--max-pages", "60"])
     elif mode == "check_status_single":
         if json_file and os.path.exists(json_file):
             cmd.extend(["--json", json_file])

@@ -864,18 +864,37 @@ function normalizeSentGosuslugiStatus(rawStatus?: string): string {
   return s;
 }
 
-function isProgressedGosuslugiStatus(st?: string): boolean {
+function getGosuslugiStatusRank(st?: string): number {
   const s = String(st || '').trim();
-  return /Услуга оказана|Услуга отказана|Промежуточные результаты|Заявление зарегистрировано|Отправлено в ведомство|Ошибка отправки заявления|Ошибка получения заявления/i.test(s);
+  if (!s) return 0;
+  if (
+    /Услуга оказана|Услуга отказана|Ошибка отправки заявления|Ошибка получения заявления/i.test(s)
+  ) {
+    return 4;
+  }
+  if (/Промежуточные результаты/i.test(s)) {
+    return 3;
+  }
+  if (/Отправлено в ведомство|Заявление зарегистрировано/i.test(s)) {
+    return 2;
+  }
+  if (/^Отправлено|В обработке/i.test(s)) {
+    return 1;
+  }
+  return 1;
 }
 
 function pickBetterGosuslugiStatus(existing?: string, incoming?: string): string {
   const normEx = normalizeSentGosuslugiStatus(existing);
   const normIn = normalizeSentGosuslugiStatus(incoming);
-  if (isProgressedGosuslugiStatus(normEx) && (!normIn || /^Отправлено(\s*\(PDF не скачан\))?$/i.test(normIn))) {
+  if (!normIn) return normEx;
+  if (!normEx) return normIn;
+  const rankEx = getGosuslugiStatusRank(normEx);
+  const rankIn = getGosuslugiStatusRank(normIn);
+  if (rankEx > rankIn) {
     return normEx;
   }
-  return normIn || normEx;
+  return normIn;
 }
 
 function isWorkerMvdNotFound(w: {
@@ -1425,7 +1444,7 @@ export default function GosuslugiVksView() {
                         const subAt = String(s.submitted_at || '').trim();
                         if (appNo && archivedAppsRef.current.has(appNo)) return false;
                         if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
-                        if (/^ошибк/i.test(st)) return false;
+                        if (!appNo && /^ошибк/i.test(st)) return false;
                         if (
                           !pdfFn &&
                           (st === 'Отправлено (PDF не скачан)' || st === 'Отправлено') &&
@@ -1548,8 +1567,7 @@ export default function GosuslugiVksView() {
                       const isSubErr =
                         !alreadySent &&
                         !isSubMvdNotFound &&
-                        (isErrored ||
-                          (!nextAppNo && /^ошибк/i.test(String(nextGosStatus || '').trim())));
+                        (isErrored || /^ошибк/i.test(String(nextGosStatus || '').trim()));
                       if (
                         nextAppNo !== w.applicationNo ||
                         nextGosStatus !== w.gosuslugiStatus ||
@@ -3010,14 +3028,30 @@ export default function GosuslugiVksView() {
         });
       }
 
-      const recordsToCheck = Array.from(appMap.values());
-      const withAppNo = recordsToCheck.filter((r) => Boolean(r.application_no));
-      if (withAppNo.length > 0) {
-        // Persist scanned PDF application numbers to Pondera DB immediately
+      const getPendingStatusPriority = (stRaw?: string) => {
+        const s = String(stRaw || '').trim();
+        if (!s || /^Отправлено(\s*\(PDF не скачан\))?$|^В обработке$/i.test(s)) return 0;
+        if (/^Отправлено в ведомство$/i.test(s)) return 1;
+        if (/^Заявление зарегистрировано$|^Промежуточные результаты/i.test(s)) return 2;
+        return 3;
+      };
+
+      const recordsToCheck = Array.from(appMap.values()).sort((a, b) => {
+        const pa = getPendingStatusPriority(a.gosuslugi_status);
+        const pb = getPendingStatusPriority(b.gosuslugi_status);
+        if (pa !== pb) return pa - pb;
+        const na = /^\d+$/.test(String(a.application_no || '')) ? Number(a.application_no) : 0;
+        const nb = /^\d+$/.test(String(b.application_no || '')) ? Number(b.application_no) : 0;
+        return nb - na;
+      });
+
+      const scannedWithAppNo = scannedList.filter((r) => Boolean(r.application_no));
+      if (scannedWithAppNo.length > 0) {
+        // Persist newly scanned PDF application numbers to Pondera DB immediately
         fetch('/api/gosuslugi/submissions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ records: withAppNo }),
+          body: JSON.stringify({ records: scannedWithAppNo }),
         }).catch(() => {});
       }
 
@@ -3128,6 +3162,24 @@ export default function GosuslugiVksView() {
             : 'Seçilen kritere uygun tek tek aranacak başvuru numarası bulunamadı.'
         );
         return;
+      }
+
+      if (singleSearchScope === 'pending_only') {
+        const getPendingPri = (stRaw?: string) => {
+          const s = String(stRaw || '').trim();
+          if (!s || /^Отправлено(\s*\(PDF не скачан\))?$|^В обработке$/i.test(s)) return 0;
+          if (/^Отправлено в ведомство$/i.test(s)) return 1;
+          if (/^Заявление зарегистрировано$|^Промежуточные результаты/i.test(s)) return 2;
+          return 3;
+        };
+        orderedRecords.sort((a, b) => {
+          const pa = getPendingPri(a.gosuslugi_status);
+          const pb = getPendingPri(b.gosuslugi_status);
+          if (pa !== pb) return pa - pb;
+          const na = /^\d+$/.test(String(a.application_no || '')) ? Number(a.application_no) : 0;
+          const nb = /^\d+$/.test(String(b.application_no || '')) ? Number(b.application_no) : 0;
+          return nb - na;
+        });
       }
 
       const res = await fetch(`${activeBridgeUrl}/start`, {
@@ -4460,12 +4512,27 @@ export default function GosuslugiVksView() {
                             <Loader2 className="w-3 h-3 animate-spin" />
                             {lang === 'ru' ? 'Заполняется...' : 'İşleniyor...'}
                           </span>
-                        ) : w.status === 'success' || w.applicationNo || isWorkerAlreadySentToGosuslugi(w) ? (
+                        ) : (w.status === 'success' || w.applicationNo || isWorkerAlreadySentToGosuslugi(w)) &&
+                          !isWorkerMvdNotFound(w) ? (
                           <div className="space-y-0.5 leading-tight">
                             {w.gosuslugiStatus &&
-                            /отказан|возврат|не оказан/i.test(w.gosuslugiStatus) ? (
+                            /отказан|возврат|не оказан|^ошибк/i.test(w.gosuslugiStatus) ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-rose-100 dark:bg-rose-500/25 border border-rose-300 dark:border-rose-500/40 text-rose-800 dark:text-rose-200 whitespace-nowrap">
                                 <AlertCircle className="w-3 h-3 shrink-0" />
+                                {w.gosuslugiStatus}
+                              </span>
+                            ) : w.gosuslugiStatus &&
+                              /оказан|исполнен|принят/i.test(w.gosuslugiStatus) ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-100 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-200 whitespace-nowrap">
+                                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                {w.gosuslugiStatus}
+                              </span>
+                            ) : w.gosuslugiStatus &&
+                              /промежуточн|обработк|зарегистрирован|отправлено в ведомство|получено ведомством/i.test(
+                                w.gosuslugiStatus
+                              ) ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-200 whitespace-nowrap">
+                                <RefreshCw className="w-3 h-3 shrink-0" />
                                 {w.gosuslugiStatus}
                               </span>
                             ) : !w.pdfFilename ||
@@ -4474,26 +4541,14 @@ export default function GosuslugiVksView() {
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-sky-100 dark:bg-sky-500/20 border border-sky-300 dark:border-sky-500/40 text-sky-900 dark:text-sky-200 whitespace-nowrap"
                                 title={
                                   lang === 'ru'
-                                    ? 'Заявление отправлено в Госуслуги, но PDF-квитанция ещё не скачана. Нажмите «3. Проверить статусы ГУ», чтобы скачать PDF.'
-                                    : "Bildirim Gosuslugi'ye gönderildi ancak PDF henüz alınmadı. PDF'i indirmek için «3. Başvuru Durumlarını Sorgula» butonunu kullanabilirsiniz."
+                                    ? 'Заявление отправлено в Госуслуги, статус ещё ожидает проверки («3. Проверить статусы ГУ»).'
+                                    : "Bildirim Gosuslugi'ye gönderildi, statüsü henüz sorgulanmadı («3. Başvuru Durumlarını Sorgula» ile güncelleyebilirsiniz)."
                                 }
                               >
                                 <CheckCircle2 className="w-3 h-3 shrink-0" />
                                 {lang === 'ru'
                                   ? 'Отправлено (PDF не скачан)'
                                   : 'Gönderildi (PDF Alınamadı)'}
-                              </span>
-                            ) : w.gosuslugiStatus &&
-                              /промежуточн|обработк|зарегистрирован/i.test(w.gosuslugiStatus) ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-200 whitespace-nowrap">
-                                <RefreshCw className="w-3 h-3 shrink-0" />
-                                {w.gosuslugiStatus}
-                              </span>
-                            ) : w.gosuslugiStatus &&
-                              /оказан|исполнен|принят/i.test(w.gosuslugiStatus) ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-100 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-200 whitespace-nowrap">
-                                <CheckCircle2 className="w-3 h-3 shrink-0" />
-                                {w.gosuslugiStatus}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-300 whitespace-nowrap">
