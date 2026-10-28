@@ -14,6 +14,129 @@ function getMoscowNowIso(): string {
   return new Date(mskMs).toISOString().replace('T', ' ').slice(0, 19);
 }
 
+// Mismatched (sicil_no -> wrong application_no) pairs verified from Gosuslugi org audit (28.10.2026)
+const BLOCKED_MISMATCHED_APP_BY_SICIL: Record<string, string> = {
+  // VKS_197: non-VKS service ('Регистрация автотранспорта')
+  '902127': '8324568212',
+  // VKS_2754: ACİL (29) — application_no belongs to another worker on Gosuslugi
+  '941180': '8286574341',
+  '937975': '8294240592',
+  '934977': '8310552187',
+  '927061': '8311177673',
+  '937851': '8290698264',
+  '941976': '8287106492',
+  '938730': '8287534774',
+  '940683': '8291445402',
+  '938390': '8291785562',
+  '935934': '8304165921',
+  '930970': '8304949515',
+  '937133': '8291182665',
+  '931095': '8306890167',
+  '937526': '8292385071',
+  '900701': '8303416245',
+  '929073': '8306932902',
+  '941091': '8306428687',
+  '900088': '8303994182',
+  '938033': '8316624567',
+  '931246': '8291571654',
+  '937909': '8291937845',
+  '902773': '8317594914',
+  '935312': '8316021625',
+  '938789': '8291098061',
+  '931391': '8291264938',
+  '936243': '8307402667',
+  '932622': '8305657900',
+  '939622': '8288949057',
+  '936545': '8305756556',
+  // VKS_2754: Numara düzelt (3) — old wrong application_no before replacement
+  '933532': '8284206508',
+  '937332': '8284083499',
+  '941737': '8269035605',
+};
+
+let __audit2810Reconciled = false;
+function reconcileAudit2810(db: any) {
+  if (__audit2810Reconciled) return;
+  try {
+    db.exec('BEGIN');
+    // 1. Remove wrong application_no assignments for ACİL (29) + 902127 so they re-enter the pending queue
+    const delSubStmt = db.prepare(
+      `DELETE FROM gosuslugi_submissions WHERE sicil_no = ? AND application_no = ?`
+    );
+    const delHistStmt = db.prepare(
+      `DELETE FROM gosuslugi_submission_history WHERE sicil_no = ? AND application_no = ?`
+    );
+    for (const [sicil, wrongApp] of Object.entries(BLOCKED_MISMATCHED_APP_BY_SICIL)) {
+      if (sicil === '933532' || sicil === '937332' || sicil === '941737') continue;
+      delSubStmt.run(sicil, wrongApp);
+      delHistStmt.run(sicil, wrongApp);
+    }
+
+    // 2. Fix the 3 'Numara düzelt (3)' workers who have accepted notifications under a different application_no
+    const fixAppStmt = db.prepare(`
+      UPDATE gosuslugi_submissions
+      SET application_no = ?,
+          gosuslugi_status = 'Услуга оказана',
+          pdf_filename = CASE WHEN pdf_filename LIKE '%' || ? || '%' THEN pdf_filename ELSE '' END
+      WHERE sicil_no = ? AND (application_no = ? OR application_no = '')
+    `);
+    fixAppStmt.run('8284260476', '8284260476', '933532', '8284206508');
+    fixAppStmt.run('8291445402', '8291445402', '937332', '8284083499');
+    fixAppStmt.run('8291785562', '8291785562', '941737', '8269035605');
+
+    // 3. Fix VKS_197 statuses: 939777 (8334527775) -> Ошибка отправки заявления в ведомство, 932472 (8316358380) -> Заявление зарегистрировано
+    db.prepare(`
+      UPDATE gosuslugi_submissions
+      SET gosuslugi_status = 'Ошибка отправки заявления в ведомство',
+          status_detail = 'Не найден документ РНР 77 2600039400 с бланком: ВВ 1039374. Проверьте корректность данных или обратитесь в подразделение выдачи документа.',
+          checked_at = '2026-10-27 16:34:00'
+      WHERE sicil_no = '939777' AND application_no = '8334527775'
+    `).run();
+
+    db.prepare(`
+      UPDATE gosuslugi_submissions
+      SET gosuslugi_status = 'Заявление зарегистрировано',
+          status_detail = 'Заявление принято ведомством',
+          checked_at = '2026-10-24 11:43:00'
+      WHERE sicil_no = '932472' AND application_no = '8316358380' AND gosuslugi_status = 'Услуга отказана'
+    `).run();
+    db.prepare(`DELETE FROM gosuslugi_refused_archive WHERE application_no = '8316358380'`).run();
+
+    // 4. Clean sicil prefixes from worker_name in gosuslugi_submissions and gosuslugi_submission_history
+    const dirtyNames = db
+      .prepare(`SELECT id, worker_name FROM gosuslugi_submissions WHERE worker_name GLOB '[0-9]*'`)
+      .all() as Array<{ id: number; worker_name: string }>;
+    if (dirtyNames.length > 0) {
+      const updNameStmt = db.prepare(`UPDATE gosuslugi_submissions SET worker_name = ? WHERE id = ?`);
+      for (const row of dirtyNames) {
+        const cleaned = String(row.worker_name || '').replace(/^\d+[а-яА-Яa-zA-Z]?\s+/, '').trim();
+        if (cleaned && cleaned !== row.worker_name) {
+          updNameStmt.run(cleaned, row.id);
+        }
+      }
+    }
+    const dirtyHistNames = db
+      .prepare(`SELECT id, worker_name FROM gosuslugi_submission_history WHERE worker_name GLOB '[0-9]*'`)
+      .all() as Array<{ id: number; worker_name: string }>;
+    if (dirtyHistNames.length > 0) {
+      const updHistNameStmt = db.prepare(`UPDATE gosuslugi_submission_history SET worker_name = ? WHERE id = ?`);
+      for (const row of dirtyHistNames) {
+        const cleaned = String(row.worker_name || '').replace(/^\d+[а-яА-Яa-zA-Z]?\s+/, '').trim();
+        if (cleaned && cleaned !== row.worker_name) {
+          updHistNameStmt.run(cleaned, row.id);
+        }
+      }
+    }
+
+    db.exec('COMMIT');
+    __audit2810Reconciled = true;
+  } catch {
+    try {
+      db.exec('ROLLBACK');
+    } catch {}
+  }
+}
+
 let __submissionsTimestampsHealed = false;
 function healSubmissionTimestamps(db: any) {
   if (__submissionsTimestampsHealed) return;
@@ -290,6 +413,7 @@ function ensureTable(db: any) {
       );
   `);
   healSubmissionTimestamps(db);
+  reconcileAudit2810(db);
 }
 
 export async function GET(request: Request) {
@@ -611,9 +735,15 @@ export async function POST(request: Request) {
 
       const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
       const periodCode = String(item.period_code || item.periodCode || '2026-3').trim() || '2026-3';
-      const workerName = String(item.worker_name || item.workerName || '').trim();
+      const workerName = String(item.worker_name || item.workerName || '')
+        .replace(/^\d+[а-яА-Яa-zA-Z]?\s+/, '')
+        .trim();
       const citizenship = String(item.citizenship || '').trim();
       const statusDetail = String(item.status_detail || item.statusDetail || '').trim();
+
+      if (appNo === '8324568212' || (sicil && appNo && BLOCKED_MISMATCHED_APP_BY_SICIL[sicil] === appNo)) {
+        continue;
+      }
 
       const existingRow = sicil
         ? (getExistingBySicilStmt.get(sicil, notifType, periodCode) as
@@ -676,8 +806,12 @@ export async function POST(request: Request) {
         normalizedStatus === 'Ошибка получения заявления ведомством' ||
         normalizedStatus === 'Услуга отказана';
 
-      // Reject non-VKS migration arrival/departure ('прибытии и убытии') or work permit ('разрешение на работу') orders
-      if (appNo === '8316972551' || /уведомления о прибытии|прибытии и убытии|разрешение на работу иг/i.test(statusDetail)) {
+      // Reject non-VKS migration arrival/departure ('прибытии и убытии'), work permit ('разрешение на работу'), or vehicle registration orders
+      if (
+        appNo === '8316972551' ||
+        appNo === '8324568212' ||
+        /уведомления о прибытии|прибытии и убытии|разрешение на работу иг|регистрация автотранспорта/i.test(statusDetail)
+      ) {
         continue;
       }
       let pdfFilename = String(item.pdf_filename || item.pdfFilename || '').trim();
@@ -1076,6 +1210,7 @@ export async function PATCH(request: Request) {
       const status = String(u.gosuslugi_status || u.gosuslugiStatus || '').trim();
       const detail = String(u.status_detail || u.statusDetail || '').trim();
       if (!status) continue;
+      if (appNo === '8324568212' || (sicil && appNo && BLOCKED_MISMATCHED_APP_BY_SICIL[sicil] === appNo)) continue;
       if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(status)) continue;
 
       if (appNo) {

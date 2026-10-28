@@ -52,17 +52,45 @@ function sanitizeVksWorkerFields(w: Record<string, any>): {
     }
   }
 
-  // 3. Blank Number (СерийныйНомер2): strip spaces, pad 6-digit number with leading zero to 7 digits
+  // 3. Blank Number (СерийныйНомер2): strip spaces, clear shifted date strings, pad 6-digit number with leading zero to 7 digits
   const rawBlank2 = String(out.blankNumber ?? out['СерийныйНомер2'] ?? '').trim();
   if (rawBlank2) {
     let cleanBlank2 = rawBlank2.replace(/\.0$/, '').replace(/\s+/g, '');
-    if (/^\d{5,6}$/.test(cleanBlank2)) {
+    if (/\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4}/.test(cleanBlank2)) {
+      cleanBlank2 = '';
+    } else if (/^\d{5,6}$/.test(cleanBlank2)) {
       cleanBlank2 = cleanBlank2.padStart(7, '0');
     }
     if (cleanBlank2 !== rawBlank2) {
       out.blankNumber = cleanBlank2;
       if ('СерийныйНомер2' in out) out['СерийныйНомер2'] = cleanBlank2;
       changed = true;
+    }
+  }
+
+  // 3b. Apply verified HR Personel Listesi (25.10.2026) RNR/Blank/Passport fixes for known outdated rows
+  const sicilKey = String(out.sicil || out.code || out.sicil_no || '').trim();
+  const hrFixes: Record<string, Partial<Record<string, string>>> = {
+    '902859': { blankNumber: '0739298' },
+    '801083': { blankNumber: '0865819' },
+    '900256': { passportNumber: 'U28197652', passportIssueDate: '20.07.2022' },
+    '800186': { passportNumber: 'U32980323', passportIssueDate: '05.02.2024' },
+    '925968': { blankNumber: '1030253' },
+    '932902': { blankNumber: '0922056' },
+    '935884': { rnrNumber: '2500578525' },
+    '937670': { rnrNumber: '2600164623' },
+  };
+  if (sicilKey && hrFixes[sicilKey]) {
+    const fix = hrFixes[sicilKey];
+    for (const [k, v] of Object.entries(fix)) {
+      if (v && String(out[k] || '').trim() !== v) {
+        out[k] = v;
+        if (k === 'blankNumber' && 'СерийныйНомер2' in out) out['СерийныйНомер2'] = v;
+        if (k === 'rnrNumber' && 'Номер' in out) out['Номер'] = v;
+        if (k === 'passportNumber' && 'НомерПаспорта' in out) out['НомерПаспорта'] = v;
+        if (k === 'passportIssueDate' && 'ДатаВыдачи' in out) out['ДатаВыдачи'] = v;
+        changed = true;
+      }
     }
   }
 
@@ -168,8 +196,10 @@ function ensureTables(db: any) {
       );
       const delFixedErrStmt = db.prepare(`
         DELETE FROM gosuslugi_submissions
-        WHERE sicil_no = ? AND (application_no IS NULL OR TRIM(application_no) = '')
-          AND (gosuslugi_status LIKE '%Разрешение на работу ВКС%' OR gosuslugi_status LIKE '%Паспортные данные%')
+        WHERE sicil_no = ?
+          AND gosuslugi_status != 'Услуга оказана'
+          AND gosuslugi_status != 'Заявление зарегистрировано'
+          AND gosuslugi_status != 'Отправлено в ведомство'
       `);
       db.exec('BEGIN');
       for (const r of rows) {
@@ -425,6 +455,12 @@ export async function GET(request: Request) {
         continue;
       }
 
+      const hasValidRnrAndBlank =
+        /^\d{2,4}$/.test(String(parsed.rnrSeries || '').trim()) &&
+        /^\d{6,12}$/.test(String(parsed.rnrNumber || '').trim()) &&
+        /^[А-ЯЁA-Z]{2}$/i.test(String(parsed.blankSeries || '').trim()) &&
+        /^\d{6,7}$/.test(String(parsed.blankNumber || '').trim());
+
       enrichedList.push({
         ...parsed,
         id: parsed.id || `master-vks-${m.row_key}`,
@@ -437,7 +473,7 @@ export async function GET(request: Request) {
         assignedComputer: comp,
         assigned_computer: comp,
         status: rowStatus,
-        selected: rowStatus === 'pending' || rowStatus === 'error',
+        selected: hasValidRnrAndBlank && (rowStatus === 'pending' || rowStatus === 'error'),
         applicationNo: sub?.application_no || '',
         application_no: sub?.application_no || '',
         gosuslugiStatus: sub?.gosuslugi_status || '',

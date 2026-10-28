@@ -855,13 +855,53 @@ def is_valid_labor_notification_order(ord_item: Dict[str, Any]) -> bool:
     return True
 
 
-def is_acceptable_order_for_exact_app_no(ord_item: Dict[str, Any]) -> bool:
+BLOCKED_MISMATCHED_APP_BY_SICIL: Dict[str, str] = {
+    "902127": "8324568212",
+    "941180": "8286574341",
+    "937975": "8294240592",
+    "934977": "8310552187",
+    "927061": "8311177673",
+    "937851": "8290698264",
+    "941976": "8287106492",
+    "938730": "8287534774",
+    "940683": "8291445402",
+    "938390": "8291785562",
+    "935934": "8304165921",
+    "930970": "8304949515",
+    "937133": "8291182665",
+    "931095": "8306890167",
+    "937526": "8292385071",
+    "900701": "8303416245",
+    "929073": "8306932902",
+    "941091": "8306428687",
+    "900088": "8303994182",
+    "938033": "8316624567",
+    "931246": "8291571654",
+    "937909": "8291937845",
+    "902773": "8317594914",
+    "935312": "8316021625",
+    "938789": "8291098061",
+    "931391": "8291264938",
+    "936243": "8307402667",
+    "932622": "8305657900",
+    "939622": "8288949057",
+    "936545": "8305756556",
+    "933532": "8284206508",
+    "937332": "8284083499",
+    "941737": "8269035605",
+}
+
+
+def is_acceptable_order_for_exact_app_no(ord_item: Dict[str, Any], worker_name: str = "") -> bool:
     """
     Validates an order matched by its exact 10-digit Gosuslugi `application_no` (`extId`).
-    Excludes non-labor services ('прибытии', 'убытии', 'разрешение на работу') and unsent drafts ('черновик'),
-    without rejecting valid orders if DOM card text shortened the service subtitle.
+    Excludes non-labor services ('прибытии', 'убытии', 'разрешение на работу', 'автотранспорт') and unsent drafts ('черновик'),
+    and if `citizen_name` is present on the order card, verifies it matches `worker_name`.
     """
     if not ord_item:
+        return False
+    app_no = str(ord_item.get("application_no") or "").strip()
+    if app_no in ("8316972551", "8324568212"):
         return False
     srv = str(ord_item.get("service_title") or "").lower().replace("ё", "е")
     raw_t = str(ord_item.get("raw_title") or "").lower().replace("ё", "е")
@@ -875,8 +915,17 @@ def is_acceptable_order_for_exact_app_no(ord_item: Dict[str, Any]) -> bool:
         "выдан документ разрешение",
         "получение разрешения",
         "черновик",
+        "автотранспорт",
+        "транспортн",
     )
     if any(bad in combined for bad in excluded) or "draft" in raw_s:
+        return False
+    cit_name = str(ord_item.get("citizen_name") or "").strip()
+    clean_w_name = re.sub(r"^\d+[а-яА-Яa-zA-Z]?\s+", "", str(worker_name or "").strip())
+    if cit_name and clean_w_name and not does_citizen_match_worker_name(cit_name, clean_w_name):
+        logger.warning(
+            f"  -> Citizen mismatch on № {app_no}: Gosuslugi citizen='{cit_name}' vs worker='{clean_w_name}'"
+        )
         return False
     return True
 
@@ -1925,7 +1974,7 @@ def run_fast_json_status_sync_on_page(
 
             if app_no in bulk_orders and not (allow_single_search and capture_screenshots):
                 candidate = bulk_orders[app_no]
-                if is_acceptable_order_for_exact_app_no(candidate) and not is_superseded_or_archived_order(
+                if is_acceptable_order_for_exact_app_no(candidate, worker_name) and not is_superseded_or_archived_order(
                     app_no, candidate.get("gosuslugi_status", ""), submitted_at
                 ):
                     matched_order = candidate
@@ -1956,7 +2005,7 @@ def run_fast_json_status_sync_on_page(
                 candidate = query_single_order_by_no(page, app_no, force_live_search=True)
                 if (
                     candidate
-                    and is_acceptable_order_for_exact_app_no(candidate)
+                    and is_acceptable_order_for_exact_app_no(candidate, worker_name)
                     and not is_superseded_or_archived_order(app_no, candidate.get("gosuslugi_status", ""), submitted_at)
                 ):
                     matched_order = candidate
@@ -2128,6 +2177,9 @@ def main():
                         str(it.get("application_no") or "").strip(),
                         str(it.get("gosuslugi_status") or "").strip(),
                     )
+                    and BLOCKED_MISMATCHED_APP_BY_SICIL.get(
+                        str(it.get("sicil") or it.get("sicil_no") or "").strip()
+                    ) != str(it.get("application_no") or "").strip()
                 ]
                 if len(cleaned_ledger) != len(local_ledger_data):
                     with open(local_ledger_path, "w", encoding="utf-8") as lfw:
@@ -2430,9 +2482,9 @@ def main():
                         f"(Код: {sicil or '—'}, № Заявления: {app_no})"
                     )
                     candidate = bulk_orders[app_no]
-                    if not is_acceptable_order_for_exact_app_no(candidate):
+                    if not is_acceptable_order_for_exact_app_no(candidate, worker_name):
                         logger.warning(
-                            f"  -> Rejecting № {app_no} for {worker_name}: wrong service ('{candidate.get('service_title')}') or draft!"
+                            f"  -> Rejecting № {app_no} for {worker_name}: wrong service/citizen ('{candidate.get('service_title')}') or draft!"
                         )
                     elif is_superseded_or_archived_order(app_no, candidate.get("gosuslugi_status", ""), submitted_at):
                         logger.info(
@@ -2454,7 +2506,7 @@ def main():
                     )
                     candidate = query_single_order_by_no(page, app_no, force_live_search=True)
                     if candidate:
-                        if not is_acceptable_order_for_exact_app_no(candidate) or is_superseded_or_archived_order(
+                        if not is_acceptable_order_for_exact_app_no(candidate, worker_name) or is_superseded_or_archived_order(
                             app_no, candidate.get("gosuslugi_status", ""), submitted_at
                         ):
                             logger.warning(
