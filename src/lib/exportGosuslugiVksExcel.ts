@@ -40,6 +40,7 @@ export interface GosuslugiVksWorkerRecord {
   applicationNo?: string; // № Заявления Госуслуги (напр. 8255536023)
   gosuslugiStatus?: string; // Статус на Госуслугах (Услуга оказана / Услуга отказана / В обработке / Отправлено)
   pdfFilename?: string; // Имя скачанного PDF-файла
+  statusPdfFilename?: string; // Имя A4 PDF-скриншота статуса (*_STATUS_A4.pdf)
 }
 
 export const GOSUSLUGI_VKS_EXCEL_COLUMNS = [

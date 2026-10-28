@@ -1452,6 +1452,38 @@ def build_a4_pdf_from_jpeg_bytes(jpeg_bytes: bytes) -> bytes:
     return bytes(pdf_out)
 
 
+def has_existing_status_screenshot_for_app(app_no: str, rec: Optional[Dict[str, Any]] = None) -> bool:
+    """
+    Returns True if an A4 Status Screenshot (_STATUS_A4.pdf) was already captured for `app_no`
+    either on the central server (`status_pdf_filename` / `pdf_filename`) or locally in
+    ~/Downloads/Gosuslugi_Status_A4/ or ~/Downloads/.
+    """
+    clean_no = str(app_no or "").strip()
+    if not clean_no:
+        return False
+    if rec:
+        st_pdf = str(rec.get("status_pdf_filename") or rec.get("statusPdfFilename") or "").strip()
+        if st_pdf and "_STATUS_A4" in st_pdf.upper() and clean_no in st_pdf:
+            return True
+        reg_pdf = str(rec.get("pdf_filename") or rec.get("pdfFilename") or "").strip()
+        if reg_pdf and "_STATUS_A4" in reg_pdf.upper() and clean_no in reg_pdf:
+            return True
+    try:
+        downloads_dir = Path.home() / "Downloads"
+        screenshots_dir = downloads_dir / "Gosuslugi_Status_A4"
+        if screenshots_dir.exists():
+            for p in screenshots_dir.glob(f"*{clean_no}*_STATUS_A4.pdf"):
+                if p.is_file() and p.stat().st_size > 1000:
+                    return True
+        if downloads_dir.exists():
+            for p in downloads_dir.glob(f"*{clean_no}*_STATUS_A4.pdf"):
+                if p.is_file() and p.stat().st_size > 1000:
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def capture_a4_cropped_status_screenshot(
     page: Page,
     app_no: str,
@@ -1462,8 +1494,9 @@ def capture_a4_cropped_status_screenshot(
 ) -> str:
     """
     Captures an A4-proportioned cropped screenshot of the Gosuslugi order status area (NOT the full wide screen!),
-    converts it into a standard A4 PDF (<Sicil>_<AppNo>_<WorkerName>_STATUS_A4.pdf), saves it locally in
-    ~/Downloads/Gosuslugi_Status_A4/, and uploads it to the central Pondera HR server (/api/gosuslugi/pdf).
+    ensuring BOTH the top Search Bar (with the Zayavka number) AND the Order Status Card are 100% visible below
+    the sticky Gosuslugi header. Converts it into a standard A4 PDF (<Sicil>_<AppNo>_<WorkerName>_STATUS_A4.pdf),
+    saves it locally in ~/Downloads/Gosuslugi_Status_A4/, and uploads it to the central Pondera HR server.
     """
     clean_no = str(app_no or "").strip()
     if not clean_no:
@@ -1485,7 +1518,85 @@ def capture_a4_cropped_status_screenshot(
     jpg_path = screenshots_dir / jpg_filename
 
     try:
-        # Compute the bounding box starting strictly from top-left (x=0, y=0) in A4 Portrait proportions
+        # Phase 1: Force instant scroll-behavior, reset ALL scrollable containers in the DOM to top (scrollTop = 0),
+        # ensure the search input displays `clean_no`, and hide floating robot mascot widgets.
+        page.evaluate(
+            """(appNo) => {
+                try {
+                    let styleEl = document.getElementById("pondera-instant-scroll-style");
+                    if (!styleEl) {
+                        styleEl = document.createElement("style");
+                        styleEl.id = "pondera-instant-scroll-style";
+                        styleEl.textContent = "*, html, body { scroll-behavior: auto !important; }";
+                        (document.head || document.documentElement).appendChild(styleEl);
+                    }
+                } catch (e) {}
+
+                try {
+                    if (document.activeElement && document.activeElement !== document.body && typeof document.activeElement.blur === "function") {
+                        document.activeElement.blur();
+                    }
+                } catch (e) {}
+
+                // Ensure the search input box shows the searched application number
+                try {
+                    const inputs = Array.from(
+                        document.querySelectorAll(
+                            "input.search-input, lib-search input, epgu-search input, input[placeholder*='Поиск'], input[placeholder*='поиск'], input[placeholder*='Номер'], input[type='search'], main input[type='text']"
+                        )
+                    );
+                    for (const inp of inputs) {
+                        const r = inp.getBoundingClientRect();
+                        if (r.width > 100 && r.height > 18) {
+                            if (!inp.value || !String(inp.value).includes(appNo)) {
+                                inp.value = appNo;
+                                inp.setAttribute("value", appNo);
+                            }
+                            break;
+                        }
+                    }
+                } catch (e) {}
+
+                // Hide floating Robot Max / chat assistant icon in bottom-right corner
+                try {
+                    const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+                    const vh = window.innerHeight || document.documentElement.clientHeight || 900;
+                    document.querySelectorAll("epgu-chat-widget, .robot-max, [class*='robot-widget'], [class*='assistant-widget'], [class*='chat-widget']").forEach(el => {
+                        el.style.visibility = "hidden";
+                    });
+                    document.querySelectorAll("div, button, a, aside, iframe").forEach(el => {
+                        try {
+                            const cs = window.getComputedStyle(el);
+                            if (cs.position === "fixed" || cs.position === "sticky") {
+                                const r = el.getBoundingClientRect();
+                                if (r.top > 120 && r.width <= 140 && r.height <= 140 && r.right >= vw - 180 && r.bottom >= vh - 180) {
+                                    el.style.visibility = "hidden";
+                                }
+                            }
+                        } catch (e) {}
+                    });
+                } catch (e) {}
+
+                // Synchronously reset scroll position on window, document, and EVERY scrollable element in DOM
+                try { window.scrollTo(0, 0); } catch (e) {}
+                try { document.documentElement.scrollTop = 0; document.documentElement.scrollLeft = 0; } catch (e) {}
+                try { document.body.scrollTop = 0; document.body.scrollLeft = 0; } catch (e) {}
+                try {
+                    const allEls = document.querySelectorAll("*");
+                    for (let i = 0; i < allEls.length; i++) {
+                        const el = allEls[i];
+                        if (el.scrollTop > 0) el.scrollTop = 0;
+                        if (el.scrollLeft > 0) el.scrollLeft = 0;
+                    }
+                } catch (e) {}
+            }""",
+            clean_no,
+        )
+        # Wait 250ms so Chrome finishes painting the top-of-page scroll layout before measuring rectangles
+        page.wait_for_timeout(250)
+
+        # Phase 2: Verify that BOTH the search bar and the order card are visible below the sticky header,
+        # adjusting scroll only if needed on small screens, and compute the A4 clip box from (0, 0).
         clip_box = page.evaluate(
             """(info) => {
                 const appNo = info.appNo || "";
@@ -1493,47 +1604,44 @@ def capture_a4_cropped_status_screenshot(
                 const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
                 const vh = window.innerHeight || document.documentElement.clientHeight || 900;
 
-                // 1. Always scroll to the very top of the page so the sticky Gosuslugi header
-                //    NEVER covers the 'Заявления' heading, the search box, or the order card!
-                window.scrollTo(0, 0);
+                const bodyTxt = (document.body && document.body.innerText) || "";
+                if (bodyTxt.includes("Сервис недоступен") || bodyTxt.includes("Заявления не найдены")) {
+                    return null;
+                }
+
+                // Measure sticky top header height (usually ~74-76px)
+                let headerBottom = 76;
                 try {
-                    document.documentElement.scrollTop = 0;
-                    document.body.scrollTop = 0;
-                    document.querySelectorAll("ng-scrollbar, .ng-scroll-viewport, main, .orders-container").forEach(el => {
-                        try { el.scrollTop = 0; } catch (e) {}
-                    });
+                    const hdr = document.querySelector("header, epgu-header, lib-header, .header");
+                    if (hdr) {
+                        const hr = hdr.getBoundingClientRect();
+                        if (hr.height >= 40 && hr.height <= 130 && hr.top <= 10) {
+                            headerBottom = Math.round(hr.bottom);
+                        }
+                    }
                 } catch (e) {}
 
-                // Hide floating robot mascot widget if present so it doesn't cover the card corner
-                try {
-                    document.querySelectorAll("epgu-chat-widget, .robot-max, [class*='robot-widget'], [class*='assistant-widget']").forEach(el => {
-                        el.style.visibility = "hidden";
-                    });
-                } catch (e) {}
-
-                // 2. Locate the VISIBLE search input (ignore hidden 0x0 header inputs)
+                // Locate the visible search input
                 const visibleSearchInputs = Array.from(
                     document.querySelectorAll(
                         "input.search-input, lib-search input, epgu-search input, input[placeholder*='Поиск'], input[placeholder*='поиск'], input[placeholder*='Номер'], input[type='search'], main input[type='text']"
                     )
                 ).filter(el => {
                     const r = el.getBoundingClientRect();
-                    return r.width > 120 && r.height > 20 && r.top >= 0;
+                    return r.width > 120 && r.height > 20;
                 });
                 const searchInp = visibleSearchInputs[0] || null;
 
-                // 3. Locate the visible order card in the feed list (excluding the right sidebar)
-                const candidateCards = Array.from(
+                // Locate the visible order card in the feed list
+                const getCandidateCards = () => Array.from(
                     document.querySelectorAll("a[href*='/order/'], div.feed-item, epgu-feed-item")
                 ).filter(el => {
                     const r = el.getBoundingClientRect();
                     const txt = (el.innerText || "").trim();
-                    return r.width >= 260 && r.height >= 50 && r.top >= 60 && !txt.includes("Будет удалено");
+                    return r.width >= 260 && r.height >= 50 && !txt.includes("Будет удалено");
                 });
-                const bodyTxt = (document.body && document.body.innerText) || "";
-                if (bodyTxt.includes("Сервис недоступен") || bodyTxt.includes("Заявления не найдены")) {
-                    return null;
-                }
+
+                let candidateCards = getCandidateCards();
                 let targetCard =
                     candidateCards.find(el => (el.innerText || "").includes(appNo)) ||
                     candidateCards.find(el => (el.innerText || "").includes("Уведомления о трудовой")) ||
@@ -1543,7 +1651,44 @@ def capture_a4_cropped_status_screenshot(
                     return null;
                 }
 
-                // Ensure the zayavka number (№ <appNo>) is also clearly visible on the order card if not already rendered
+                // Helper to scroll whichever container actually scrolls on this page
+                const scrollPageBy = (deltaY) => {
+                    if (!deltaY) return;
+                    try { window.scrollBy(0, deltaY); } catch (e) {}
+                    try {
+                        let p = targetCard.parentElement;
+                        while (p && p !== document.body && p !== document.documentElement) {
+                            const cs = window.getComputedStyle(p);
+                            if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && p.scrollHeight > p.clientHeight) {
+                                p.scrollTop = Math.max(0, p.scrollTop + deltaY);
+                            }
+                            p = p.parentElement;
+                        }
+                    } catch (e) {}
+                };
+
+                let didScrollAdjust = false;
+                if (searchInp) {
+                    const sr = searchInp.getBoundingClientRect();
+                    const cr = targetCard.getBoundingClientRect();
+                    // Case A: Search bar is still above or hidden behind the sticky Gosuslugi header
+                    if (sr.top < headerBottom + 16) {
+                        scrollPageBy(sr.top - (headerBottom + 28));
+                        didScrollAdjust = true;
+                    } else if (cr.bottom > vh - 15 && sr.top > headerBottom + 48) {
+                        // Case B: Short viewport where card bottom exceeds viewport height — scroll down slightly
+                        // while keeping the search bar strictly below the sticky header (sr.top >= headerBottom + 32)
+                        const neededDown = cr.bottom - (vh - 20);
+                        const maxAllowedDown = Math.max(0, sr.top - (headerBottom + 32));
+                        const actualDown = Math.min(neededDown, maxAllowedDown);
+                        if (actualDown > 4) {
+                            scrollPageBy(actualDown);
+                            didScrollAdjust = true;
+                        }
+                    }
+                }
+
+                // Ensure the zayavka number (№ <appNo>) is clearly visible on the order card if not already rendered
                 if (targetCard && appNo) {
                     let badge = targetCard.querySelector(".pondera-zayavka-no-badge");
                     if (!badge && !(targetCard.innerText || "").includes(appNo)) {
@@ -1566,8 +1711,8 @@ def capture_a4_cropped_status_screenshot(
                     if (r.width >= 240) refRect = r;
                 }
 
-                // Start strictly from the top-left corner (x = 0, y = 0) so the left column of the card
-                // ('№ <appNo>' and date/time) AND the top search input are 100% captured without any left/top clipping!
+                // Start strictly from top-left corner (x = 0, y = 0) so the Gosuslugi header, the Search Bar
+                // (with the typed application_no), and the Order Card below it are 100% captured!
                 const cropX = 0;
                 const topY = 0;
                 const rightEdge = refRect ? Math.round(refRect.right + 28) : Math.min(vw, 990);
@@ -1578,14 +1723,23 @@ def capture_a4_cropped_status_screenshot(
                 const maxAvailH = Math.max(240, vh - topY);
                 const cropH = Math.min(idealA4H, maxAvailH);
 
-                return { x: cropX, y: topY, width: cropW, height: cropH };
+                return { x: cropX, y: topY, width: cropW, height: cropH, didScrollAdjust };
             }""",
             {"appNo": clean_no, "orderDate": ""},
         )
         if not clip_box:
             return ""
-        page.wait_for_timeout(180)
-        jpeg_bytes = page.screenshot(type="jpeg", quality=92, clip=clip_box)
+        if clip_box.get("didScrollAdjust"):
+            page.wait_for_timeout(180)
+        else:
+            page.wait_for_timeout(80)
+        clean_clip = {
+            "x": clip_box["x"],
+            "y": clip_box["y"],
+            "width": clip_box["width"],
+            "height": clip_box["height"],
+        }
+        jpeg_bytes = page.screenshot(type="jpeg", quality=92, clip=clean_clip)
         jpg_path.write_bytes(jpeg_bytes)
 
         pdf_bytes = build_a4_pdf_from_jpeg_bytes(jpeg_bytes)
@@ -1665,6 +1819,7 @@ def fetch_central_master_list_records() -> List[Dict[str, Any]]:
                                 "application_no": str(w.get("applicationNo") or "").strip(),
                                 "gosuslugi_status": str(w.get("gosuslugiStatus") or "").strip(),
                                 "pdf_filename": str(w.get("pdfFilename") or "").strip(),
+                                "status_pdf_filename": str(w.get("statusPdfFilename") or w.get("status_pdf_filename") or "").strip(),
                                 "submitted_at": str(w.get("submittedAt") or "").strip(),
                                 "checked_at": str(w.get("checkedAt") or w.get("checked_at") or "").strip(),
                             }
@@ -1957,6 +2112,7 @@ def run_fast_json_status_sync_on_page(
 
         targeted_search_count = 0
         skipped_unsent_draft_count = 0
+        skipped_already_okazana_sc_count = 0
         checked_only_records: List[Dict[str, Any]] = []
 
         numeric_bulk_ids = [int(k) for k in bulk_orders.keys() if k.isdigit() and len(k) == 10]
@@ -1978,13 +2134,30 @@ def run_fast_json_status_sync_on_page(
             if not app_no:
                 continue
 
+            already_has_sc = has_existing_status_screenshot_for_app(app_no, rec)
+
+            # User rule: During one-by-one status check + screenshot capture:
+            # - If 'Услуга оказана' ALREADY has an A4 screenshot taken previously, NEVER re-check or re-capture it!
+            # - For all OTHER statuses (e.g. 'Заявление зарегистрировано', 'Отправлено', 'Отправлено в ведомство',
+            #   'Промежуточные результаты по заявлению', 'Услуга отказана', etc.), ALWAYS re-check and re-capture (overwrite)!
+            if allow_single_search and prev_status == "Услуга оказана":
+                if not capture_screenshots or already_has_sc or search_scope == "pending_only":
+                    if capture_screenshots and already_has_sc:
+                        skipped_already_okazana_sc_count += 1
+                    continue
+
             is_intermediate_prev = (
                 prev_status not in ("Услуга оказана", "Услуга отказана")
                 and not prev_status.lower().startswith("ошибк")
             )
+            is_non_okazana_with_app_no = prev_status != "Услуга оказана"
 
-            if allow_single_search and search_scope == "pending_only" and not is_intermediate_prev:
-                continue
+            if allow_single_search and search_scope == "pending_only":
+                if capture_screenshots:
+                    if not is_non_okazana_with_app_no:
+                        continue
+                elif not is_intermediate_prev:
+                    continue
 
             matched_order: Optional[Dict[str, Any]] = None
 
@@ -2006,7 +2179,9 @@ def run_fast_json_status_sync_on_page(
             should_run_single_query = allow_single_search and (
                 not matched_order or capture_screenshots
             ) and (
-                search_scope == "all_from_start" or is_intermediate_prev
+                search_scope == "all_from_start"
+                or is_intermediate_prev
+                or (capture_screenshots and is_non_okazana_with_app_no)
             )
 
             if should_run_single_query:
@@ -2056,6 +2231,7 @@ def run_fast_json_status_sync_on_page(
             if prev_pdf and final_app_no and final_app_no not in prev_pdf and re.search(r"[789]\d{9}", prev_pdf):
                 prev_pdf = ""
 
+            prev_status_pdf = str(rec.get("status_pdf_filename") or rec.get("statusPdfFilename") or "").strip()
             captured_sc_file = ""
             if allow_single_search and capture_screenshots:
                 captured_sc_file = capture_a4_cropped_status_screenshot(
@@ -2068,6 +2244,7 @@ def run_fast_json_status_sync_on_page(
                 )
                 if captured_sc_file:
                     screenshots_captured_count += 1
+                    prev_status_pdf = captured_sc_file
                     if not prev_pdf or "_STATUS_A4" in prev_pdf:
                         prev_pdf = captured_sc_file
 
@@ -2098,6 +2275,7 @@ def run_fast_json_status_sync_on_page(
                         "worker_name": worker_name or matched_order.get("citizen_name") or "",
                         "application_no": final_app_no,
                         "pdf_filename": prev_pdf,
+                        "status_pdf_filename": prev_status_pdf,
                         "gosuslugi_status": new_status,
                         "status_detail": matched_order.get("status_detail", ""),
                         "checked_at": effective_checked_at,
@@ -2117,6 +2295,7 @@ def run_fast_json_status_sync_on_page(
                 "worker_name": worker_name or matched_order.get("citizen_name") or "",
                 "application_no": final_app_no,
                 "pdf_filename": prev_pdf,
+                "status_pdf_filename": prev_status_pdf,
                 "gosuslugi_status": new_status,
                 "status_detail": matched_order.get("status_detail", ""),
                 "checked_at": effective_checked_at,
@@ -2136,6 +2315,11 @@ def run_fast_json_status_sync_on_page(
 
         if checked_only_records:
             sync_updates_to_pondera_api(checked_only_records)
+
+        if skipped_already_okazana_sc_count > 0:
+            logger.info(
+                f"  [i] Пропущено {skipped_already_okazana_sc_count} заявлений со статусом «Услуга оказана» (скриншот A4 уже был сохранён ранее)."
+            )
 
         if skipped_unsent_draft_count > 0:
             logger.info(
@@ -2251,6 +2435,8 @@ def main():
                         existing_r["gosuslugi_status"] = str(cr.get("gosuslugi_status") or existing_r.get("gosuslugi_status") or "").strip()
                 if not existing_r.get("pdf_filename") and cr.get("pdf_filename"):
                     existing_r["pdf_filename"] = cr["pdf_filename"]
+                if cr.get("status_pdf_filename"):
+                    existing_r["status_pdf_filename"] = cr["status_pdf_filename"]
                 if not existing_r.get("worker_name") and cr.get("worker_name"):
                     existing_r["worker_name"] = cr["worker_name"]
             else:

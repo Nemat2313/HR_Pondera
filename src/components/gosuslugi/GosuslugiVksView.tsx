@@ -60,6 +60,7 @@ export interface GosuslugiSubmissionEntry {
   gosuslugi_status?: string;
   status_detail?: string;
   pdf_filename?: string;
+  status_pdf_filename?: string;
   submitted_at?: string;
   checked_at?: string;
 }
@@ -1372,6 +1373,7 @@ export default function GosuslugiVksView() {
         w.gosuslugiStatus || savedSub?.gosuslugi_status || (savedSub ? 'Отправлено' : '')
       );
       const nextPdf = w.pdfFilename || savedSub?.pdf_filename;
+      const nextStatusPdf = w.statusPdfFilename || savedSub?.status_pdf_filename;
       const alreadySent = isWorkerAlreadySentToGosuslugi({
         status: w.status === 'success' ? 'success' : undefined,
         applicationNo: nextAppNo,
@@ -1390,6 +1392,7 @@ export default function GosuslugiVksView() {
             applicationNo: nextAppNo,
             gosuslugiStatus: nextGosStatus || 'Отправлено',
             pdfFilename: nextPdf,
+            statusPdfFilename: nextStatusPdf,
             status: alreadySent
               ? 'success'
               : isMvdNotFound
@@ -1910,6 +1913,7 @@ export default function GosuslugiVksView() {
           applicationNo: item.application_no || item.applicationNo || undefined,
           gosuslugiStatus: item.gosuslugi_status || item.gosuslugiStatus || undefined,
           pdfFilename: item.pdf_filename || item.pdfFilename || undefined,
+          statusPdfFilename: item.status_pdf_filename || item.statusPdfFilename || undefined,
         };
       });
 
@@ -3112,13 +3116,24 @@ export default function GosuslugiVksView() {
         const appNo = String(w.applicationNo || '').trim();
         if (!appNo || !/^\d{8,14}$/.test(appNo)) continue;
         const st = String(w.gosuslugiStatus || '').trim();
+        const stPdf = String(w.statusPdfFilename || '').trim();
+        const regPdf = String(w.pdfFilename || '').trim();
+        const alreadyHasStatusSc =
+          (stPdf.toUpperCase().includes('_STATUS_A4') && stPdf.includes(appNo)) ||
+          (regPdf.toUpperCase().includes('_STATUS_A4') && regPdf.includes(appNo));
+
+        // User rule: If 'Услуга оказана' already has an A4 screenshot taken previously, never re-check/re-capture it;
+        // for all other statuses, always re-check and capture!
+        if (st === 'Услуга оказана' && (alreadyHasStatusSc || !captureStatusScreenshots || singleSearchScope === 'pending_only')) {
+          continue;
+        }
         const isFinalOrError =
           st === 'Услуга оказана' ||
           st === 'Услуга отказана' ||
           /^ошибк/i.test(st) ||
           w.status === 'error';
 
-        if (singleSearchScope === 'pending_only' && isFinalOrError) {
+        if (singleSearchScope === 'pending_only' && !captureStatusScreenshots && isFinalOrError) {
           continue;
         }
         if (seenAppNos.has(appNo)) continue;
@@ -3137,7 +3152,8 @@ export default function GosuslugiVksView() {
           period_code: periodCode,
           application_no: appNo,
           gosuslugi_status: st || 'Отправлено',
-          pdf_filename: w.pdfFilename || '',
+          pdf_filename: regPdf,
+          status_pdf_filename: stPdf,
         });
       }
 
@@ -3147,9 +3163,18 @@ export default function GosuslugiVksView() {
           const appNo = String(s.application_no || '').trim();
           if (!appNo || !/^\d{8,14}$/.test(appNo) || seenAppNos.has(appNo)) continue;
           const st = String(s.gosuslugi_status || '').trim();
+          const stPdf = String(s.status_pdf_filename || '').trim();
+          const regPdf = String(s.pdf_filename || '').trim();
+          const alreadyHasStatusSc =
+            (stPdf.toUpperCase().includes('_STATUS_A4') && stPdf.includes(appNo)) ||
+            (regPdf.toUpperCase().includes('_STATUS_A4') && regPdf.includes(appNo));
+
+          if (st === 'Услуга оказана' && (alreadyHasStatusSc || !captureStatusScreenshots || singleSearchScope === 'pending_only')) {
+            continue;
+          }
           const isFinalOrError =
             st === 'Услуга оказана' || st === 'Услуга отказана' || /^ошибк/i.test(st);
-          if (singleSearchScope === 'pending_only' && isFinalOrError) continue;
+          if (singleSearchScope === 'pending_only' && !captureStatusScreenshots && isFinalOrError) continue;
           seenAppNos.add(appNo);
           orderedRecords.push(s);
         }
@@ -6151,8 +6176,8 @@ export default function GosuslugiVksView() {
                     </div>
                     <div className="text-[11px] text-teal-800/90 dark:text-teal-300/80 leading-relaxed">
                       {lang === 'ru'
-                        ? 'Обрезает только карточку статуса Госуслуг под пропорции листа A4 (без лишних краёв экрана) и сохраняет в систему как A4 PDF.'
-                        : 'Tüm geniş ekranı değil, sadece Gosuslugi başvuru/statü alanını A4 dikey sayfa formatına uygun kırparak keser ve sisteme kaydeder.'}
+                        ? 'Обрезает верхнюю область с поисковой строкой и карточкой статуса под формат A4. Для «Услуга оказана» повторно скриншот не делается (если уже сохранён), а остальные статусы проверяются и обновляются заново.'
+                        : 'Arama çubuğu (başvuru no) ve statü kartını A4 dikey formatta keser. Daha önce ekran görüntüsü alınmış «Услуга оказана» kayıtlarını atlar; diğer tüm statüleri tekrar kontrol edip ekran görüntüsünü günceller.'}
                     </div>
                   </div>
                 </label>

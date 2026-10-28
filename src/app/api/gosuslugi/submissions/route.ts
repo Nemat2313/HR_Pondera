@@ -971,6 +971,19 @@ export async function POST(request: Request) {
             nowStr,
             existingRow.id
           );
+          const supStatusPdf = String(
+            item.status_pdf_filename ||
+              item.statusPdfFilename ||
+              (validNewPdf.toUpperCase().includes('_STATUS_A4') ? validNewPdf : '')
+          ).trim();
+          if (supStatusPdf) {
+            try {
+              db.prepare(`UPDATE gosuslugi_submissions SET status_pdf_filename = ? WHERE id = ?`).run(
+                supStatusPdf,
+                existingRow.id
+              );
+            } catch {}
+          }
           if (
             normalizedStatus === 'Данные не найдены в базе МВД' &&
             exStatus !== 'Данные не найдены в базе МВД'
@@ -1068,6 +1081,18 @@ export async function POST(request: Request) {
         checkedAt,
         nowStr
       );
+      const incomingStatusPdf = String(
+        item.status_pdf_filename ||
+          item.statusPdfFilename ||
+          (pdfFilename.toUpperCase().includes('_STATUS_A4') ? pdfFilename : '')
+      ).trim();
+      if (incomingStatusPdf && sicil) {
+        try {
+          db.prepare(
+            `UPDATE gosuslugi_submissions SET status_pdf_filename = ? WHERE sicil_no = ? AND notification_type = ? AND period_code = ?`
+          ).run(incomingStatusPdf, sicil, notifType, periodCode);
+        } catch {}
+      }
       const savedAfter = getExistingBySicilStmt.get(sicil, notifType, periodCode) as
         | {
             application_no: string;
