@@ -238,210 +238,6 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-    def _get_worker_drafts_path(self) -> str:
-        return os.path.join(CURRENT_DIR, "gosuslugi_worker_drafts.json")
-
-    def load_worker_drafts_map(self) -> Dict[str, str]:
-        path = self._get_worker_drafts_path()
-        try:
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    return {str(k).strip(): str(v).strip() for k, v in data.items() if str(k).strip() and str(v).strip()}
-        except Exception:
-            pass
-        return {}
-
-    def get_saved_worker_draft_no(self, sicil: str) -> str:
-        s = str(sicil or "").strip()
-        if not s:
-            return ""
-        return self.load_worker_drafts_map().get(s, "")
-
-    def save_worker_draft_no(self, sicil: str, draft_no: str):
-        s = str(sicil or "").strip()
-        d = str(draft_no or "").strip()
-        if not s or not d or not d.isdigit():
-            return
-        try:
-            mp = self.load_worker_drafts_map()
-            mp[s] = d
-            with open(self._get_worker_drafts_path(), "w", encoding="utf-8") as f:
-                json.dump(mp, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-
-    def clear_worker_draft_no(self, sicil: str):
-        s = str(sicil or "").strip()
-        if not s:
-            return
-        try:
-            mp = self.load_worker_drafts_map()
-            if s in mp:
-                del mp[s]
-                with open(self._get_worker_drafts_path(), "w", encoding="utf-8") as f:
-                    json.dump(mp, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-
-    def _click_draft_by_order_no_js(self, target_order_no: str = "", fallback_top: bool = False) -> str:
-        """
-        Searches the Gosuslugi Drafts Modal ('Выберите черновик для редактирования') for a draft matching `target_order_no`
-        (e.g. '№8339894365'). If found (or if `fallback_top=True` and any draft exists), scrolls it into view and clicks
-        its 'Перейти в черновик' button via both DOM JS and physical mouse coordinates.
-        Returns the clicked draft's 10-digit order number (or '' if none clicked).
-        """
-        want_no = re.sub(r"\D+", "", str(target_order_no or "").strip())
-        try:
-            res = self.page.evaluate(
-                """(args) => {
-                    const wantNo = args.wantNo || '';
-                    const fallbackTop = !!args.fallbackTop;
-                    const drafts = Array.from(document.querySelectorAll('.draft-list .draft, epgu-constructor-draft-list .draft'));
-                    if (drafts.length === 0) {
-                        // Also check standalone 'Перейти в черновик' buttons if .draft wrapper differs
-                        const standaloneBtn = Array.from(document.querySelectorAll('button, a')).find(
-                            b => (b.innerText || '').includes('Перейти в черновик') && b.getBoundingClientRect().width > 20
-                        );
-                        if (standaloneBtn && fallbackTop) {
-                            standaloneBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                            const r = standaloneBtn.getBoundingClientRect();
-                            standaloneBtn.click();
-                            return { x: r.left + r.width / 2, y: r.top + r.height / 2, draftNo: wantNo || 'TOP' };
-                        }
-                        return null;
-                    }
-
-                    let chosenDraft = null;
-                    let chosenNo = '';
-
-                    if (wantNo) {
-                        for (const d of drafts) {
-                            const txt = (d.innerText || d.textContent || '');
-                            if (txt.includes(wantNo)) {
-                                chosenDraft = d;
-                                chosenNo = wantNo;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!chosenDraft && fallbackTop && drafts.length > 0) {
-                        chosenDraft = drafts[0];
-                        const m = (chosenDraft.innerText || '').match(/№\\s*(\\d{8,14})/);
-                        chosenNo = m ? m[1] : (wantNo || 'TOP');
-                    }
-
-                    if (!chosenDraft) return null;
-
-                    chosenDraft.scrollIntoView({ behavior: 'instant', block: 'center' });
-                    const resumeBtn = Array.from(chosenDraft.querySelectorAll('button, a, span')).find(
-                        el => (el.innerText || '').includes('Перейти в черновик')
-                    );
-                    if (!resumeBtn) return null;
-
-                    const clickEl = resumeBtn.closest('button, a') || resumeBtn;
-                    clickEl.scrollIntoView({ behavior: 'instant', block: 'center' });
-                    const r = clickEl.getBoundingClientRect();
-                    clickEl.focus();
-                    clickEl.click();
-                    clickEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                    clickEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                    clickEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                    return {
-                        x: r.left + r.width / 2,
-                        y: r.top + r.height / 2,
-                        draftNo: chosenNo
-                    };
-                }""",
-                {"wantNo": want_no, "fallbackTop": fallback_top},
-            )
-            if isinstance(res, dict) and res.get("x") and res.get("y"):
-                clicked_no = str(res.get("draftNo") or want_no or "").strip()
-                logger.info(
-                    f"Draft Recovery: Нажимаем «Перейти в черновик» для заявления № {clicked_no} at ({int(res['x'])}, {int(res['y'])})..."
-                )
-                self.page.mouse.click(float(res["x"]), float(res["y"]))
-                self.page.wait_for_timeout(2200)
-                return clicked_no
-        except Exception as e:
-            logger.debug(f"_click_draft_by_order_no_js note: {e}")
-        return ""
-
-    def _fast_forward_resumed_draft_to_step12(self) -> bool:
-        """
-        After clicking 'Перейти в черновик' on a draft whose Steps 1-11 were already filled,
-        advances through any pre-filled screens ('Перейти к уведомлению', 'Верно', or active 'Продолжить')
-        until Step 12 (Подразделение МВД), Step 13 (Подтвердить), Step 14 (Согласие), or Step 15 (Отправить) is reached.
-        Returns True if Steps 12-15 (or final confirmation) are reached and ready for `complete_mvd_and_submit_flow()`.
-        """
-        for ff_tick in range(22):
-            self.check_and_handle_error_modal()
-            self.check_and_stop_if_insufficient_permissions()
-
-            try:
-                screen_state = self.page.evaluate(
-                    """() => {
-                        const txt = (document.body && document.body.innerText) || '';
-                        const hasDic18 = !!document.querySelector('input#dic18, input#dic18_byHand');
-                        const onStep12To15 =
-                            hasDic18 ||
-                            txt.includes('подразделение МВД') ||
-                            txt.includes('Подразделение МВД') ||
-                            txt.includes('Подтвердите, что получили согласие') ||
-                            txt.includes('Согласие на обработку персональных данных') ||
-                            txt.includes('Уведомление готово к отправке') ||
-                            txt.includes('Уведомление отправлено') ||
-                            txt.includes('Заявление отправлено');
-                        return { onStep12To15, txt: txt.slice(0, 1500) };
-                    }"""
-                ) or {}
-            except Exception:
-                screen_state = {}
-
-            if screen_state.get("onStep12To15"):
-                logger.info("Draft Recovery: Черновик открыт на финальных шагах (Шаги 12–15) — продолжаем отправку!")
-                return True
-
-            # Click 'Перейти к уведомлению' or 'Верно' if the draft resumed at Step 4/5
-            try:
-                clicked_early = self.page.evaluate(
-                    """() => {
-                        const btns = Array.from(document.querySelectorAll('button, a'));
-                        for (const b of btns) {
-                            const r = b.getBoundingClientRect();
-                            if (r.width <= 20 || r.height <= 10) continue;
-                            const t = (b.innerText || '').trim();
-                            if (t === 'Верно' || t.includes('Перейти к уведомлению') || t.includes('Перейти к заявлению')) {
-                                b.click();
-                                return t;
-                            }
-                        }
-                        return '';
-                    }"""
-                )
-                if clicked_early:
-                    logger.info(f"Draft Recovery: Нажата кнопка «{clicked_early}» в черновике...")
-                    self.page.wait_for_timeout(1300)
-                    continue
-            except Exception:
-                pass
-
-            # If 'Продолжить' is active (blue) on a pre-filled step (Steps 6-11), click it to step forward
-            if self._is_step12_continue_ready_js():
-                h_txt = self.get_current_heading()
-                logger.info(f"Draft Recovery: Шаг «{h_txt or 'Предзаполненный шаг'}» уже заполнен -> нажимаем «Продолжить»...")
-                self._click_step12_continue_js()
-                self.page.wait_for_timeout(1200)
-                continue
-
-            self.page.wait_for_timeout(600)
-            if ff_tick >= 6 and not self._is_step12_continue_ready_js():
-                break
-
-        return False
-
     def check_and_stop_if_insufficient_permissions(self):
         """
         Checks if Gosuslugi displays the 'У вас недостаточно полномочий для отправки уведомлений'
@@ -1946,9 +1742,10 @@ class GosuslugiVksBot:
         for tick in range(50):
             self.check_and_handle_error_modal()
 
-            # Priority 1: Drafts Modal ('Выберите черновик...' -> delete oldest draft only if needed, scroll modal & click 'Создать заявление')
+            # Priority 1: Drafts Modal ('Выберите черновик...' -> delete oldest draft only if needed, scroll modal & click 'Начать заново' / 'Создать заявление')
             draft_items = self.page.locator(".draft-list .draft, epgu-constructor-draft-list .draft")
             create_btn = self.page.locator(
+                "button:has-text('Начать заново'), "
                 "button:has-text('Создать заявление'), "
                 "button:has-text('Создать новое заявление'), "
                 "button:has-text('Новое заявление'), "
@@ -1956,57 +1753,7 @@ class GosuslugiVksBot:
             ).first
 
             if (create_btn.count() > 0 and create_btn.is_visible()) or draft_items.count() > 0:
-                logger.info("Step 2: Drafts modal ('Уведомления о трудовой деятельности иностранцев') detected...")
-
-                # Smart Draft Resume: If this worker already has a completed draft (Steps 1-11 filled) in the Drafts list,
-                # open that exact draft by its Zayavka No ('Перейти в черновик') and resume from where it stopped!
-                saved_draft_no = self.get_saved_worker_draft_no(code)
-                if saved_draft_no:
-                    clicked_draft = self._click_draft_by_order_no_js(saved_draft_no, fallback_top=False)
-                    if clicked_draft:
-                        self.current_form_order_id = clicked_draft
-                        logger.info(
-                            f"Step 2 Smart Draft Resume: Открыт черновик № {clicked_draft} для сотрудника {full_name} (Код: {code}) — продолжаем с места остановки!"
-                        )
-                        if self._fast_forward_resumed_draft_to_step12():
-                            gosuslugi_order_no = self.complete_mvd_and_submit_flow()
-                            self.clear_worker_draft_no(code)
-                            if bool(self.cfg.get("SKIP_STEP16_PDF")):
-                                logger.info(
-                                    f"Step 16 (Быстрая отправка без PDF): Заявление из черновика отправлено (№ {gosuslugi_order_no or clicked_draft})."
-                                )
-                                self.register_application_submission(
-                                    row,
-                                    gosuslugi_order_no or clicked_draft,
-                                    pdf_filename="",
-                                    status_override="Отправлено (PDF не скачан)",
-                                )
-                                logger.info(f"SUCCESS: Notification submitted for {full_name}!")
-                                return True
-                            try:
-                                self.execute_step16_cabinet_and_download(row, gosuslugi_order_no or clicked_draft)
-                            except Exception as step16_err:
-                                logger.warning(f"Step 16 (PDF download) warning after draft submission for {full_name}: {step16_err}")
-                                self.register_application_submission(
-                                    row,
-                                    gosuslugi_order_no or clicked_draft,
-                                    pdf_filename="",
-                                    status_override="Отправлено (PDF не скачан)",
-                                )
-                            logger.info(f"SUCCESS: Notification submitted for {full_name}!")
-                            return True
-                        else:
-                            logger.warning(
-                                f"Step 2 Smart Draft Resume: Черновик № {clicked_draft} не дошёл до Шага 12 — создаём новое заявление..."
-                            )
-                            self.clear_worker_draft_no(code)
-                            try:
-                                self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=60000)
-                                self.page.wait_for_timeout(1200)
-                            except Exception:
-                                pass
-                            continue
-
+                logger.info("Step 2: Drafts modal ('Выберите черновик / Уведомления') detected — clicking 'Начать заново' / 'Создать заявление' (never opening drafts)...")
                 try:
                     # Scroll internal modal scrollbars (ng-scrollbar, .ng-scroll-viewport, .conf-modal__body) to bottom first
                     self.page.evaluate(
@@ -2023,7 +1770,7 @@ class GosuslugiVksBot:
                                 }
                             });
                             const btn = Array.from(document.querySelectorAll('button')).find(
-                                b => (b.innerText || '').includes('Создать заявление') || (b.innerText || '').includes('Создать новое')
+                                b => (b.innerText || '').includes('Начать заново') || (b.innerText || '').includes('Создать заявление') || (b.innerText || '').includes('Создать новое')
                             ) || document.querySelector('lib-button.conf-modal__button button');
                             if (btn) {
                                 let p = btn.parentElement;
@@ -2042,7 +1789,7 @@ class GosuslugiVksBot:
                     pass
                 self.page.wait_for_timeout(250)
 
-                # Check if 'Создать заявление' is disabled/inactive OR if draft limit (10) blocks creation
+                # Check if 'Начать заново' / 'Создать заявление' is disabled/inactive OR if draft limit (10) blocks creation
                 btn_disabled = True
                 if create_btn.count() > 0 and create_btn.is_visible():
                     dis_attr = create_btn.get_attribute("disabled")
@@ -2050,71 +1797,27 @@ class GosuslugiVksBot:
                     btn_disabled = (dis_attr is not None) or ("disabled" in cls_attr) or (not create_btn.is_enabled())
 
                 if btn_disabled or draft_items.count() >= 10:
-                    protected_draft_nos = list(self.load_worker_drafts_map().values())
-                    deleted_via_js = False
-                    try:
-                        deleted_via_js = bool(
-                            self.page.evaluate(
-                                """(protectedNos) => {
-                                    const prot = new Set(protectedNos || []);
-                                    const drafts = Array.from(document.querySelectorAll('.draft-list .draft, epgu-constructor-draft-list .draft'));
-                                    // Pick oldest unprotected draft first, otherwise oldest draft overall
-                                    let targetDraft = null;
-                                    for (let i = drafts.length - 1; i >= 0; i--) {
-                                        const txt = (drafts[i].innerText || '');
-                                        const m = txt.match(/№\\s*(\\d{8,14})/);
-                                        const dNo = m ? m[1] : '';
-                                        if (!dNo || !prot.has(dNo)) {
-                                            targetDraft = drafts[i];
-                                            break;
-                                        }
-                                    }
-                                    if (!targetDraft && drafts.length > 0) {
-                                        targetDraft = drafts[drafts.length - 1];
-                                    }
-                                    if (!targetDraft) return false;
-                                    const delBtn = Array.from(targetDraft.querySelectorAll('button, a')).find(
-                                        b => (b.innerText || '').includes('Удалить')
-                                    );
-                                    if (delBtn) {
-                                        delBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                        delBtn.click();
-                                        return true;
-                                    }
-                                    return false;
-                                }""",
-                                protected_draft_nos,
-                            )
-                        )
-                    except Exception:
-                        deleted_via_js = False
-                    if deleted_via_js:
+                    del_btns = self.page.locator(
+                        ".draft-list .draft button.draft-link:has-text('Удалить'), "
+                        "epgu-constructor-draft-list button:has-text('Удалить'), "
+                        "button.draft-link:has-text('Удалить')"
+                    )
+                    if del_btns.count() > 0:
+                        oldest_del = del_btns.last
                         logger.info(
-                            f"Step 2: Deleted oldest non-protected draft (total drafts: {draft_items.count()}) so 'Создать заявление' becomes active..."
+                            f"Step 2: Deleting oldest draft (total drafts: {draft_items.count()}) so 'Начать заново' / 'Создать заявление' becomes active..."
                         )
+                        try:
+                            oldest_del.scroll_into_view_if_needed(timeout=1500)
+                        except Exception:
+                            pass
+                        try:
+                            oldest_del.click(timeout=2500)
+                        except Exception:
+                            oldest_del.evaluate("el => el.click()")
                         self.page.wait_for_timeout(800)
-                    else:
-                        del_btns = self.page.locator(
-                            ".draft-list .draft button.draft-link:has-text('Удалить'), "
-                            "epgu-constructor-draft-list button:has-text('Удалить'), "
-                            "button.draft-link:has-text('Удалить')"
-                        )
-                        if del_btns.count() > 0:
-                            oldest_del = del_btns.last
-                            logger.info(
-                                f"Step 2: Deleting oldest draft (total drafts: {draft_items.count()}) so 'Создать заявление' becomes active..."
-                            )
-                            try:
-                                oldest_del.scroll_into_view_if_needed(timeout=1500)
-                            except Exception:
-                                pass
-                            try:
-                                oldest_del.click(timeout=2500)
-                            except Exception:
-                                oldest_del.evaluate("el => el.click()")
-                            self.page.wait_for_timeout(800)
 
-                # Re-locate and click 'Создать заявление'
+                # Re-locate and click 'Начать заново' / 'Создать заявление'
                 if create_btn.count() > 0:
                     try:
                         create_btn.scroll_into_view_if_needed(timeout=1500)
@@ -2126,7 +1829,7 @@ class GosuslugiVksBot:
                         or (not create_btn.is_enabled())
                     )
                     if not disabled_now:
-                        logger.info("Step 2: Clicking active 'Создать заявление'...")
+                        logger.info("Step 2: Clicking active 'Начать заново' / 'Создать заявление'...")
                         create_click_attempts += 1
                         try:
                             create_btn.click(timeout=2500)
@@ -2139,7 +1842,7 @@ class GosuslugiVksBot:
                                     self.page.evaluate(
                                         """() => {
                                             const b = Array.from(document.querySelectorAll('button')).find(
-                                                el => (el.innerText || '').includes('Создать заявление') || (el.innerText || '').includes('Создать новое')
+                                                el => (el.innerText || '').includes('Начать заново') || (el.innerText || '').includes('Создать заявление') || (el.innerText || '').includes('Создать новое')
                                             );
                                             if (b) b.click();
                                         }"""
@@ -2625,14 +2328,8 @@ class GosuslugiVksBot:
 
         self.click_continue_strict("Шаг 11: Выплата зарплаты ВКС", 2000)
 
-        # Save the active draft number for this worker now that Steps 1-11 are completely filled,
-        # so if any hiccup happens in Steps 12-15 we can resume this exact draft ('Перейти в черновик')!
-        if self.current_form_order_id:
-            self.save_worker_draft_no(code, self.current_form_order_id)
-
         # Steps 12 -> 13 -> 14 -> 15: Resilient State-Machine Loop through MVD Division, Consents, and Final 'Отправить'
         gosuslugi_order_no = self.complete_mvd_and_submit_flow()
-        self.clear_worker_draft_no(code)
 
         # Check if Fast Mode ('PDF'siz Hızlı Gönderim' / SKIP_STEP16_PDF) is enabled
         skip_step16_pdf = bool(self.cfg.get("SKIP_STEP16_PDF"))
@@ -3603,18 +3300,13 @@ class GosuslugiVksBot:
                 continue
 
             # 5) If Gosuslugi's 'Попробовать ещё раз' modal reloaded the form and popped up the Drafts modal
-            #    ('Выберите черновик для редактирования' -> 'Перейти в черновик'), find the draft matching our active Zayavka No
-            #    (or the top draft) and click 'Перейти в черновик' to resume from where it stopped!
-            target_draft_no = self.current_form_order_id or self.get_saved_worker_draft_no(cur_sicil)
-            resumed_no = self._click_draft_by_order_no_js(target_draft_no, fallback_top=True)
-            if resumed_no:
-                if resumed_no.isdigit():
-                    self.current_form_order_id = resumed_no
-                logger.info(
-                    f"Step 15 Recovery: Восстановлен черновик № {resumed_no} из окна черновиков — продолжаем отправку с места остановки!"
+            #    ('Выберите черновик для редактирования'), NEVER open a draft ('Перейти в черновик');
+            #    break immediately so the retry loop starts a clean new form ('Начать заново') from Step 1!
+            if self.page.locator(".draft-list .draft:visible, button:has-text('Начать заново'):visible").count() > 0:
+                logger.warning(
+                    "Step 15: Обнаружено окно выбора черновиков — черновики не открываем, перезапускаем заполнение с начала ('Начать заново')!"
                 )
-                self._fast_forward_resumed_draft_to_step12()
-                continue
+                break
 
             self.page.wait_for_timeout(800)
 
