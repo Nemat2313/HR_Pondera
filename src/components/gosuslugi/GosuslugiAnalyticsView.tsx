@@ -77,7 +77,7 @@ interface HistoryStepItem {
   stepNo: number;
   application_no: string;
   status: string;
-  status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error';
+  status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' | 'mvd_not_found';
   detail: string;
   submitted_at: string;
   event_at: string;
@@ -98,7 +98,14 @@ interface MasterList3088Item {
   period_code?: string;
   application_no: string;
   gosuslugi_status: string;
-  status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' | 'not_sent';
+  status_key:
+    | 'service_rendered'
+    | 'registered_mvd'
+    | 'sent_pending'
+    | 'refused_mvd'
+    | 'error'
+    | 'mvd_not_found'
+    | 'not_sent';
   status_detail: string;
   refusalHint: string;
   refusalCategoryId?: string | null;
@@ -147,7 +154,13 @@ interface EnrichedSubmission {
   isRegisteredMvd: boolean;
   isServiceRendered?: boolean;
   isRefusedMvd?: boolean;
-  gosuslugiStatusKey?: 'service_rendered' | 'registered_mvd' | 'refused_mvd' | 'sent_pending' | 'error';
+  gosuslugiStatusKey?:
+    | 'service_rendered'
+    | 'registered_mvd'
+    | 'refused_mvd'
+    | 'sent_pending'
+    | 'error'
+    | 'mvd_not_found';
   refusalHint?: string | null;
   refusalCategoryId?: string | null;
   refusalCategoryTitle?: string | null;
@@ -172,6 +185,7 @@ interface AnalyticsResponse {
     totalRefusedMvd?: number;
     totalSentPendingStatus?: number;
     totalErrors: number;
+    totalMvdNotFound?: number;
     remainingTarget: number;
     overallCompletionPct: number;
     successRatePct: number;
@@ -221,6 +235,7 @@ export default function GosuslugiAnalyticsView() {
     | 'sent_pending'
     | 'refused_mvd'
     | 'error'
+    | 'mvd_not_found'
     | 'not_sent'
     | 'has_pdf'
     | 'no_pdf'
@@ -317,6 +332,7 @@ export default function GosuslugiAnalyticsView() {
     let pending = 0;
     let refused = 0;
     let error = 0;
+    let mvdNotFound = 0;
     let notSent = 0;
     let hasPdf = 0;
     let noPdf = 0;
@@ -327,10 +343,11 @@ export default function GosuslugiAnalyticsView() {
       else if (m.status_key === 'sent_pending') pending++;
       else if (m.status_key === 'refused_mvd') refused++;
       else if (m.status_key === 'error') error++;
+      else if (m.status_key === 'mvd_not_found') mvdNotFound++;
       else notSent++;
 
       if (m.hasPdf) hasPdf++;
-      else if (m.status_key !== 'not_sent' && m.status_key !== 'error') noPdf++;
+      else if (m.status_key !== 'not_sent' && m.status_key !== 'error' && m.status_key !== 'mvd_not_found') noPdf++;
 
       if (m.had_previous_failure || m.attempt_count > 1 || (m.history && m.history.length > 1)) {
         withHistory++;
@@ -343,6 +360,7 @@ export default function GosuslugiAnalyticsView() {
       pending,
       refused,
       error,
+      mvdNotFound,
       notSent,
       hasPdf,
       noPdf,
@@ -361,11 +379,12 @@ export default function GosuslugiAnalyticsView() {
       if (masterStatusFilter === 'sent_pending' && item.status_key !== 'sent_pending') return false;
       if (masterStatusFilter === 'refused_mvd' && item.status_key !== 'refused_mvd') return false;
       if (masterStatusFilter === 'error' && item.status_key !== 'error') return false;
+      if (masterStatusFilter === 'mvd_not_found' && item.status_key !== 'mvd_not_found') return false;
       if (masterStatusFilter === 'not_sent' && item.status_key !== 'not_sent') return false;
       if (masterStatusFilter === 'has_pdf' && !item.hasPdf) return false;
       if (
         masterStatusFilter === 'no_pdf' &&
-        (item.hasPdf || item.status_key === 'not_sent' || item.status_key === 'error')
+        (item.hasPdf || item.status_key === 'not_sent' || item.status_key === 'error' || item.status_key === 'mvd_not_found')
       ) {
         return false;
       }
@@ -502,6 +521,8 @@ export default function GosuslugiAnalyticsView() {
           ? 'МВД Red (Услуга отказана)'
           : item.status_key === 'error'
           ? 'Hatalı (Ошибка)'
+          : item.status_key === 'mvd_not_found'
+          ? "МВД'de Bulunamadı (Данные не найдены в базе МВД)"
           : 'Henüz Gönderilmedi (Kuyrukta)',
       'Hata / Red Kategorisi': item.refusalCategoryTitle || item.errorCategoryTitle || '-',
       'Gosuslugi Gönderildiği Vakit (MSK)': item.submitted_at || '-',
@@ -829,6 +850,7 @@ export default function GosuslugiAnalyticsView() {
     totalRefusedMvd: 0,
     totalSentPendingStatus: 0,
     totalErrors: 0,
+    totalMvdNotFound: 0,
     remainingTarget: 0,
     overallCompletionPct: 0,
     successRatePct: 0,
@@ -900,6 +922,17 @@ export default function GosuslugiAnalyticsView() {
       pct: Math.round((s.totalErrors / totalVksCount) * 100),
       filterStatus: 'error' as const,
       actionType: 'error_template' as const,
+    },
+    {
+      id: 'mvd_not_found',
+      label: "МВД'de Bulunamadı (Данные не найдены в базе МВД)",
+      shortLabel: 'МВД Yok',
+      value: s.totalMvdNotFound ?? masterSummaryCounts.mvdNotFound ?? 0,
+      color: '#d97706', // amber-600
+      dotClass: 'bg-amber-600',
+      pct: Math.round(((s.totalMvdNotFound ?? masterSummaryCounts.mvdNotFound ?? 0) / totalVksCount) * 100),
+      filterStatus: 'mvd_not_found' as const,
+      actionType: 'excel_mvd_not_found' as const,
     },
     {
       id: 'not_sent',
@@ -1228,6 +1261,7 @@ export default function GosuslugiAnalyticsView() {
                       sentPending={s.totalSentPendingStatus ?? 0}
                       refusedMvd={s.totalRefusedMvd ?? 0}
                       errors={s.totalErrors ?? 0}
+                      mvdNotFound={s.totalMvdNotFound ?? masterSummaryCounts.mvdNotFound ?? 0}
                       notSent={masterSummaryCounts.notSent ?? 0}
                       totalSent={s.totalSent ?? 0}
                       successRatePct={s.successRatePct ?? 99}
@@ -1332,6 +1366,34 @@ export default function GosuslugiAnalyticsView() {
                                   className="px-2 py-1 rounded-lg text-[11px] font-normal bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 flex items-center gap-1 cursor-pointer"
                                 >
                                   Analiz <ArrowRight className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+
+                            {row.actionType === 'excel_mvd_not_found' && (
+                              <div className="flex items-center gap-1.5">
+                                {row.value > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const list = (data?.masterList3088 || []).filter(
+                                        (m) => m.status_key === 'mvd_not_found'
+                                      );
+                                      exportMasterListToExcel(list, 'Pondera_VKS_MVD_Bulunamadi_47');
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-normal bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+                                    title="Adım 9'da Данные не найдены в базе МВД uyarısı veren kayıtları Excel olarak indir"
+                                  >
+                                    <Download className="w-3 h-3 text-amber-600" />
+                                    Excel İndir
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => jumpToMasterListWithFilter({ status: 'mvd_not_found' })}
+                                  className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 flex items-center gap-1 cursor-pointer"
+                                >
+                                  Listele <ArrowRight className="w-3 h-3" />
                                 </button>
                               </div>
                             )}
@@ -1602,6 +1664,7 @@ export default function GosuslugiAnalyticsView() {
                   <option value="sent_pending">📤 Отправлено - Bekleyen ({masterSummaryCounts.pending})</option>
                   <option value="refused_mvd">🚫 Услуга отказана - Red ({masterSummaryCounts.refused})</option>
                   <option value="error">❌ Ошибка - Hatalı ({masterSummaryCounts.error})</option>
+                  <option value="mvd_not_found">⚠️ Данные не найдены в базе МВД ({masterSummaryCounts.mvdNotFound})</option>
                   <option value="not_sent">⏳ Henüz Gönderilmedi ({masterSummaryCounts.notSent})</option>
                   <option value="has_pdf">📄 PDF İndirilen ({masterSummaryCounts.hasPdf})</option>
                   <option value="no_pdf">⚡ PDF Bekleyen ({masterSummaryCounts.noPdf})</option>
@@ -2016,6 +2079,15 @@ export default function GosuslugiAnalyticsView() {
                                   ❌ {item.errorStepLabel || 'Ошибка'}
                                 </span>
                                 <div className="text-[10.5px] font-mono text-rose-700 dark:text-rose-300 line-clamp-2">
+                                  {item.gosuslugi_status}
+                                </div>
+                              </div>
+                            ) : item.status_key === 'mvd_not_found' ? (
+                              <div className="space-y-0.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-[11px] font-bold">
+                                  ⚠️ МВД&apos;de Bulunamadı (Adım 9)
+                                </span>
+                                <div className="text-[10.5px] font-mono text-amber-700 dark:text-amber-300 line-clamp-2">
                                   {item.gosuslugi_status}
                                 </div>
                               </div>

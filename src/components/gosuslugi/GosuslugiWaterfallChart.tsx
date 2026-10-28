@@ -16,17 +16,18 @@ import {
 
 export interface GosuslugiWaterfallChartProps {
   total: number; // 3.088
-  serviceRendered: number; // 2.590
-  inProgress: number; // 311 (registered: 84 + sentPending: 227)
-  registeredMvd?: number; // 84
-  sentPending?: number; // 227
-  refusedMvd: number; // 59
-  errors: number; // 45
-  notSent: number; // 83
-  totalSent: number; // 2.960
-  successRatePct?: number; // 99
-  totalPdf?: number; // 1.991
-  totalNoPdf?: number; // 969
+  serviceRendered: number; // 2.892
+  inProgress: number; // 70 (registered + sentPending)
+  registeredMvd?: number;
+  sentPending?: number;
+  refusedMvd: number; // 11
+  errors: number; // 30
+  mvdNotFound?: number; // 47 (Данные не найдены в базе МВД)
+  notSent: number; // 38
+  totalSent: number;
+  successRatePct?: number;
+  totalPdf?: number;
+  totalNoPdf?: number;
   onSelectStage?: (stageId: string) => void;
 }
 
@@ -34,10 +35,11 @@ export default function GosuslugiWaterfallChart({
   total,
   serviceRendered,
   inProgress,
-  registeredMvd = 84,
-  sentPending = 227,
+  registeredMvd = 68,
+  sentPending = 2,
   refusedMvd,
   errors,
+  mvdNotFound = 0,
   notSent,
   totalSent,
   successRatePct = 99,
@@ -52,9 +54,10 @@ export default function GosuslugiWaterfallChart({
   const safeTotal = total || 3088;
   const renderedPct = Math.round((serviceRendered / safeTotal) * 100);
   const inProgressPct = Math.round((inProgress / safeTotal) * 100);
-  const refusedPct = Math.max(1, Math.round((refusedMvd / safeTotal) * 100));
-  const errorsPct = Math.max(1, Math.round((errors / safeTotal) * 100));
-  const notSentPct = Math.round((notSent / safeTotal) * 100);
+  const refusedPct = refusedMvd > 0 ? Math.max(1, Math.round((refusedMvd / safeTotal) * 100)) : 0;
+  const errorsPct = errors > 0 ? Math.max(1, Math.round((errors / safeTotal) * 100)) : 0;
+  const mvdNotFoundPct = mvdNotFound > 0 ? Math.max(1, Math.round((mvdNotFound / safeTotal) * 100)) : 0;
+  const notSentPct = notSent > 0 ? Math.max(1, Math.round((notSent / safeTotal) * 100)) : 0;
 
   // Stages breakdown for the Waterfall
   const stages = [
@@ -104,7 +107,7 @@ export default function GosuslugiWaterfallChart({
       badgeClass: 'bg-sky-50 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300 border-sky-300',
       icon: Clock,
       description: `Portaldaki Aktif Süreç: ${inProgress.toLocaleString('tr-TR')} kişi (%${inProgressPct}) — ${registeredMvd} МВД Kaydı + ${sentPending} Yanıt Bekleyen`,
-      filterKey: 'sent_pending',
+      filterKey: 'registered_mvd',
     },
     {
       id: 'refused_mvd',
@@ -139,6 +142,22 @@ export default function GosuslugiWaterfallChart({
       filterKey: 'error',
     },
     {
+      id: 'mvd_not_found',
+      label: "МВД'de Yok",
+      shortLabel: 'MVD Yok',
+      subtext: 'Adım 9 Uyarı',
+      count: mvdNotFound,
+      displayCount: `-${mvdNotFound.toLocaleString('tr-TR')}`,
+      pct: mvdNotFoundPct,
+      type: 'deduction' as const,
+      color: '#f59e0b', // amber-500
+      bgClass: 'bg-amber-500',
+      badgeClass: 'bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-300',
+      icon: AlertTriangle,
+      description: `Adım 9 МВД Veritabanında Bulunamadı (Данные не найдены в базе МВД — Gönderilmedi): ${mvdNotFound.toLocaleString('tr-TR')} kişi (%${mvdNotFoundPct})`,
+      filterKey: 'mvd_not_found',
+    },
+    {
       id: 'not_sent',
       label: 'Kuyrukta',
       shortLabel: 'Kuyrukta',
@@ -156,17 +175,17 @@ export default function GosuslugiWaterfallChart({
     },
   ];
 
-  // SVG Scaled Coordinates for Vertical Waterfall
-  // Fixed plot: width 440, height 230
+  // SVG Scaled Coordinates for Vertical Waterfall (7 columns)
+  // Fixed plot: width 436, height 226
   // Baseline y = 185, top y = 25 (height 160)
-  // Stepped heights with visual minimums so small percentages remain visible and distinct
   const vBars = [
-    { ...stages[0], x: 18, width: 48, topY: 25, bottomY: 185, height: 160 },
-    { ...stages[1], x: 88, width: 48, topY: 25, bottomY: 125, height: 100 },
-    { ...stages[2], x: 158, width: 48, topY: 125, bottomY: 147, height: 22 },
-    { ...stages[3], x: 228, width: 48, topY: 147, bottomY: 161, height: 14 },
-    { ...stages[4], x: 298, width: 48, topY: 161, bottomY: 173, height: 12 },
-    { ...stages[5], x: 368, width: 48, topY: 173, bottomY: 185, height: 12 },
+    { ...stages[0], x: 14, width: 41, topY: 25, bottomY: 185, height: 160 },
+    { ...stages[1], x: 73, width: 41, topY: 25, bottomY: 117, height: 92 },
+    { ...stages[2], x: 132, width: 41, topY: 117, bottomY: 136, height: 19 },
+    { ...stages[3], x: 191, width: 41, topY: 136, bottomY: 149, height: 13 },
+    { ...stages[4], x: 250, width: 41, topY: 149, bottomY: 161, height: 12 },
+    { ...stages[5], x: 309, width: 41, topY: 161, bottomY: 173, height: 12 },
+    { ...stages[6], x: 368, width: 41, topY: 173, bottomY: 185, height: 12 },
   ];
 
   return (
@@ -238,61 +257,23 @@ export default function GosuslugiWaterfallChart({
             />
 
             {/* Connecting Dashed Bridge Lines between steps */}
-            {/* Line 0->1: Toplam (top=25) to Onaylanan (top=25) */}
-            <line
-              x1="66"
-              y1="25"
-              x2="88"
-              y2="25"
-              stroke="#94a3b8"
-              strokeWidth="1.25"
-              strokeDasharray="3 3"
-              className="opacity-70 dark:opacity-40"
-            />
-            {/* Line 1->2: Onaylanan bottom (125) to Süreçte top (125) */}
-            <line
-              x1="136"
-              y1="125"
-              x2="158"
-              y2="125"
-              stroke="#94a3b8"
-              strokeWidth="1.25"
-              strokeDasharray="3 3"
-              className="opacity-70 dark:opacity-40"
-            />
-            {/* Line 2->3: Süreçte bottom (147) to Red top (147) */}
-            <line
-              x1="206"
-              y1="147"
-              x2="228"
-              y2="147"
-              stroke="#94a3b8"
-              strokeWidth="1.25"
-              strokeDasharray="3 3"
-              className="opacity-70 dark:opacity-40"
-            />
-            {/* Line 3->4: Red bottom (161) to Hata top (161) */}
-            <line
-              x1="276"
-              y1="161"
-              x2="298"
-              y2="161"
-              stroke="#94a3b8"
-              strokeWidth="1.25"
-              strokeDasharray="3 3"
-              className="opacity-70 dark:opacity-40"
-            />
-            {/* Line 4->5: Hata bottom (173) to Kuyrukta top (173) */}
-            <line
-              x1="346"
-              y1="173"
-              x2="368"
-              y2="173"
-              stroke="#94a3b8"
-              strokeWidth="1.25"
-              strokeDasharray="3 3"
-              className="opacity-70 dark:opacity-40"
-            />
+            {vBars.slice(0, -1).map((bar, idx) => {
+              const nextBar = vBars[idx + 1];
+              const bridgeY = idx === 0 ? bar.topY : bar.bottomY;
+              return (
+                <line
+                  key={`bridge-${bar.id}`}
+                  x1={bar.x + bar.width}
+                  y1={bridgeY}
+                  x2={nextBar.x}
+                  y2={bridgeY}
+                  stroke="#94a3b8"
+                  strokeWidth="1.25"
+                  strokeDasharray="3 3"
+                  className="opacity-70 dark:opacity-40"
+                />
+              );
+            })}
 
             {/* Stepped Floating Waterfall Bars */}
             {vBars.map((bar, idx) => {

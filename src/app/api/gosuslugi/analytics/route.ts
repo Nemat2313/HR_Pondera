@@ -544,7 +544,7 @@ export async function GET(request: Request) {
     type RawHistoryStep = {
       application_no: string;
       status: string;
-      status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error';
+      status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' | 'mvd_not_found';
       detail: string;
       submitted_at: string;
       event_at: string;
@@ -553,8 +553,9 @@ export async function GET(request: Request) {
     const rawHistoryBySicil: Record<string, RawHistoryStep[]> = {};
     const classifyStatusKey = (
       st: string
-    ): 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' => {
+    ): 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' | 'mvd_not_found' => {
       if (/^ошибк/i.test(st)) return 'error';
+      if (/не найден[ыо]?\s+в\s+базе\s+мвд/i.test(st)) return 'mvd_not_found';
       if (/отказан/i.test(st)) return 'refused_mvd';
       if (/оказан|исполнен/i.test(st)) return 'service_rendered';
       if (/зарегистрирован|принят|промежуточн/i.test(st)) return 'registered_mvd';
@@ -746,7 +747,7 @@ export async function GET(request: Request) {
         stepNo: number;
         application_no: string;
         status: string;
-        status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error';
+        status_key: 'service_rendered' | 'registered_mvd' | 'sent_pending' | 'refused_mvd' | 'error' | 'mvd_not_found';
         detail: string;
         submitted_at: string;
         event_at: string;
@@ -807,6 +808,7 @@ export async function GET(request: Request) {
     let totalRefusedMvd = 0;
     let totalSentPendingStatus = 0;
     let totalErrors = 0;
+    let totalMvdNotFound = 0;
 
     let last15mSent = 0;
     let last15mErrors = 0;
@@ -890,10 +892,18 @@ export async function GET(request: Request) {
       const isServiceRendered = !isError && !isRefusedMvd && /оказан|исполнен/i.test(rawStatus);
       const isRegisteredOnly =
         !isError && !isRefusedMvd && !isServiceRendered && /зарегистрирован|принят|промежуточн/i.test(rawStatus);
+      const isMvdNotFound =
+        !isError &&
+        !isRefusedMvd &&
+        !isServiceRendered &&
+        !isRegisteredOnly &&
+        !appNo &&
+        /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(rawStatus);
       const hasPdf = Boolean(pdf);
       const isRegisteredMvd = isServiceRendered || isRegisteredOnly;
       const isSent =
         !isError &&
+        !isMvdNotFound &&
         (Boolean(appNo) ||
           hasPdf ||
           isRegisteredMvd ||
@@ -901,8 +911,15 @@ export async function GET(request: Request) {
           /отправлен|промежуточн|обработк|PDF не скачан/i.test(rawStatus));
       const isSentPendingStatus = isSent && !isServiceRendered && !isRegisteredOnly && !isRefusedMvd;
 
-      let gosuslugiStatusKey: 'service_rendered' | 'registered_mvd' | 'refused_mvd' | 'sent_pending' | 'error' = 'sent_pending';
+      let gosuslugiStatusKey:
+        | 'service_rendered'
+        | 'registered_mvd'
+        | 'refused_mvd'
+        | 'sent_pending'
+        | 'error'
+        | 'mvd_not_found' = 'sent_pending';
       if (isError) gosuslugiStatusKey = 'error';
+      else if (isMvdNotFound) gosuslugiStatusKey = 'mvd_not_found';
       else if (isRefusedMvd) gosuslugiStatusKey = 'refused_mvd';
       else if (isServiceRendered) gosuslugiStatusKey = 'service_rendered';
       else if (isRegisteredOnly) gosuslugiStatusKey = 'registered_mvd';
@@ -1007,6 +1024,8 @@ export async function GET(request: Request) {
       if (isError) {
         totalErrors++;
         errorCat = classifyGosuslugiError(rawStatus, detail);
+      } else if (isMvdNotFound) {
+        totalMvdNotFound++;
       } else if (isSent) {
         totalSent++;
         if (hasPdf) totalPdf++;
@@ -1341,6 +1360,7 @@ export async function GET(request: Request) {
         totalRefusedMvd,
         totalSentPendingStatus,
         totalErrors,
+        totalMvdNotFound,
         remainingTarget,
         overallCompletionPct,
         successRatePct,
