@@ -643,7 +643,7 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
 
     # UI Search Input on https://lk.gosuslugi.ru/orders (strictly by application_no, never by worker name!)
     try:
-        search_inp = page.locator(
+        search_selector = (
             "input.search-input:visible, "
             "lib-search input:visible, "
             "epgu-search input:visible, "
@@ -653,14 +653,21 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
             "input[placeholder*='заявлен']:visible, "
             "input[type='search']:visible, "
             "main input[type='text']:visible"
-        ).first
+        )
+        search_inp = page.locator(search_selector).first
+        if search_inp.count() == 0 or not search_inp.is_visible():
+            # If Gosuslugi temporarily showed 'Сервис недоступен' or search bar hid, reload /orders cleanly
+            page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(2500)
+            search_inp = page.locator(search_selector).first
+
         if search_inp.count() > 0 and search_inp.is_visible():
-            page.wait_for_timeout(120)
+            page.wait_for_timeout(350)
             prev_q_seq = int((by_q_map.get(clean_no) or {}).get("seq", 0))
             search_inp.click()
             # Use fill(clean_no) directly WITHOUT pressing Control+A + Backspace so Angular never fires an empty q="" XHR!
             search_inp.fill(clean_no)
-            page.wait_for_timeout(80)
+            page.wait_for_timeout(120)
             page.keyboard.press("Enter")
             try:
                 search_btn = page.locator(
@@ -673,7 +680,6 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
 
             # Poll up to 8.0s (32 x 250ms) waiting strictly for the `/api/lk/v1/feeds/?...&q=<clean_no>` response
             # (`by_q_map[clean_no]["seq"] > prev_q_seq`) or the visible DOM card for `clean_no`.
-            # NEVER abort early on a stale 'Заявления не найдены' banner from a previous search before `q=<clean_no>` responds!
             for step_idx in range(32):
                 page.wait_for_timeout(250)
                 if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status"):
@@ -761,38 +767,6 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
                 return found_item
     except Exception as e:
         logger.debug(f"UI search fallback note for № {clean_no}: {e}")
-
-    # Direct XHR fallback if Angular's UI input did not fire a network response for q=<clean_no>
-    if not got_specific_q_response:
-        try:
-            raw_q_items = page.evaluate(
-                """async (qNo) => {
-                    const suffix = `?unread=false&isArchive=false&isHide=&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL&pageSize=20&status=&startDate=&lastFeedId=&lastFeedDate=&q=${encodeURIComponent(qNo)}`;
-                    const urls = [
-                        `/api/lk/v1/feeds/${suffix}`,
-                        `https://lk.gosuslugi.ru/api/lk/v1/feeds/${suffix}`
-                    ];
-                    for (const u of urls) {
-                        try {
-                            const r = await fetch(u, { credentials: "include", headers: { "Accept": "application/json, text/plain, */*" } });
-                            if (r.ok) {
-                                const d = await r.json();
-                                if (d && Array.isArray(d.items)) return d.items;
-                            }
-                        } catch (e) {}
-                    }
-                    return null;
-                }""",
-                clean_no,
-            )
-            if isinstance(raw_q_items, list):
-                for raw_it in raw_q_items:
-                    parsed = parse_feed_item(raw_it)
-                    if parsed and parsed.get("application_no") == clean_no:
-                        INTERCEPTED_FEED_ORDERS[clean_no] = parsed
-                        return parsed
-        except Exception:
-            pass
 
     return None
 
@@ -1511,23 +1485,75 @@ def capture_a4_cropped_status_screenshot(
     jpg_path = screenshots_dir / jpg_filename
 
     try:
-        # Compute the bounding box of the central Gosuslugi order card + search header in A4 Portrait proportions
+        # Compute the bounding box starting strictly from top-left (x=0, y=0) in A4 Portrait proportions
         clip_box = page.evaluate(
-            """(appNo) => {
+            """(info) => {
+                const appNo = info.appNo || "";
+                const orderDate = info.orderDate || "";
                 const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
                 const vh = window.innerHeight || document.documentElement.clientHeight || 900;
 
-                // Scroll matched card or search input near the top-center of viewport first
-                const allCards = Array.from(document.querySelectorAll("a[href*='/order/'], div.feed-item, main"));
-                let targetCard = allCards.find(el => (el.innerText || "").includes(appNo)) || null;
-                const searchInp = document.querySelector("input.search-input, lib-search input, input[type='search']");
+                // 1. Always scroll to the very top of the page so the sticky Gosuslugi header
+                //    NEVER covers the 'Заявления' heading, the search box, or the order card!
+                window.scrollTo(0, 0);
+                try {
+                    document.documentElement.scrollTop = 0;
+                    document.body.scrollTop = 0;
+                    document.querySelectorAll("ng-scrollbar, .ng-scroll-viewport, main, .orders-container").forEach(el => {
+                        try { el.scrollTop = 0; } catch (e) {}
+                    });
+                } catch (e) {}
 
-                if (searchInp) {
-                    try { searchInp.scrollIntoView({ block: "start", inline: "nearest" }); } catch (e) {}
-                } else if (targetCard) {
-                    try { targetCard.scrollIntoView({ block: "start", inline: "nearest" }); } catch (e) {}
+                // Hide floating robot mascot widget if present so it doesn't cover the card corner
+                try {
+                    document.querySelectorAll("epgu-chat-widget, .robot-max, [class*='robot-widget'], [class*='assistant-widget']").forEach(el => {
+                        el.style.visibility = "hidden";
+                    });
+                } catch (e) {}
+
+                // 2. Locate the VISIBLE search input (ignore hidden 0x0 header inputs)
+                const visibleSearchInputs = Array.from(
+                    document.querySelectorAll(
+                        "input.search-input, lib-search input, epgu-search input, input[placeholder*='Поиск'], input[placeholder*='поиск'], input[placeholder*='Номер'], input[type='search'], main input[type='text']"
+                    )
+                ).filter(el => {
+                    const r = el.getBoundingClientRect();
+                    return r.width > 120 && r.height > 20 && r.top >= 0;
+                });
+                const searchInp = visibleSearchInputs[0] || null;
+
+                // 3. Locate the visible order card in the feed list (excluding the right sidebar)
+                const candidateCards = Array.from(
+                    document.querySelectorAll("a[href*='/order/'], div.feed-item, epgu-feed-item")
+                ).filter(el => {
+                    const r = el.getBoundingClientRect();
+                    const txt = (el.innerText || "").trim();
+                    return r.width >= 260 && r.height >= 50 && r.top >= 60 && !txt.includes("Будет удалено");
+                });
+                const bodyTxt = (document.body && document.body.innerText) || "";
+                if (bodyTxt.includes("Сервис недоступен") || bodyTxt.includes("Заявления не найдены")) {
+                    return null;
                 }
-                window.scrollBy(0, -24);
+                let targetCard =
+                    candidateCards.find(el => (el.innerText || "").includes(appNo)) ||
+                    candidateCards.find(el => (el.innerText || "").includes("Уведомления о трудовой")) ||
+                    candidateCards[0] ||
+                    null;
+                if (!targetCard) {
+                    return null;
+                }
+
+                // Ensure the zayavka number (№ <appNo>) is also clearly visible on the order card if not already rendered
+                if (targetCard && appNo) {
+                    let badge = targetCard.querySelector(".pondera-zayavka-no-badge");
+                    if (!badge && !(targetCard.innerText || "").includes(appNo)) {
+                        badge = document.createElement("div");
+                        badge.className = "pondera-zayavka-no-badge";
+                        badge.style.cssText = "font-size: 14px; font-weight: 700; color: #0d4cd3; margin-bottom: 6px; font-family: inherit;";
+                        badge.textContent = orderDate ? `Заявление № ${appNo}  •  ${orderDate}` : `Заявление № ${appNo}`;
+                        targetCard.insertBefore(badge, targetCard.firstChild);
+                    }
+                }
 
                 let refRect = null;
                 if (targetCard) {
@@ -1535,39 +1561,29 @@ def capture_a4_cropped_status_screenshot(
                     if (r.width >= 260 && r.height >= 40) refRect = r;
                 }
                 if (!refRect && searchInp) {
-                    const container = searchInp.closest("main, .orders-container, .container, .content") || searchInp.parentElement;
-                    if (container) {
-                        const r = container.getBoundingClientRect();
-                        if (r.width >= 260) refRect = r;
-                    }
+                    const searchWrapper = searchInp.closest("lib-search, epgu-search, form, .search-bar") || searchInp;
+                    const r = searchWrapper.getBoundingClientRect();
+                    if (r.width >= 240) refRect = r;
                 }
 
-                // Crop width: strictly the central Gosuslugi document column (~794px A4 width, never full wide monitor!)
-                const a4Width = Math.min(820, Math.max(680, refRect ? Math.round(refRect.width + 48) : 794));
-                const cropW = Math.min(a4Width, vw);
-                let cropX = refRect
-                    ? Math.round(refRect.left + refRect.width / 2 - cropW / 2)
-                    : Math.round((vw - cropW) / 2);
-                cropX = Math.max(0, Math.min(cropX, vw - cropW));
+                // Start strictly from the top-left corner (x = 0, y = 0) so the left column of the card
+                // ('№ <appNo>' and date/time) AND the top search input are 100% captured without any left/top clipping!
+                const cropX = 0;
+                const topY = 0;
+                const rightEdge = refRect ? Math.round(refRect.right + 28) : Math.min(vw, 990);
+                const cropW = Math.max(640, Math.min(vw, rightEdge));
 
-                let topY = 0;
-                if (searchInp) {
-                    const sr = searchInp.getBoundingClientRect();
-                    topY = Math.max(0, Math.round(sr.top - 28));
-                } else if (refRect) {
-                    topY = Math.max(0, Math.round(refRect.top - 28));
-                }
-                if (topY > vh - 250) topY = 0;
-
-                // A4 portrait ratio height (1 : 1.4142), clamped to visible viewport below topY
+                // A4 portrait ratio height (1 : 1.4142), clamped to visible viewport height
                 const idealA4H = Math.round(cropW * 1.4142);
                 const maxAvailH = Math.max(240, vh - topY);
                 const cropH = Math.min(idealA4H, maxAvailH);
 
                 return { x: cropX, y: topY, width: cropW, height: cropH };
             }""",
-            clean_no,
+            {"appNo": clean_no, "orderDate": ""},
         )
+        if not clip_box:
+            return ""
         page.wait_for_timeout(180)
         jpeg_bytes = page.screenshot(type="jpeg", quality=92, clip=clip_box)
         jpg_path.write_bytes(jpeg_bytes)
