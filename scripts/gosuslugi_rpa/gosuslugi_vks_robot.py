@@ -399,6 +399,18 @@ class GosuslugiVksBot:
             pass
 
         try:
+            back_err_btn = self.page.locator(
+                "button:has-text('Вернуться назад'):visible, a:has-text('Вернуться назад'):visible"
+            )
+            if back_err_btn.count() > 0 and back_err_btn.first.is_visible():
+                logger.warning("Detected Gosuslugi gateway error screen ('Во время обработки запроса произошла ошибка'). Clicking 'Вернуться назад'...")
+                back_err_btn.first.click(timeout=2500)
+                self.page.wait_for_timeout(2000)
+                handled = True
+        except Exception:
+            pass
+
+        try:
             mvd_warning = self.page.locator(
                 "div:has-text('Данные не найдены в базе МВД'):visible, "
                 "p:has-text('МВД может отказать'):visible, "
@@ -1521,6 +1533,51 @@ class GosuslugiVksBot:
                     self.check_and_switch_if_mvd_service_down()
                     self.register_worker_error(row, str(retry_ex))
                     raise
+
+            # If attempt 1 failed due to a transient UI timeout, network switch (ERR_NETWORK_CHANGED), or Gosuslugi gateway hiccup,
+            # automatically recover the page and retry this worker once (form_attempt=2) before marking any error!
+            ex_str = str(ex)
+            is_transient_glitch = any(
+                tok in ex_str
+                for tok in (
+                    "Timeout",
+                    "net::ERR_",
+                    "ERR_NETWORK_CHANGED",
+                    "ERR_INTERNET_DISCONNECTED",
+                    "ERR_TIMED_OUT",
+                    "ERR_CONNECTION_RESET",
+                    "Во время обработки запроса произошла ошибка",
+                    "Не появился экран подтверждения",
+                )
+            )
+            if is_transient_glitch:
+                logger.warning(
+                    f"Временный сбой сети/интерфейса Госуслуг для {full_name} (Код: {code}): {ex_str[:180]}. "
+                    f"Ждём 4 сек и выполняем автоматический повтор (попытка 2/2)..."
+                )
+                self.page.wait_for_timeout(4000)
+                try:
+                    self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=60000)
+                except Exception:
+                    pass
+                try:
+                    return self._execute_vks_notification_attempt(
+                        row, full_name, code, last_name, first_name, middle_name, form_attempt=2
+                    )
+                except InsufficientPermissionsError:
+                    raise
+                except MvdDataNotFoundError:
+                    self.register_worker_mvd_not_found(row)
+                    raise
+                except MvdServiceDownError:
+                    raise
+                except Exception as retry2_ex:
+                    if is_browser_closed_error(retry2_ex):
+                        raise
+                    self.check_and_switch_if_mvd_service_down()
+                    self.register_worker_error(row, str(retry2_ex))
+                    raise
+
             self.register_worker_error(row, str(ex))
             raise
 
@@ -1614,10 +1671,57 @@ class GosuslugiVksBot:
             logger.info("Step 1: Gosuslugi 600585/1/form modal is already open in Chrome — skipping reload!")
         else:
             logger.info("Step 1: Navigating to Gosuslugi Service 600585/1/form...")
-            try:
-                self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=60000)
-            except Exception as e:
-                logger.warning(f"Navigation warning: {e}")
+            for nav_try in range(1, 5):
+                nav_err_str = ""
+                try:
+                    self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=60000)
+                except Exception as e:
+                    nav_err_str = str(e)
+                    logger.warning(f"Step 1 Navigation warning (attempt {nav_try}/4): {e}")
+
+                self.page.wait_for_timeout(800)
+                cur_u = self.page.url or ""
+                body_snip = ""
+                try:
+                    body_snip = self.page.locator("body").inner_text(timeout=2000)[:1200]
+                except Exception:
+                    pass
+
+                is_net_err = (
+                    "chrome-error://" in cur_u
+                    or "ERR_NETWORK_CHANGED" in nav_err_str
+                    or "ERR_INTERNET_DISCONNECTED" in nav_err_str
+                    or "ERR_TIMED_OUT" in nav_err_str
+                    or "ERR_CONNECTION_RESET" in nav_err_str
+                    or "Your connection was interrupted" in body_snip
+                    or "Нет подключения к интернету" in body_snip
+                )
+                is_waf_gateway_err = (
+                    "Во время обработки запроса произошла ошибка" in body_snip
+                    or "Доступ к сервисам электронного правительства" in body_snip
+                )
+
+                if not is_net_err and not is_waf_gateway_err:
+                    break
+
+                if nav_try < 4:
+                    wait_sec = 3 * nav_try
+                    logger.warning(
+                        f"Step 1: Обнаружен сетевой/шлюзовой экран Госуслуг ({'WAF/Шлюз' if is_waf_gateway_err else 'Сеть'}) — "
+                        f"ждём {wait_sec} сек и повторяем переход (попытка {nav_try + 1}/4)..."
+                    )
+                    self.page.wait_for_timeout(wait_sec * 1000)
+                else:
+                    if is_waf_gateway_err:
+                        raise MvdServiceDownError(
+                            "Шлюз Госуслуг временно вернул «Во время обработки запроса произошла ошибка» (проверьте VPN / российский IP). "
+                            "Сотрудник оставлен в очереди Ожидание (Pending)."
+                        )
+                    if is_net_err:
+                        raise MvdServiceDownError(
+                            "Сетевое подключение прервано (ERR_NETWORK_CHANGED / смена сети). "
+                            "Сотрудник оставлен в очереди Ожидание (Pending)."
+                        )
 
         self.check_and_handle_error_modal()
 
@@ -2638,6 +2742,9 @@ class GosuslugiVksBot:
         if state.get("hasByHand") or state.get("hasMvdHeading"):
             self.enable_background_focus_emulation()
             for mvd_try in range(1, 7):
+                if self._has_advanced_past_step12_js():
+                    logger.info("Step 12: Page already advanced past MVD department selection (Steps 13-15 visible) -> continuing!")
+                    return True
                 # First check if 'Продолжить' is already active (e.g. already selected)
                 if self._is_step12_continue_ready_js():
                     logger.info("Step 12: MVD department is selected and 'Продолжить' is active -> clicking 'Продолжить'...")
@@ -2734,6 +2841,10 @@ class GosuslugiVksBot:
                 # Poll every 250ms using ONLY non-blocking page.evaluate (zero Playwright locator timeouts!)
                 for tick in range(32):  # 32 * 250ms = 8s max per attempt
                     self.page.wait_for_timeout(250)
+
+                    if self._has_advanced_past_step12_js():
+                        logger.info("Step 12: Page advanced past MVD department selection -> continuing to Step 13/14!")
+                        return True
 
                     # 1. If 'Продолжить' is already enabled (either from our click or user manual selection), click it immediately!
                     if self._is_step12_continue_ready_js():
@@ -2889,6 +3000,9 @@ class GosuslugiVksBot:
                             pass
 
                 # Final check at end of attempt
+                if self._has_advanced_past_step12_js():
+                    logger.info("Step 12: Page advanced past MVD selection -> continuing!")
+                    return True
                 if self._is_step12_continue_ready_js():
                     logger.info("Step 12: Clicking 'Продолжить'...")
                     self._click_step12_continue_js()
@@ -2898,11 +3012,36 @@ class GosuslugiVksBot:
 
                 logger.warning(f"Step 12: MVD selection attempt {mvd_try}/6 did not enable 'Продолжить' yet...")
 
+            if self._has_advanced_past_step12_js():
+                return True
             err_msg = "Ошибка [Шаг 12: Подразделение МВД]: Не удалось выбрать подразделение МВД по фильтру «МОСКВЕ» после 6 попыток"
             self.register_worker_error(self.current_row or {}, err_msg)
             raise RuntimeError(err_msg)
 
         return False
+
+    def _has_advanced_past_step12_js(self) -> bool:
+        """Returns True if the form has already transitioned from Step 12 (Подразделение МВД) to Step 13/14/15."""
+        try:
+            return bool(
+                self.page.evaluate(
+                    """() => {
+                        const txt = (document.body && document.body.innerText) || '';
+                        if (
+                            txt.includes('Подтвердите, что получили согласие') ||
+                            txt.includes('Согласие на обработку персональных данных') ||
+                            txt.includes('Уведомление готово к отправке') ||
+                            txt.includes('Уведомление отправлено') ||
+                            txt.includes('Заявление отправлено')
+                        ) {
+                            return true;
+                        }
+                        return false;
+                    }"""
+                )
+            )
+        except Exception:
+            return False
 
     def _is_step12_continue_ready_js(self) -> bool:
         """Non-blocking JS check: returns True if the 'Продолжить' button on Step 12 is visible and enabled."""
@@ -2967,6 +3106,10 @@ class GosuslugiVksBot:
             )
             if coords and coords.get("x") and coords.get("y"):
                 self.page.mouse.click(float(coords["x"]), float(coords["y"]))
+                for _ in range(10):
+                    self.page.wait_for_timeout(250)
+                    if self._has_advanced_past_step12_js():
+                        break
                 return True
         except Exception:
             pass
@@ -3040,7 +3183,16 @@ class GosuslugiVksBot:
                 try:
                     confirm_btn.click(timeout=2500)
                 except Exception:
-                    confirm_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                    try:
+                        self.page.evaluate(
+                            """() => {
+                                const btns = Array.from(document.querySelectorAll('button, a'));
+                                const b = btns.find(el => (el.innerText || '').trim().includes('Подтвердить') && el.getBoundingClientRect().width > 20);
+                                if (b) b.click();
+                            }"""
+                        )
+                    except Exception:
+                        pass
                 self.page.wait_for_timeout(1200)
                 continue
 
@@ -3050,22 +3202,33 @@ class GosuslugiVksBot:
                 continue
 
             # 4) Check if 'Продолжить' button is visible (Step 14: Согласие на обработку ПДн or other intermediate steps)
-            cont_btn = self.page.locator("button:has-text('Продолжить'):visible").last
-            if cont_btn.count() > 0 and cont_btn.is_visible():
-                disabled_attr = cont_btn.get_attribute("disabled")
-                cls_attr = cont_btn.get_attribute("class") or ""
-                is_disabled = (disabled_attr is not None) or ("disabled" in cls_attr) or (not cont_btn.is_enabled())
-                if not is_disabled:
-                    h_txt = self.get_current_heading()
-                    logger.info(f"Steps 12/14: Clicking active 'Продолжить' on '{h_txt or 'MVD/Consent'}'...")
+            if self._is_step12_continue_ready_js():
+                h_txt = self.get_current_heading()
+                logger.info(f"Steps 12/14: Clicking active 'Продолжить' on '{h_txt or 'MVD/Consent'}'...")
+                self._click_step12_continue_js()
+                self.page.wait_for_timeout(1500)
+                self.check_and_stop_if_insufficient_permissions()
+                continue
+
+            # 5) If Gosuslugi's 'Попробовать ещё раз' modal reloaded the form and popped up the Drafts modal
+            #    ('Выберите черновик для редактирования' -> 'Перейти в черновик'), click the top 'Перейти в черновик'
+            #    to resume the just-completed draft at Step 15 and submit it!
+            try:
+                resume_draft_btn = self.page.locator(
+                    "button:has-text('Перейти в черновик'):visible, "
+                    "a:has-text('Перейти в черновик'):visible, "
+                    "span:has-text('Перейти в черновик'):visible"
+                ).first
+                if resume_draft_btn.count() > 0 and resume_draft_btn.is_visible():
+                    logger.info("Step 15 Recovery: Clicking top 'Перейти в черновик' after retry modal reload...")
                     try:
-                        cont_btn.focus()
-                        cont_btn.click(timeout=3000)
+                        resume_draft_btn.click(timeout=2500)
                     except Exception:
-                        cont_btn.evaluate("el => (el.closest('button') || el).click()")
-                    self.page.wait_for_timeout(1500)
-                    self.check_and_stop_if_insufficient_permissions()
+                        resume_draft_btn.evaluate("el => (el.closest('button, a') || el).click()")
+                    self.page.wait_for_timeout(2000)
                     continue
+            except Exception:
+                pass
 
             self.page.wait_for_timeout(800)
 
@@ -4787,6 +4950,7 @@ def main():
         success_count = 0
         fail_count = 0
         mvd_not_found_count = 0
+        consecutive_gateway_blocks = 0
         # Start the 30-minute timer from now so fast JSON status sync runs strictly every 30 minutes (never after the 1st worker)
         last_json_status_sync_ts = time.time()
 
@@ -4811,6 +4975,7 @@ def main():
 
             try:
                 ok = bot.fill_vks_notification(record)
+                consecutive_gateway_blocks = 0
                 if ok:
                     success_count += 1
                     if args.excel and row_idx is not None and os.path.exists(args.excel):
@@ -4820,6 +4985,7 @@ def main():
                     if args.excel and row_idx is not None and os.path.exists(args.excel):
                         mark_row_completed(args.excel, row_idx, False, "Submission failed")
             except MvdDataNotFoundError:
+                consecutive_gateway_blocks = 0
                 mvd_not_found_count += 1
                 logger.warning(
                     f"MVD_DATA_NOT_FOUND: Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} "
@@ -4833,6 +4999,14 @@ def main():
                     f"Сотрудник {record.get('Фамилия', '')} {record.get('Имя', '')} (Код: {record.get('Код', '')}) "
                     f"НЕ помечен ошибкой и останется в очереди Ожидание (Pending). Переходим к следующему сотруднику."
                 )
+                if "Шлюз Госуслуг" in str(mvd_ex) or "Сетевое подключение" in str(mvd_ex):
+                    consecutive_gateway_blocks += 1
+                    if consecutive_gateway_blocks >= 2:
+                        logger.error(
+                            "=== ОСТАНОВКА ПАКЕТА: Шлюз Госуслуг блокирует доступ («Во время обработки запроса произошла ошибка» — проверьте российский VPN / IP). "
+                            "Оставшиеся сотрудники сохранены в очереди Ожидание (Pending) без ошибок! ==="
+                        )
+                        break
             except InsufficientPermissionsError as perm_ex:
                 fail_count += 1
                 logger.error(f"Error processing {record.get('Фамилия')} {record.get('Имя')}: {perm_ex}")
