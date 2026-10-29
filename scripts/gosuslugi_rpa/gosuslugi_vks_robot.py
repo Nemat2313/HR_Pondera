@@ -2752,9 +2752,18 @@ class GosuslugiVksBot:
         # Case A: Pre-selected MVD screen ('Подразделение МВД, куда отправится уведомление') with #dic18 & 'Изменить' button
         if state.get("hasReadonly") or state.get("hasIzmenit"):
             cur_dept = str(state.get("readonlyVal") or "").strip()
-            if "МОСКВ" not in cur_dept.upper():
+            cur_dept_up = cur_dept.upper()
+            # IMPORTANT: For Moscow addresses (e.g. Merkez Ofis '121087, г. Москва, Береговой проезд, д. 5А, корп. 1'),
+            # Gosuslugi pre-selects the local district OVM ('ОТДЕЛ ПО ВОПРОСАМ МИГРАЦИИ ОМВД РОССИИ ПО РАЙОНУ ФИЛЕВСКИЙ ПАРК Г. МОСКВЫ'),
+            # which contains 'МОСКВ' ('Г. МОСКВЫ') but is NOT the VKS department ('ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ')!
+            is_exact_vks_moscow_dept = (
+                "ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ" in cur_dept_up
+                and "МОСКВ" in cur_dept_up
+                and "РАЙОН" not in cur_dept_up
+            )
+            if not is_exact_vks_moscow_dept:
                 logger.info(
-                    f"Step 12: Pre-selected MVD is '{cur_dept or 'non-Moscow'}' -> clicking 'Изменить' to select '{target_dept}'..."
+                    f"Step 12: Pre-selected MVD is '{cur_dept or 'non-VKS-Moscow'}' -> clicking 'Изменить' to select '{target_dept}'..."
                 )
                 try:
                     izm_box = self.page.evaluate(
@@ -2949,9 +2958,10 @@ class GosuslugiVksBot:
                                     if (!txt || txt.length > 240 || txt === 'ПРОДОЛЖИТЬ' || txt === 'ИЗМЕНИТЬ' || txt === 'НАЗАД') continue;
 
                                     const isMoscowMvd =
-                                        (txt.includes('ТРУДОВОЙ МИГРАЦИИ') && txt.includes('МОСКВ')) ||
-                                        txt.includes('УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ') ||
-                                        (txt.includes('ОТДЕЛ') && txt.includes('МВД') && txt.includes('МОСКВ'));
+                                        !txt.includes('РАЙОН') && (
+                                            (txt.includes('ТРУДОВОЙ МИГРАЦИИ') && txt.includes('МОСКВ')) ||
+                                            txt.includes('УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ')
+                                        );
 
                                     if (!isMoscowMvd) continue;
 
