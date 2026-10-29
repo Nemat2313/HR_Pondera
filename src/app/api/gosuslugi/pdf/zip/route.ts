@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getDb } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -126,6 +127,19 @@ function collectPdfFiles(
   const storageDir = getPdfStorageDir();
   if (!fs.existsSync(storageDir)) return [];
 
+  const activeAppBySicil = new Map<string, string>();
+  try {
+    const db = getDb();
+    const rows = db
+      .prepare('SELECT sicil_no, application_no FROM gosuslugi_submissions WHERE application_no != "" ORDER BY id ASC')
+      .all() as Array<{ sicil_no: string; application_no: string }>;
+    for (const r of rows) {
+      const s = String(r.sicil_no || '').trim();
+      const a = String(r.application_no || '').trim();
+      if (s && a) activeAppBySicil.set(s, a);
+    }
+  } catch {}
+
   const allEntries = fs
     .readdirSync(storageDir)
     .filter((f) => {
@@ -133,6 +147,19 @@ function collectPdfFiles(
       const isStatus = f.toUpperCase().includes('_STATUS_A4');
       if (pdfType === 'receipt' && isStatus) return false;
       if (pdfType === 'status' && !isStatus) return false;
+      const mSic = f.match(/^(\d{4,8})_/);
+      const mApp = f.match(/([789]\d{9})/);
+      if (mSic && mApp) {
+        const curActiveApp = activeAppBySicil.get(mSic[1]);
+        if (curActiveApp && curActiveApp !== mApp[1] && Number(curActiveApp) > Number(mApp[1])) {
+          if (isStatus) {
+            try {
+              fs.unlinkSync(path.join(storageDir, f));
+            } catch {}
+          }
+          return false;
+        }
+      }
       return true;
     })
     .sort((a, b) => a.localeCompare(b, 'ru'));

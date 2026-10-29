@@ -429,14 +429,27 @@ export async function GET(request: Request) {
       const errored = isErrorSubmission(sub);
       const refused = Boolean(sub && !errored && !mvdNotFound && /отказан/i.test(String(sub.gosuslugi_status || '')));
 
+      const doesPdfMatchApp = (fn: string, targetApp: string) => {
+        if (!fn) return false;
+        if (!targetApp) return true;
+        if (fn.includes(targetApp)) return true;
+        const m = fn.match(/([789]\d{9})/);
+        if (m && m[1] !== targetApp) return false;
+        return true;
+      };
       const appNoVal = String(sub?.application_no || '').trim();
       const rawPdfVal = String(sub?.pdf_filename || '').trim();
-      const cleanReceiptPdf = rawPdfVal.toUpperCase().includes('_STATUS_A4') ? '' : rawPdfVal;
+      const cleanReceiptPdf =
+        !rawPdfVal.toUpperCase().includes('_STATUS_A4') && doesPdfMatchApp(rawPdfVal, appNoVal)
+          ? rawPdfVal
+          : '';
       const cleanStatusPdf =
-        String(sub?.status_pdf_filename || '').trim() ||
-        (appNoVal && statusPdfByAppNo.get(appNoVal)) ||
-        (m.sicil_no && statusPdfBySicil.get(m.sicil_no)) ||
-        (rawPdfVal.toUpperCase().includes('_STATUS_A4') ? rawPdfVal : '');
+        [
+          String(sub?.status_pdf_filename || '').trim(),
+          appNoVal ? statusPdfByAppNo.get(appNoVal) || '' : '',
+          m.sicil_no ? statusPdfBySicil.get(m.sicil_no) || '' : '',
+          rawPdfVal.toUpperCase().includes('_STATUS_A4') ? rawPdfVal : '',
+        ].find((cand) => Boolean(cand) && doesPdfMatchApp(cand, appNoVal)) || '';
 
       const rowStatus: 'success' | 'error' | 'mvd_not_found' | 'pending' = sent
         ? 'success'

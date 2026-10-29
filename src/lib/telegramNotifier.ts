@@ -340,13 +340,24 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     const period = String(r.period_code || '').trim();
     const appNo = String(r.application_no || '').trim();
     const rawStatus = String(r.gosuslugi_status || '').trim();
+    const doesPdfMatchApp = (fn: string, targetApp: string) => {
+      if (!fn) return false;
+      if (!targetApp) return true;
+      if (fn.includes(targetApp)) return true;
+      const m = fn.match(/([789]\d{9})/);
+      if (m && m[1] !== targetApp) return false;
+      return true;
+    };
     const rawPdf = String(r.pdf_filename || '').trim();
-    const pdf = rawPdf.toUpperCase().includes('_STATUS_A4') ? '' : rawPdf;
+    const pdf =
+      !rawPdf.toUpperCase().includes('_STATUS_A4') && doesPdfMatchApp(rawPdf, appNo) ? rawPdf : '';
     const statusPdf =
-      String(r.status_pdf_filename || '').trim() ||
-      (appNo && statusPdfByAppNo.get(appNo)) ||
-      (sicil && statusPdfBySicil.get(sicil)) ||
-      (rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '');
+      [
+        String(r.status_pdf_filename || '').trim(),
+        appNo ? statusPdfByAppNo.get(appNo) || '' : '',
+        sicil ? statusPdfBySicil.get(sicil) || '' : '',
+        rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '',
+      ].find((cand) => Boolean(cand) && doesPdfMatchApp(cand, appNo)) || '';
     const submittedAt = String(r.submitted_at || '').trim();
     const key = `${sicil}::${period}`;
 

@@ -1772,10 +1772,17 @@ def capture_a4_cropped_status_screenshot(
                 });
 
                 let candidateCards = getCandidateCards();
+                const isCardMatchingAppNo = (el) => {
+                    const txt = (el.innerText || "");
+                    const href = (el.getAttribute && el.getAttribute("href")) || "";
+                    const m = txt.match(/№\\s*([789]\\d{9})/) || href.match(/\\/order\\/([789]\\d{9})/);
+                    if (m && appNo && m[1] !== appNo) return false;
+                    return true;
+                };
                 let targetCard =
                     candidateCards.find(el => (el.innerText || "").includes(appNo)) ||
-                    candidateCards.find(el => (el.innerText || "").includes("Уведомления о трудовой")) ||
-                    candidateCards[0] ||
+                    candidateCards.find(el => (el.innerText || "").includes("Уведомления о трудовой") && isCardMatchingAppNo(el)) ||
+                    candidateCards.find(el => isCardMatchingAppNo(el)) ||
                     null;
                 if (!targetCard) {
                     return null;
@@ -1879,6 +1886,20 @@ def capture_a4_cropped_status_screenshot(
             (downloads_dir / pdf_filename).write_bytes(pdf_bytes)
         except Exception:
             pass
+
+        # Clean up any older _STATUS_A4.pdf / .jpg files for this same sicil that belong to an older application_no
+        if clean_sicil:
+            for folder in (out_dir, downloads_dir):
+                try:
+                    for old_f in folder.glob(f"{clean_sicil}_*_STATUS_A4.*"):
+                        if old_f.name != pdf_filename and old_f.name != jpg_filename and clean_no not in old_f.name:
+                            try:
+                                old_f.unlink()
+                                logger.info(f"  -> Removed superseded status screenshot for Sicil {clean_sicil}: {old_f.name}")
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
 
         upload_pdf_to_central_server(
             pdf_path,
@@ -2551,9 +2572,27 @@ def main():
         except Exception as e:
             logger.warning(f"Could not read {args.json}: {e}")
 
+    def _sanitize_pdf_for_app(fn_val: str, target_app: str) -> str:
+        fn_s = str(fn_val or "").strip()
+        t_app = str(target_app or "").strip()
+        if not fn_s or not t_app:
+            return fn_s
+        m_app = re.search(r"(?:^|[_-])([789]\d{9})(?:[_.-]|$)", fn_s)
+        if m_app and m_app.group(1) != t_app:
+            return ""
+        return fn_s
+
     # Merge with the central 3,088-worker master list from https://hr.pondera.network (Central Server is authoritative!)
     if central_records:
-        by_sicil = {str(r.get("sicil") or r.get("sicil_no") or "").strip(): r for r in records if str(r.get("sicil") or r.get("sicil_no") or "").strip()}
+        by_sicil: Dict[str, Dict[str, Any]] = {}
+        for r in records:
+            rsic = str(r.get("sicil") or r.get("sicil_no") or "").strip()
+            rapp = str(r.get("application_no") or "").strip()
+            if rsic:
+                prev = by_sicil.get(rsic)
+                prev_app = str(prev.get("application_no") or "").strip() if prev else ""
+                if not prev or (rapp.isdigit() and (not prev_app.isdigit() or int(rapp) > int(prev_app))):
+                    by_sicil[rsic] = r
         for cr in central_records:
             csic = cr["sicil_no"]
             c_app = str(cr.get("application_no") or "").strip()
@@ -2569,21 +2608,40 @@ def main():
                     existing_r["submitted_at"],
                 ):
                     existing_r["application_no"] = c_app
-                    existing_r["pdf_filename"] = str(cr.get("pdf_filename") or "").strip()
+                    existing_r["pdf_filename"] = _sanitize_pdf_for_app(str(cr.get("pdf_filename") or ""), c_app)
+                    existing_r["status_pdf_filename"] = _sanitize_pdf_for_app(str(cr.get("status_pdf_filename") or ""), c_app)
                     existing_r["gosuslugi_status"] = str(cr.get("gosuslugi_status") or "").strip()
                 elif c_app:
                     if not ex_app or (c_app.isdigit() and ex_app.isdigit() and int(c_app) >= int(ex_app)):
                         existing_r["application_no"] = c_app
                         existing_r["gosuslugi_status"] = str(cr.get("gosuslugi_status") or existing_r.get("gosuslugi_status") or "").strip()
-                if not existing_r.get("pdf_filename") and cr.get("pdf_filename"):
-                    existing_r["pdf_filename"] = cr["pdf_filename"]
-                if cr.get("status_pdf_filename"):
-                    existing_r["status_pdf_filename"] = cr["status_pdf_filename"]
+                final_app = str(existing_r.get("application_no") or "").strip()
+                existing_r["pdf_filename"] = (
+                    _sanitize_pdf_for_app(existing_r.get("pdf_filename") or "", final_app)
+                    or _sanitize_pdf_for_app(cr.get("pdf_filename") or "", final_app)
+                )
+                existing_r["status_pdf_filename"] = (
+                    _sanitize_pdf_for_app(cr.get("status_pdf_filename") or "", final_app)
+                    or _sanitize_pdf_for_app(existing_r.get("status_pdf_filename") or "", final_app)
+                )
                 if not existing_r.get("worker_name") and cr.get("worker_name"):
                     existing_r["worker_name"] = cr["worker_name"]
             else:
                 records.append(cr)
                 by_sicil[csic] = cr
+        # Rebuild records strictly deduplicated by sicil_no so an older application_no is never left in the queue
+        deduped_records: List[Dict[str, Any]] = []
+        seen_sicils_set = set()
+        for r in records:
+            rsic = str(r.get("sicil") or r.get("sicil_no") or "").strip()
+            if rsic:
+                if rsic in seen_sicils_set:
+                    continue
+                seen_sicils_set.add(rsic)
+                deduped_records.append(by_sicil[rsic])
+            else:
+                deduped_records.append(r)
+        records = deduped_records
         logger.info(f"Synced with Central Master List: {len(records)} total VKS workers ready for multi-account status/PDF check.")
 
     # Also merge any PDFs found in ~/Downloads that have non-archived Gosuslugi application numbers
@@ -2601,12 +2659,46 @@ def main():
             r_app = str(r_sic.get("application_no") or "").strip()
             if is_superseded_or_archived_order(d_app, "", r_sub):
                 continue
-            if r_app and r_app.isdigit() and d_app.isdigit() and int(d_app) < int(r_app):
+            if r_app and r_app.isdigit() and d_app.isdigit() and int(d_app) <= int(r_app):
+                if int(d_app) == int(r_app) and not r_sic.get("pdf_filename") and d_item.get("pdf_filename"):
+                    r_sic["pdf_filename"] = _sanitize_pdf_for_app(d_item["pdf_filename"], r_app)
                 continue
+            # Discovered PDF in ~/Downloads has a strictly newer application_no for this sicil
+            r_sic["application_no"] = d_app
+            r_sic["pdf_filename"] = _sanitize_pdf_for_app(d_item.get("pdf_filename") or "", d_app)
+            r_sic["status_pdf_filename"] = _sanitize_pdf_for_app(r_sic.get("status_pdf_filename") or "", d_app)
+            existing_app_nos.add(d_app)
+            logger.info(f"APPLICATION_REGISTERED: {json.dumps(d_item, ensure_ascii=False)}")
+            continue
         if d_app not in existing_app_nos:
             records.append(d_item)
             existing_app_nos.add(d_app)
             logger.info(f"APPLICATION_REGISTERED: {json.dumps(d_item, ensure_ascii=False)}")
+
+    # Clean up any local _STATUS_A4.pdf/.jpg files in ~/Downloads/Gosuslugi_Status_A4 and ~/Downloads
+    # whose embedded application_no is older than the worker's latest application_no
+    try:
+        latest_app_by_sicil = {
+            str(r.get("sicil") or r.get("sicil_no") or "").strip(): str(r.get("application_no") or "").strip()
+            for r in records
+            if str(r.get("sicil") or r.get("sicil_no") or "").strip() and str(r.get("application_no") or "").strip().isdigit()
+        }
+        for folder in (Path.home() / "Downloads" / "Gosuslugi_Status_A4", Path.home() / "Downloads"):
+            if not folder.exists():
+                continue
+            for sc_f in folder.glob("*_STATUS_A4.*"):
+                m_sc = re.match(r"^(\d+)_([789]\d{9})_", sc_f.name)
+                if m_sc:
+                    sc_sic, sc_app = m_sc.group(1), m_sc.group(2)
+                    act_app = latest_app_by_sicil.get(sc_sic)
+                    if act_app and act_app.isdigit() and int(sc_app) < int(act_app):
+                        try:
+                            sc_f.unlink()
+                            logger.info(f"Removed outdated local status screenshot {sc_f.name} (active Заявка for {sc_sic} is № {act_app})")
+                        except Exception:
+                            pass
+    except Exception:
+        pass
 
     if args.limit > 0 and records:
         records = records[:args.limit]

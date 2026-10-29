@@ -25,6 +25,17 @@ function sanitizePdfFilename(raw: string): string {
   return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned}.pdf`;
 }
 
+function doesFileMatchAppNo(filename: string, appNo: string): boolean {
+  const f = String(filename || '').trim();
+  if (!f) return false;
+  const a = String(appNo || '').trim();
+  if (!a) return true;
+  if (f.includes(a)) return true;
+  const m = f.match(/([789]\d{9})/);
+  if (m && m[1] !== a) return false;
+  return true;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -45,8 +56,24 @@ export async function GET(request: Request) {
       }
     }
 
+    // If sicilNo is known but appNo was not passed, look up the worker's current active application_no
+    if (!appNo && sicilNo) {
+      try {
+        const db = getDb();
+        const curSub = db
+          .prepare('SELECT application_no FROM gosuslugi_submissions WHERE sicil_no = ? AND application_no != "" ORDER BY id DESC LIMIT 1')
+          .get(sicilNo) as { application_no?: string } | undefined;
+        if (curSub?.application_no) {
+          appNo = String(curSub.application_no).trim();
+        }
+      } catch {}
+    }
+
     const storageDir = getPdfStorageDir();
     let targetFile = rawFile ? sanitizePdfFilename(rawFile) : '';
+    if (targetFile && appNo && !doesFileMatchAppNo(targetFile, appNo)) {
+      targetFile = '';
+    }
 
     if (wantScreenshot && (!targetFile || !fs.existsSync(path.join(storageDir, targetFile))) && (appNo || sicilNo)) {
       try {
@@ -62,8 +89,9 @@ export async function GET(request: Request) {
             .prepare('SELECT status_pdf_filename FROM gosuslugi_submissions WHERE sicil_no = ? AND status_pdf_filename != "" ORDER BY id DESC LIMIT 1')
             .get(sicilNo);
         }
-        if (scRow?.status_pdf_filename && fs.existsSync(path.join(storageDir, sanitizePdfFilename(scRow.status_pdf_filename)))) {
-          targetFile = sanitizePdfFilename(scRow.status_pdf_filename);
+        const candSc = scRow?.status_pdf_filename ? sanitizePdfFilename(scRow.status_pdf_filename) : '';
+        if (candSc && doesFileMatchAppNo(candSc, appNo) && fs.existsSync(path.join(storageDir, candSc))) {
+          targetFile = candSc;
         }
       } catch {}
     }
@@ -73,6 +101,7 @@ export async function GET(request: Request) {
       const foundSc = allFiles.find(
         (f) =>
           f.toUpperCase().includes('_STATUS_A4.PDF') &&
+          doesFileMatchAppNo(f, appNo) &&
           ((appNo && f.includes(appNo)) || (sicilNo && f.startsWith(`${sicilNo}_`)))
       );
       if (foundSc) {
@@ -94,8 +123,9 @@ export async function GET(request: Request) {
             .prepare('SELECT pdf_filename FROM gosuslugi_submissions WHERE sicil_no = ? AND pdf_filename != "" ORDER BY id DESC LIMIT 1')
             .get(sicilNo);
         }
-        if (row?.pdf_filename) {
-          targetFile = sanitizePdfFilename(row.pdf_filename);
+        const candPdf = row?.pdf_filename ? sanitizePdfFilename(row.pdf_filename) : '';
+        if (candPdf && doesFileMatchAppNo(candPdf, appNo)) {
+          targetFile = candPdf;
         }
       } catch {
         // Ignore DB lookup fallback errors
@@ -109,6 +139,7 @@ export async function GET(request: Request) {
         (f) =>
           f.toLowerCase().endsWith('.pdf') &&
           !f.toUpperCase().includes('_STATUS_A4.PDF') &&
+          doesFileMatchAppNo(f, appNo) &&
           ((appNo && f.includes(appNo)) || (sicilNo && f.startsWith(`${sicilNo}_`)))
       );
       if (found) {
@@ -288,8 +319,6 @@ export async function POST(request: Request) {
       );
     }
 
-    fs.writeFileSync(fullPath, buffer);
-
     try {
       const db = getDb();
       try {
@@ -298,7 +327,7 @@ export async function POST(request: Request) {
       const nowStr = getMoscowNowIso();
       const isFinalOrAdvancedStatus = ['Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению'].includes(incomingStatus);
 
-      let isArchivedApp = false;
+      let isArchivedOrSupersededApp = false;
       if (applicationNo) {
         try {
           const archRow = db
@@ -307,11 +336,54 @@ export async function POST(request: Request) {
           const activeRow = db
             .prepare('SELECT id FROM gosuslugi_submissions WHERE application_no = ? LIMIT 1')
             .get(applicationNo);
-          if (archRow && !activeRow) isArchivedApp = true;
+          if (archRow && !activeRow) isArchivedOrSupersededApp = true;
+        } catch {}
+      }
+      if (sicilNo && applicationNo && /^\d+$/.test(applicationNo)) {
+        try {
+          const latestForSicil = db
+            .prepare('SELECT application_no FROM gosuslugi_submissions WHERE sicil_no = ? AND application_no != "" ORDER BY id DESC LIMIT 1')
+            .get(sicilNo) as { application_no?: string } | undefined;
+          const activeApp = String(latestForSicil?.application_no || '').trim();
+          if (activeApp && /^\d+$/.test(activeApp) && Number(activeApp) > Number(applicationNo)) {
+            isArchivedOrSupersededApp = true;
+          }
         } catch {}
       }
 
-      if (!isArchivedApp) {
+      if (isArchivedOrSupersededApp) {
+        try {
+          if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+        } catch {}
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+          message: 'Eski Заявка numarasına ait PDF atlandı.',
+        });
+      }
+
+      fs.writeFileSync(fullPath, buffer);
+
+      // Clean up any older _STATUS_A4.pdf files for the same sicilNo that belong to a superseded application_no
+      if (isScreenshot && sicilNo && applicationNo) {
+        try {
+          const existingFiles = fs.readdirSync(storageDir);
+          for (const ef of existingFiles) {
+            if (
+              ef !== safeFilename &&
+              ef.startsWith(`${sicilNo}_`) &&
+              ef.toUpperCase().includes('_STATUS_A4.PDF') &&
+              !ef.includes(applicationNo)
+            ) {
+              try {
+                fs.unlinkSync(path.join(storageDir, ef));
+              } catch {}
+            }
+          }
+        } catch {}
+      }
+
+      if (!isArchivedOrSupersededApp) {
         if (applicationNo) {
           db.prepare(
             `UPDATE gosuslugi_submissions

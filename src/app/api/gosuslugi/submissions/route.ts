@@ -444,7 +444,25 @@ export async function GET(request: Request) {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const rows = db
       .prepare(`SELECT * FROM gosuslugi_submissions ${whereClause} ORDER BY submitted_at DESC, id DESC`)
-      .all(...params);
+      .all(...params) as any[];
+
+    for (const r of rows) {
+      const appNo = String(r.application_no || '').trim();
+      const rawPdf = String(r.pdf_filename || '').trim();
+      const rawStPdf = String(r.status_pdf_filename || '').trim();
+      if (appNo && rawPdf) {
+        const m = rawPdf.match(/([789]\d{9})/);
+        if (m && m[1] !== appNo) {
+          r.pdf_filename = '';
+        }
+      }
+      if (appNo && rawStPdf) {
+        const m = rawStPdf.match(/([789]\d{9})/);
+        if (m && m[1] !== appNo) {
+          r.status_pdf_filename = '';
+        }
+      }
+    }
 
     const archivedRows = db
       .prepare(`SELECT DISTINCT application_no FROM gosuslugi_refused_archive WHERE application_no != ''`)
@@ -971,12 +989,17 @@ export async function POST(request: Request) {
             nowStr,
             existingRow.id
           );
-          const supStatusPdf = String(
+          const rawSupStatusPdf = String(
             item.status_pdf_filename ||
               item.statusPdfFilename ||
               (validNewPdf.toUpperCase().includes('_STATUS_A4') ? validNewPdf : '')
           ).trim();
-          if (supStatusPdf) {
+          const supStatusPdfAppMatch = rawSupStatusPdf.match(/([789]\d{9})/);
+          const supStatusPdf =
+            rawSupStatusPdf && (!appNo || !supStatusPdfAppMatch || supStatusPdfAppMatch[1] === appNo)
+              ? rawSupStatusPdf
+              : '';
+          if (supStatusPdf || (appNo && exAppNo && appNo !== exAppNo) || item.clear_pdf_filename) {
             try {
               db.prepare(`UPDATE gosuslugi_submissions SET status_pdf_filename = ? WHERE id = ?`).run(
                 supStatusPdf,
@@ -1043,6 +1066,11 @@ export async function POST(request: Request) {
             nowStr,
             existingRow.id
           );
+          try {
+            db.prepare(`UPDATE gosuslugi_submissions SET status_pdf_filename = '' WHERE id = ?`).run(
+              existingRow.id
+            );
+          } catch {}
           logHistoryIfChanged(
             sicil,
             workerName || existingRow.worker_name,
@@ -1081,11 +1109,18 @@ export async function POST(request: Request) {
         checkedAt,
         nowStr
       );
-      const incomingStatusPdf = String(
+      const rawIncomingStatusPdf = String(
         item.status_pdf_filename ||
           item.statusPdfFilename ||
           (pdfFilename.toUpperCase().includes('_STATUS_A4') ? pdfFilename : '')
       ).trim();
+      const targetRowAppNo = appNo || existingRow?.application_no || '';
+      const incScAppMatch = rawIncomingStatusPdf.match(/([789]\d{9})/);
+      const incomingStatusPdf =
+        rawIncomingStatusPdf &&
+        (!targetRowAppNo || !incScAppMatch || incScAppMatch[1] === targetRowAppNo)
+          ? rawIncomingStatusPdf
+          : '';
       if (incomingStatusPdf && sicil) {
         try {
           db.prepare(

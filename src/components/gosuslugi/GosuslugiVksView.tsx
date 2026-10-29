@@ -1061,6 +1061,16 @@ export default function GosuslugiVksView() {
     }, 5500);
   };
 
+  const sanitizePdfForAppNo = (filename?: string, appNo?: string): string => {
+    const fn = String(filename || '').trim();
+    if (!fn) return '';
+    const targetApp = String(appNo || '').trim();
+    if (!targetApp) return fn;
+    const m = fn.match(/(?:^|[_-])([789]\d{9})(?:[_.-]|$)/);
+    if (m && m[1] !== targetApp) return '';
+    return fn;
+  };
+
   const refreshSavedSubmissionsFromDb = async (): Promise<Record<string, GosuslugiSubmissionEntry>> => {
     try {
       const res = await fetch('/api/gosuslugi/submissions?type=VKS_SALARY');
@@ -1124,8 +1134,11 @@ export default function GosuslugiVksView() {
             const nextGosStatus = normalizeSentGosuslugiStatus(
               matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено'
             );
-            const nextPdf = matchedSub.pdf_filename || '';
-            const nextStatusPdf = matchedSub.status_pdf_filename || w.statusPdfFilename || '';
+            const nextPdf = sanitizePdfForAppNo(matchedSub.pdf_filename || '', nextAppNo);
+            const nextStatusPdf =
+              sanitizePdfForAppNo(matchedSub.status_pdf_filename, nextAppNo) ||
+              sanitizePdfForAppNo(w.statusPdfFilename, nextAppNo) ||
+              '';
             const alreadySent = isWorkerAlreadySentToGosuslugi({
               status: w.status === 'success' ? 'success' : undefined,
               applicationNo: nextAppNo,
@@ -1385,12 +1398,28 @@ export default function GosuslugiVksView() {
         (codeKey ? subsMap[codeKey] : undefined) ||
         (w.applicationNo ? subsMap[`app:${w.applicationNo}`] : undefined);
       const savedSub = doesSubMatchWorker(candidateSub, w) ? candidateSub : undefined;
-      const nextAppNo = w.applicationNo || savedSub?.application_no;
+      const wAppN = w.applicationNo && /^\d+$/.test(w.applicationNo) ? Number(w.applicationNo) : 0;
+      const sAppN =
+        savedSub?.application_no && /^\d+$/.test(savedSub.application_no)
+          ? Number(savedSub.application_no)
+          : 0;
+      const nextAppNo =
+        sAppN >= wAppN
+          ? savedSub?.application_no || w.applicationNo
+          : w.applicationNo || savedSub?.application_no;
       const nextGosStatus = normalizeSentGosuslugiStatus(
-        w.gosuslugiStatus || savedSub?.gosuslugi_status || (savedSub ? 'Отправлено' : '')
+        sAppN > wAppN
+          ? savedSub?.gosuslugi_status || 'Отправлено'
+          : w.gosuslugiStatus || savedSub?.gosuslugi_status || (savedSub ? 'Отправлено' : '')
       );
-      const nextPdf = w.pdfFilename || savedSub?.pdf_filename;
-      const nextStatusPdf = w.statusPdfFilename || savedSub?.status_pdf_filename;
+      const nextPdf =
+        sanitizePdfForAppNo(w.pdfFilename, nextAppNo) ||
+        sanitizePdfForAppNo(savedSub?.pdf_filename, nextAppNo) ||
+        undefined;
+      const nextStatusPdf =
+        sanitizePdfForAppNo(w.statusPdfFilename, nextAppNo) ||
+        sanitizePdfForAppNo(savedSub?.status_pdf_filename, nextAppNo) ||
+        undefined;
       const alreadySent = isWorkerAlreadySentToGosuslugi({
         status: w.status === 'success' ? 'success' : undefined,
         applicationNo: nextAppNo,
@@ -1418,7 +1447,11 @@ export default function GosuslugiVksView() {
               ? 'error'
               : w.status,
           }
-        : w;
+        : {
+            ...w,
+            pdfFilename: sanitizePdfForAppNo(w.pdfFilename, w.applicationNo) || undefined,
+            statusPdfFilename: sanitizePdfForAppNo(w.statusPdfFilename, w.applicationNo) || undefined,
+          };
 
       const v = validateVksWorkerRecord(enriched, lang === 'ru' ? 'ru' : 'tr');
       if (v.isValid) {
@@ -1578,8 +1611,14 @@ export default function GosuslugiVksView() {
                           ? matchedSub.gosuslugi_status || 'Отправлено'
                           : pickBetterGosuslugiStatus(w.gosuslugiStatus, matchedSub.gosuslugi_status) ||
                             (isErrored ? '' : 'Отправлено');
-                      const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
-                      const nextStatusPdf = matchedSub.status_pdf_filename || w.statusPdfFilename;
+                      const nextPdf =
+                        sanitizePdfForAppNo(matchedSub.pdf_filename, nextAppNo) ||
+                        sanitizePdfForAppNo(w.pdfFilename, nextAppNo) ||
+                        undefined;
+                      const nextStatusPdf =
+                        sanitizePdfForAppNo(matchedSub.status_pdf_filename, nextAppNo) ||
+                        sanitizePdfForAppNo(w.statusPdfFilename, nextAppNo) ||
+                        undefined;
                       const alreadySent = isWorkerAlreadySentToGosuslugi({
                         applicationNo: nextAppNo,
                         gosuslugiStatus: nextGosStatus,
@@ -3071,7 +3110,10 @@ export default function GosuslugiVksView() {
         return;
       }
 
-      // 1. First scan ~/Downloads on the bridge for any existing PDFs (<Sicil>_<AppNo>_... or <AppNo>_...)
+      // 0. Refresh saved submissions from central DB first so we always have the newest application_no
+      const freshSubs = await refreshSavedSubmissionsFromDb();
+
+      // 1. Scan ~/Downloads on the bridge for any existing PDFs (<Sicil>_<AppNo>_... or <AppNo>_...)
       let scannedList: GosuslugiSubmissionEntry[] = [];
       try {
         const scanRes = await fetch(`${activeBridgeUrl}/scan-pdfs`, { method: 'POST' });
@@ -3085,33 +3127,89 @@ export default function GosuslugiVksView() {
         // Ignore scan error
       }
 
-      // 2. Merge with workers that have applicationNo and savedSubmissions from DB
+      // 2. Merge with workers that have applicationNo and savedSubmissions from DB, deduplicating strictly by sicil_no
+      //    and ALWAYS choosing the highest integer application_no so an older application is never checked instead of the newest!
       const appMap = new Map<string, GosuslugiSubmissionEntry>();
-      for (const s of Object.values(savedSubmissions)) {
+      const putLatestBySicil = (entry: GosuslugiSubmissionEntry) => {
+        const sicilKey = String(entry.sicil_no || '').trim();
+        const appNoVal = String(entry.application_no || '').trim();
+        const mapKey = sicilKey ? `sicil:${sicilKey}` : appNoVal ? `app:${appNoVal}` : '';
+        if (!mapKey) return;
+        const existing = appMap.get(mapKey);
+        const exNum = existing?.application_no && /^\d+$/.test(existing.application_no) ? Number(existing.application_no) : 0;
+        const inNum = appNoVal && /^\d+$/.test(appNoVal) ? Number(appNoVal) : 0;
+        if (!existing || inNum > exNum || (inNum === exNum && !existing.application_no && appNoVal)) {
+          const bestApp = inNum >= exNum ? appNoVal || existing?.application_no || '' : existing?.application_no || appNoVal;
+          appMap.set(mapKey, {
+            ...(existing || {}),
+            ...entry,
+            application_no: bestApp,
+            pdf_filename:
+              sanitizePdfForAppNo(entry.pdf_filename, bestApp) ||
+              sanitizePdfForAppNo(existing?.pdf_filename, bestApp) ||
+              '',
+            status_pdf_filename:
+              sanitizePdfForAppNo(entry.status_pdf_filename, bestApp) ||
+              sanitizePdfForAppNo(existing?.status_pdf_filename, bestApp) ||
+              '',
+          });
+        } else if (inNum === exNum) {
+          const bestApp = existing.application_no || appNoVal;
+          appMap.set(mapKey, {
+            ...entry,
+            ...existing,
+            pdf_filename:
+              sanitizePdfForAppNo(existing.pdf_filename, bestApp) ||
+              sanitizePdfForAppNo(entry.pdf_filename, bestApp) ||
+              '',
+            status_pdf_filename:
+              sanitizePdfForAppNo(existing.status_pdf_filename, bestApp) ||
+              sanitizePdfForAppNo(entry.status_pdf_filename, bestApp) ||
+              '',
+          });
+        }
+      };
+
+      for (const s of Object.values(freshSubs)) {
         if (s.application_no) {
-          appMap.set(s.application_no, s);
+          putLatestBySicil(s);
         }
       }
       for (const s of scannedList) {
         if (s.application_no) {
-          appMap.set(s.application_no, { ...(appMap.get(s.application_no) || {}), ...s });
+          putLatestBySicil(s);
         }
       }
       for (const w of workers) {
-        const key = w.applicationNo || `sicil:${w.sicil || w.code || w.id}`;
+        const sicilVal = String(w.sicil || w.code || '').trim();
+        const dbSub = sicilVal ? freshSubs[sicilVal] : undefined;
+        const wNum = w.applicationNo && /^\d+$/.test(w.applicationNo) ? Number(w.applicationNo) : 0;
+        const dbNum = dbSub?.application_no && /^\d+$/.test(dbSub.application_no) ? Number(dbSub.application_no) : 0;
+        const bestAppNo = dbNum >= wNum ? dbSub?.application_no || w.applicationNo || '' : w.applicationNo || '';
+        const bestStatus =
+          dbNum > wNum
+            ? dbSub?.gosuslugi_status || 'Отправлено'
+            : w.gosuslugiStatus || dbSub?.gosuslugi_status || 'Отправлено';
         const fullWorkerName = [w.lastName, w.firstName, w.middleName]
           .filter((p) => p && p.trim().toLowerCase() !== 'нет')
           .join(' ')
           .trim();
-        appMap.set(key, {
-          sicil_no: w.sicil || w.code,
+        putLatestBySicil({
+          sicil_no: sicilVal,
           worker_name: fullWorkerName || `${w.lastName} ${w.firstName}`.trim(),
           citizenship: w.citizenship,
           notification_type: 'VKS_SALARY',
           period_code: periodCode,
-          application_no: w.applicationNo || '',
-          gosuslugi_status: w.gosuslugiStatus || 'Отправлено',
-          pdf_filename: w.pdfFilename || '',
+          application_no: bestAppNo,
+          gosuslugi_status: bestStatus,
+          pdf_filename:
+            sanitizePdfForAppNo(w.pdfFilename, bestAppNo) ||
+            sanitizePdfForAppNo(dbSub?.pdf_filename, bestAppNo) ||
+            '',
+          status_pdf_filename:
+            sanitizePdfForAppNo(w.statusPdfFilename, bestAppNo) ||
+            sanitizePdfForAppNo(dbSub?.status_pdf_filename, bestAppNo) ||
+            '',
         });
       }
 
@@ -3191,15 +3289,31 @@ export default function GosuslugiVksView() {
 
     setIsCheckingStatuses(true);
     try {
+      const freshSubs = await refreshSavedSubmissionsFromDb();
       const orderedRecords: GosuslugiSubmissionEntry[] = [];
       const seenAppNos = new Set<string>();
+      const seenSicils = new Set<string>();
 
       for (const w of workers) {
-        const appNo = String(w.applicationNo || '').trim();
+        const sicilVal = String(w.sicil || w.code || '').trim();
+        const dbSub = sicilVal ? freshSubs[sicilVal] : undefined;
+        const wNum = w.applicationNo && /^\d+$/.test(w.applicationNo) ? Number(w.applicationNo) : 0;
+        const dbNum = dbSub?.application_no && /^\d+$/.test(dbSub.application_no) ? Number(dbSub.application_no) : 0;
+        const appNo = String(
+          dbNum >= wNum ? dbSub?.application_no || w.applicationNo || '' : w.applicationNo || ''
+        ).trim();
         if (!appNo || !/^\d{8,14}$/.test(appNo)) continue;
-        const st = String(w.gosuslugiStatus || '').trim();
-        const stPdf = String(w.statusPdfFilename || '').trim();
-        const regPdf = String(w.pdfFilename || '').trim();
+        const st = String(
+          dbNum > wNum
+            ? dbSub?.gosuslugi_status || 'Отправлено'
+            : w.gosuslugiStatus || dbSub?.gosuslugi_status || ''
+        ).trim();
+        const stPdf =
+          sanitizePdfForAppNo(dbSub?.status_pdf_filename, appNo) ||
+          sanitizePdfForAppNo(w.statusPdfFilename, appNo);
+        const regPdf =
+          sanitizePdfForAppNo(dbSub?.pdf_filename, appNo) ||
+          sanitizePdfForAppNo(w.pdfFilename, appNo);
         const alreadyHasStatusSc =
           (stPdf.toUpperCase().includes('_STATUS_A4') && stPdf.includes(appNo)) ||
           (regPdf.toUpperCase().includes('_STATUS_A4') && regPdf.includes(appNo));
@@ -3218,8 +3332,9 @@ export default function GosuslugiVksView() {
         if (singleSearchScope === 'pending_only' && !captureStatusScreenshots && isFinalOrError) {
           continue;
         }
-        if (seenAppNos.has(appNo)) continue;
+        if (seenAppNos.has(appNo) || (sicilVal && seenSicils.has(sicilVal))) continue;
         seenAppNos.add(appNo);
+        if (sicilVal) seenSicils.add(sicilVal);
 
         const fullWorkerName = [w.lastName, w.firstName, w.middleName]
           .filter((p) => p && p.trim().toLowerCase() !== 'нет')
@@ -3227,7 +3342,7 @@ export default function GosuslugiVksView() {
           .trim();
 
         orderedRecords.push({
-          sicil_no: w.sicil || w.code,
+          sicil_no: sicilVal,
           worker_name: fullWorkerName || `${w.lastName} ${w.firstName}`.trim(),
           citizenship: w.citizenship,
           notification_type: 'VKS_SALARY',
@@ -3239,14 +3354,22 @@ export default function GosuslugiVksView() {
         });
       }
 
-      // If table is not loaded yet, fall back to savedSubmissions
+      // If table is not loaded yet, fall back to freshSubs
       if (orderedRecords.length === 0) {
-        for (const s of Object.values(savedSubmissions)) {
+        for (const s of Object.values(freshSubs)) {
+          const sicilVal = String(s.sicil_no || '').trim();
           const appNo = String(s.application_no || '').trim();
-          if (!appNo || !/^\d{8,14}$/.test(appNo) || seenAppNos.has(appNo)) continue;
+          if (
+            !appNo ||
+            !/^\d{8,14}$/.test(appNo) ||
+            seenAppNos.has(appNo) ||
+            (sicilVal && seenSicils.has(sicilVal))
+          ) {
+            continue;
+          }
           const st = String(s.gosuslugi_status || '').trim();
-          const stPdf = String(s.status_pdf_filename || '').trim();
-          const regPdf = String(s.pdf_filename || '').trim();
+          const stPdf = sanitizePdfForAppNo(s.status_pdf_filename, appNo);
+          const regPdf = sanitizePdfForAppNo(s.pdf_filename, appNo);
           const alreadyHasStatusSc =
             (stPdf.toUpperCase().includes('_STATUS_A4') && stPdf.includes(appNo)) ||
             (regPdf.toUpperCase().includes('_STATUS_A4') && regPdf.includes(appNo));
@@ -3258,7 +3381,12 @@ export default function GosuslugiVksView() {
             st === 'Услуга оказана' || st === 'Услуга отказана' || /^ошибк/i.test(st);
           if (singleSearchScope === 'pending_only' && !captureStatusScreenshots && isFinalOrError) continue;
           seenAppNos.add(appNo);
-          orderedRecords.push(s);
+          if (sicilVal) seenSicils.add(sicilVal);
+          orderedRecords.push({
+            ...s,
+            pdf_filename: regPdf,
+            status_pdf_filename: stPdf,
+          });
         }
       }
 
@@ -4800,10 +4928,13 @@ export default function GosuslugiVksView() {
                               </div>
                             )}
                             <div className="flex flex-wrap items-center gap-1.5">
-                              {w.pdfFilename && !w.pdfFilename.toUpperCase().includes('_STATUS_A4') && (
+                              {sanitizePdfForAppNo(w.pdfFilename, w.applicationNo) &&
+                                !sanitizePdfForAppNo(w.pdfFilename, w.applicationNo)
+                                  .toUpperCase()
+                                  .includes('_STATUS_A4') && (
                                 <a
                                   href={`/api/gosuslugi/pdf?file=${encodeURIComponent(
-                                    w.pdfFilename
+                                    sanitizePdfForAppNo(w.pdfFilename, w.applicationNo)
                                   )}&appNo=${encodeURIComponent(
                                     w.applicationNo || ''
                                   )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}`}
@@ -4829,8 +4960,10 @@ export default function GosuslugiVksView() {
                                     target="_blank"
                                     rel="noreferrer"
                                     className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
-                                      w.statusPdfFilename ||
-                                      (w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
+                                      sanitizePdfForAppNo(w.statusPdfFilename, w.applicationNo) ||
+                                      sanitizePdfForAppNo(w.pdfFilename, w.applicationNo)
+                                        .toUpperCase()
+                                        .includes('_STATUS_A4')
                                         ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                                         : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
                                     }`}
@@ -4843,8 +4976,10 @@ export default function GosuslugiVksView() {
                                     <FileText className="w-2.5 h-2.5 shrink-0" />
                                     <span>
                                       {lang === 'ru' ? 'Статус PDF' : 'Statü PDF Aç'}
-                                      {w.statusPdfFilename ||
-                                      (w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
+                                      {sanitizePdfForAppNo(w.statusPdfFilename, w.applicationNo) ||
+                                      sanitizePdfForAppNo(w.pdfFilename, w.applicationNo)
+                                        .toUpperCase()
+                                        .includes('_STATUS_A4')
                                         ? ' ✓'
                                         : ''}
                                     </span>

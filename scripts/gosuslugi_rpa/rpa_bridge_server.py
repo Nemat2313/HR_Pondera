@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.7.9"
+BRIDGE_VERSION = "2.8.0"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
@@ -354,8 +354,10 @@ class RPAState:
                     if int(app_no) > int(ex_app):
                         # Newer application supersedes older one completely
                         merged = {**existing, **entry}
-                        if "pdf_filename" not in entry:
+                        if "pdf_filename" not in entry or (entry.get("pdf_filename") and app_no not in str(entry.get("pdf_filename"))):
                             merged["pdf_filename"] = ""
+                        if "status_pdf_filename" not in entry or (entry.get("status_pdf_filename") and app_no not in str(entry.get("status_pdf_filename"))):
+                            merged["status_pdf_filename"] = ""
                         if "status_detail" not in entry:
                             merged["status_detail"] = ""
                         cls.submissions[idx] = merged
@@ -367,12 +369,21 @@ class RPAState:
                     return
                 # Fresh re-submission (app_no == '') after an older refusal clears old application_no
                 if not app_no and ex_app and in_sub_at > ex_sub_at and "отказан" in ex_st.lower():
-                    merged = {**existing, **entry, "application_no": "", "pdf_filename": "", "status_detail": ""}
+                    merged = {**existing, **entry, "application_no": "", "pdf_filename": "", "status_pdf_filename": "", "status_detail": ""}
                     cls.submissions[idx] = merged
                     entry = merged
                     updated = True
                     break
                 merged = {**existing, **entry}
+                final_app_no = str(merged.get("application_no") or "").strip()
+                if final_app_no:
+                    import re
+                    for fn_key in ("pdf_filename", "status_pdf_filename"):
+                        fn_val = str(merged.get(fn_key) or "").strip()
+                        if fn_val:
+                            m_fn = re.search(r"(?:^|[_-])([789]\d{9})(?:[_.-]|$)", fn_val)
+                            if m_fn and m_fn.group(1) != final_app_no:
+                                merged[fn_key] = ""
                 if (
                     ex_app == app_no
                     and (
@@ -1049,6 +1060,16 @@ def sync_all_local_submissions_to_central_async():
         import ssl
         import re
         try:
+            active_app_by_sicil = {}
+            for sub_it in (RPAState.submissions or []):
+                if isinstance(sub_it, dict):
+                    s_sic = str(sub_it.get("sicil") or sub_it.get("sicil_no") or "").strip()
+                    s_app = str(sub_it.get("application_no") or "").strip()
+                    if s_sic and s_app.isdigit():
+                        prev_a = active_app_by_sicil.get(s_sic, "")
+                        if not prev_a or int(s_app) > int(prev_a):
+                            active_app_by_sicil[s_sic] = s_app
+
             status_a4_dir = Path.home() / "Downloads" / "Gosuslugi_Status_A4"
             if status_a4_dir.exists():
                 for sc_path in status_a4_dir.glob("*_STATUS_A4.pdf"):
@@ -1062,6 +1083,14 @@ def sync_all_local_submissions_to_central_async():
                         if re.match(r"^[789]\d{9}$", p):
                             app_cand = p
                             break
+                    if sicil_cand and app_cand and sicil_cand in active_app_by_sicil:
+                        act_app = active_app_by_sicil[sicil_cand]
+                        if act_app.isdigit() and app_cand.isdigit() and int(app_cand) < int(act_app):
+                            try:
+                                sc_path.unlink()
+                            except Exception:
+                                pass
+                            continue
                     upload_pdf_to_central_server_async({
                         "status_pdf_filename": sc_path.name,
                         "application_no": app_cand,
