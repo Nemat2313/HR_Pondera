@@ -738,6 +738,12 @@ def run_robot_worker(
                     RPAState.waiting_for_manual = False
                     RPAState.manual_message = None
 
+                if "MVD_OUTAGE_STOP:" in clean_line:
+                    outage_msg = clean_line.split("MVD_OUTAGE_STOP:", 1)[1].strip()
+                    RPAState.fatal_error = outage_msg
+                    RPAState.waiting_for_manual = False
+                    RPAState.manual_message = None
+
                 # Detect 'Данные не найдены в базе МВД' (separate group, not an error)
                 if "MVD_DATA_NOT_FOUND: Сотрудник" in clean_line:
                     RPAState.waiting_for_manual = False

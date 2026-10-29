@@ -4310,7 +4310,12 @@ export default function GosuslugiVksView() {
               </div>
               <div>
                 <div className="text-xs font-extrabold uppercase tracking-wider text-rose-900 dark:text-rose-200">
-                  {lang === 'ru'
+                  {bridgeStatus.fatal_error.includes('Сервис МВД не отвечает') ||
+                  bridgeStatus.fatal_error.includes('Шлюз Госуслуг')
+                    ? lang === 'ru'
+                      ? 'РОБОТ ОСТАНОВЛЕН: СЕРВИС МВД НА ГОСУСЛУГАХ СЕЙЧАС НЕ РАБОТАЕТ'
+                      : 'ROBOT DURDURULDU: GOSUSLUGİ ÜZERİNDE МВД SERVİSİ ŞU ANDA ÇALIŞMIYOR'
+                    : lang === 'ru'
                     ? 'РОБОТ ОСТАНОВЛЕН: НЕДОСТАТОЧНО ПОЛНОМОЧИЙ НА ГОСУСЛУГАХ'
                     : 'ROBOT DURDURULDU: GOSUSLUGİ HESABINDA GÖNDERİM YETKİSİ YOK'}
                 </div>
