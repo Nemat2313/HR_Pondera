@@ -7,6 +7,7 @@ import {
   Download,
   Upload,
   Play,
+  Pause,
   Square,
   Globe,
   CheckCircle2,
@@ -40,6 +41,7 @@ import { useLanguage } from '@/context/LanguageContext';
 interface BridgeStatus {
   status: 'online' | 'offline';
   running: boolean;
+  paused?: boolean;
   mode?: string;
   chrome_ready: boolean;
   total: number;
@@ -276,6 +278,8 @@ export default function GosuslugiDismissalPanel({
   const [queueFilter, setQueueFilter] = useState<QueueFilterMode>('all');
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [isStartingRobot, setIsStartingRobot] = useState(false);
+  const [isStoppingRobot, setIsStoppingRobot] = useState(false);
+  const [isTogglingPause, setIsTogglingPause] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{
     type: 'success' | 'error' | 'info';
@@ -951,6 +955,8 @@ export default function GosuslugiDismissalPanel({
   };
 
   const handleStopRobot = async () => {
+    if (isStoppingRobot) return;
+    setIsStoppingRobot(true);
     try {
       await fetch(`${activeBridgeUrl}/stop`, { method: 'POST' });
       showNotice(
@@ -959,6 +965,34 @@ export default function GosuslugiDismissalPanel({
       );
     } catch {
       // ignore
+    } finally {
+      setTimeout(() => setIsStoppingRobot(false), 400);
+    }
+  };
+
+  const handleTogglePauseRobot = async () => {
+    if (isTogglingPause) return;
+    setIsTogglingPause(true);
+    const currentlyPaused = Boolean(bridgeStatus.paused || bridgeStatus.waiting_for_manual);
+    try {
+      const endpoint = currentlyPaused ? '/resume' : '/pause';
+      const res = await fetch(`${activeBridgeUrl}${endpoint}`, { method: 'POST' });
+      if (res.ok) {
+        showNotice(
+          'info',
+          currentlyPaused
+            ? lang === 'ru'
+              ? 'Робот возобновил работу!'
+              : 'Robot kaldığı yerden devam ediyor!'
+            : lang === 'ru'
+            ? 'Робот поставлен на паузу.'
+            : 'Robot duraklatıldı.'
+        );
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsTogglingPause(false);
     }
   };
 
@@ -1091,13 +1125,58 @@ export default function GosuslugiDismissalPanel({
             </button>
 
             {bridgeStatus.running ? (
-              <button
-                onClick={handleStopRobot}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer"
-              >
-                <Square className="w-3.5 h-3.5" />
-                <span>{lang === 'ru' ? 'Остановить робот' : 'Robotu Durdur'}</span>
-              </button>
+              <>
+                <button
+                  onClick={handleTogglePauseRobot}
+                  disabled={isTogglingPause || isStoppingRobot}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-extrabold shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-60 ${
+                    bridgeStatus.paused || bridgeStatus.waiting_for_manual
+                      ? 'bg-emerald-600 hover:bg-emerald-500 animate-pulse'
+                      : 'bg-amber-500 hover:bg-amber-600'
+                  }`}
+                >
+                  {isTogglingPause ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : bridgeStatus.paused || bridgeStatus.waiting_for_manual ? (
+                    <Play className="w-3.5 h-3.5 fill-white" />
+                  ) : (
+                    <Pause className="w-3.5 h-3.5 fill-white" />
+                  )}
+                  <span>
+                    {bridgeStatus.paused || bridgeStatus.waiting_for_manual
+                      ? lang === 'ru'
+                        ? 'Продолжить'
+                        : 'Devam Et'
+                      : lang === 'ru'
+                      ? 'Пауза'
+                      : 'Duraklat'}
+                  </span>
+                </button>
+                <button
+                  onClick={handleStopRobot}
+                  disabled={isStoppingRobot}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-extrabold shadow-md transition-all cursor-pointer active:scale-95 ${
+                    isStoppingRobot
+                      ? 'bg-rose-800 ring-2 ring-rose-400 cursor-wait'
+                      : 'bg-rose-600 hover:bg-rose-700'
+                  }`}
+                >
+                  {isStoppingRobot ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Square className="w-3.5 h-3.5 fill-white" />
+                  )}
+                  <span>
+                    {isStoppingRobot
+                      ? lang === 'ru'
+                        ? 'Остановка...'
+                        : 'Durduruluyor...'
+                      : lang === 'ru'
+                      ? 'Стоп'
+                      : 'Durdur'}
+                  </span>
+                </button>
+              </>
             ) : (
               <button
                 onClick={() => handleStartRobot(0)}

@@ -409,7 +409,6 @@ function ensureTable(db: any) {
       AND application_no IN (
         SELECT application_no FROM gosuslugi_submissions
         WHERE application_no != ''
-          AND gosuslugi_status NOT LIKE '%отказан%'
       );
   `);
   healSubmissionTimestamps(db);
@@ -915,6 +914,7 @@ export async function POST(request: Request) {
           (
             (/^ошибк/i.test(exStatus) || exStatus === 'Данные не найдены в базе МВД') &&
             !/^ошибк/i.test(normalizedStatus) &&
+            normalizedStatus !== 'Данные не найдены в базе МВД' &&
             (!isExistingOfficialPortalError || (Boolean(appNo) && appNo !== exAppNo)) &&
             (Boolean(appNo) || submittedAt >= exSubAt)
           )

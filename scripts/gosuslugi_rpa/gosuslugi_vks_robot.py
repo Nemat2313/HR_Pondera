@@ -30,6 +30,7 @@ if sys.platform == "win32":
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
+PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
 
 # Setup logging
 logging.basicConfig(
@@ -288,8 +289,8 @@ class GosuslugiVksBot:
 
     def is_on_login_page(self) -> bool:
         """
-        Detects if Gosuslugi logged out and redirected the browser to the ESIA login page
-        (e.g. https://esia.gosuslugi.ru/login/ with 'Телефон / Эл. почта / СНИЛС', 'Пароль', 'Войти').
+        Detects if Gosuslugi logged out and redirected or rendered the ESIA login card
+        (e.g. https://esia.gosuslugi.ru/login/ or embedded login card with 'Другой пользователь', 'Пароль', 'Войти').
         """
         try:
             cur_url = (self.page.url or "").lower()
@@ -301,7 +302,13 @@ class GosuslugiVksBot:
             if login_inputs.count() > 0:
                 return True
             body_text = self.page.locator("body").inner_text(timeout=1200)
-            if "Телефон / Эл. почта / СНИЛС" in body_text and "Войти" in body_text:
+            if (
+                ("Телефон / Эл. почта / СНИЛС" in body_text and "Войти" in body_text)
+                or "Другой пользователь" in body_text
+                or "Войти другим способом" in body_text
+                or "Не удаётся войти" in body_text
+                or ("Пароль" in body_text and "Восстановить" in body_text and "Войти" in body_text)
+            ):
                 return True
         except Exception:
             pass
@@ -309,41 +316,75 @@ class GosuslugiVksBot:
 
     def wait_if_logged_out(self) -> bool:
         """
-        If Gosuslugi session expired / logged out (esia.gosuslugi.ru/login), pauses the robot and waits
-        up to 15 minutes until the user logs back in, then resumes automatically.
-        Returns True if a logout was detected and recovered.
+        Checks if the user clicked Pause (rpa_pause.signal) OR if Gosuslugi session logged out.
+        When Gosuslugi logs out, puts the robot into PAUSE mode and waits until the user
+        logs back into Gosuslugi AND clicks Resume ('Продолжить' / 'Devam Et').
+        Returns True if a logout or pause was detected and recovered.
         """
-        if not self.is_on_login_page():
-            return False
+        paused_once = False
+        while True:
+            logged_out = self.is_on_login_page()
+            manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
 
-        logger.warning(
-            "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (esia.gosuslugi.ru/login). "
-            "Пожалуйста, войдите в аккаунт Госуслуг в окне Chrome — робот ждёт и автоматически продолжит работу после входа!"
-        )
-        try:
-            self.page.bring_to_front()
-        except Exception:
-            pass
+            if not logged_out and not manual_paused:
+                break
 
-        # Wait up to 15 minutes (450 * 2s) for the user to complete login (including SMS/2FA/org selection)
-        for wait_tick in range(450):
-            self.page.wait_for_timeout(2000)
-            try:
-                cur_url = (self.page.url or "").lower()
-                still_logging_in = (
-                    self.is_on_login_page()
-                    or "esia.gosuslugi.ru" in cur_url
+            paused_once = True
+            if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+                try:
+                    os.remove(MANUAL_CONTINUE_SIGNAL)
+                except Exception:
+                    pass
+
+            if logged_out:
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_login")
+                except Exception:
+                    pass
+                logger.warning(
+                    "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (выход из аккаунта). "
+                    "Робот поставлен на ПАУЗУ! Войдите в аккаунт Госуслуг в окне Chrome, а затем нажмите кнопку «Продолжить (Devam Et)»."
                 )
-                if not still_logging_in and "gosuslugi.ru" in cur_url:
-                    logger.info("LOGIN_RESTORED: Вход в Госуслуги выполнен! Робот продолжает работу через 2 секунды...")
-                    self.page.wait_for_timeout(2000)
-                    return True
-            except Exception:
-                pass
-            if wait_tick > 0 and wait_tick % 15 == 0:
-                logger.info("Ожидание входа пользователя в Госуслуги (esia.gosuslugi.ru/login)...")
+                try:
+                    self.page.bring_to_front()
+                except Exception:
+                    pass
+            else:
+                logger.info(
+                    "ROBOT_PAUSED: Робот поставлен на паузу пользователем. Ожидание нажатия кнопки «Продолжить (Devam Et)»..."
+                )
 
-        return False
+            while os.path.exists(PAUSE_SIGNAL_FILE):
+                if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+                    try:
+                        os.remove(MANUAL_CONTINUE_SIGNAL)
+                    except Exception:
+                        pass
+                    try:
+                        if os.path.exists(PAUSE_SIGNAL_FILE):
+                            os.remove(PAUSE_SIGNAL_FILE)
+                    except Exception:
+                        pass
+                    break
+                self.page.wait_for_timeout(1000)
+
+            if self.is_on_login_page():
+                logger.warning(
+                    "PAUSED_FOR_LOGIN: Вход в Госуслуги ещё не выполнен! Сначала войдите в Госуслуги в Chrome, затем нажмите «Продолжить (Devam Et)»."
+                )
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_login")
+                except Exception:
+                    pass
+                continue
+
+            logger.info("LOGIN_RESTORED: Работа робота возобновлена! Продолжаем с текущего сотрудника...")
+            self.page.wait_for_timeout(1500)
+            break
+
+        return paused_once
 
     def check_and_switch_if_mvd_service_down(self):
         """
@@ -5034,6 +5075,7 @@ def main():
 
         for idx, record in enumerate(records):
             prevent_windows_sleep()
+            bot.wait_if_logged_out()
             logger.info(f"\n--- Processing Record {idx+1}/{len(records)} ---")
             row_idx = record.get("_row_idx")
 

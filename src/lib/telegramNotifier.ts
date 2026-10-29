@@ -1,4 +1,6 @@
 import https from 'https';
+import fs from 'fs';
+import path from 'path';
 import { getDb } from '@/lib/db';
 
 export function getTelegramConfig() {
@@ -231,6 +233,8 @@ interface VksSnapshotState {
   totalSent: number;
   totalPdf: number;
   totalNoPdf: number;
+  totalStatusPdf: number;
+  totalNoStatusPdf: number;
   totalErrors: number;
   totalServiceRendered: number;
   totalRegistered: number;
@@ -239,7 +243,13 @@ interface VksSnapshotState {
   totalSentPendingStatus: number;
   byKey: Record<
     string,
-    { state: 'sent' | 'error' | 'other'; hasPdf: boolean; statusText: string; submittedAt?: string }
+    {
+      state: 'sent' | 'error' | 'other';
+      hasPdf: boolean;
+      hasStatusPdf?: boolean;
+      statusText: string;
+      submittedAt?: string;
+    }
   >;
 }
 
@@ -256,16 +266,36 @@ function computeCurrentVksState(db: any): VksSnapshotState {
       gosuslugi_status TEXT NOT NULL DEFAULT 'Отправлено',
       status_detail TEXT DEFAULT '',
       pdf_filename TEXT DEFAULT '',
+      status_pdf_filename TEXT DEFAULT '',
       submitted_at TEXT NOT NULL,
       checked_at TEXT DEFAULT '',
       updated_at TEXT DEFAULT '',
       UNIQUE(sicil_no, notification_type, period_code)
     );
   `);
+  try {
+    db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN status_pdf_filename TEXT DEFAULT '';`);
+  } catch {}
+
+  const statusPdfByAppNo = new Map<string, string>();
+  const statusPdfBySicil = new Map<string, string>();
+  try {
+    const pdfDir = path.join(process.cwd(), 'data', 'gosuslugi_pdfs');
+    if (fs.existsSync(pdfDir)) {
+      const files = fs.readdirSync(pdfDir);
+      for (const f of files) {
+        if (!f.toUpperCase().includes('_STATUS_A4.PDF')) continue;
+        const mApp = f.match(/([789]\d{9})/);
+        if (mApp) statusPdfByAppNo.set(mApp[1], f);
+        const mSic = f.match(/^(\d{4,8})_/);
+        if (mSic) statusPdfBySicil.set(mSic[1], f);
+      }
+    }
+  } catch {}
 
   const rawRows = db
     .prepare(
-      `SELECT sicil_no, period_code, application_no, gosuslugi_status, pdf_filename, submitted_at
+      `SELECT sicil_no, period_code, application_no, gosuslugi_status, pdf_filename, status_pdf_filename, submitted_at
        FROM gosuslugi_submissions
        WHERE LOWER(notification_type) = 'vks_salary'
        ORDER BY
@@ -279,6 +309,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     application_no: string;
     gosuslugi_status: string;
     pdf_filename: string;
+    status_pdf_filename?: string;
     submitted_at: string;
   }>;
 
@@ -294,6 +325,8 @@ function computeCurrentVksState(db: any): VksSnapshotState {
   let totalSent = 0;
   let totalPdf = 0;
   let totalNoPdf = 0;
+  let totalStatusPdf = 0;
+  let totalNoStatusPdf = 0;
   let totalErrors = 0;
   let totalServiceRendered = 0;
   let totalRegistered = 0;
@@ -307,7 +340,13 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     const period = String(r.period_code || '').trim();
     const appNo = String(r.application_no || '').trim();
     const rawStatus = String(r.gosuslugi_status || '').trim();
-    const pdf = String(r.pdf_filename || '').trim();
+    const rawPdf = String(r.pdf_filename || '').trim();
+    const pdf = rawPdf.toUpperCase().includes('_STATUS_A4') ? '' : rawPdf;
+    const statusPdf =
+      String(r.status_pdf_filename || '').trim() ||
+      (appNo && statusPdfByAppNo.get(appNo)) ||
+      (sicil && statusPdfBySicil.get(sicil)) ||
+      (rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '');
     const submittedAt = String(r.submitted_at || '').trim();
     const key = `${sicil}::${period}`;
 
@@ -317,19 +356,23 @@ function computeCurrentVksState(db: any): VksSnapshotState {
 
     const isError = /^ошибк/i.test(rawStatus);
     const hasPdf = Boolean(pdf);
+    const hasStatusPdf = Boolean(statusPdf);
     const isSent =
       !isError &&
       (Boolean(appNo) ||
         hasPdf ||
+        hasStatusPdf ||
         /отправлен|зарегистрирован|оказан|исполнен|отказан|принят|промежуточн|обработк|PDF не скачан/i.test(rawStatus));
 
     if (isError) {
       totalErrors++;
-      byKey[key] = { state: 'error', hasPdf, statusText: rawStatus, submittedAt };
+      byKey[key] = { state: 'error', hasPdf, hasStatusPdf, statusText: rawStatus, submittedAt };
     } else if (isSent) {
       totalSent++;
       if (hasPdf) totalPdf++;
       else totalNoPdf++;
+      if (hasStatusPdf) totalStatusPdf++;
+      else totalNoStatusPdf++;
 
       if (/оказан|исполнен/i.test(rawStatus)) {
         totalServiceRendered++;
@@ -344,9 +387,9 @@ function computeCurrentVksState(db: any): VksSnapshotState {
         totalSentPendingStatus++;
       }
 
-      byKey[key] = { state: 'sent', hasPdf, statusText: rawStatus, submittedAt };
+      byKey[key] = { state: 'sent', hasPdf, hasStatusPdf, statusText: rawStatus, submittedAt };
     } else {
-      byKey[key] = { state: 'other', hasPdf, statusText: rawStatus, submittedAt };
+      byKey[key] = { state: 'other', hasPdf, hasStatusPdf, statusText: rawStatus, submittedAt };
     }
   }
 
@@ -356,6 +399,8 @@ function computeCurrentVksState(db: any): VksSnapshotState {
     totalSent,
     totalPdf,
     totalNoPdf,
+    totalStatusPdf,
+    totalNoStatusPdf,
     totalErrors,
     totalServiceRendered,
     totalRegistered,
@@ -378,10 +423,13 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
   deltaSent?: number;
   deltaErrors?: number;
   deltaPdfs?: number;
+  deltaStatusPdfs?: number;
   totals?: {
     totalSent: number;
     totalPdf: number;
     totalNoPdf: number;
+    totalStatusPdf: number;
+    totalNoStatusPdf: number;
     totalErrors: number;
     totalRecords: number;
     totalServiceRendered: number;
@@ -409,6 +457,7 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
   let deltaSent = 0;
   let deltaErrors = 0;
   let deltaPdfs = 0;
+  let deltaStatusPdfs = 0;
   let deltaServiceRendered = 0;
   let deltaRefused = 0;
   let statusChangedCount = 0;
@@ -449,6 +498,7 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
         if (curVal.state === 'sent' && recentSub) deltaSent++;
         if (curVal.state === 'error' && recentSub) deltaErrors++;
         if (curVal.hasPdf && recentSub) deltaPdfs++;
+        if (curVal.hasStatusPdf) deltaStatusPdfs++;
         if (curRendered) deltaServiceRendered++;
         if (curRefused && recentSub) deltaRefused++;
       } else {
@@ -457,15 +507,19 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
         if (oldVal.state !== 'sent' && curVal.state === 'sent' && recentSub) deltaSent++;
         if (oldVal.state !== 'error' && curVal.state === 'error' && recentSub) deltaErrors++;
         if (!oldVal.hasPdf && curVal.hasPdf) deltaPdfs++;
+        if (oldVal.hasStatusPdf === false && curVal.hasStatusPdf) deltaStatusPdfs++;
         if (!oldRendered && curRendered) deltaServiceRendered++;
         if (!oldRefused && curRefused) deltaRefused++;
         if (oldVal.statusText !== curVal.statusText) statusChangedCount++;
       }
     }
+    if (typeof prev.totalStatusPdf === 'number' && current.totalStatusPdf > prev.totalStatusPdf && deltaStatusPdfs === 0) {
+      deltaStatusPdfs = current.totalStatusPdf - prev.totalStatusPdf;
+    }
   } else {
     const recentRows = db
       .prepare(
-        `SELECT application_no, gosuslugi_status, pdf_filename
+        `SELECT application_no, gosuslugi_status, pdf_filename, status_pdf_filename
          FROM gosuslugi_submissions
          WHERE LOWER(notification_type) = 'vks_salary'
            AND (submitted_at >= ? OR checked_at >= ?)`
@@ -474,12 +528,16 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
       application_no: string;
       gosuslugi_status: string;
       pdf_filename: string;
+      status_pdf_filename?: string;
     }>;
     for (const r of recentRows) {
       const st = String(r.gosuslugi_status || '').trim();
       if (/^ошибк/i.test(st)) deltaErrors++;
       else deltaSent++;
-      if (r.pdf_filename) deltaPdfs++;
+      if (r.pdf_filename && !r.pdf_filename.toUpperCase().includes('_STATUS_A4')) deltaPdfs++;
+      if (r.status_pdf_filename || (r.pdf_filename && r.pdf_filename.toUpperCase().includes('_STATUS_A4'))) {
+        deltaStatusPdfs++;
+      }
       if (/оказан|исполнен/i.test(st)) deltaServiceRendered++;
       if (/отказан|отказ/i.test(st)) deltaRefused++;
     }
@@ -489,6 +547,7 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     deltaSent > 0 ||
     deltaErrors > 0 ||
     deltaPdfs > 0 ||
+    deltaStatusPdfs > 0 ||
     deltaServiceRendered > 0 ||
     deltaRefused > 0 ||
     statusChangedCount > 0;
@@ -501,10 +560,13 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
       deltaSent: 0,
       deltaErrors: 0,
       deltaPdfs: 0,
+      deltaStatusPdfs: 0,
       totals: {
         totalSent: current.totalSent,
         totalPdf: current.totalPdf,
         totalNoPdf: current.totalNoPdf,
+        totalStatusPdf: current.totalStatusPdf,
+        totalNoStatusPdf: current.totalNoStatusPdf,
         totalErrors: current.totalErrors,
         totalRecords: current.totalRecords,
         totalServiceRendered: current.totalServiceRendered,
@@ -526,7 +588,8 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     `⏱ <b>Son 15 Dakikadaki Hareketler:</b>`,
     `• ✅ Gönderilen Bildirim: <b>+${deltaSent}</b>`,
     `• ❌ Oluşan Hata (Ошибка): <b>+${deltaErrors}</b>`,
-    `• 📄 İndirilen / Eşleşen PDF: <b>+${deltaPdfs}</b>`,
+    `• 📄 İndirilen / Eşleşen Başvuru PDF: <b>+${deltaPdfs}</b>`,
+    `• 📸 İndirilen Statü PDF (A4): <b>+${deltaStatusPdfs}</b>`,
     `• 🔄 Statüsü Güncellenen (JSON): <b>+${statusChangedCount}</b>`,
     ``,
     `🏛 <b>Gosuslugi / МВД Başvuru Durumları (JSON Statü):</b>`,
@@ -537,8 +600,10 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     ``,
     `📊 <b>Ortak Sunucu Genel Toplam (Tüm Bilgisayarlar):</b>`,
     `• ✅ Toplam Başarılı Gönderim: <b>${current.totalSent}</b>`,
-    `  ├ 📄 PDF İndirilen: <b>${current.totalPdf}</b>`,
-    `  └ ⚡ PDF Bekleyen (Hızlı Gönderim): <b>${current.totalNoPdf}</b>`,
+    `  ├ 📄 Başvuru (Заявка) PDF İndirilen: <b>${current.totalPdf}</b>`,
+    `  ├ ⚡ Başvuru PDF Bekleyen (Hızlı Gönderim): <b>${current.totalNoPdf}</b>`,
+    `  ├ 📸 Statü PDF (A4) İndirilen: <b>${current.totalStatusPdf}</b>`,
+    `  └ ⏳ Statü PDF Bekleyen: <b>${current.totalNoStatusPdf}</b>`,
     `• ⚠️ Toplam Hatalı Kayıt (Ошибка): <b>${current.totalErrors}</b>`,
     `• 📌 <b>Genel Toplam İşlenen Kayıt: ${current.totalRecords}</b>`,
   ].join('\n');
@@ -556,10 +621,13 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
     deltaSent,
     deltaErrors,
     deltaPdfs,
+    deltaStatusPdfs,
     totals: {
       totalSent: current.totalSent,
       totalPdf: current.totalPdf,
       totalNoPdf: current.totalNoPdf,
+      totalStatusPdf: current.totalStatusPdf,
+      totalNoStatusPdf: current.totalNoStatusPdf,
       totalErrors: current.totalErrors,
       totalRecords: current.totalRecords,
       totalServiceRendered: current.totalServiceRendered,

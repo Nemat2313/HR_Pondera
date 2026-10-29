@@ -316,7 +316,7 @@ export async function POST(request: Request) {
           db.prepare(
             `UPDATE gosuslugi_submissions
              SET pdf_filename = CASE
-                   WHEN ? = 1 AND pdf_filename IS NOT NULL AND pdf_filename != '' AND pdf_filename NOT LIKE '%_STATUS_A4%' THEN pdf_filename
+                   WHEN ? = 1 THEN CASE WHEN pdf_filename LIKE '%_STATUS_A4%' THEN '' ELSE COALESCE(pdf_filename, '') END
                    ELSE ?
                  END,
                  status_pdf_filename = CASE
@@ -325,7 +325,7 @@ export async function POST(request: Request) {
                  END,
                  gosuslugi_status = CASE
                    WHEN ? != '' THEN ?
-                   WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
+                   WHEN ? = 0 AND gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
                    ELSE gosuslugi_status
                  END,
                  checked_at = CASE WHEN ? != '' AND (checked_at IS NULL OR checked_at = '') THEN ? ELSE checked_at END,
@@ -338,6 +338,7 @@ export async function POST(request: Request) {
             safeFilename,
             isFinalOrAdvancedStatus ? incomingStatus : '',
             incomingStatus,
+            isScreenshot ? 1 : 0,
             isFinalOrAdvancedStatus ? nowStr : '',
             nowStr,
             nowStr,
@@ -348,7 +349,7 @@ export async function POST(request: Request) {
           db.prepare(
             `UPDATE gosuslugi_submissions
              SET pdf_filename = CASE
-                   WHEN ? = 1 AND pdf_filename IS NOT NULL AND pdf_filename != '' AND pdf_filename NOT LIKE '%_STATUS_A4%' THEN pdf_filename
+                   WHEN ? = 1 THEN CASE WHEN pdf_filename LIKE '%_STATUS_A4%' THEN '' ELSE COALESCE(pdf_filename, '') END
                    ELSE ?
                  END,
                  status_pdf_filename = CASE
@@ -357,7 +358,7 @@ export async function POST(request: Request) {
                  END,
                  gosuslugi_status = CASE
                    WHEN ? != '' THEN ?
-                   WHEN gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
+                   WHEN ? = 0 AND gosuslugi_status LIKE '%PDF не скачан%' THEN 'Заявление зарегистрировано'
                    ELSE gosuslugi_status
                  END,
                  checked_at = CASE WHEN ? != '' AND (checked_at IS NULL OR checked_at = '') THEN ? ELSE checked_at END,
@@ -372,6 +373,7 @@ export async function POST(request: Request) {
             safeFilename,
             isFinalOrAdvancedStatus ? incomingStatus : '',
             incomingStatus,
+            isScreenshot ? 1 : 0,
             isFinalOrAdvancedStatus ? nowStr : '',
             nowStr,
             nowStr,

@@ -118,25 +118,36 @@ function buildZipArchive(files: Array<{ name: string; data: Buffer; mtime: Date 
   return Buffer.concat([...localChunks, ...centralChunks, eocd]);
 }
 
-function collectPdfFiles(filterNames?: Set<string>, filterAppNos?: Set<string>): Array<{ name: string; data: Buffer; mtime: Date }> {
+function collectPdfFiles(
+  filterNames?: Set<string>,
+  filterAppNos?: Set<string>,
+  pdfType: 'receipt' | 'status' | 'all' = 'receipt'
+): Array<{ name: string; data: Buffer; mtime: Date }> {
   const storageDir = getPdfStorageDir();
   if (!fs.existsSync(storageDir)) return [];
 
   const allEntries = fs
     .readdirSync(storageDir)
-    .filter((f) => f.toLowerCase().endsWith('.pdf') && !f.startsWith('tmp_'))
+    .filter((f) => {
+      if (!f.toLowerCase().endsWith('.pdf') || f.startsWith('tmp_')) return false;
+      const isStatus = f.toUpperCase().includes('_STATUS_A4');
+      if (pdfType === 'receipt' && isStatus) return false;
+      if (pdfType === 'status' && !isStatus) return false;
+      return true;
+    })
     .sort((a, b) => a.localeCompare(b, 'ru'));
 
   const results: Array<{ name: string; data: Buffer; mtime: Date }> = [];
 
   for (const fname of allEntries) {
-    if (filterNames && filterNames.size > 0 && !filterNames.has(fname)) {
-      if (filterAppNos && filterAppNos.size > 0) {
+    if ((filterNames && filterNames.size > 0) || (filterAppNos && filterAppNos.size > 0)) {
+      const matchedName = filterNames && filterNames.has(fname);
+      let matchedApp = false;
+      if (!matchedName && filterAppNos && filterAppNos.size > 0) {
         const mApp = fname.match(/([789]\d{8,12})/);
-        if (!mApp || !filterAppNos.has(mApp[1])) continue;
-      } else {
-        continue;
+        if (mApp && filterAppNos.has(mApp[1])) matchedApp = true;
       }
+      if (!matchedName && !matchedApp) continue;
     }
     const fullPath = path.join(storageDir, fname);
     try {
@@ -156,26 +167,47 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const countOnly = searchParams.get('countOnly') === '1';
+    const rawType = (searchParams.get('type') || 'receipt').toLowerCase();
+    const pdfType: 'receipt' | 'status' | 'all' =
+      rawType === 'status' ? 'status' : rawType === 'all' ? 'all' : 'receipt';
     const storageDir = getPdfStorageDir();
 
     if (countOnly) {
-      const files = fs.existsSync(storageDir)
+      const allPdfNames = fs.existsSync(storageDir)
         ? fs.readdirSync(storageDir).filter((f) => f.toLowerCase().endsWith('.pdf') && !f.startsWith('tmp_'))
         : [];
-      return NextResponse.json({ success: true, count: files.length });
+      const receiptCount = allPdfNames.filter((f) => !f.toUpperCase().includes('_STATUS_A4')).length;
+      const statusCount = allPdfNames.filter((f) => f.toUpperCase().includes('_STATUS_A4')).length;
+      const count =
+        pdfType === 'status' ? statusCount : pdfType === 'all' ? allPdfNames.length : receiptCount;
+      return NextResponse.json({
+        success: true,
+        count,
+        receiptCount,
+        statusCount,
+      });
     }
 
-    const files = collectPdfFiles();
+    const files = collectPdfFiles(undefined, undefined, pdfType);
     if (files.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Merkezi sunucuda henüz indirilen PDF dosyası bulunamadı.' },
+        {
+          success: false,
+          message:
+            pdfType === 'status'
+              ? 'Merkezi sunucuda henüz indirilen A4 Statü PDF dosyası bulunamadı.'
+              : 'Merkezi sunucuda henüz indirilen Başvuru (Заявка) PDF dosyası bulunamadı.',
+        },
         { status: 404 }
       );
     }
 
     const zipBuffer = buildZipArchive(files);
     const dateTag = new Date().toISOString().slice(0, 10);
-    const zipFilename = `Pondera_VKS_Gosuslugi_PDFs_2026-3_${files.length}adet_${dateTag}.zip`;
+    const zipFilename =
+      pdfType === 'status'
+        ? `Pondera_VKS_Gosuslugi_Status_PDFs_2026-3_${files.length}adet_${dateTag}.zip`
+        : `Pondera_VKS_Gosuslugi_PDFs_2026-3_${files.length}adet_${dateTag}.zip`;
 
     return new NextResponse(new Uint8Array(zipBuffer), {
       status: 200,
@@ -197,6 +229,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
+    const rawType = String(body?.type || 'receipt').toLowerCase();
+    const pdfType: 'receipt' | 'status' | 'all' =
+      rawType === 'status' ? 'status' : rawType === 'all' ? 'all' : 'receipt';
     const rawNames: string[] = Array.isArray(body?.filenames) ? body.filenames : [];
     const rawAppNos: string[] = Array.isArray(body?.appNos) ? body.appNos : [];
 
@@ -209,19 +244,28 @@ export async function POST(request: Request) {
 
     const files =
       filterNames.size > 0 || filterAppNos.size > 0
-        ? collectPdfFiles(filterNames, filterAppNos)
-        : collectPdfFiles();
+        ? collectPdfFiles(filterNames, filterAppNos, pdfType)
+        : collectPdfFiles(undefined, undefined, pdfType);
 
     if (files.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Seçilen kriterlere uygun PDF dosyası bulunamadı.' },
+        {
+          success: false,
+          message:
+            pdfType === 'status'
+              ? 'Seçilen kriterlere uygun A4 Statü PDF dosyası bulunamadı.'
+              : 'Seçilen kriterlere uygun Başvuru (Заявка) PDF dosyası bulunamadı.',
+        },
         { status: 404 }
       );
     }
 
     const zipBuffer = buildZipArchive(files);
     const dateTag = new Date().toISOString().slice(0, 10);
-    const zipFilename = `Pondera_VKS_Gosuslugi_PDFs_2026-3_${files.length}adet_${dateTag}.zip`;
+    const zipFilename =
+      pdfType === 'status'
+        ? `Pondera_VKS_Gosuslugi_Status_PDFs_2026-3_${files.length}adet_${dateTag}.zip`
+        : `Pondera_VKS_Gosuslugi_PDFs_2026-3_${files.length}adet_${dateTag}.zip`;
 
     return new NextResponse(new Uint8Array(zipBuffer), {
       status: 200,

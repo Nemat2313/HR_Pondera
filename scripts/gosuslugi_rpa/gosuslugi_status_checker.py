@@ -30,6 +30,8 @@ if sys.platform == "win32":
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 ORDERS_URL = "https://lk.gosuslugi.ru/orders?type=ORDER,EQUEUE,APPEAL,CLAIM,SIGN,KND_APPEAL,LICENSING,LICENSING_APPEAL"
+PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
+MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +48,127 @@ try:
 except ImportError:
     logger.error("Playwright is not installed! Run: pip install playwright")
     sys.exit(1)
+
+
+def is_gosuslugi_logged_out(page: Page) -> bool:
+    """
+    Detects whether Gosuslugi session has logged out or is showing the ESIA login form,
+    even when the URL bar still shows https://lk.gosuslugi.ru/orders or https://www.gosuslugi.ru/...
+    """
+    try:
+        cur_url = (page.url or "").lower()
+        if "esia.gosuslugi.ru/login" in cur_url or "esia.gosuslugi.ru/idp" in cur_url:
+            return True
+        is_login_dom = page.evaluate(
+            """() => {
+                const isVis = (el) => {
+                    if (!el) return false;
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                };
+                const pwdInputs = Array.from(document.querySelectorAll("input[type='password'], input#password, input#login"));
+                if (pwdInputs.some(isVis)) return true;
+
+                const bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
+                const hasLoginMarkers = (
+                    bodyText.includes('Другой пользователь') ||
+                    bodyText.includes('Войти другим способом') ||
+                    bodyText.includes('Не удаётся войти') ||
+                    bodyText.includes('Телефон / Эл. почта / СНИЛС') ||
+                    (bodyText.includes('Пароль') && bodyText.includes('Восстановить') && bodyText.includes('Войти'))
+                );
+                if (hasLoginMarkers) {
+                    const searchInp = document.querySelector(
+                        "input.search-input, lib-search input, epgu-search input, input[placeholder*='Поиск'], input[placeholder*='Номер']"
+                    );
+                    if (!isVis(searchInp)) return true;
+                }
+                return false;
+            }"""
+        )
+        return bool(is_login_dom)
+    except Exception:
+        return False
+
+
+def wait_if_paused_or_logged_out(page: Page, return_to_orders: bool = True) -> bool:
+    """
+    Checks if the user clicked Pause (rpa_pause.signal) OR if Gosuslugi logged out.
+    When Gosuslugi logs out, puts the robot into PAUSE mode and waits until the user
+    logs back into Gosuslugi AND clicks Resume ('Продолжить' / 'Devam Et').
+    Returns True if a pause/logout occurred and was resumed.
+    """
+    paused_once = False
+    while True:
+        logged_out = is_gosuslugi_logged_out(page)
+        manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
+
+        if not logged_out and not manual_paused:
+            break
+
+        paused_once = True
+        if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+            try:
+                os.remove(MANUAL_CONTINUE_SIGNAL)
+            except Exception:
+                pass
+
+        if logged_out:
+            try:
+                with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                    pf.write("paused_for_login")
+            except Exception:
+                pass
+            logger.warning(
+                "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (выход из аккаунта). "
+                "Робот поставлен на ПАУЗУ! Пожалуйста, войдите в Госуслуги в окне Chrome, а затем нажмите кнопку «Продолжить (Devam Et)»."
+            )
+        else:
+            logger.info(
+                "ROBOT_PAUSED: Робот поставлен на паузу пользователем. Ожидание нажатия кнопки «Продолжить (Devam Et)»..."
+            )
+
+        # Wait until user clicks Resume (which removes PAUSE_SIGNAL_FILE or writes MANUAL_CONTINUE_SIGNAL)
+        while os.path.exists(PAUSE_SIGNAL_FILE):
+            if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+                try:
+                    os.remove(MANUAL_CONTINUE_SIGNAL)
+                except Exception:
+                    pass
+                try:
+                    if os.path.exists(PAUSE_SIGNAL_FILE):
+                        os.remove(PAUSE_SIGNAL_FILE)
+                except Exception:
+                    pass
+                break
+            try:
+                page.wait_for_timeout(1000)
+            except Exception:
+                time.sleep(1.0)
+
+        # Verify that Gosuslugi is no longer on the login screen before resuming
+        if is_gosuslugi_logged_out(page):
+            logger.warning(
+                "PAUSED_FOR_LOGIN: Вход в Госуслуги ещё не завершён! Сначала войдите в аккаунт Госуслуг в Chrome, затем нажмите «Продолжить (Devam Et)»."
+            )
+            try:
+                with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                    pf.write("paused_for_login")
+            except Exception:
+                pass
+            continue
+
+        logger.info("LOGIN_RESTORED: Работа робота возобновлена! Продолжаем с текущего заявления...")
+        if return_to_orders:
+            try:
+                if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
+                    page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=45000)
+                    page.wait_for_timeout(2500)
+            except Exception:
+                pass
+        break
+
+    return paused_once
 
 
 def scan_downloads_for_applications() -> List[Dict[str, Any]]:
@@ -615,6 +738,8 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
     if not clean_no or not clean_no.isdigit():
         return None
 
+    wait_if_paused_or_logged_out(page, return_to_orders=True)
+
     if not force_live_search and clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("feed_id"):
         cached_st = str(INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status") or "")
         if cached_st in ("Услуга оказана", "Услуга отказана"):
@@ -625,6 +750,7 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
         if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
             page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=35000)
             page.wait_for_timeout(2000)
+            wait_if_paused_or_logged_out(page, return_to_orders=True)
             extract_orders_from_dom(page)
             if not force_live_search and clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("feed_id"):
                 cached_st = str(INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status") or "")
@@ -651,14 +777,18 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
             "input[placeholder*='поиск']:visible, "
             "input[placeholder*='Номер']:visible, "
             "input[placeholder*='заявлен']:visible, "
-            "input[type='search']:visible, "
-            "main input[type='text']:visible"
+            "input[type='search']:visible"
         )
         search_inp = page.locator(search_selector).first
+        if search_inp.count() == 0 or not search_inp.is_visible():
+            # Check if Gosuslugi logged out before reloading
+            wait_if_paused_or_logged_out(page, return_to_orders=True)
+            search_inp = page.locator(search_selector).first
         if search_inp.count() == 0 or not search_inp.is_visible():
             # If Gosuslugi temporarily showed 'Сервис недоступен' or search bar hid, reload /orders cleanly
             page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(2500)
+            wait_if_paused_or_logged_out(page, return_to_orders=True)
             search_inp = page.locator(search_selector).first
 
         if search_inp.count() > 0 and search_inp.is_visible():
@@ -2040,10 +2170,13 @@ def run_fast_json_status_sync_on_page(
     """
     try:
         attach_feeds_network_listener(page)
-        cur_url = (page.url or "").lower()
-        if "gosuslugi.ru" not in cur_url or "esia.gosuslugi.ru" in cur_url:
-            logger.info("Fast JSON status sync skipped: active tab is not on an authenticated gosuslugi.ru page.")
-            return 0
+        if allow_single_search:
+            wait_if_paused_or_logged_out(page, return_to_orders=True)
+        else:
+            cur_url = (page.url or "").lower()
+            if "gosuslugi.ru" not in cur_url or is_gosuslugi_logged_out(page):
+                logger.info("Fast JSON status sync skipped: active tab is not on an authenticated gosuslugi.ru page.")
+                return 0
 
         target_records = records if records is not None else fetch_central_master_list_records()
         if not target_records:
@@ -2060,6 +2193,12 @@ def run_fast_json_status_sync_on_page(
                 page.wait_for_timeout(2000)
             except Exception as nav_err:
                 logger.debug(f"Orders navigation note: {nav_err}")
+
+        if allow_single_search:
+            wait_if_paused_or_logged_out(page, return_to_orders=True)
+        elif is_gosuslugi_logged_out(page):
+            logger.info("Fast JSON status sync skipped: Gosuslugi session is logged out.")
+            return 0
 
         bulk_orders = fetch_bulk_orders_via_api(
             page,
@@ -2120,6 +2259,7 @@ def run_fast_json_status_sync_on_page(
 
         for rec in sorted_target_records:
             prevent_windows_sleep()
+            wait_if_paused_or_logged_out(page, return_to_orders=True)
             raw_app_no = str(rec.get("application_no") or "").strip()
             app_no = raw_app_no if raw_app_no.isdigit() else ""
             sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
@@ -2232,6 +2372,10 @@ def run_fast_json_status_sync_on_page(
                 prev_pdf = ""
 
             prev_status_pdf = str(rec.get("status_pdf_filename") or rec.get("statusPdfFilename") or "").strip()
+            if "_STATUS_A4" in prev_pdf:
+                if not prev_status_pdf:
+                    prev_status_pdf = prev_pdf
+                prev_pdf = ""
             captured_sc_file = ""
             if allow_single_search and capture_screenshots:
                 captured_sc_file = capture_a4_cropped_status_screenshot(
@@ -2245,8 +2389,6 @@ def run_fast_json_status_sync_on_page(
                 if captured_sc_file:
                     screenshots_captured_count += 1
                     prev_status_pdf = captured_sc_file
-                    if not prev_pdf or "_STATUS_A4" in prev_pdf:
-                        prev_pdf = captured_sc_file
 
             gosuslugi_event_dt = parse_gosuslugi_datetime(
                 str(matched_order.get("order_date") or ""),
@@ -2548,25 +2690,8 @@ def main():
             )
             return
 
-        # If Gosuslugi redirected to login (esia.gosuslugi.ru/login), wait until user logs in
-        if "esia.gosuslugi.ru" in (page.url or "").lower():
-            logger.warning(
-                "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (esia.gosuslugi.ru/login). "
-                "Пожалуйста, войдите в Госуслуги в окне Chrome — проверка статусов автоматически продолжится после входа!"
-            )
-            for _ in range(450):
-                page.wait_for_timeout(2000)
-                cur_u = (page.url or "").lower()
-                if "esia.gosuslugi.ru" not in cur_u and "gosuslugi.ru" in cur_u:
-                    logger.info("LOGIN_RESTORED: Вход в Госуслуги выполнен! Продолжаем проверку статусов...")
-                    page.wait_for_timeout(2000)
-                    if "lk.gosuslugi.ru/orders" not in cur_u:
-                        try:
-                            page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=45000)
-                            page.wait_for_timeout(2500)
-                        except Exception:
-                            pass
-                    break
+        # If Gosuslugi is logged out or paused, wait until user logs in and clicks Resume
+        wait_if_paused_or_logged_out(page, return_to_orders=True)
 
         # TIER 1: Bulk fetch orders via Gosuslugi API / Network Interceptor / DOM + 'Показать ещё'
         bulk_orders = fetch_bulk_orders_via_api(page, max_pages=args.max_pages)
@@ -2649,6 +2774,7 @@ def main():
 
             for idx, rec in enumerate(records):
                 prevent_windows_sleep()
+                wait_if_paused_or_logged_out(page, return_to_orders=True)
                 raw_app_no = str(rec.get("application_no") or "").strip()
                 app_no = raw_app_no if raw_app_no.isdigit() else ""
                 sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()

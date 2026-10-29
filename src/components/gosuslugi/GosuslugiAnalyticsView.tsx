@@ -51,8 +51,15 @@ interface RegionBreakdownItem {
   region: string;
   targetVks: number;
   sentCount: number;
+  serviceRenderedCount?: number;
+  registeredCount?: number;
+  sentPendingCount?: number;
+  refusedCount?: number;
   pdfCount: number;
+  statusPdfCount?: number;
   errorCount: number;
+  mvdNotFoundCount?: number;
+  notSentCount?: number;
   processedCount: number;
   pendingCount: number;
   completionPct: number;
@@ -151,6 +158,8 @@ interface EnrichedSubmission {
   history?: HistoryStepItem[];
   state: 'sent' | 'error' | 'other';
   hasPdf: boolean;
+  status_pdf_filename?: string;
+  hasStatusPdf?: boolean;
   isRegisteredMvd: boolean;
   isServiceRendered?: boolean;
   isRefusedMvd?: boolean;
@@ -179,6 +188,8 @@ interface AnalyticsResponse {
     totalSent: number;
     totalPdf: number;
     totalNoPdf: number;
+    totalStatusPdf?: number;
+    totalNoStatusPdf?: number;
     totalRegisteredMvd: number;
     totalServiceRendered?: number;
     totalRegisteredOnly?: number;
@@ -213,6 +224,7 @@ export default function GosuslugiAnalyticsView() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [sendingTelegram, setSendingTelegram] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [downloadingStatusZip, setDownloadingStatusZip] = useState(false);
   const [reopeningRefused, setReopeningRefused] = useState<string | null>(null);
   const [reopeningError, setReopeningError] = useState<string | null>(null);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
@@ -239,6 +251,8 @@ export default function GosuslugiAnalyticsView() {
     | 'not_sent'
     | 'has_pdf'
     | 'no_pdf'
+    | 'has_status_pdf'
+    | 'no_status_pdf'
     | 'resent_with_history'
   >('all');
   const [masterRefusalCatFilter, setMasterRefusalCatFilter] = useState<string>('all');
@@ -336,6 +350,8 @@ export default function GosuslugiAnalyticsView() {
     let notSent = 0;
     let hasPdf = 0;
     let noPdf = 0;
+    let hasStatusPdf = 0;
+    let noStatusPdf = 0;
     let withHistory = 0;
     for (const m of list) {
       if (m.status_key === 'service_rendered') rendered++;
@@ -348,6 +364,9 @@ export default function GosuslugiAnalyticsView() {
 
       if (m.hasPdf) hasPdf++;
       else if (m.status_key !== 'not_sent' && m.status_key !== 'error' && m.status_key !== 'mvd_not_found') noPdf++;
+
+      if (m.hasStatusPdf) hasStatusPdf++;
+      else if (m.status_key !== 'not_sent' && m.status_key !== 'error' && m.status_key !== 'mvd_not_found') noStatusPdf++;
 
       if (m.had_previous_failure || m.attempt_count > 1 || (m.history && m.history.length > 1)) {
         withHistory++;
@@ -364,9 +383,129 @@ export default function GosuslugiAnalyticsView() {
       notSent,
       hasPdf,
       noPdf,
+      hasStatusPdf,
+      noStatusPdf,
       withHistory,
     };
   }, [data?.masterList3088]);
+
+  const computedRegionBreakdown = useMemo(() => {
+    const list = data?.masterList3088 || [];
+    if (!list.length) return data?.regionBreakdown || [];
+
+    const map: Record<
+      string,
+      {
+        region: string;
+        targetVks: number;
+        sentCount: number;
+        serviceRenderedCount: number;
+        registeredCount: number;
+        sentPendingCount: number;
+        refusedCount: number;
+        pdfCount: number;
+        statusPdfCount: number;
+        errorCount: number;
+        mvdNotFoundCount: number;
+        notSentCount: number;
+        processedCount: number;
+        pendingCount: number;
+        completionPct: number;
+      }
+    > = {};
+
+    for (const item of list) {
+      const regName = item.region || 'Belirtilmemiş';
+      if (!map[regName]) {
+        map[regName] = {
+          region: regName,
+          targetVks: 0,
+          sentCount: 0,
+          serviceRenderedCount: 0,
+          registeredCount: 0,
+          sentPendingCount: 0,
+          refusedCount: 0,
+          pdfCount: 0,
+          statusPdfCount: 0,
+          errorCount: 0,
+          mvdNotFoundCount: 0,
+          notSentCount: 0,
+          processedCount: 0,
+          pendingCount: 0,
+          completionPct: 0,
+        };
+      }
+      const r = map[regName];
+      r.targetVks++;
+      if (item.hasPdf) r.pdfCount++;
+      if (item.hasStatusPdf) r.statusPdfCount++;
+
+      if (item.status_key === 'service_rendered') {
+        r.serviceRenderedCount++;
+        r.sentCount++;
+      } else if (item.status_key === 'registered_mvd') {
+        r.registeredCount++;
+        r.sentCount++;
+      } else if (item.status_key === 'sent_pending') {
+        r.sentPendingCount++;
+        r.sentCount++;
+      } else if (item.status_key === 'refused_mvd') {
+        r.refusedCount++;
+        r.sentCount++;
+      } else if (item.status_key === 'error') {
+        r.errorCount++;
+      } else if (item.status_key === 'mvd_not_found') {
+        r.mvdNotFoundCount++;
+      } else {
+        r.notSentCount++;
+      }
+    }
+
+    return Object.values(map)
+      .map((r) => ({
+        ...r,
+        processedCount: r.sentCount + r.errorCount + r.mvdNotFoundCount,
+        pendingCount: r.notSentCount,
+        completionPct:
+          r.targetVks > 0 ? Math.min(100, Math.round((r.serviceRenderedCount / r.targetVks) * 100)) : 0,
+      }))
+      .sort((a, b) => b.targetVks - a.targetVks);
+  }, [data?.masterList3088, data?.regionBreakdown]);
+
+  const regionTotals = useMemo(() => {
+    const totals = {
+      targetVks: 0,
+      sentCount: 0,
+      serviceRenderedCount: 0,
+      registeredCount: 0,
+      sentPendingCount: 0,
+      refusedCount: 0,
+      errorCount: 0,
+      mvdNotFoundCount: 0,
+      notSentCount: 0,
+      pdfCount: 0,
+      statusPdfCount: 0,
+      completionPct: 0,
+    };
+    for (const r of computedRegionBreakdown) {
+      totals.targetVks += r.targetVks || 0;
+      totals.sentCount += r.sentCount || 0;
+      totals.serviceRenderedCount += r.serviceRenderedCount ?? 0;
+      totals.registeredCount += r.registeredCount ?? 0;
+      totals.sentPendingCount += r.sentPendingCount ?? 0;
+      totals.refusedCount += r.refusedCount ?? 0;
+      totals.errorCount += r.errorCount || 0;
+      totals.mvdNotFoundCount += r.mvdNotFoundCount ?? 0;
+      totals.notSentCount += r.notSentCount ?? r.pendingCount ?? 0;
+      totals.pdfCount += r.pdfCount || 0;
+      totals.statusPdfCount += r.statusPdfCount ?? 0;
+    }
+    totals.completionPct =
+      totals.targetVks > 0
+        ? Math.min(100, Math.round((totals.serviceRenderedCount / totals.targetVks) * 100))
+        : 0;
+    return totals;
+  }, [computedRegionBreakdown]);
 
   const filteredMaster3088 = useMemo(() => {
     const list = data?.masterList3088 || [];
@@ -385,6 +524,13 @@ export default function GosuslugiAnalyticsView() {
       if (
         masterStatusFilter === 'no_pdf' &&
         (item.hasPdf || item.status_key === 'not_sent' || item.status_key === 'error' || item.status_key === 'mvd_not_found')
+      ) {
+        return false;
+      }
+      if (masterStatusFilter === 'has_status_pdf' && !item.hasStatusPdf) return false;
+      if (
+        masterStatusFilter === 'no_status_pdf' &&
+        (item.hasStatusPdf || item.status_key === 'not_sent' || item.status_key === 'error' || item.status_key === 'mvd_not_found')
       ) {
         return false;
       }
@@ -750,6 +896,11 @@ export default function GosuslugiAnalyticsView() {
     [filteredMaster3088]
   );
 
+  const filteredMasterStatusPdfItems = useMemo(
+    () => filteredMaster3088.filter((item) => Boolean(item.hasStatusPdf)),
+    [filteredMaster3088]
+  );
+
   const isMasterFiltered =
     masterSearch.trim() !== '' ||
     masterStatusFilter !== 'all' ||
@@ -778,6 +929,7 @@ export default function GosuslugiAnalyticsView() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            type: 'receipt',
             filenames: targetItems.map((it) => it.pdf_filename),
             appNos: targetItems.map((it) => it.application_no),
           }),
@@ -798,7 +950,7 @@ export default function GosuslugiAnalyticsView() {
         URL.revokeObjectURL(url);
       } else {
         const a = document.createElement('a');
-        a.href = '/api/gosuslugi/pdf/zip';
+        a.href = '/api/gosuslugi/pdf/zip?type=receipt';
         a.download = `Pondera_VKS_Gosuslugi_PDFs_2026-3.zip`;
         document.body.appendChild(a);
         a.click();
@@ -808,6 +960,56 @@ export default function GosuslugiAnalyticsView() {
       setTelegramFeedback('⚠️ PDF ZIP arşivi indirilirken hata oluştu.');
     } finally {
       setTimeout(() => setDownloadingZip(false), 1200);
+    }
+  };
+
+  const handleDownloadStatusPdfZip = async (onlyFiltered = false) => {
+    setDownloadingStatusZip(true);
+    try {
+      const isScopedUser = Boolean(user?.scope_type && user.scope_type !== 'all' && user.scope_value);
+      const allScopedStatusItems = (data?.masterList3088 || []).filter((it) => Boolean(it.hasStatusPdf));
+      const targetItems = onlyFiltered ? filteredMasterStatusPdfItems : allScopedStatusItems;
+
+      if ((onlyFiltered && isMasterFiltered) || isScopedUser) {
+        if (targetItems.length === 0) {
+          setTelegramFeedback('⚠️ Seçilen kapsama ait Statü PDF dosyası bulunamadı.');
+          return;
+        }
+        const res = await fetch('/api/gosuslugi/pdf/zip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'status',
+            filenames: targetItems.map((it) => it.status_pdf_filename || '').filter(Boolean),
+            appNos: targetItems.map((it) => it.application_no).filter(Boolean),
+          }),
+        });
+        if (!res.ok) {
+          setTelegramFeedback('⚠️ Seçilen filtreye ait Statü PDF dosyaları sunucuda bulunamadı.');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const scopeLabel = isScopedUser ? `_${user?.scope_value}` : onlyFiltered ? '_Filtreli' : '';
+        a.download = `Pondera_VKS_Gosuslugi_Status_A4_PDFs${scopeLabel}_${targetItems.length}adet_${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } else {
+        const a = document.createElement('a');
+        a.href = '/api/gosuslugi/pdf/zip?type=status';
+        a.download = `Pondera_VKS_Gosuslugi_Status_A4_PDFs_2026-3.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch {
+      setTelegramFeedback('⚠️ Statü PDF ZIP arşivi indirilirken hata oluştu.');
+    } finally {
+      setTimeout(() => setDownloadingStatusZip(false), 1200);
     }
   };
 
@@ -1232,7 +1434,7 @@ export default function GosuslugiAnalyticsView() {
                     </div>
 
                     <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs">
-                      <span className="text-slate-600 dark:text-slate-400 font-normal">EBA PDF:</span>
+                      <span className="text-slate-600 dark:text-slate-400 font-normal">Başvuru PDF:</span>
                       <span className="text-sm text-teal-700 dark:text-teal-400 font-normal">
                         {s.totalPdf.toLocaleString('tr-TR')}
                       </span>
@@ -1240,10 +1442,26 @@ export default function GosuslugiAnalyticsView() {
                         onClick={() => handleDownloadPdfZip(false)}
                         disabled={downloadingZip || s.totalPdf === 0}
                         className="ml-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-normal flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
-                        title="İndirilen tüm PDF makbuzlarını tek ZIP arşivi olarak indir"
+                        title="İndirilen tüm başvuru PDF makbuzlarını tek ZIP arşivi olarak indir"
                       >
                         <Download className="w-3 h-3" />
                         {downloadingZip ? 'ZIP...' : 'ZIP İndir'}
+                      </button>
+                    </div>
+
+                    <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800/80 flex items-center gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-400 font-normal">📸 Statü PDF:</span>
+                      <span className="text-sm text-indigo-700 dark:text-indigo-300 font-bold">
+                        {(masterSummaryCounts.hasStatusPdf || s.totalStatusPdf || 0).toLocaleString('tr-TR')}
+                      </span>
+                      <button
+                        onClick={() => handleDownloadStatusPdfZip(false)}
+                        disabled={downloadingStatusZip}
+                        className="ml-1 px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900/70 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                        title="Tüm Statü PDF (A4 ekran görüntüsü + kart) dosyalarını tek ZIP arşivi olarak indir"
+                      >
+                        <Download className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                        {downloadingStatusZip ? 'ZIP...' : 'Statü ZIP İndir'}
                       </button>
                     </div>
                   </div>
@@ -1445,51 +1663,130 @@ export default function GosuslugiAnalyticsView() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-[11px]">
                           <th className="py-2 pr-2 font-semibold">Bölge / Şantiye</th>
-                          <th className="py-2 px-2 text-right font-semibold">Hedef VKS</th>
-                          <th className="py-2 px-2 text-right font-semibold text-emerald-600">Gönderilen</th>
-                          <th className="py-2 px-2 text-right font-semibold text-rose-600">Hatalı</th>
-                          <th className="py-2 px-2 text-right font-semibold">Kalan</th>
+                          <th className="py-2 px-1.5 text-right font-semibold">Hedef VKS</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">Gönderilen</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-teal-600 dark:text-teal-400" title="Услуга оказана">Onaylanan</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-sky-600 dark:text-sky-400" title="Зарегистрировано + Отправлено">Süreçte</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-orange-600 dark:text-orange-400" title="Услуга отказана">Red</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-rose-600 dark:text-rose-400" title="Ошибка">Hatalı</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-amber-600 dark:text-amber-400" title="Данные не найдены в базе МВД">MVD Yok</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-slate-600 dark:text-slate-300" title="Henüz Gönderilmedi (Kuyrukta)">Kuyrukta</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-teal-700 dark:text-teal-300" title="Başvuru Makbuzu PDF">Başvuru PDF</th>
+                          <th className="py-2 px-1.5 text-right font-semibold text-indigo-600 dark:text-indigo-400" title="A4 Statü Ekran Görüntüsü PDF">Statü PDF</th>
                           <th className="py-2 pl-2 text-right font-semibold">İlerleme</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
-                        {data?.regionBreakdown.map((reg) => (
-                          <tr
-                            key={reg.region}
-                            onClick={() => jumpToMasterListWithFilter({ region: reg.region })}
-                            className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                          >
-                            <td className="py-2.5 pr-2 font-medium text-slate-900 dark:text-white">
-                              {reg.region}
+                        {computedRegionBreakdown.map((reg) => {
+                          const inProgress = (reg.registeredCount || 0) + (reg.sentPendingCount || 0);
+                          return (
+                            <tr
+                              key={reg.region}
+                              onClick={() => jumpToMasterListWithFilter({ region: reg.region })}
+                              className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                            >
+                              <td className="py-2.5 pr-2 font-medium text-slate-900 dark:text-white whitespace-nowrap">
+                                {reg.region}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
+                                {reg.targetVks.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                {reg.sentCount.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono text-teal-600 dark:text-teal-400">
+                                {(reg.serviceRenderedCount ?? 0).toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono text-sky-600 dark:text-sky-400">
+                                {inProgress.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono font-semibold text-orange-600 dark:text-orange-400">
+                                {(reg.refusedCount ?? 0).toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                                {reg.errorCount.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono text-amber-600 dark:text-amber-400">
+                                {(reg.mvdNotFoundCount ?? 0).toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono text-slate-600 dark:text-slate-300">
+                                {(reg.notSentCount ?? reg.pendingCount ?? 0).toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono text-teal-700 dark:text-teal-300">
+                                {(reg.pdfCount ?? 0).toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 px-1.5 text-right font-mono text-indigo-600 dark:text-indigo-400">
+                                {(reg.statusPdfCount ?? 0).toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2.5 pl-2 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <div className="w-12 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden hidden sm:block">
+                                    <div
+                                      className="h-full bg-emerald-500"
+                                      style={{ width: `${Math.min(100, reg.completionPct)}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-mono font-bold text-[11px] w-9 text-right">
+                                    %{reg.completionPct}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      {computedRegionBreakdown.length > 0 && (
+                        <tfoot>
+                          <tr className="border-t-2 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/70 font-bold text-slate-900 dark:text-white">
+                            <td className="py-2.5 pr-2 font-bold">TOPLAM ({computedRegionBreakdown.length} Bölge)</td>
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold">
+                              {regionTotals.targetVks.toLocaleString('tr-TR')}
                             </td>
-                            <td className="py-2.5 px-2 text-right font-mono">{reg.targetVks}</td>
-                            <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                              {reg.sentCount}
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              {regionTotals.sentCount.toLocaleString('tr-TR')}
                             </td>
-                            <td className="py-2.5 px-2 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
-                              {reg.errorCount}
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-teal-600 dark:text-teal-400">
+                              {regionTotals.serviceRenderedCount.toLocaleString('tr-TR')}
                             </td>
-                            <td className="py-2.5 px-2 text-right font-mono text-slate-500">
-                              {reg.pendingCount}
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-sky-600 dark:text-sky-400">
+                              {(regionTotals.registeredCount + regionTotals.sentPendingCount).toLocaleString('tr-TR')}
+                            </td>
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-orange-600 dark:text-orange-400">
+                              {regionTotals.refusedCount.toLocaleString('tr-TR')}
+                            </td>
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                              {regionTotals.errorCount.toLocaleString('tr-TR')}
+                            </td>
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
+                              {regionTotals.mvdNotFoundCount.toLocaleString('tr-TR')}
+                            </td>
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-slate-700 dark:text-slate-200">
+                              {regionTotals.notSentCount.toLocaleString('tr-TR')}
+                            </td>
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-teal-700 dark:text-teal-300">
+                              {regionTotals.pdfCount.toLocaleString('tr-TR')}
+                            </td>
+                            <td className="py-2.5 px-1.5 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                              {regionTotals.statusPdfCount.toLocaleString('tr-TR')}
                             </td>
                             <td className="py-2.5 pl-2 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <div className="w-16 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden hidden sm:block">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <div className="w-12 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden hidden sm:block">
                                   <div
-                                    className="h-full bg-emerald-500"
-                                    style={{ width: `${reg.completionPct}%` }}
+                                    className="h-full bg-emerald-600"
+                                    style={{ width: `${Math.min(100, regionTotals.completionPct)}%` }}
                                   />
                                 </div>
                                 <span className="font-mono font-bold text-[11px] w-9 text-right">
-                                  %{reg.completionPct}
+                                  %{regionTotals.completionPct}
                                 </span>
                               </div>
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
+                        </tfoot>
+                      )}
                     </table>
                   </div>
                 </div>
@@ -1620,7 +1917,18 @@ export default function GosuslugiAnalyticsView() {
                       className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
                       <Download className="w-3.5 h-3.5 text-teal-600" />
-                      PDF ZIP İndir ({filteredMasterPdfItems.length})
+                      Başvuru PDF ZIP ({filteredMasterPdfItems.length})
+                    </button>
+                  )}
+
+                  {filteredMasterStatusPdfItems.length > 0 && (
+                    <button
+                      onClick={() => handleDownloadStatusPdfZip(true)}
+                      disabled={downloadingStatusZip}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/70 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      📸 Statü PDF ZIP ({filteredMasterStatusPdfItems.length})
                     </button>
                   )}
 
@@ -1666,8 +1974,10 @@ export default function GosuslugiAnalyticsView() {
                   <option value="error">❌ Ошибка - Hatalı ({masterSummaryCounts.error})</option>
                   <option value="mvd_not_found">⚠️ Данные не найдены в базе МВД ({masterSummaryCounts.mvdNotFound})</option>
                   <option value="not_sent">⏳ Henüz Gönderilmedi ({masterSummaryCounts.notSent})</option>
-                  <option value="has_pdf">📄 PDF İndirilen ({masterSummaryCounts.hasPdf})</option>
-                  <option value="no_pdf">⚡ PDF Bekleyen ({masterSummaryCounts.noPdf})</option>
+                  <option value="has_pdf">📄 Başvuru PDF İndirilen ({masterSummaryCounts.hasPdf})</option>
+                  <option value="no_pdf">⚡ Başvuru PDF Bekleyen ({masterSummaryCounts.noPdf})</option>
+                  <option value="has_status_pdf">📸 Statü PDF İndirilen ({masterSummaryCounts.hasStatusPdf})</option>
+                  <option value="no_status_pdf">🖼 Statü PDF Bekleyen ({masterSummaryCounts.noStatusPdf})</option>
                   <option value="resent_with_history">🔄 Tekrar Gönderilen ({masterSummaryCounts.withHistory})</option>
                 </select>
 
@@ -1688,8 +1998,8 @@ export default function GosuslugiAnalyticsView() {
                   onChange={(e) => setMasterRegionFilter(e.target.value)}
                   className="w-full min-w-0 truncate px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
                 >
-                  <option value="all">Tüm Bölgeler / Şantiyeler</option>
-                  {data?.regionBreakdown.map((r) => (
+                  <option value="all">Tüm Bölgeler / Şantiyeler ({regionTotals.targetVks})</option>
+                  {computedRegionBreakdown.map((r) => (
                     <option key={r.region} value={r.region}>
                       {r.region} ({r.targetVks})
                     </option>
@@ -2021,6 +2331,17 @@ export default function GosuslugiAnalyticsView() {
                                   >
                                     <FileText className="w-2.5 h-2.5" />
                                     {item.hasStatusPdf ? '📸 Statü PDF Aç ✓' : 'Statü PDF Aç'}
+                                  </a>
+                                  <a
+                                    href={`/api/gosuslugi/pdf?appNo=${encodeURIComponent(
+                                      item.application_no
+                                    )}&sicil=${encodeURIComponent(item.sicil_no)}&screenshot=1&download=1`}
+                                    download
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/80 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 transition-colors"
+                                    title={`Statü PDF İndir (№ ${item.application_no})`}
+                                  >
+                                    <Download className="w-2.5 h-2.5" />
+                                    Statü İndir
                                   </a>
                                 </div>
                               </div>

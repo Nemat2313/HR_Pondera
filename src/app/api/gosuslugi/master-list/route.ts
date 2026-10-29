@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { getDb } from '@/lib/db';
 import { createPreActionBackup } from '@/lib/backup';
 
@@ -197,9 +199,8 @@ function ensureTables(db: any) {
       const delFixedErrStmt = db.prepare(`
         DELETE FROM gosuslugi_submissions
         WHERE sicil_no = ?
-          AND gosuslugi_status != 'Услуга оказана'
-          AND gosuslugi_status != 'Заявление зарегистрировано'
-          AND gosuslugi_status != 'Отправлено в ведомство'
+          AND application_no = ''
+          AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')
       `);
       db.exec('BEGIN');
       for (const r of rows) {
@@ -364,6 +365,22 @@ export async function GET(request: Request) {
       )
       .all() as Array<any>;
 
+    const statusPdfByAppNo = new Map<string, string>();
+    const statusPdfBySicil = new Map<string, string>();
+    try {
+      const pdfDir = path.join(process.cwd(), 'data', 'gosuslugi_pdfs');
+      if (fs.existsSync(pdfDir)) {
+        const files = fs.readdirSync(pdfDir);
+        for (const f of files) {
+          if (!f.toUpperCase().includes('_STATUS_A4.PDF')) continue;
+          const mApp = f.match(/([789]\d{9})/);
+          if (mApp) statusPdfByAppNo.set(mApp[1], f);
+          const mSic = f.match(/^(\d{4,8})_/);
+          if (mSic) statusPdfBySicil.set(mSic[1], f);
+        }
+      }
+    } catch {}
+
     const subBySicil = new Map<string, any>();
     for (const s of subRows) {
       const sic = String(s.sicil_no || '').trim();
@@ -397,6 +414,8 @@ export async function GET(request: Request) {
     let totalRefused = 0;
     let totalError = 0;
     let totalPending = 0;
+    let totalPdf = 0;
+    let totalStatusPdf = 0;
 
     const enrichedList: any[] = [];
 
@@ -409,6 +428,15 @@ export async function GET(request: Request) {
       const mvdNotFound = isMvdNotFoundSubmission(sub);
       const errored = isErrorSubmission(sub);
       const refused = Boolean(sub && !errored && !mvdNotFound && /отказан/i.test(String(sub.gosuslugi_status || '')));
+
+      const appNoVal = String(sub?.application_no || '').trim();
+      const rawPdfVal = String(sub?.pdf_filename || '').trim();
+      const cleanReceiptPdf = rawPdfVal.toUpperCase().includes('_STATUS_A4') ? '' : rawPdfVal;
+      const cleanStatusPdf =
+        String(sub?.status_pdf_filename || '').trim() ||
+        (appNoVal && statusPdfByAppNo.get(appNoVal)) ||
+        (m.sicil_no && statusPdfBySicil.get(m.sicil_no)) ||
+        (rawPdfVal.toUpperCase().includes('_STATUS_A4') ? rawPdfVal : '');
 
       const rowStatus: 'success' | 'error' | 'mvd_not_found' | 'pending' = sent
         ? 'success'
@@ -426,6 +454,8 @@ export async function GET(request: Request) {
       if (sent) {
         totalSent++;
         compStat.sent++;
+        if (cleanReceiptPdf) totalPdf++;
+        if (cleanStatusPdf) totalStatusPdf++;
         if (refused) {
           totalRefused++;
           compStat.refused++;
@@ -474,14 +504,14 @@ export async function GET(request: Request) {
         assigned_computer: comp,
         status: rowStatus,
         selected: hasValidRnrAndBlank && (rowStatus === 'pending' || rowStatus === 'error'),
-        applicationNo: sub?.application_no || '',
-        application_no: sub?.application_no || '',
+        applicationNo: appNoVal,
+        application_no: appNoVal,
         gosuslugiStatus: sub?.gosuslugi_status || '',
         gosuslugi_status: sub?.gosuslugi_status || '',
-        pdfFilename: sub?.pdf_filename || '',
-        pdf_filename: sub?.pdf_filename || '',
-        statusPdfFilename: sub?.status_pdf_filename || '',
-        status_pdf_filename: sub?.status_pdf_filename || '',
+        pdfFilename: cleanReceiptPdf,
+        pdf_filename: cleanReceiptPdf,
+        statusPdfFilename: cleanStatusPdf,
+        status_pdf_filename: cleanStatusPdf,
         submittedAt: sub?.submitted_at || '',
         submitted_at: sub?.submitted_at || '',
         checkedAt: sub?.checked_at || '',
@@ -505,6 +535,8 @@ export async function GET(request: Request) {
         refused: totalRefused,
         error: totalError,
         pending: totalPending,
+        totalPdf,
+        totalStatusPdf,
         computers: computersSummary,
       },
       data: enrichedList,

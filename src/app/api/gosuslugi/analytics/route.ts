@@ -802,6 +802,8 @@ export async function GET(request: Request) {
     let totalSent = 0;
     let totalPdf = 0;
     let totalNoPdf = 0;
+    let totalStatusPdf = 0;
+    let totalNoStatusPdf = 0;
     let totalRegisteredMvd = 0;
     let totalServiceRendered = 0;
     let totalRegisteredOnly = 0;
@@ -850,12 +852,13 @@ export async function GET(request: Request) {
       const appNo = String(r.application_no || '').trim();
       const rawStatus = String(r.gosuslugi_status || '').trim();
       const detail = String(r.status_detail || '').trim();
-      const pdf = String(r.pdf_filename || '').trim();
+      const rawPdf = String(r.pdf_filename || '').trim();
+      const pdf = rawPdf.toUpperCase().includes('_STATUS_A4') ? '' : rawPdf;
       const statusPdf =
         String(r.status_pdf_filename || '').trim() ||
         (appNo && statusPdfByAppNo.get(appNo)) ||
         (sicil && statusPdfBySicil.get(sicil)) ||
-        (pdf.toUpperCase().includes('_STATUS_A4') ? pdf : '');
+        (rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '');
       const hasStatusPdf = Boolean(statusPdf);
       const subAt = String(r.submitted_at || '').trim();
       const chkAt = String(r.checked_at || '').trim();
@@ -1030,6 +1033,8 @@ export async function GET(request: Request) {
         totalSent++;
         if (hasPdf) totalPdf++;
         else totalNoPdf++;
+        if (hasStatusPdf) totalStatusPdf++;
+        else totalNoStatusPdf++;
         if (isRegisteredMvd) totalRegisteredMvd++;
         if (isServiceRendered) totalServiceRendered++;
         else if (isRegisteredOnly) totalRegisteredOnly++;
@@ -1314,13 +1319,79 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Finalize region pending counts
-    const regionBreakdown = Object.values(regionStatsMap)
+    // Finalize region breakdown directly from masterList3088 so regional targets and all status columns sum to 3,088
+    const masterRegionMap: Record<
+      string,
+      {
+        region: string;
+        targetVks: number;
+        sentCount: number;
+        serviceRenderedCount: number;
+        registeredCount: number;
+        sentPendingCount: number;
+        refusedCount: number;
+        errorCount: number;
+        mvdNotFoundCount: number;
+        notSentCount: number;
+        pendingCount: number;
+        pdfCount: number;
+        statusPdfCount: number;
+      }
+    > = {};
+
+    for (const item of masterList3088) {
+      const regName = item.region || 'Belirtilmemiş';
+      if (!masterRegionMap[regName]) {
+        masterRegionMap[regName] = {
+          region: regName,
+          targetVks: 0,
+          sentCount: 0,
+          serviceRenderedCount: 0,
+          registeredCount: 0,
+          sentPendingCount: 0,
+          refusedCount: 0,
+          errorCount: 0,
+          mvdNotFoundCount: 0,
+          notSentCount: 0,
+          pendingCount: 0,
+          pdfCount: 0,
+          statusPdfCount: 0,
+        };
+      }
+      const rStat = masterRegionMap[regName];
+      rStat.targetVks++;
+      if (item.hasPdf) rStat.pdfCount++;
+      if (item.hasStatusPdf) rStat.statusPdfCount++;
+
+      if (item.status_key === 'service_rendered') {
+        rStat.serviceRenderedCount++;
+        rStat.sentCount++;
+      } else if (item.status_key === 'registered_mvd') {
+        rStat.registeredCount++;
+        rStat.sentCount++;
+      } else if (item.status_key === 'sent_pending') {
+        rStat.sentPendingCount++;
+        rStat.sentCount++;
+      } else if (item.status_key === 'refused_mvd') {
+        rStat.refusedCount++;
+        rStat.sentCount++;
+      } else if (item.status_key === 'error') {
+        rStat.errorCount++;
+      } else if (item.status_key === 'mvd_not_found') {
+        rStat.mvdNotFoundCount++;
+      } else {
+        rStat.notSentCount++;
+      }
+    }
+
+    const regionBreakdown = Object.values(masterRegionMap)
       .map((reg) => {
-        const processed = reg.sentCount + reg.errorCount;
-        const pending = Math.max(0, reg.targetVks - reg.sentCount);
+        const processed = reg.sentCount + reg.errorCount + reg.mvdNotFoundCount;
+        const pending = reg.notSentCount;
         const completionPct =
-          reg.targetVks > 0 ? Math.min(100, Math.round((reg.sentCount / reg.targetVks) * 100)) : 0;
+          reg.targetVks > 0
+            ? Math.min(100, Math.round((reg.serviceRenderedCount / reg.targetVks) * 100))
+            : 0;
         return {
           ...reg,
           processedCount: processed,
@@ -1354,6 +1425,8 @@ export async function GET(request: Request) {
         totalSent,
         totalPdf,
         totalNoPdf,
+        totalStatusPdf,
+        totalNoStatusPdf,
         totalRegisteredMvd,
         totalServiceRendered,
         totalRegisteredOnly,

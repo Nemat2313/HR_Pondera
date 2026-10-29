@@ -8,6 +8,7 @@ import {
   Download,
   Upload,
   Play,
+  Pause,
   Square,
   Globe,
   CheckCircle2,
@@ -68,6 +69,7 @@ export interface GosuslugiSubmissionEntry {
 interface BridgeStatus {
   status: 'online' | 'offline';
   running: boolean;
+  paused?: boolean;
   mode?: string;
   chrome_ready: boolean;
   total: number;
@@ -144,7 +146,14 @@ export interface VksValidationResult {
   fieldErrors: Partial<Record<VksValidationIssue['field'], string[]>>;
 }
 
-type QueueFilterMode = 'all' | 'ready' | 'invalid' | 'sent' | 'mvd_not_found' | 'error';
+type QueueFilterMode =
+  | 'all'
+  | 'ready'
+  | 'invalid'
+  | 'sent'
+  | 'has_status_pdf'
+  | 'mvd_not_found'
+  | 'error';
 
 const BRIDGE_URLS = ['http://127.0.0.1:8088', 'http://localhost:8088'];
 
@@ -976,6 +985,8 @@ export default function GosuslugiVksView() {
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [isLaunchingChrome, setIsLaunchingChrome] = useState(false);
   const [isStartingRobot, setIsStartingRobot] = useState(false);
+  const [isStoppingRobot, setIsStoppingRobot] = useState(false);
+  const [isTogglingPause, setIsTogglingPause] = useState(false);
   const [isCheckingStatuses, setIsCheckingStatuses] = useState(false);
   const [showSingleStatusSearchModal, setShowSingleStatusSearchModal] = useState(false);
   const [singleSearchScope, setSingleSearchScope] = useState<'pending_only' | 'all_from_start'>('pending_only');
@@ -989,6 +1000,8 @@ export default function GosuslugiVksView() {
   // Central Backend Master VKS List (3,088 records & 4-Computer Queue Partitioning)
   const [masterSummary, setMasterSummary] = useState<{
     totalMaster: number;
+    totalPdf?: number;
+    totalStatusPdf?: number;
     computers: Record<
       number,
       {
@@ -1112,6 +1125,7 @@ export default function GosuslugiVksView() {
               matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено'
             );
             const nextPdf = matchedSub.pdf_filename || '';
+            const nextStatusPdf = matchedSub.status_pdf_filename || w.statusPdfFilename || '';
             const alreadySent = isWorkerAlreadySentToGosuslugi({
               status: w.status === 'success' ? 'success' : undefined,
               applicationNo: nextAppNo,
@@ -1125,6 +1139,7 @@ export default function GosuslugiVksView() {
               applicationNo: nextAppNo,
               gosuslugiStatus: nextGosStatus,
               pdfFilename: nextPdf,
+              statusPdfFilename: nextStatusPdf || undefined,
               status: alreadySent
                 ? 'success'
                 : isMvdNotFound
@@ -1157,6 +1172,8 @@ export default function GosuslugiVksView() {
       if (json.success && json.computers) {
         setMasterSummary({
           totalMaster: json.totalMaster || 0,
+          totalPdf: json.summary?.totalPdf ?? 0,
+          totalStatusPdf: json.summary?.totalStatusPdf ?? 0,
           computers: json.computers,
         });
       }
@@ -1472,7 +1489,7 @@ export default function GosuslugiVksView() {
                 const unsynced = subValues.filter((s) => {
                   const keyId = s.application_no || s.sicil_no || '';
                   if (!keyId) return false;
-                  const sig = `${keyId}:${s.gosuslugi_status || ''}:${s.pdf_filename || ''}`;
+                  const sig = `${keyId}:${s.gosuslugi_status || ''}:${s.pdf_filename || ''}:${s.status_pdf_filename || ''}`;
                   if (syncedAppsRef.current.has(sig)) return false;
                   syncedAppsRef.current.add(sig);
                   return true;
@@ -1502,28 +1519,30 @@ export default function GosuslugiVksView() {
                   }).catch(() => {});
                 }
 
-                // Also sync any downloaded PDF receipts to central server storage so other PCs can download them
+                // Also sync any downloaded PDF receipts AND Status A4 PDFs to central server storage so other PCs can download them
                 for (const s of subValues) {
-                  if (s.pdf_filename && !uploadedPdfsRef.current.has(s.pdf_filename)) {
-                    uploadedPdfsRef.current.add(s.pdf_filename);
-                    fetch(`${url}/pdf-base64?file=${encodeURIComponent(s.pdf_filename)}`)
-                      .then((r) => (r.ok ? r.json() : null))
-                      .then((pdfJson) => {
-                        if (pdfJson?.success && pdfJson.pdf_base64) {
-                          return fetch('/api/gosuslugi/pdf', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              filename: pdfJson.filename || s.pdf_filename,
-                              pdf_base64: pdfJson.pdf_base64,
-                              application_no: s.application_no || '',
-                              sicil_no: s.sicil_no || '',
-                            }),
-                          });
-                        }
-                        return null;
-                      })
-                      .catch(() => {});
+                  for (const candidateFn of [s.pdf_filename, s.status_pdf_filename]) {
+                    if (candidateFn && !uploadedPdfsRef.current.has(candidateFn)) {
+                      uploadedPdfsRef.current.add(candidateFn);
+                      fetch(`${url}/pdf-base64?file=${encodeURIComponent(candidateFn)}`)
+                        .then((r) => (r.ok ? r.json() : null))
+                        .then((pdfJson) => {
+                          if (pdfJson?.success && pdfJson.pdf_base64) {
+                            return fetch('/api/gosuslugi/pdf', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                filename: pdfJson.filename || candidateFn,
+                                pdf_base64: pdfJson.pdf_base64,
+                                application_no: s.application_no || '',
+                                sicil_no: s.sicil_no || '',
+                              }),
+                            });
+                          }
+                          return null;
+                        })
+                        .catch(() => {});
+                    }
                   }
                 }
               }
@@ -1560,6 +1579,7 @@ export default function GosuslugiVksView() {
                           : pickBetterGosuslugiStatus(w.gosuslugiStatus, matchedSub.gosuslugi_status) ||
                             (isErrored ? '' : 'Отправлено');
                       const nextPdf = matchedSub.pdf_filename || w.pdfFilename;
+                      const nextStatusPdf = matchedSub.status_pdf_filename || w.statusPdfFilename;
                       const alreadySent = isWorkerAlreadySentToGosuslugi({
                         applicationNo: nextAppNo,
                         gosuslugiStatus: nextGosStatus,
@@ -1576,6 +1596,7 @@ export default function GosuslugiVksView() {
                         nextAppNo !== w.applicationNo ||
                         nextGosStatus !== w.gosuslugiStatus ||
                         nextPdf !== w.pdfFilename ||
+                        nextStatusPdf !== w.statusPdfFilename ||
                         ((alreadySent || isSubErr || isSubMvdNotFound) && w.selected)
                       ) {
                         nextW = {
@@ -1583,6 +1604,7 @@ export default function GosuslugiVksView() {
                           applicationNo: nextAppNo,
                           gosuslugiStatus: nextGosStatus,
                           pdfFilename: nextPdf,
+                          statusPdfFilename: nextStatusPdf,
                           status: isSubMvdNotFound
                             ? 'mvd_not_found'
                             : isSubErr
@@ -1844,6 +1866,8 @@ export default function GosuslugiVksView() {
       if (json.computers) {
         setMasterSummary({
           totalMaster: json.totalMaster || 0,
+          totalPdf: json.summary?.totalPdf ?? 0,
+          totalStatusPdf: json.summary?.totalStatusPdf ?? 0,
           computers: json.computers,
         });
       }
@@ -2926,13 +2950,65 @@ export default function GosuslugiVksView() {
   };
 
   const handleStopRobot = async () => {
+    if (isStoppingRobot) return;
+    setIsStoppingRobot(true);
     try {
       const res = await fetch(`${activeBridgeUrl}/stop`, { method: 'POST' });
       if (res.ok) {
+        setBridgeStatus((prev) => ({
+          ...prev,
+          running: false,
+          paused: false,
+          waiting_for_manual: false,
+          manual_message: null,
+          active_worker_code: null,
+          active_worker_name: null,
+        }));
+        setWorkers((prev) =>
+          prev.map((w) => (w.status === 'processing' ? { ...w, status: 'pending' } : w))
+        );
         showNotice('info', lang === 'ru' ? 'Робот остановлен.' : 'Robot durduruldu.');
       }
     } catch {
       showNotice('error', 'Durdurma komutu gönderilemedi.');
+    } finally {
+      setTimeout(() => setIsStoppingRobot(false), 400);
+    }
+  };
+
+  const handleTogglePauseRobot = async () => {
+    if (isTogglingPause) return;
+    setIsTogglingPause(true);
+    const currentlyPaused = Boolean(bridgeStatus.paused || bridgeStatus.waiting_for_manual);
+    try {
+      const endpoint = currentlyPaused ? '/resume' : '/pause';
+      const res = await fetch(`${activeBridgeUrl}${endpoint}`, { method: 'POST' });
+      if (res.ok) {
+        setBridgeStatus((prev) => ({
+          ...prev,
+          paused: !currentlyPaused,
+          waiting_for_manual: !currentlyPaused,
+          manual_message: !currentlyPaused
+            ? lang === 'ru'
+              ? 'Робот поставлен на паузу. Нажмите «Продолжить», чтобы возобновить работу.'
+              : 'Robot duraklatıldı. Devam etmek için «Devam Et» butonuna tıklayın.'
+            : null,
+        }));
+        showNotice(
+          'info',
+          currentlyPaused
+            ? lang === 'ru'
+              ? 'Робот возобновил работу!'
+              : 'Robot kaldığı yerden devam ediyor!'
+            : lang === 'ru'
+            ? 'Робот поставлен на паузу.'
+            : 'Robot duraklatıldı.'
+        );
+      }
+    } catch {
+      showNotice('error', currentlyPaused ? 'Devam et komutu gönderilemedi.' : 'Duraklatma komutu gönderilemedi.');
+    } finally {
+      setIsTogglingPause(false);
     }
   };
 
@@ -2940,6 +3016,12 @@ export default function GosuslugiVksView() {
     try {
       const res = await fetch(`${activeBridgeUrl}/manual-continue`, { method: 'POST' });
       if (res.ok) {
+        setBridgeStatus((prev) => ({
+          ...prev,
+          paused: false,
+          waiting_for_manual: false,
+          manual_message: null,
+        }));
         showNotice(
           'success',
           lang === 'ru'
@@ -3249,7 +3331,8 @@ export default function GosuslugiVksView() {
 
   const isOnline = bridgeStatus.status === 'online';
   const isRunning = bridgeStatus.running;
-  const isWaitingManual = Boolean(bridgeStatus.waiting_for_manual && isRunning);
+  const isPaused = Boolean(bridgeStatus.paused && isRunning);
+  const isWaitingManual = Boolean((bridgeStatus.waiting_for_manual || bridgeStatus.paused) && isRunning);
 
   // Validation & Queue Statistics
   const validWorkers = workers.filter(
@@ -3272,20 +3355,38 @@ export default function GosuslugiVksView() {
   const invalidCount = invalidWorkers.length;
   const completedCount =
     workers.filter((w) => w.status === 'success').length || bridgeStatus.success;
+  const receiptPdfCount =
+    workers.filter(
+      (w) => Boolean(w.pdfFilename && !w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
+    ).length ||
+    masterSummary?.totalPdf ||
+    0;
+  const statusPdfCount =
+    workers.filter(
+      (w) =>
+        Boolean(w.statusPdfFilename) ||
+        Boolean(w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
+    ).length ||
+    masterSummary?.totalStatusPdf ||
+    0;
   const mvdNotFoundCount = workers.filter((w) => isWorkerMvdNotFound(w)).length;
   const errorCount =
     workers.filter((w) => w.status === 'error' && !isWorkerMvdNotFound(w)).length ||
     bridgeStatus.errors;
 
-  // Filtered rows by tab ('all' | 'ready' | 'invalid' | 'sent' | 'mvd_not_found' | 'error') + search query
+  // Filtered rows by tab ('all' | 'ready' | 'invalid' | 'sent' | 'has_status_pdf' | 'mvd_not_found' | 'error') + search query
   const filteredWorkers = workers.filter((w) => {
     const isRowValid = validationMap[w.id]?.isValid ?? true;
     const isSentRow = w.status === 'success' || isWorkerAlreadySentToGosuslugi(w);
+    const hasStatusPdfRow =
+      Boolean(w.statusPdfFilename) ||
+      Boolean(w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'));
     const isMvdNotFoundRow = isWorkerMvdNotFound(w);
     if (queueFilter === 'ready' && (isSentRow || isMvdNotFoundRow || !isRowValid || !w.selected))
       return false;
     if (queueFilter === 'invalid' && (isSentRow || isRowValid)) return false;
     if (queueFilter === 'sent' && !isSentRow) return false;
+    if (queueFilter === 'has_status_pdf' && !hasStatusPdfRow) return false;
     if (queueFilter === 'mvd_not_found' && !isMvdNotFoundRow) return false;
     if (queueFilter === 'error' && (w.status !== 'error' || isMvdNotFoundRow)) return false;
 
@@ -3663,13 +3764,31 @@ export default function GosuslugiVksView() {
             </a>
 
             <a
-              href="/api/gosuslugi/pdf/zip"
-              download="Pondera_VKS_Gosuslugi_PDFs_2026-3.zip"
-              title="İndirilen tüm VKS bildirim PDF'lerini tek ZIP arşivi olarak indir"
+              href="/api/gosuslugi/pdf/zip?type=receipt"
+              download="Pondera_VKS_Gosuslugi_Receipt_PDFs_2026-3.zip"
+              title="İndirilen tüm VKS başvuru makbuzu (Заявка) PDF'lerini tek ZIP arşivi olarak indir"
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>{lang === 'ru' ? 'PDF (ZIP)' : 'PDF ZIP'}</span>
+              <span>
+                {lang === 'ru'
+                  ? `Заявка PDF ZIP (${receiptPdfCount})`
+                  : `Başvuru PDF ZIP (${receiptPdfCount})`}
+              </span>
+            </a>
+
+            <a
+              href="/api/gosuslugi/pdf/zip?type=status"
+              download="Pondera_VKS_Gosuslugi_Status_A4_PDFs_2026-3.zip"
+              title="İndirilen tüm Gosuslugi A4 Statü Ekran Görüntüsü (_STATUS_A4.pdf) dosyalarını tek ZIP arşivi olarak indir"
+              className="h-8 px-2.5 rounded-lg border border-indigo-300/90 dark:border-indigo-700 bg-indigo-50/90 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>
+                {lang === 'ru'
+                  ? `Статус PDF ZIP (${statusPdfCount})`
+                  : `Statü PDF ZIP (${statusPdfCount})`}
+              </span>
             </a>
 
             <button
@@ -3827,24 +3946,24 @@ export default function GosuslugiVksView() {
           </div>
         )}
 
-        {/* HUMAN-IN-THE-LOOP: MANUAL INTERVENTION BANNER WHEN GOSUSLUGI SHOWS RED VALIDATION ERROR OR DISABLED CONTINUE */}
+        {/* HUMAN-IN-THE-LOOP: MANUAL INTERVENTION / LOGOUT / PAUSE BANNER */}
         {isWaitingManual && (
-          <div className="mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/70 border-2 border-amber-400 dark:border-amber-500/70 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse">
+          <div className="mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/70 border-2 border-amber-400 dark:border-amber-500/70 flex flex-wrap items-center justify-between gap-3 shadow-sm">
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
-                <AlertCircle className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shrink-0 shadow-xs animate-pulse">
+                <Pause className="w-5 h-5 fill-white" />
               </div>
               <div>
                 <div className="text-xs font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-300">
                   {lang === 'ru'
-                    ? 'ПАУЗА РОБОТА: ТРЕБУЕТСЯ РУЧНАЯ ПРАВКА В БРАУЗЕРЕ CHROME (ГОСУСЛУГИ)'
-                    : 'ROBOT DURAKLATILDI: GOSUSLUGİ EKRANINDA MANUEL DÜZELTME BEKLENİYOR'}
+                    ? 'РОБОТ НА ПАУЗЕ: ОЖИДАНИЕ ВХОДА В ГОСУСЛУГИ ИЛИ ПРОДОЛЖЕНИЯ'
+                    : 'ROBOT DURAKLATILDI: GOSUSLUGİ GİRİŞİ VEYA DEVAM KOMUTU BEKLENİYOR'}
                 </div>
                 <div className="text-xs text-amber-800 dark:text-amber-200 mt-0.5">
                   {bridgeStatus.manual_message ||
                     (lang === 'ru'
-                      ? 'На странице Госуслуг кнопка «Продолжить» неактивна (серая) или есть красное поле. Исправьте поле в открытом окне Chrome — робот автоматически продолжит!'
-                      : 'Gosuslugi sayfasında «Продолжить» butonu pasif (gri) veya kırmızı uyarı var. Açık Chrome penceresinde ilgili alanı düzeltin; buton mavi olunca robot otomatik devam edecektir!')}
+                      ? 'Если произошёл выход из Госуслуг — войдите в аккаунт в открытом окне Chrome и нажмите «Продолжить (Resume)», чтобы робот продолжил с текущей строки!'
+                      : "Gosuslugi oturumu kapandıysa açık Chrome penceresinden tekrar giriş (Login) yapın ve «Devam Et (Resume)» butonuna tıklayın; robot kaldığı satırdan devam edecektir!")}
                 </div>
               </div>
             </div>
@@ -3852,13 +3971,33 @@ export default function GosuslugiVksView() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleManualContinue}
-                className="h-9 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition"
               >
                 <Play className="w-3.5 h-3.5 fill-white" />
                 <span>
                   {lang === 'ru'
-                    ? 'Исправлено в Chrome — Продолжить'
-                    : "Chrome'da Düzelttim — Devam Et"}
+                    ? 'Продолжить (Resume)'
+                    : 'Devam Et (Resume)'}
+                </span>
+              </button>
+              <button
+                onClick={handleStopRobot}
+                disabled={isStoppingRobot}
+                className="h-9 px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition disabled:opacity-70"
+              >
+                {isStoppingRobot ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Square className="w-3.5 h-3.5 fill-white" />
+                )}
+                <span>
+                  {isStoppingRobot
+                    ? lang === 'ru'
+                      ? 'Остановка...'
+                      : 'Durduruluyor...'
+                    : lang === 'ru'
+                    ? 'Стоп'
+                    : 'Durdur'}
                 </span>
               </button>
             </div>
@@ -4186,6 +4325,24 @@ export default function GosuslugiVksView() {
                 </span>
               </button>
               <button
+                onClick={() => setQueueFilter('has_status_pdf')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
+                  queueFilter === 'has_status_pdf'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                    : statusPdfCount > 0
+                    ? 'text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+                title="Gosuslugi A4 Statü Ekran Görüntüsü (_STATUS_A4.pdf) indirilen kayıtlar"
+              >
+                <FileText className="w-3 h-3" />
+                <span>
+                  {lang === 'ru'
+                    ? `Статус PDF (${statusPdfCount})`
+                    : `Statü PDF (${statusPdfCount})`}
+                </span>
+              </button>
+              <button
                 onClick={() => setQueueFilter('mvd_not_found')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
                   queueFilter === 'mvd_not_found'
@@ -4280,13 +4437,68 @@ export default function GosuslugiVksView() {
           </button>
 
           {isRunning ? (
-            <button
-              onClick={handleStopRobot}
-              className="h-9 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <Square className="w-3.5 h-3.5 fill-white" />
-              <span>{lang === 'ru' ? 'Стоп' : 'Durdur'}</span>
-            </button>
+            <>
+              <button
+                onClick={handleTogglePauseRobot}
+                disabled={isTogglingPause || isStoppingRobot}
+                className={`h-9 px-3.5 rounded-xl font-semibold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition active:scale-95 disabled:opacity-60 ${
+                  isPaused || isWaitingManual
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-400/50 animate-pulse'
+                    : 'bg-amber-500 hover:bg-amber-600 text-white'
+                }`}
+                title={
+                  isPaused || isWaitingManual
+                    ? lang === 'ru'
+                      ? 'Возобновить работу робота с текущего места'
+                      : 'Robotu kaldığı satırdan devam ettir'
+                    : lang === 'ru'
+                    ? 'Поставить робота на паузу'
+                    : 'Robotu geçici olarak duraklat (Pause)'
+                }
+              >
+                {isTogglingPause ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isPaused || isWaitingManual ? (
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                ) : (
+                  <Pause className="w-3.5 h-3.5 fill-white" />
+                )}
+                <span>
+                  {isPaused || isWaitingManual
+                    ? lang === 'ru'
+                      ? 'Продолжить'
+                      : 'Devam Et'
+                    : lang === 'ru'
+                    ? 'Пауза'
+                    : 'Duraklat'}
+                </span>
+              </button>
+
+              <button
+                onClick={handleStopRobot}
+                disabled={isStoppingRobot}
+                className={`h-9 px-4 rounded-xl text-white font-semibold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition active:scale-95 ${
+                  isStoppingRobot
+                    ? 'bg-rose-800 ring-2 ring-rose-400 cursor-wait'
+                    : 'bg-rose-600 hover:bg-rose-500'
+                }`}
+              >
+                {isStoppingRobot ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Square className="w-3.5 h-3.5 fill-white" />
+                )}
+                <span>
+                  {isStoppingRobot
+                    ? lang === 'ru'
+                      ? 'Остановка...'
+                      : 'Durduruluyor...'
+                    : lang === 'ru'
+                    ? 'Стоп'
+                    : 'Durdur'}
+                </span>
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -4609,22 +4821,50 @@ export default function GosuslugiVksView() {
                                 </a>
                               )}
                               {w.applicationNo && (
-                                <a
-                                  href={`/api/gosuslugi/pdf?appNo=${encodeURIComponent(
-                                    w.applicationNo
-                                  )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}&screenshot=1`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
-                                  title={
-                                    lang === 'ru'
-                                      ? `Открыть A4 статус / скриншот Госуслуг (№ ${w.applicationNo})`
-                                      : `Gosuslugi A4 Statü Ekran Görüntüsünü / Kartını Aç (№ ${w.applicationNo})`
-                                  }
-                                >
-                                  <FileText className="w-2.5 h-2.5 shrink-0" />
-                                  <span>{lang === 'ru' ? 'Статус PDF' : 'Statü PDF Aç'}</span>
-                                </a>
+                                <>
+                                  <a
+                                    href={`/api/gosuslugi/pdf?appNo=${encodeURIComponent(
+                                      w.applicationNo
+                                    )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}&screenshot=1`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                      w.statusPdfFilename ||
+                                      (w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
+                                        ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                                        : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                                    }`}
+                                    title={
+                                      lang === 'ru'
+                                        ? `Открыть A4 статус / скриншот Госуслуг (№ ${w.applicationNo})`
+                                        : `Gosuslugi A4 Statü Ekran Görüntüsünü / Kartını Aç (№ ${w.applicationNo})`
+                                    }
+                                  >
+                                    <FileText className="w-2.5 h-2.5 shrink-0" />
+                                    <span>
+                                      {lang === 'ru' ? 'Статус PDF' : 'Statü PDF Aç'}
+                                      {w.statusPdfFilename ||
+                                      (w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
+                                        ? ' ✓'
+                                        : ''}
+                                    </span>
+                                  </a>
+                                  <a
+                                    href={`/api/gosuslugi/pdf?appNo=${encodeURIComponent(
+                                      w.applicationNo
+                                    )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}&screenshot=1&download=1`}
+                                    download
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700"
+                                    title={
+                                      lang === 'ru'
+                                        ? `Скачать A4 Статус PDF (№ ${w.applicationNo})`
+                                        : `Gosuslugi A4 Statü PDF İndir (№ ${w.applicationNo})`
+                                    }
+                                  >
+                                    <Download className="w-2.5 h-2.5 shrink-0" />
+                                    <span>{lang === 'ru' ? 'Скачать Статус' : 'Statü PDF İndir'}</span>
+                                  </a>
+                                </>
                               )}
                             </div>
                           </div>

@@ -22,9 +22,10 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.7.8"
+BRIDGE_VERSION = "2.7.9"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
+PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
 CENTRAL_ARCHIVED_APP_NOS = set()
 
@@ -209,6 +210,7 @@ def find_local_pdf_path(pdf_filename: str):
     safe_name = os.path.basename(str(pdf_filename).strip())
     candidates = [
         Path.home() / "Downloads" / safe_name,
+        Path.home() / "Downloads" / "Gosuslugi_Status_A4" / safe_name,
         Path(CURRENT_DIR) / "downloads" / safe_name,
         Path(CURRENT_DIR) / safe_name,
     ]
@@ -219,46 +221,47 @@ def find_local_pdf_path(pdf_filename: str):
 
 
 def upload_pdf_to_central_server_async(entry: dict):
-    """Uploads a local Gosuslugi PDF receipt to https://hr.pondera.network/api/gosuslugi/pdf in a background thread."""
-    pdf_filename = str(entry.get("pdf_filename") or "").strip()
-    if not pdf_filename or pdf_filename in UPLOADED_PDFS_SET:
-        return
-    local_path = find_local_pdf_path(pdf_filename)
-    if not local_path:
-        return
+    """Uploads a local Gosuslugi PDF receipt or Status A4 PDF to https://hr.pondera.network/api/gosuslugi/pdf in a background thread."""
+    for field_name in ("pdf_filename", "status_pdf_filename"):
+        pdf_filename = str(entry.get(field_name) or "").strip()
+        if not pdf_filename or pdf_filename in UPLOADED_PDFS_SET:
+            continue
+        local_path = find_local_pdf_path(pdf_filename)
+        if not local_path:
+            continue
 
-    def _worker():
-        import base64
-        import urllib.request
-        import ssl
-        try:
-            raw_bytes = local_path.read_bytes()
-            if not raw_bytes or len(raw_bytes) > 15 * 1024 * 1024:
-                return
-            b64_str = base64.b64encode(raw_bytes).decode("ascii")
-            payload = json.dumps({
-                "filename": local_path.name,
-                "pdf_base64": b64_str,
-                "application_no": str(entry.get("application_no") or "").strip(),
-                "sicil_no": str(entry.get("sicil_no") or entry.get("sicil") or "").strip(),
-            }).encode("utf-8")
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            req = urllib.request.Request(
-                "https://hr.pondera.network/api/gosuslugi/pdf",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
-                if resp.status == 200:
-                    UPLOADED_PDFS_SET.add(pdf_filename)
-                    print(f"[RPA BRIDGE] Uploaded PDF to central server: {local_path.name}")
-        except Exception:
-            pass
+        def _worker(lp=local_path, fn=pdf_filename):
+            import base64
+            import urllib.request
+            import ssl
+            try:
+                raw_bytes = lp.read_bytes()
+                if not raw_bytes or len(raw_bytes) > 15 * 1024 * 1024:
+                    return
+                b64_str = base64.b64encode(raw_bytes).decode("ascii")
+                payload = json.dumps({
+                    "filename": lp.name,
+                    "pdf_base64": b64_str,
+                    "application_no": str(entry.get("application_no") or "").strip(),
+                    "sicil_no": str(entry.get("sicil_no") or entry.get("sicil") or "").strip(),
+                }).encode("utf-8")
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                req = urllib.request.Request(
+                    "https://hr.pondera.network/api/gosuslugi/pdf",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                    if resp.status == 200:
+                        UPLOADED_PDFS_SET.add(fn)
+                        print(f"[RPA BRIDGE] Uploaded PDF to central server: {lp.name}")
+            except Exception:
+                pass
 
-    threading.Thread(target=_worker, daemon=True).start()
+        threading.Thread(target=_worker, daemon=True).start()
 
 
 def sync_submission_to_central_server_async(entry: dict):
@@ -290,6 +293,7 @@ def sync_submission_to_central_server_async(entry: dict):
 
 class RPAState:
     is_running = False
+    is_paused = False
     waiting_for_manual = False
     manual_message = None
     fatal_error = None
@@ -311,7 +315,7 @@ class RPAState:
     mvd_cooldown_message = None
 
     @classmethod
-    def upsert_submission(cls, entry: dict, sync_central: bool = True):
+    def upsert_submission(cls, entry: dict, sync_central: bool = True, save_ledger: bool = True):
         if not entry or not isinstance(entry, dict):
             return
         app_no = str(entry.get("application_no") or "").strip()
@@ -391,10 +395,11 @@ class RPAState:
                 break
         if not updated:
             cls.submissions.append(entry)
-        save_applications_ledger(cls.submissions)
+        if save_ledger:
+            save_applications_ledger(cls.submissions)
         if sync_central:
             sync_submission_to_central_server_async(entry)
-            if entry.get("pdf_filename"):
+            if entry.get("pdf_filename") or entry.get("status_pdf_filename"):
                 upload_pdf_to_central_server_async(entry)
 
     @classmethod
@@ -407,6 +412,7 @@ class RPAState:
     @classmethod
     def reset_stats(cls):
         cls.logs = []
+        cls.is_paused = False
         cls.waiting_for_manual = False
         cls.manual_message = None
         cls.fatal_error = None
@@ -420,6 +426,11 @@ class RPAState:
         cls.error_codes = []
         cls.mvd_cooldown_until = 0.0
         cls.mvd_cooldown_message = None
+        if os.path.exists(PAUSE_SIGNAL_FILE):
+            try:
+                os.remove(PAUSE_SIGNAL_FILE)
+            except Exception:
+                pass
 
 
 def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
@@ -484,8 +495,10 @@ def auto_update_scripts_from_server():
     Automatically downloads the latest Pondera_Gosuslugi_Agent.zip from https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip
     and updates local robot .py scripts so GitHub deployments immediately take effect on every client PC without manual zip re-extraction.
     """
-    if os.path.basename(CURRENT_DIR).lower() == "gosuslugi_rpa":
-        return  # Skip inside git dev repo (scripts/gosuslugi_rpa)
+    if os.path.basename(CURRENT_DIR).lower() == "gosuslugi_rpa" or os.path.exists(
+        os.path.join(CURRENT_DIR, "..", "..", ".git")
+    ):
+        return  # Skip inside git dev repo (scripts/gosuslugi_rpa or scripts/Pondera_Gosuslugi_Agent)
     import io
     import zipfile
     import urllib.request
@@ -675,18 +688,31 @@ def run_robot_worker(
                             RPAState.errors += 1
                             RPAState.processed += 1
 
-                # Detect Human-in-the-Loop Manual Intervention Pause
-                if "WAITING_FOR_USER:" in clean_line:
+                # Detect Human-in-the-Loop Manual Intervention Pause & Gosuslugi Logout Pause
+                if "PAUSED_FOR_LOGIN:" in clean_line:
+                    RPAState.is_paused = True
+                    RPAState.waiting_for_manual = True
+                    RPAState.manual_message = clean_line.split("PAUSED_FOR_LOGIN:", 1)[1].strip()
+                elif "ROBOT_PAUSED:" in clean_line:
+                    RPAState.is_paused = True
+                    if not RPAState.manual_message:
+                        RPAState.manual_message = clean_line.split("ROBOT_PAUSED:", 1)[1].strip()
+                elif "WAITING_FOR_USER:" in clean_line:
                     RPAState.waiting_for_manual = True
                     RPAState.manual_message = clean_line.split("WAITING_FOR_USER:")[1].strip()
-                elif "USER_RESOLVED:" in clean_line or "Step " in clean_line:
+                elif "USER_RESOLVED:" in clean_line or "ROBOT_RESUMED:" in clean_line or "LOGIN_RESTORED:" in clean_line:
+                    RPAState.is_paused = False
+                    RPAState.waiting_for_manual = False
+                    RPAState.manual_message = None
+                elif "Step " in clean_line and not RPAState.is_paused:
                     if "WAITING_FOR_USER:" not in clean_line:
                         RPAState.waiting_for_manual = False
                         RPAState.manual_message = None
 
                 if "SUCCESS: Notification submitted" in clean_line or "SUCCESS: Status checked" in clean_line:
-                    RPAState.waiting_for_manual = False
-                    RPAState.manual_message = None
+                    if not RPAState.is_paused:
+                        RPAState.waiting_for_manual = False
+                        RPAState.manual_message = None
                     RPAState.success += 1
                     RPAState.processed += 1
                     if RPAState.active_worker_code:
@@ -695,8 +721,9 @@ def run_robot_worker(
                         if RPAState.active_worker_code not in RPAState.completed_codes:
                             RPAState.completed_codes.append(RPAState.active_worker_code)
                 elif ("Error processing" in clean_line or "WORKER_ERROR:" in clean_line) and not is_browser_closed_error_text(clean_line):
-                    RPAState.waiting_for_manual = False
-                    RPAState.manual_message = None
+                    if not RPAState.is_paused:
+                        RPAState.waiting_for_manual = False
+                        RPAState.manual_message = None
                     if RPAState.active_worker_code:
                         if RPAState.active_worker_code not in RPAState.error_codes:
                             RPAState.error_codes.append(RPAState.active_worker_code)
@@ -718,14 +745,16 @@ def run_robot_worker(
     except Exception as e:
         RPAState.add_log(f"Критическая ошибка робота: {e}")
     finally:
-        RPAState.is_running = False
-        RPAState.waiting_for_manual = False
-        RPAState.manual_message = None
-        RPAState.mvd_cooldown_until = 0.0
-        RPAState.mvd_cooldown_message = None
-        RPAState.process = None
-        RPAState.active_worker_code = None
-        RPAState.active_worker_name = None
+        if RPAState.process is None or RPAState.process == proc:
+            RPAState.is_running = False
+            RPAState.is_paused = False
+            RPAState.waiting_for_manual = False
+            RPAState.manual_message = None
+            RPAState.mvd_cooldown_until = 0.0
+            RPAState.mvd_cooldown_message = None
+            RPAState.process = None
+            RPAState.active_worker_code = None
+            RPAState.active_worker_name = None
 
 
 ALLOWED_ORIGINS = {
@@ -767,6 +796,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 "status": "online",
                 "bridge_version": BRIDGE_VERSION,
                 "running": RPAState.is_running,
+                "paused": RPAState.is_paused,
                 "waiting_for_manual": RPAState.waiting_for_manual,
                 "manual_message": RPAState.manual_message,
                 "mvd_cooldown_remaining": cooldown_rem,
@@ -847,15 +877,38 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"success": True, "discovered": discovered, "submissions": RPAState.submissions}, ensure_ascii=False).encode("utf-8"))
 
-        elif parsed.path == "/manual-continue":
+        elif parsed.path == "/pause":
             try:
+                with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                    pf.write("paused")
+                RPAState.is_paused = True
+                if not RPAState.manual_message:
+                    RPAState.manual_message = "Робот поставлен на паузу пользователем. Нажмите «Продолжить (Devam Et)», чтобы возобновить работу."
+                RPAState.add_log("Робот поставлен на паузу пользователем (Ожидание нажатия «Продолжить»).")
+            except Exception as e:
+                RPAState.add_log(f"Ошибка постановки на паузу: {e}")
+
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "paused": True}).encode("utf-8"))
+
+        elif parsed.path in ("/resume", "/manual-continue"):
+            try:
+                if os.path.exists(PAUSE_SIGNAL_FILE):
+                    try:
+                        os.remove(PAUSE_SIGNAL_FILE)
+                    except Exception:
+                        pass
                 with open(MANUAL_CONTINUE_SIGNAL, "w", encoding="utf-8") as sf:
                     sf.write("continue")
+                RPAState.is_paused = False
                 RPAState.waiting_for_manual = False
                 RPAState.manual_message = None
                 RPAState.mvd_cooldown_until = 0.0
                 RPAState.mvd_cooldown_message = None
-                RPAState.add_log("Пользователь нажал «Продолжить прямо сейчас» — продолжаем выполнение без ожидания...")
+                RPAState.add_log("Пользователь нажал «Продолжить» — возобновляем работу робота...")
             except Exception as e:
                 RPAState.add_log(f"Ошибка сигнала продолжения: {e}")
 
@@ -863,7 +916,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             self._send_cors_headers()
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+            self.wfile.write(json.dumps({"success": True, "paused": False}).encode("utf-8"))
 
         elif parsed.path == "/start":
             if RPAState.is_running:
@@ -946,15 +999,34 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": True, "message": "Robot started"}).encode("utf-8"))
 
         elif parsed.path == "/stop":
-            if RPAState.process:
-                try:
-                    RPAState.process.terminate()
-                    RPAState.add_log("Робот принудительно остановлен пользователем.")
-                except Exception:
-                    pass
+            proc_to_kill = RPAState.process
+            RPAState.process = None
             RPAState.is_running = False
+            RPAState.is_paused = False
             RPAState.waiting_for_manual = False
             RPAState.manual_message = None
+            RPAState.mvd_cooldown_until = 0.0
+            RPAState.mvd_cooldown_message = None
+            RPAState.last_json_status_sync_ts = time.time()
+            if os.path.exists(PAUSE_SIGNAL_FILE):
+                try:
+                    os.remove(PAUSE_SIGNAL_FILE)
+                except Exception:
+                    pass
+            if proc_to_kill:
+                try:
+                    pid = proc_to_kill.pid
+                    proc_to_kill.terminate()
+                    if sys.platform == "win32" and pid:
+                        subprocess.run(
+                            f"taskkill /F /T /PID {pid}",
+                            shell=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                except Exception:
+                    pass
+            RPAState.add_log("Робот принудительно остановлен пользователем.")
             self.send_response(200)
             self._send_cors_headers()
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -971,10 +1043,32 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
 
 
 def sync_all_local_submissions_to_central_async():
-    """Pushes all local non-error submissions from RPAState.submissions to https://hr.pondera.network/api/gosuslugi/submissions."""
+    """Pushes all local non-error submissions from RPAState.submissions to https://hr.pondera.network/api/gosuslugi/submissions and uploads any local Status A4 PDFs."""
     def _worker():
         import urllib.request
         import ssl
+        import re
+        try:
+            status_a4_dir = Path.home() / "Downloads" / "Gosuslugi_Status_A4"
+            if status_a4_dir.exists():
+                for sc_path in status_a4_dir.glob("*_STATUS_A4.pdf"):
+                    if sc_path.name in UPLOADED_PDFS_SET:
+                        continue
+                    stem = sc_path.stem.replace("_STATUS_A4", "")
+                    parts = stem.split("_")
+                    sicil_cand = parts[0] if len(parts) >= 2 and parts[0].isdigit() else ""
+                    app_cand = ""
+                    for p in parts[:3]:
+                        if re.match(r"^[789]\d{9}$", p):
+                            app_cand = p
+                            break
+                    upload_pdf_to_central_server_async({
+                        "status_pdf_filename": sc_path.name,
+                        "application_no": app_cand,
+                        "sicil_no": sicil_cand if sicil_cand != app_cand else "",
+                    })
+        except Exception:
+            pass
         try:
             subs = list(RPAState.submissions or [])
             valid_batch = [
@@ -985,6 +1079,7 @@ def sync_all_local_submissions_to_central_async():
                     str(it.get("application_no") or "").strip()
                     or str(it.get("submitted_at") or "").strip() >= "2026-10-26 10:15:00"
                     or str(it.get("pdf_filename") or "").strip()
+                    or str(it.get("status_pdf_filename") or "").strip()
                 )
             ]
             if not valid_batch:
@@ -1139,7 +1234,8 @@ def main():
     start_auto_30min_gosuslugi_status_sync_thread()
     # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts locally
     for d in scan_downloads_pdfs():
-        RPAState.upsert_submission(d, sync_central=False)
+        RPAState.upsert_submission(d, sync_central=False, save_ledger=False)
+    save_applications_ledger(RPAState.submissions)
     sync_all_local_submissions_to_central_async()
     # If an active VKS queue (> 1 record) exists on this computer, merge it into the central master list
     try:

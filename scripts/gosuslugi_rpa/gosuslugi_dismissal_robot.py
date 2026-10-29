@@ -42,6 +42,7 @@ except ImportError:
     sys.exit(1)
 
 MANUAL_CONTINUE_SIGNAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_continue.signal")
+PAUSE_SIGNAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rpa_pause.signal")
 
 DEFAULT_CONFIG = {
     "FORM_URL": "https://www.gosuslugi.ru/600585/1/form",
@@ -95,6 +96,84 @@ class GosuslugiDismissalBot:
             raise
         except Exception:
             pass
+
+    def is_on_login_page(self) -> bool:
+        try:
+            cur_url = (self.page.url or "").lower()
+            if "esia.gosuslugi.ru/login" in cur_url or "esia.gosuslugi.ru/idp" in cur_url:
+                return True
+            login_inputs = self.page.locator(
+                "input#login:visible, input#password:visible, input[name='login']:visible, input[type='password']:visible"
+            )
+            if login_inputs.count() > 0:
+                return True
+            body_text = self.page.locator("body").inner_text(timeout=1200)
+            if (
+                ("Телефон / Эл. почта / СНИЛС" in body_text and "Войти" in body_text)
+                or "Другой пользователь" in body_text
+                or "Войти другим способом" in body_text
+                or "Не удаётся войти" in body_text
+                or ("Пароль" in body_text and "Восстановить" in body_text and "Войти" in body_text)
+            ):
+                return True
+        except Exception:
+            pass
+        return False
+
+    def wait_if_paused_or_logged_out(self) -> bool:
+        paused_once = False
+        while True:
+            logged_out = self.is_on_login_page()
+            manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
+            if not logged_out and not manual_paused:
+                break
+            paused_once = True
+            if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+                try:
+                    os.remove(MANUAL_CONTINUE_SIGNAL)
+                except Exception:
+                    pass
+            if logged_out:
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_login")
+                except Exception:
+                    pass
+                logger.warning(
+                    "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (выход из аккаунта). "
+                    "Робот поставлен на ПАУЗУ! Войдите в аккаунт Госуслуг в окне Chrome, а затем нажмите кнопку «Продолжить (Devam Et)»."
+                )
+            else:
+                logger.info(
+                    "ROBOT_PAUSED: Робот поставлен на паузу пользователем. Ожидание нажатия кнопки «Продолжить (Devam Et)»..."
+                )
+            while os.path.exists(PAUSE_SIGNAL_FILE):
+                if os.path.exists(MANUAL_CONTINUE_SIGNAL):
+                    try:
+                        os.remove(MANUAL_CONTINUE_SIGNAL)
+                    except Exception:
+                        pass
+                    try:
+                        if os.path.exists(PAUSE_SIGNAL_FILE):
+                            os.remove(PAUSE_SIGNAL_FILE)
+                    except Exception:
+                        pass
+                    break
+                self.page.wait_for_timeout(1000)
+            if self.is_on_login_page():
+                logger.warning(
+                    "PAUSED_FOR_LOGIN: Вход в Госуслуги ещё не выполнен! Сначала войдите в Госуслуги в Chrome, затем нажмите «Продолжить (Devam Et)»."
+                )
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_login")
+                except Exception:
+                    pass
+                continue
+            logger.info("LOGIN_RESTORED: Работа робота возобновлена! Продолжаем с текущего сотрудника...")
+            self.page.wait_for_timeout(1500)
+            break
+        return paused_once
 
     def wait_for_manual_intervention(self, step_msg: str):
         """Pauses the robot and notifies the Pondera HR UI so the user can manually fix a field and click Continue."""
@@ -872,6 +951,7 @@ def main():
         fail_count = 0
 
         for idx, record in enumerate(records):
+            bot.wait_if_paused_or_logged_out()
             logger.info(f"\n--- Processing Dismissal Record {idx+1}/{len(records)} ---")
             row_idx = record.get("_row_idx")
             try:
