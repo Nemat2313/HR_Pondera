@@ -981,6 +981,17 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                         ]
                     if isinstance(RPAState.submissions, list):
                         before_len = len(RPAState.submissions)
+                        if mode == "vks":
+                            for v in RPAState.submissions:
+                                if (
+                                    isinstance(v, dict)
+                                    and str(v.get("sicil") or v.get("sicil_no") or "").strip() in queued_sicils
+                                    and "оказан" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                                    and "исполнен" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                                ):
+                                    old_app = str(v.get("application_no") or "").strip()
+                                    if old_app:
+                                        CENTRAL_ARCHIVED_APP_NOS.add(old_app)
                         RPAState.submissions = [
                             v
                             for v in RPAState.submissions
@@ -1029,6 +1040,8 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             raw_apps = body.get("app_nos") if isinstance(body, dict) else []
             target_sicils = {str(s or "").strip() for s in (raw_sicils or []) if str(s or "").strip()}
             target_apps = {str(a or "").strip() for a in (raw_apps or []) if str(a or "").strip()}
+            if target_apps:
+                CENTRAL_ARCHIVED_APP_NOS.update(target_apps)
 
             purged_cnt = 0
             if target_sicils:
@@ -1040,6 +1053,19 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 ]
 
             if (target_sicils or target_apps) and isinstance(RPAState.submissions, list):
+                for v in RPAState.submissions:
+                    if (
+                        isinstance(v, dict)
+                        and (
+                            (target_sicils and str(v.get("sicil") or v.get("sicil_no") or "").strip() in target_sicils)
+                            or (target_apps and str(v.get("application_no") or "").strip() in target_apps)
+                        )
+                        and "оказан" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                        and "исполнен" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                    ):
+                        old_app = str(v.get("application_no") or "").strip()
+                        if old_app:
+                            CENTRAL_ARCHIVED_APP_NOS.add(old_app)
                 before_len = len(RPAState.submissions)
                 RPAState.submissions = [
                     v
