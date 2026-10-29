@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.8.1"
+BRIDGE_VERSION = "2.8.2"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
@@ -965,28 +965,41 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                     json.dump(records, f, ensure_ascii=False, indent=2)
                 RPAState.total = len(records)
                 RPAState.add_log(f"Получено {len(records)} записей напрямую из Pondera HR UI ({mode.upper()}).")
-                # Purge any stale 'Ошибка' or 'Услуга отказана' entries for these queued sicils from local bridge state
+                # Purge any previous non-'Услуга оказана' entries for these queued sicils when starting VKS submission
                 queued_sicils = {
                     str(r.get("Sicil") or r.get("Код") or "").strip()
                     for r in records
                     if isinstance(r, dict) and str(r.get("Sicil") or r.get("Код") or "").strip()
                 }
-                if queued_sicils and isinstance(RPAState.submissions, list):
-                    before_len = len(RPAState.submissions)
-                    RPAState.submissions = [
-                        v
-                        for v in RPAState.submissions
-                        if not (
-                            isinstance(v, dict)
-                            and str(v.get("sicil") or v.get("sicil_no") or "").strip() in queued_sicils
-                            and (
-                                str(v.get("gosuslugi_status") or "").strip().lower().startswith("ошибк")
-                                or "отказ" in str(v.get("gosuslugi_status") or "").strip().lower()
+                if queued_sicils:
+                    if mode == "vks":
+                        RPAState.completed_codes = [
+                            c for c in RPAState.completed_codes if str(c).strip() not in queued_sicils
+                        ]
+                        RPAState.error_codes = [
+                            c for c in RPAState.error_codes if str(c).strip() not in queued_sicils
+                        ]
+                    if isinstance(RPAState.submissions, list):
+                        before_len = len(RPAState.submissions)
+                        RPAState.submissions = [
+                            v
+                            for v in RPAState.submissions
+                            if not (
+                                isinstance(v, dict)
+                                and str(v.get("sicil") or v.get("sicil_no") or "").strip() in queued_sicils
+                                and (
+                                    (
+                                        mode == "vks"
+                                        and "оказан" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                                        and "исполнен" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                                    )
+                                    or str(v.get("gosuslugi_status") or "").strip().lower().startswith("ошибк")
+                                    or "отказ" in str(v.get("gosuslugi_status") or "").strip().lower()
+                                )
                             )
-                        )
-                    ]
-                    if len(RPAState.submissions) != before_len:
-                        save_applications_ledger(RPAState.submissions)
+                        ]
+                        if len(RPAState.submissions) != before_len:
+                            save_applications_ledger(RPAState.submissions)
                 if mode == "vks" and len(records) > 1:
                     sync_vks_queue_to_central_master_list_async(records)
 
@@ -1008,6 +1021,50 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"success": True, "message": "Robot started"}).encode("utf-8"))
+
+        elif parsed.path == "/purge-sicils":
+            content_len = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_len).decode("utf-8")) if content_len > 0 else {}
+            raw_sicils = body.get("sicils") if isinstance(body, dict) else []
+            raw_apps = body.get("app_nos") if isinstance(body, dict) else []
+            target_sicils = {str(s or "").strip() for s in (raw_sicils or []) if str(s or "").strip()}
+            target_apps = {str(a or "").strip() for a in (raw_apps or []) if str(a or "").strip()}
+
+            purged_cnt = 0
+            if target_sicils:
+                RPAState.completed_codes = [
+                    c for c in RPAState.completed_codes if str(c).strip() not in target_sicils
+                ]
+                RPAState.error_codes = [
+                    c for c in RPAState.error_codes if str(c).strip() not in target_sicils
+                ]
+
+            if (target_sicils or target_apps) and isinstance(RPAState.submissions, list):
+                before_len = len(RPAState.submissions)
+                RPAState.submissions = [
+                    v
+                    for v in RPAState.submissions
+                    if not (
+                        isinstance(v, dict)
+                        and (
+                            (target_sicils and str(v.get("sicil") or v.get("sicil_no") or "").strip() in target_sicils)
+                            or (target_apps and str(v.get("application_no") or "").strip() in target_apps)
+                        )
+                        and "оказан" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                        and "исполнен" not in str(v.get("gosuslugi_status") or "").strip().lower()
+                    )
+                ]
+                purged_cnt = before_len - len(RPAState.submissions)
+                if purged_cnt > 0:
+                    save_applications_ledger(RPAState.submissions)
+
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps({"success": True, "purged": purged_cnt}).encode("utf-8")
+            )
 
         elif parsed.path == "/stop":
             proc_to_kill = RPAState.process

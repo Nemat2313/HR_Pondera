@@ -808,7 +808,7 @@ export default function GosuslugiAnalyticsView() {
     if (!sicilList.length) return;
     if (
       !window.confirm(
-        `«${label}» kapsamındaki ${sicilList.length} adet yanıt bekleyen («Заявление зарегистрировано») başvuruyu arşivleyip tekrar gönderim kuyruğuna (Bekleyen) açmak istediğinize emin misiniz?\n\nEski Заявка numaraları geçmişte korunacak ve bu personeller Gosuslugi robotunda beklemeden yeniden gönderilebilecektir.`
+        `«${label}» kapsamındaki ${sicilList.length} adet yanıt bekleyen («Отправлено в ведомство» / «Заявление зарегистрировано») başvuruyu arşivleyip tekrar gönderim kuyruğuna (Bekleyen) açmak istediğinize emin misiniz?\n\nEski Заявка numaraları geçmişte korunacak ve bu personeller Gosuslugi robotunda beklemeden yeniden gönderilebilecektir.`
       )
     ) {
       return;
@@ -826,8 +826,18 @@ export default function GosuslugiAnalyticsView() {
       });
       const json = await res.json();
       if (json?.success) {
+        try {
+          await fetch('http://127.0.0.1:8088/purge-sicils', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sicils: sicilList,
+              app_nos: json.archivedAppNos || [],
+            }),
+          });
+        } catch {}
         setTelegramFeedback(
-          `✅ ${json.reopenedCount || sicilList.length} adet uzun süredir yanıt bekleyen («Заявление зарегистрировано») kayıt tekrar gönderim kuyruğuna (Bekleyen) açıldı!`
+          `✅ ${json.reopenedCount || sicilList.length} adet yanıt bekleyen («Отправлено в ведомство» / «Заявление зарегистрировано») kayıt tekrar gönderim kuyruğuna (Bekleyen) açıldı!`
         );
         fetchAnalytics(false);
       } else {
@@ -842,7 +852,9 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const staleRegisteredGroups = useMemo(() => {
-    const regList = (data?.masterList3088 || []).filter((m) => m.status_key === 'registered_mvd');
+    const regList = (data?.masterList3088 || []).filter(
+      (m) => m.status_key === 'registered_mvd' || m.status_key === 'sent_pending'
+    );
     const byOct20 = regList.filter((m) => (m.submitted_at || '').slice(0, 10) <= '2026-10-20');
     const byOct22 = regList.filter((m) => (m.submitted_at || '').slice(0, 10) <= '2026-10-22');
     const byOct23 = regList.filter((m) => (m.submitted_at || '').slice(0, 10) <= '2026-10-23');
@@ -2110,21 +2122,37 @@ export default function GosuslugiAnalyticsView() {
                       </button>
                     )}
 
-                    {user?.role !== 'viewer' && masterStatusFilter === 'registered_mvd' && filteredMaster3088.length > 0 && (
-                      <button
-                        onClick={() =>
-                          handleReopenRegisteredGroup(
-                            filteredMaster3088.map((m) => m.sicil_no),
-                            `Seçili Filtredeki Зарегистрировано Kayıtları (${filteredMaster3088.length})`
+                    {user?.role !== 'viewer' &&
+                      (masterStatusFilter === 'registered_mvd' ||
+                        masterStatusFilter === 'sent_pending' ||
+                        masterRegionFilter !== 'all' ||
+                        masterSearch.trim() !== '') &&
+                      filteredMaster3088.some(
+                        (m) => m.status_key === 'registered_mvd' || m.status_key === 'sent_pending'
+                      ) && (
+                        <button
+                          onClick={() => {
+                            const targetRows = filteredMaster3088.filter(
+                              (m) => m.status_key === 'registered_mvd' || m.status_key === 'sent_pending'
+                            );
+                            handleReopenRegisteredGroup(
+                              targetRows.map((m) => m.sicil_no),
+                              `Seçili Filtredeki Yanıt Bekleyen Kayıtlar (${targetRows.length})`
+                            );
+                          }}
+                          disabled={reopeningRefused !== null}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-teal-700 hover:bg-teal-600 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Listelenen Bekleyenleri Tekrar Gönderime Aç (
+                          {
+                            filteredMaster3088.filter(
+                              (m) => m.status_key === 'registered_mvd' || m.status_key === 'sent_pending'
+                            ).length
+                          }
                           )
-                        }
-                        disabled={reopeningRefused !== null}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-teal-700 hover:bg-teal-600 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Listelenenleri Tekrar Gönderime Aç ({filteredMaster3088.length})
-                      </button>
-                    )}
+                        </button>
+                      )}
                   </div>
                 </div>
               )}
@@ -2380,17 +2408,53 @@ export default function GosuslugiAnalyticsView() {
                                 )}
                               </div>
                             ) : item.status_key === 'sent_pending' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[11px] font-bold">
-                                📤 {item.gosuslugi_status}
-                              </span>
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[11px] font-bold">
+                                  📤 {item.gosuslugi_status}
+                                </span>
+                                {user?.role !== 'viewer' && (
+                                  <div>
+                                    <button
+                                      onClick={() =>
+                                        handleReopenRegisteredGroup(
+                                          [item.sicil_no],
+                                          `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-semibold cursor-pointer"
+                                      title="Bu başvuruyu («Отправлено в ведомство» / «Отправлено») arşivleyip tekrar gönderim kuyruğuna aç"
+                                    >
+                                      <RefreshCw className="w-2.5 h-2.5" />
+                                      Tekrar Gönderime Aç
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             ) : item.status_key === 'refused_mvd' ? (
-                              <div className="space-y-0.5">
+                              <div className="space-y-1">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-800 text-[11px] font-bold">
                                   🚫 {item.gosuslugi_status}
                                 </span>
                                 {item.refusalHint && (
                                   <div className="text-[10.5px] text-orange-700 dark:text-orange-300 line-clamp-2">
                                     🔍 {item.refusalHint}
+                                  </div>
+                                )}
+                                {user?.role !== 'viewer' && (
+                                  <div>
+                                    <button
+                                      onClick={() =>
+                                        handleReopenRegisteredGroup(
+                                          [item.sicil_no],
+                                          `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/70 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 text-[10px] font-semibold cursor-pointer"
+                                      title="Bu reddedilen başvuruyu arşivleyip tekrar gönderim kuyruğuna aç"
+                                    >
+                                      <RefreshCw className="w-2.5 h-2.5" />
+                                      Tekrar Gönderime Aç
+                                    </button>
                                   </div>
                                 )}
                               </div>

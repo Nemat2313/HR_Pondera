@@ -943,6 +943,11 @@ function isWorkerAlreadySentToGosuslugi(w: {
   return false;
 }
 
+function isWorkerOkazana(w: { gosuslugiStatus?: string }): boolean {
+  const normStatus = normalizeSentGosuslugiStatus(w.gosuslugiStatus);
+  return /оказан|исполнен|принят/i.test(normStatus);
+}
+
 export default function GosuslugiVksView() {
   const { user } = useAuth();
   const { lang } = useLanguage();
@@ -996,6 +1001,7 @@ export default function GosuslugiVksView() {
   const syncedAppsRef = useRef<Set<string>>(new Set());
   const uploadedPdfsRef = useRef<Set<string>>(new Set());
   const archivedAppsRef = useRef<Set<string>>(new Set());
+  const reopenedSicilsRef = useRef<Set<string>>(new Set());
 
   // Central Backend Master VKS List (3,088 records & 4-Computer Queue Partitioning)
   const [masterSummary, setMasterSummary] = useState<{
@@ -1077,7 +1083,10 @@ export default function GosuslugiVksView() {
       if (!res.ok) return savedSubmissions;
       const json = await res.json();
       if (Array.isArray(json.archivedAppNos)) {
-        archivedAppsRef.current = new Set(json.archivedAppNos.map((a: any) => String(a || '').trim()).filter(Boolean));
+        for (const a of json.archivedAppNos) {
+          const cleanA = String(a || '').trim();
+          if (cleanA) archivedAppsRef.current.add(cleanA);
+        }
       }
       if (json.success && Array.isArray(json.data)) {
         const bySicil: Record<string, GosuslugiSubmissionEntry> = {};
@@ -1493,10 +1502,12 @@ export default function GosuslugiVksView() {
                       }))
                       .filter((s) => {
                         const appNo = String(s.application_no || '').trim();
+                        const sicNo = String(s.sicil_no || '').trim();
                         const st = String(s.gosuslugi_status || '').trim();
                         const pdfFn = String(s.pdf_filename || '').trim();
                         const subAt = String(s.submitted_at || '').trim();
                         if (appNo && archivedAppsRef.current.has(appNo)) return false;
+                        if (sicNo && reopenedSicilsRef.current.has(sicNo) && !data.running) return false;
                         if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
                         if (!appNo && /^ошибк/i.test(st)) return false;
                         if (
@@ -1662,7 +1673,12 @@ export default function GosuslugiVksView() {
                       ? nextW
                       : { ...nextW, status: 'success', selected: false };
                   }
-                  if (data.completed_codes && codeKey && data.completed_codes.includes(codeKey)) {
+                  if (
+                    data.completed_codes &&
+                    codeKey &&
+                    data.completed_codes.includes(codeKey) &&
+                    !(reopenedSicilsRef.current.has(codeKey) && !data.running)
+                  ) {
                     return nextW.status === 'success' && !nextW.selected
                       ? nextW
                       : { ...nextW, status: 'success', selected: false };
@@ -2174,6 +2190,101 @@ export default function GosuslugiVksView() {
     } finally {
       setIsRetryingErrors(false);
     }
+  };
+
+  // Reopen any non-'Услуга оказана' sent worker(s) ('Отправлено в ведомство', 'Заявление зарегистрировано', 'Отправлено', 'Услуга отказана')
+  // so they immediately become 'Готов к отправке' (checked & ready in queue)
+  const handleReopenSentForResend = async (
+    targetWorkers: GosuslugiVksWorkerRecord[],
+    silentNotice: boolean = false
+  ) => {
+    const eligible = targetWorkers.filter((w) => !isWorkerOkazana(w));
+    if (eligible.length === 0) return;
+
+    const sicilsToReopen = Array.from(
+      new Set(
+        eligible
+          .map((w) => String(w.sicil || w.code || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const appNosToArchive = Array.from(
+      new Set(
+        eligible
+          .map((w) => String(w.applicationNo || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    for (const appNo of appNosToArchive) {
+      archivedAppsRef.current.add(appNo);
+    }
+    for (const sic of sicilsToReopen) {
+      reopenedSicilsRef.current.add(sic);
+    }
+
+    const sicilSet = new Set(sicilsToReopen);
+    setSavedSubmissions((prev) => {
+      const next = { ...prev };
+      for (const sic of sicilsToReopen) {
+        delete next[sic];
+      }
+      for (const appNo of appNosToArchive) {
+        delete next[`app:${appNo}`];
+      }
+      return next;
+    });
+
+    setWorkers((prev) =>
+      prev.map((w) => {
+        const codeKey = String(w.sicil || w.code || '').trim();
+        if (sicilSet.has(codeKey) && !isWorkerOkazana(w)) {
+          return {
+            ...w,
+            status: 'pending',
+            applicationNo: undefined,
+            gosuslugiStatus: undefined,
+            pdfFilename: undefined,
+            statusPdfFilename: undefined,
+            selected: true,
+          };
+        }
+        return w;
+      })
+    );
+
+    if (!silentNotice) {
+      showNotice(
+        'success',
+        lang === 'ru'
+          ? `${sicilsToReopen.length} зап. возвращено в очередь («Готов к отправке») и отмечено галочкой для повторной отправки!`
+          : `${sicilsToReopen.length} kayıt tekrar gönderime açıldı («İşleme Hazır») ve seçili olarak sıraya alındı!`
+      );
+    }
+
+    try {
+      await Promise.allSettled([
+        fetch('/api/gosuslugi/master-list', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'reopen_registered',
+            scope: 'selected',
+            sicils: sicilsToReopen,
+          }),
+        }),
+        fetch(`${activeBridgeUrl}/purge-sicils`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sicils: sicilsToReopen,
+            app_nos: appNosToArchive,
+          }),
+        }),
+      ]);
+      await refreshSavedSubmissionsFromDb();
+      await refreshMasterListSummary();
+    } catch {}
   };
 
   // Persist a single edited worker row to the central master list & clear its error status if it had 'Ошибка'
@@ -2752,7 +2863,36 @@ export default function GosuslugiVksView() {
   };
 
   // Toggle select all — toggles all VALID, non-MVD-not-found rows that have NOT been sent yet!
+  // If a search query is active and only non-'Услуга оказана' sent rows are visible, unlocks & selects them for re-send!
   const handleToggleSelectAll = () => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      const searchMatches = workers.filter(
+        (w) =>
+          w.lastName.toLowerCase().includes(q) ||
+          w.firstName.toLowerCase().includes(q) ||
+          w.code.toLowerCase().includes(q) ||
+          w.sicil.toLowerCase().includes(q) ||
+          w.passportNumber.toLowerCase().includes(q) ||
+          w.inn.toLowerCase().includes(q) ||
+          w.rnrNumber.toLowerCase().includes(q) ||
+          (w.applicationNo || '').toLowerCase().includes(q)
+      );
+      const unsentInSearch = searchMatches.filter(
+        (w) =>
+          !isWorkerAlreadySentToGosuslugi(w) &&
+          !isWorkerMvdNotFound(w) &&
+          (validationMap[w.id]?.isValid ?? true)
+      );
+      const reopenableInSearch = searchMatches.filter(
+        (w) => isWorkerAlreadySentToGosuslugi(w) && !isWorkerOkazana(w)
+      );
+      if (unsentInSearch.length === 0 && reopenableInSearch.length > 0) {
+        void handleReopenSentForResend(reopenableInSearch);
+        return;
+      }
+    }
+
     const unsentValidRows = workers.filter(
       (w) =>
         !isWorkerAlreadySentToGosuslugi(w) &&
@@ -2775,8 +2915,19 @@ export default function GosuslugiVksView() {
     );
   };
 
-  // Toggle selection on any row without blocking
+  // Toggle selection on any row without blocking; if clicking an already-sent row that is NOT 'Услуга оказана',
+  // automatically reopen & unlock it into 'Готов к отправке' so it can be re-sent immediately!
   const handleToggleWorker = (id: string) => {
+    const targetW = workers.find((w) => w.id === id);
+    if (
+      targetW &&
+      !targetW.selected &&
+      isWorkerAlreadySentToGosuslugi(targetW) &&
+      !isWorkerOkazana(targetW)
+    ) {
+      void handleReopenSentForResend([targetW]);
+      return;
+    }
     setWorkers((prev) => prev.map((w) => (w.id === id ? { ...w, selected: !w.selected } : w)));
   };
 
@@ -2932,6 +3083,18 @@ export default function GosuslugiVksView() {
             }),
           });
         } catch {}
+      }
+
+      const sentReopenable = recordsToSend.filter(
+        (r) => isWorkerAlreadySentToGosuslugi(r) && !isWorkerOkazana(r)
+      );
+      if (sentReopenable.length > 0) {
+        await handleReopenSentForResend(sentReopenable, true);
+      }
+
+      for (const r of recordsToSend) {
+        const sic = String(r.sicil || r.code || '').trim();
+        if (sic) reopenedSicilsRef.current.delete(sic);
       }
 
       const targetIds = new Set(recordsToSend.map((r) => r.id));
@@ -5001,6 +5164,21 @@ export default function GosuslugiVksView() {
                                   </a>
                                 </>
                               )}
+                              {!isWorkerOkazana(w) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReopenSentForResend([w])}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 cursor-pointer transition"
+                                  title={
+                                    lang === 'ru'
+                                      ? 'Сбросить текущий статус («Отправлено в ведомство» / «Зарегистрировано») и отметить галочкой для повторной отправки'
+                                      : 'Mevcut statüyü sıfırlayıp tekrar gönderime hazır (seçili) hale getir'
+                                  }
+                                >
+                                  <RefreshCw className="w-2.5 h-2.5 shrink-0" />
+                                  <span>{lang === 'ru' ? 'К отправке' : 'Gönderime Aç'}</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         ) : isWorkerMvdNotFound(w) ? (
@@ -5671,7 +5849,7 @@ export default function GosuslugiVksView() {
                               <Edit3 className="w-3.5 h-3.5" />
                             )}
                           </button>
-                          {w.status === 'error' && (
+                          {w.status === 'error' ? (
                             <button
                               onClick={() => handleRetryErrors('selected', w)}
                               disabled={isRetryingErrors}
@@ -5685,7 +5863,21 @@ export default function GosuslugiVksView() {
                               <RefreshCw className="w-2.5 h-2.5" />
                               <span>{lang === 'ru' ? 'Сброс' : 'Sıraya Al'}</span>
                             </button>
-                          )}
+                          ) : isWorkerAlreadySentToGosuslugi(w) && !isWorkerOkazana(w) ? (
+                            <button
+                              onClick={() => handleReopenSentForResend([w])}
+                              disabled={isRetryingErrors}
+                              className="px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-sans font-bold text-[10px] inline-flex items-center gap-1 cursor-pointer transition"
+                              title={
+                                lang === 'ru'
+                                  ? 'Сбросить статус («Отправлено в ведомство» / «Зарегистрировано») и вернуть в очередь'
+                                  : 'Mevcut statüyü sıfırla ve tekrar gönderim kuyruğuna al'
+                              }
+                            >
+                              <RefreshCw className="w-2.5 h-2.5" />
+                              <span>{lang === 'ru' ? 'Сброс' : 'Sıraya Al'}</span>
+                            </button>
+                          ) : null}
                           <button
                             onClick={() => handleStartRobot(1, w)}
                             disabled={isRunning}

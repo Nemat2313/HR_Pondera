@@ -1257,7 +1257,15 @@ export async function PATCH(request: Request) {
         const regRows = db
           .prepare(
             `SELECT sicil_no FROM gosuslugi_submissions
-             WHERE gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')`
+             WHERE gosuslugi_status IN (
+               'Заявление зарегистрировано',
+               'Промежуточные результаты по заявлению',
+               'Отправлено в ведомство',
+               'Отправлено',
+               'Отправлено (PDF не скачан)',
+               'В обработке',
+               'Получено ведомством'
+             )`
           )
           .all() as Array<{ sicil_no: string }>;
         targetSicils = regRows.map((r) => r.sicil_no);
@@ -1266,12 +1274,27 @@ export async function PATCH(request: Request) {
         const regRows = db
           .prepare(
             `SELECT sicil_no FROM gosuslugi_submissions
-             WHERE gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')
+             WHERE gosuslugi_status IN (
+               'Заявление зарегистрировано',
+               'Промежуточные результаты по заявлению',
+               'Отправлено в ведомство',
+               'Отправлено',
+               'Отправлено (PDF не скачан)',
+               'В обработке',
+               'Получено ведомством'
+             )
                AND submitted_at <= ?`
           )
           .all(cutoffTimestamp) as Array<{ sicil_no: string }>;
         targetSicils = regRows.map((r) => r.sicil_no);
       }
+
+      const selectAppNoStmt = db.prepare(`
+        SELECT application_no FROM gosuslugi_submissions
+        WHERE sicil_no = ?
+          AND COALESCE(gosuslugi_status, '') NOT LIKE '%Услуга оказана%'
+          AND COALESCE(gosuslugi_status, '') NOT LIKE '%Услуга исполнена%'
+      `);
 
       const archiveRegisteredStmt = db.prepare(`
         INSERT INTO gosuslugi_refused_archive (
@@ -1283,13 +1306,15 @@ export async function PATCH(request: Request) {
           application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
         FROM gosuslugi_submissions
         WHERE sicil_no = ?
-          AND gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')
+          AND COALESCE(gosuslugi_status, '') NOT LIKE '%Услуга оказана%'
+          AND COALESCE(gosuslugi_status, '') NOT LIKE '%Услуга исполнена%'
       `);
 
       const delRegisteredStmt = db.prepare(`
         DELETE FROM gosuslugi_submissions
         WHERE sicil_no = ?
-          AND gosuslugi_status IN ('Заявление зарегистрировано', 'Промежуточные результаты по заявлению', 'Отправлено в ведомство')
+          AND COALESCE(gosuslugi_status, '') NOT LIKE '%Услуга оказана%'
+          AND COALESCE(gosuslugi_status, '') NOT LIKE '%Услуга исполнена%'
       `);
 
       const reassignCompStmt = db.prepare(`
@@ -1299,9 +1324,15 @@ export async function PATCH(request: Request) {
       `);
 
       let reopenedCount = 0;
+      const archivedAppNos: string[] = [];
       db.exec('BEGIN');
       try {
         for (const sic of targetSicils) {
+          const existingRows = selectAppNoStmt.all(sic) as Array<{ application_no: string }>;
+          for (const er of existingRows) {
+            const appNo = String(er?.application_no || '').trim();
+            if (appNo) archivedAppNos.push(appNo);
+          }
           archiveRegisteredStmt.run(nowStr, sic);
           const res = delRegisteredStmt.run(sic);
           reopenedCount += Number(res.changes || 0);
@@ -1321,7 +1352,8 @@ export async function PATCH(request: Request) {
         success: true,
         reopenedCount,
         sicils: targetSicils,
-        message: `${reopenedCount} adet uzun süredir yanıt bekleyen («Заявление зарегистрировано») başvuru arşivlenerek tekrar gönderim kuyruğuna (Bekleyen) açıldı!`,
+        archivedAppNos,
+        message: `${reopenedCount} adet yanıt bekleyen («Отправлено в ведомство» / «Заявление зарегистрировано») başvuru arşivlenerek tekrar gönderim kuyruğuna (Bekleyen) açıldı!`,
       });
     }
 
