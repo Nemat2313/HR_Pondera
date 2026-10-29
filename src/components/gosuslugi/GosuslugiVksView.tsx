@@ -89,13 +89,19 @@ interface BridgeStatus {
   logs: Array<{ time: string; text: string }>;
 }
 
+function normalizeSicilKey(val?: string | null): string {
+  return String(val || '')
+    .trim()
+    .replace(/[а-яёa-z]+$/i, '');
+}
+
 function doesSubMatchWorker(
   sub: GosuslugiSubmissionEntry | undefined,
   w: GosuslugiVksWorkerRecord
 ): boolean {
   if (!sub) return false;
-  const wCode = String(w.code || w.sicil || '').trim();
-  const sCode = String(sub.sicil_no || '').trim();
+  const wCode = normalizeSicilKey(w.sicil || w.code);
+  const sCode = normalizeSicilKey(sub.sicil_no);
   if (wCode && sCode && wCode === sCode) {
     return true;
   }
@@ -1096,12 +1102,15 @@ export default function GosuslugiVksView() {
             gosuslugi_status: normalizeSentGosuslugiStatus(rawRow.gosuslugi_status),
           };
           if (row.sicil_no) {
-            const key = String(row.sicil_no).trim();
-            const existing = bySicil[key];
-            const exNum = existing?.application_no && /^\d+$/.test(existing.application_no) ? Number(existing.application_no) : 0;
-            const rowNum = row.application_no && /^\d+$/.test(row.application_no) ? Number(row.application_no) : 0;
-            if (!existing || rowNum > exNum || (!existing.application_no && row.application_no)) {
-              bySicil[key] = row;
+            const rawKey = String(row.sicil_no).trim();
+            const normKey = normalizeSicilKey(rawKey);
+            for (const key of normKey && normKey !== rawKey ? [rawKey, normKey] : [rawKey]) {
+              const existing = bySicil[key];
+              const exNum = existing?.application_no && /^\d+$/.test(existing.application_no) ? Number(existing.application_no) : 0;
+              const rowNum = row.application_no && /^\d+$/.test(row.application_no) ? Number(row.application_no) : 0;
+              if (!existing || rowNum > exNum || (!existing.application_no && row.application_no)) {
+                bySicil[key] = row;
+              }
             }
           }
           if (row.application_no) {
@@ -1112,8 +1121,13 @@ export default function GosuslugiVksView() {
         setSavedSubmissions(bySicil);
         setWorkers((prev) =>
           prev.map((w) => {
+            const sicilKey = String(w.sicil || '').trim();
             const codeKey = String(w.code || w.sicil || '').trim();
-            const subByCode = codeKey ? bySicil[codeKey] : undefined;
+            const normKey = normalizeSicilKey(sicilKey || codeKey);
+            const subByCode =
+              (sicilKey ? bySicil[sicilKey] : undefined) ||
+              (normKey ? bySicil[normKey] : undefined) ||
+              (codeKey ? bySicil[codeKey] : undefined);
             const subByApp =
               w.applicationNo && !archivedAppsRef.current.has(w.applicationNo)
                 ? bySicil[`app:${w.applicationNo}`]
@@ -1417,8 +1431,12 @@ export default function GosuslugiVksView() {
     let validCnt = 0;
     let invalidCnt = 0;
     const processed = list.map((w) => {
+      const sicilKey = String(w.sicil || '').trim();
       const codeKey = String(w.code || w.sicil || '').trim();
+      const normKey = normalizeSicilKey(sicilKey || codeKey);
       const candidateSub: GosuslugiSubmissionEntry | undefined =
+        (sicilKey ? subsMap[sicilKey] : undefined) ||
+        (normKey ? subsMap[normKey] : undefined) ||
         (codeKey ? subsMap[codeKey] : undefined) ||
         (w.applicationNo ? subsMap[`app:${w.applicationNo}`] : undefined);
       const savedSub = doesSubMatchWorker(candidateSub, w) ? candidateSub : undefined;
@@ -2022,7 +2040,7 @@ export default function GosuslugiVksView() {
               ? 'error'
               : 'pending',
           sicil: sicilVal,
-          code: String(item.code || wRec.Код || sicilVal).trim(),
+          code: sicilVal,
           lastName: String(item.lastName || wRec.Фамилия || 'Нет').trim(),
           firstName: String(item.firstName || wRec.Имя || '').trim(),
           middleName: String(item.middleName || wRec.Отчество || 'НЕТ').trim(),

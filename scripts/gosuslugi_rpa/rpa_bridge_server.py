@@ -22,7 +22,7 @@ if sys.platform == "win32":
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.8.3"
+BRIDGE_VERSION = "2.8.4"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
@@ -512,8 +512,32 @@ def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
         return False
 
 
+def kill_orphan_robot_processes():
+    """Kills any orphaned gosuslugi_vks_robot.py, gosuslugi_status_checker.py, or gosuslugi_dismissal_robot.py processes."""
+    if sys.platform != "win32":
+        return
+    try:
+        my_pid = os.getpid()
+        ps_cmd = (
+            "Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\" | "
+            "Where-Object { $_.ProcessId -ne "
+            + str(my_pid)
+            + " -and ($_.CommandLine -match 'gosuslugi_vks_robot|gosuslugi_status_checker|gosuslugi_dismissal_robot') } | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+        )
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
 def free_port_if_occupied(port: int):
-    """Terminates any stale Python bridge process occupying port 8088 so the newest script version always runs."""
+    """Terminates any stale Python bridge process (and its child tree) occupying port 8088 so the newest script version always runs."""
+    kill_orphan_robot_processes()
     if not is_port_open(port):
         return
     if sys.platform == "win32":
@@ -525,8 +549,8 @@ def free_port_if_occupied(port: int):
                     parts = line.strip().split()
                     pid = int(parts[-1])
                     if pid != my_pid and pid > 0:
-                        print(f"[RPA BRIDGE] Terminating older RPA Bridge process (PID {pid}) on port {port}...")
-                        subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        print(f"[RPA BRIDGE] Terminating older RPA Bridge process tree (PID {pid}) on port {port}...")
+                        subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         time.sleep(0.8)
         except Exception:
             pass
@@ -998,6 +1022,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 return
 
             RPAState.reset_stats()
+            kill_orphan_robot_processes()
             mode = str(payload.get("mode", "vks"))
             limit = int(payload.get("limit", 0))
             sheet = str(payload.get("sheet", "Sheet1"))
@@ -1180,6 +1205,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                         )
                 except Exception:
                     pass
+            kill_orphan_robot_processes()
             RPAState.add_log("Робот принудительно остановлен пользователем.")
             self.send_response(200)
             self._send_cors_headers()
