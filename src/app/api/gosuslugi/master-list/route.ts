@@ -826,16 +826,40 @@ export async function POST(request: Request) {
             /^\d{4}-\d{2}-\d{2}/.test(String(prevObj.blankSeries || ''));
           const safePrev = isPrevCorrupted ? {} : prevObj;
 
+          const hasIncomingName =
+            Boolean(norm.workerObj.firstName && String(norm.workerObj.firstName).trim() !== '') ||
+            Boolean(
+              norm.workerObj.lastName &&
+                String(norm.workerObj.lastName).trim() !== '' &&
+                String(norm.workerObj.lastName).trim().toLowerCase() !== 'нет'
+            );
+
           const mergedWorker: Record<string, any> = {
             ...safePrev,
             ...norm.workerObj,
             sicil: targetRowKey,
-            // Preserve non-empty fields from safePrev or personnel DB if incoming field is empty
+            // Preserve non-empty fields from safePrev or personnel DB if incoming field is empty/default
+            lastName: hasIncomingName
+              ? norm.workerObj.lastName || safePrev.lastName || 'Нет'
+              : safePrev.lastName || norm.workerObj.lastName || 'Нет',
+            firstName: norm.workerObj.firstName || safePrev.firstName || '',
+            middleName:
+              norm.workerObj.middleName && String(norm.workerObj.middleName).trim().toUpperCase() !== 'НЕТ'
+                ? norm.workerObj.middleName
+                : safePrev.middleName || norm.workerObj.middleName || 'НЕТ',
+            birthDate: norm.workerObj.birthDate || safePrev.birthDate || '',
+            placeOfBirth:
+              hasIncomingName && norm.workerObj.placeOfBirth
+                ? norm.workerObj.placeOfBirth
+                : safePrev.placeOfBirth || norm.workerObj.placeOfBirth || '',
             inn: norm.workerObj.inn || safePrev.inn || '',
             passportSeries: norm.workerObj.passportSeries || safePrev.passportSeries || '',
             passportNumber: norm.workerObj.passportNumber || safePrev.passportNumber || '',
             passportIssueDate: norm.workerObj.passportIssueDate || safePrev.passportIssueDate || '',
-            passportIssuedBy: norm.workerObj.passportIssuedBy || safePrev.passportIssuedBy || '',
+            passportIssuedBy:
+              norm.workerObj.passportIssuedBy && norm.workerObj.passportIssuedBy !== 'МВД'
+                ? norm.workerObj.passportIssuedBy
+                : safePrev.passportIssuedBy || norm.workerObj.passportIssuedBy || 'МВД',
             rnrSeries: norm.workerObj.rnrSeries || safePrev.rnrSeries || dbFallback?.rnrSeries || '',
             rnrNumber: norm.workerObj.rnrNumber || safePrev.rnrNumber || dbFallback?.rnrNumber || '',
             rnrIssueDate: norm.workerObj.rnrIssueDate || safePrev.rnrIssueDate || dbFallback?.rnrIssueDate || '',
@@ -844,6 +868,16 @@ export async function POST(request: Request) {
             contractDate: norm.workerObj.contractDate || safePrev.contractDate || '',
             contractStartDate: norm.workerObj.contractStartDate || safePrev.contractStartDate || '',
             contractEndDate: norm.workerObj.contractEndDate || safePrev.contractEndDate || '',
+            month1Salary: norm.workerObj.month1Salary || safePrev.month1Salary || '',
+            month2Salary: norm.workerObj.month2Salary || safePrev.month2Salary || '',
+            month3Salary: norm.workerObj.month3Salary || safePrev.month3Salary || '',
+            salaryAmount: norm.workerObj.salaryAmount || safePrev.salaryAmount || '',
+            position:
+              norm.workerObj.position && norm.workerObj.position !== 'СПЕЦИАЛИСТ'
+                ? norm.workerObj.position
+                : safePrev.position || norm.workerObj.position || 'СПЕЦИАЛИСТ',
+            workAddress: norm.workerObj.workAddress || safePrev.workAddress || '',
+            postalCode: norm.workerObj.postalCode || safePrev.postalCode || '',
             rowOrder: finalRowOrder,
             rowKey: targetRowKey,
             assignedComputer: finalComputer,

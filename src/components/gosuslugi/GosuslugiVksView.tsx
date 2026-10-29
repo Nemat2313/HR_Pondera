@@ -1137,7 +1137,10 @@ export default function GosuslugiVksView() {
                   selected: isRowValid,
                 };
               }
-              return isRowValid ? w : { ...w, selected: false };
+              if (!isRowValid && w.selected) {
+                return { ...w, selected: false };
+              }
+              return w;
             }
             const nextAppNo = matchedSub.application_no || '';
             const nextGosStatus = normalizeSentGosuslugiStatus(
@@ -1156,25 +1159,37 @@ export default function GosuslugiVksView() {
             });
             const isMvdNotFound = !alreadySent && /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(nextGosStatus);
             const isErr = !alreadySent && !isMvdNotFound && /^ошибк/i.test(nextGosStatus);
+            const nextStatus = alreadySent
+              ? 'success'
+              : isMvdNotFound
+              ? 'mvd_not_found'
+              : isErr
+              ? 'error'
+              : 'pending';
+            const nextSelected =
+              alreadySent || isMvdNotFound || !isRowValid
+                ? false
+                : isErr && w.status !== 'error'
+                ? false
+                : w.selected;
+            if (
+              (w.applicationNo || '') === nextAppNo &&
+              (w.gosuslugiStatus || '') === nextGosStatus &&
+              (w.pdfFilename || '') === nextPdf &&
+              (w.statusPdfFilename || '') === (nextStatusPdf || '') &&
+              w.status === nextStatus &&
+              w.selected === nextSelected
+            ) {
+              return w;
+            }
             return {
               ...w,
               applicationNo: nextAppNo,
               gosuslugiStatus: nextGosStatus,
               pdfFilename: nextPdf,
               statusPdfFilename: nextStatusPdf || undefined,
-              status: alreadySent
-                ? 'success'
-                : isMvdNotFound
-                ? 'mvd_not_found'
-                : isErr
-                ? 'error'
-                : 'pending',
-              selected:
-                alreadySent || isMvdNotFound || !isRowValid
-                  ? false
-                  : isErr
-                  ? true
-                  : w.selected,
+              status: nextStatus,
+              selected: nextSelected,
             };
           })
         );
@@ -1396,7 +1411,7 @@ export default function GosuslugiVksView() {
   const applyInitialValidationSelection = (
     list: GosuslugiVksWorkerRecord[],
     customSubmissions?: Record<string, GosuslugiSubmissionEntry>,
-    _selectErroredRows: boolean = true
+    selectErroredRows: boolean = false
   ) => {
     const subsMap = customSubmissions || savedSubmissions;
     let validCnt = 0;
@@ -1468,8 +1483,11 @@ export default function GosuslugiVksView() {
       } else {
         invalidCnt++;
       }
-      // Only select rows that are unsent, not in 'Данные не найдены в базе МВД', AND pass required field validation (VKS RNR, 12-digit INN, etc.)!
-      return { ...enriched, selected: !alreadySent && !isMvdNotFound && v.isValid };
+      // Only select rows that are unsent, not in 'Данные не найдены в базе МВД', not in 'Ошибка' (unless selectErroredRows is true), AND pass required field validation!
+      return {
+        ...enriched,
+        selected: !alreadySent && !isMvdNotFound && (!isErr || selectErroredRows) && v.isValid,
+      };
     });
     return { processed, validCnt, invalidCnt };
   };
@@ -1477,6 +1495,41 @@ export default function GosuslugiVksView() {
   // Poll local RPA Bridge status (http://127.0.0.1:8088/health)
   useEffect(() => {
     let isMounted = true;
+    const blockedMismatchedBySicil: Record<string, string> = {
+      '902127': '8324568212',
+      '941180': '8286574341',
+      '937975': '8294240592',
+      '934977': '8310552187',
+      '927061': '8311177673',
+      '937851': '8290698264',
+      '941976': '8287106492',
+      '938730': '8287534774',
+      '940683': '8291445402',
+      '938390': '8291785562',
+      '935934': '8304165921',
+      '930970': '8304949515',
+      '937133': '8291182665',
+      '931095': '8306890167',
+      '937526': '8292385071',
+      '900701': '8303416245',
+      '929073': '8306932902',
+      '941091': '8306428687',
+      '900088': '8303994182',
+      '938033': '8316624567',
+      '931246': '8291571654',
+      '937909': '8291937845',
+      '902773': '8317594914',
+      '935312': '8316021625',
+      '938789': '8291098061',
+      '931391': '8291264938',
+      '936243': '8307402667',
+      '932622': '8305657900',
+      '939622': '8288949057',
+      '936545': '8305756556',
+      '933532': '8284206508',
+      '937332': '8284083499',
+      '941737': '8269035605',
+    };
     const checkBridge = async () => {
       for (const url of BRIDGE_URLS) {
         try {
@@ -1507,6 +1560,7 @@ export default function GosuslugiVksView() {
                         const pdfFn = String(s.pdf_filename || '').trim();
                         const subAt = String(s.submitted_at || '').trim();
                         if (appNo && archivedAppsRef.current.has(appNo)) return false;
+                        if (sicNo && appNo && blockedMismatchedBySicil[sicNo] === appNo) return false;
                         if (sicNo && reopenedSicilsRef.current.has(sicNo) && !data.running) return false;
                         if (/^829[567]\d{6}$/.test(appNo) && /отказан/i.test(st)) return false;
                         if (!appNo && /^ошибк/i.test(st)) return false;
@@ -1528,6 +1582,7 @@ export default function GosuslugiVksView() {
                       })
                   : [];
 
+              let hasUnsyncedBridgeSubs = false;
               if (validBridgeSubs.length > 0) {
                 const subValues = validBridgeSubs;
                 const unsynced = subValues.filter((s) => {
@@ -1540,6 +1595,7 @@ export default function GosuslugiVksView() {
                 });
 
                 if (unsynced.length > 0) {
+                  hasUnsyncedBridgeSubs = true;
                   setSavedSubmissions((prev) => {
                     const next = { ...prev };
                     for (const s of unsynced) {
@@ -1591,119 +1647,130 @@ export default function GosuslugiVksView() {
                 }
               }
 
-              setWorkers((prev) =>
-                prev.map((w) => {
-                  const codeKey = w.code || w.sicil;
-                  let nextW = w;
-                  const isErrored = Boolean(
-                    data.running &&
-                      (!data.mode || data.mode === 'vks') &&
-                      data.error_codes &&
-                      codeKey &&
-                      data.error_codes.includes(codeKey)
-                  );
-
-                  if (validBridgeSubs.length > 0) {
-                    const matchedSub = validBridgeSubs.find((s) =>
-                      doesSubMatchWorker(s, w)
+              // When robot is NOT running and no new submissions arrived from the bridge,
+              // only clear any stuck 'processing' badge and NEVER overwrite user checkbox selections or server queue state!
+              if (!data.running && !hasUnsyncedBridgeSubs) {
+                setWorkers((prev) =>
+                  prev.some((w) => w.status === 'processing')
+                    ? prev.map((w) => (w.status === 'processing' ? { ...w, status: 'pending' } : w))
+                    : prev
+                );
+              } else {
+                setWorkers((prev) =>
+                  prev.map((w) => {
+                    const codeKey = w.code || w.sicil;
+                    let nextW = w;
+                    const isErrored = Boolean(
+                      data.running &&
+                        (!data.mode || data.mode === 'vks') &&
+                        data.error_codes &&
+                        codeKey &&
+                        data.error_codes.includes(codeKey)
                     );
-                    if (matchedSub) {
-                      const wAppNum = w.applicationNo && /^\d+$/.test(w.applicationNo) ? Number(w.applicationNo) : 0;
-                      const mAppNum = matchedSub.application_no && /^\d+$/.test(matchedSub.application_no) ? Number(matchedSub.application_no) : 0;
-                      if (wAppNum > 0 && mAppNum > 0 && mAppNum < wAppNum) {
-                        return nextW;
-                      }
-                      const nextAppNo =
-                        mAppNum >= wAppNum
-                          ? matchedSub.application_no || w.applicationNo
-                          : w.applicationNo;
-                      const nextGosStatus =
-                        mAppNum > wAppNum
-                          ? matchedSub.gosuslugi_status || 'Отправлено'
-                          : pickBetterGosuslugiStatus(w.gosuslugiStatus, matchedSub.gosuslugi_status) ||
-                            (isErrored ? '' : 'Отправлено');
-                      const nextPdf =
-                        sanitizePdfForAppNo(matchedSub.pdf_filename, nextAppNo) ||
-                        sanitizePdfForAppNo(w.pdfFilename, nextAppNo) ||
-                        undefined;
-                      const nextStatusPdf =
-                        sanitizePdfForAppNo(matchedSub.status_pdf_filename, nextAppNo) ||
-                        sanitizePdfForAppNo(w.statusPdfFilename, nextAppNo) ||
-                        undefined;
-                      const alreadySent = isWorkerAlreadySentToGosuslugi({
-                        applicationNo: nextAppNo,
-                        gosuslugiStatus: nextGosStatus,
-                        pdfFilename: nextPdf,
-                      });
-                      const isSubMvdNotFound =
-                        !alreadySent &&
-                        /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(String(nextGosStatus || '').trim());
-                      const isSubErr =
-                        !alreadySent &&
-                        !isSubMvdNotFound &&
-                        (isErrored || /^ошибк/i.test(String(nextGosStatus || '').trim()));
-                      if (
-                        nextAppNo !== w.applicationNo ||
-                        nextGosStatus !== w.gosuslugiStatus ||
-                        nextPdf !== w.pdfFilename ||
-                        nextStatusPdf !== w.statusPdfFilename ||
-                        ((alreadySent || isSubErr || isSubMvdNotFound) && w.selected)
-                      ) {
-                        nextW = {
-                          ...nextW,
+
+                    if (validBridgeSubs.length > 0) {
+                      const matchedSub = validBridgeSubs.find((s) =>
+                        doesSubMatchWorker(s, w)
+                      );
+                      if (matchedSub) {
+                        const wAppNum = w.applicationNo && /^\d+$/.test(w.applicationNo) ? Number(w.applicationNo) : 0;
+                        const mAppNum = matchedSub.application_no && /^\d+$/.test(matchedSub.application_no) ? Number(matchedSub.application_no) : 0;
+                        if (wAppNum > 0 && mAppNum > 0 && mAppNum < wAppNum) {
+                          return nextW;
+                        }
+                        const nextAppNo =
+                          mAppNum >= wAppNum
+                            ? matchedSub.application_no || w.applicationNo
+                            : w.applicationNo;
+                        const nextGosStatus =
+                          mAppNum > wAppNum
+                            ? matchedSub.gosuslugi_status || 'Отправлено'
+                            : pickBetterGosuslugiStatus(w.gosuslugiStatus, matchedSub.gosuslugi_status) ||
+                              (isErrored ? '' : 'Отправлено');
+                        const nextPdf =
+                          sanitizePdfForAppNo(matchedSub.pdf_filename, nextAppNo) ||
+                          sanitizePdfForAppNo(w.pdfFilename, nextAppNo) ||
+                          undefined;
+                        const nextStatusPdf =
+                          sanitizePdfForAppNo(matchedSub.status_pdf_filename, nextAppNo) ||
+                          sanitizePdfForAppNo(w.statusPdfFilename, nextAppNo) ||
+                          undefined;
+                        const alreadySent = isWorkerAlreadySentToGosuslugi({
                           applicationNo: nextAppNo,
                           gosuslugiStatus: nextGosStatus,
                           pdfFilename: nextPdf,
-                          statusPdfFilename: nextStatusPdf,
-                          status: isSubMvdNotFound
-                            ? 'mvd_not_found'
-                            : isSubErr
-                            ? 'error'
-                            : 'success',
-                          selected:
-                            alreadySent || isSubErr || isSubMvdNotFound ? false : nextW.selected,
-                        };
+                        });
+                        const isSubMvdNotFound =
+                          !alreadySent &&
+                          /не найден[ыо]?\s+в\s+базе\s+мвд/i.test(String(nextGosStatus || '').trim());
+                        const isSubErr =
+                          !alreadySent &&
+                          !isSubMvdNotFound &&
+                          (isErrored || /^ошибк/i.test(String(nextGosStatus || '').trim()));
+                        if (
+                          nextAppNo !== w.applicationNo ||
+                          nextGosStatus !== w.gosuslugiStatus ||
+                          nextPdf !== w.pdfFilename ||
+                          nextStatusPdf !== w.statusPdfFilename ||
+                          ((alreadySent || isSubErr || isSubMvdNotFound) && w.selected)
+                        ) {
+                          nextW = {
+                            ...nextW,
+                            applicationNo: nextAppNo,
+                            gosuslugiStatus: nextGosStatus,
+                            pdfFilename: nextPdf,
+                            statusPdfFilename: nextStatusPdf,
+                            status: isSubMvdNotFound
+                              ? 'mvd_not_found'
+                              : isSubErr
+                              ? 'error'
+                              : 'success',
+                            selected:
+                              alreadySent || isSubErr || isSubMvdNotFound ? false : nextW.selected,
+                          };
+                        }
                       }
                     }
-                  }
 
-                  const isNowSent = isWorkerAlreadySentToGosuslugi(nextW);
-                  if (isNowSent) {
-                    return nextW.status === 'success' && !nextW.selected
-                      ? nextW
-                      : { ...nextW, status: 'success', selected: false };
-                  }
-                  if (
-                    data.completed_codes &&
-                    codeKey &&
-                    data.completed_codes.includes(codeKey) &&
-                    !(reopenedSicilsRef.current.has(codeKey) && !data.running)
-                  ) {
-                    return nextW.status === 'success' && !nextW.selected
-                      ? nextW
-                      : { ...nextW, status: 'success', selected: false };
-                  }
-                  if (isErrored) {
-                    return nextW.status === 'error' && !nextW.selected
-                      ? nextW
-                      : { ...nextW, status: 'error', selected: false };
-                  }
-                  const isCurrent =
-                    data.running &&
-                    ((data.active_worker_code && codeKey === data.active_worker_code) ||
-                      (data.active_worker_name &&
-                        `${w.lastName} ${w.firstName}`
-                          .toLowerCase()
-                          .includes(data.active_worker_name.toLowerCase())));
-                  if (isCurrent) {
-                    return nextW.status === 'processing' ? nextW : { ...nextW, status: 'processing' };
-                  }
-                  if (!data.running && nextW.status === 'processing') {
-                    return { ...nextW, status: 'pending' };
-                  }
-                  return nextW;
-                })
-              );
+                    const isNowSent = isWorkerAlreadySentToGosuslugi(nextW);
+                    if (isNowSent) {
+                      return nextW.status === 'success' && !nextW.selected
+                        ? nextW
+                        : { ...nextW, status: 'success', selected: false };
+                    }
+                    if (
+                      data.running &&
+                      data.completed_codes &&
+                      codeKey &&
+                      data.completed_codes.includes(codeKey) &&
+                      !reopenedSicilsRef.current.has(codeKey)
+                    ) {
+                      return nextW.status === 'success' && !nextW.selected
+                        ? nextW
+                        : { ...nextW, status: 'success', selected: false };
+                    }
+                    if (isErrored) {
+                      return nextW.status === 'error' && !nextW.selected
+                        ? nextW
+                        : { ...nextW, status: 'error', selected: false };
+                    }
+                    const isCurrent =
+                      data.running &&
+                      ((data.active_worker_code && codeKey === data.active_worker_code) ||
+                        (data.active_worker_name &&
+                          `${w.lastName} ${w.firstName}`
+                            .toLowerCase()
+                            .includes(data.active_worker_name.toLowerCase())));
+                    if (isCurrent) {
+                      return nextW.status === 'processing' ? nextW : { ...nextW, status: 'processing' };
+                    }
+                    if (!data.running && nextW.status === 'processing') {
+                      return { ...nextW, status: 'pending' };
+                    }
+                    return nextW;
+                  })
+                );
+              }
             }
             return;
           }
