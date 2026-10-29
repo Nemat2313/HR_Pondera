@@ -14,7 +14,7 @@ import threading
 import subprocess
 import time
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 if sys.platform == "win32":
@@ -27,7 +27,66 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
-CENTRAL_ARCHIVED_APP_NOS = set()
+ARCHIVED_APPS_FILE = os.path.join(CURRENT_DIR, "archived_app_nos.json")
+CENTRAL_ARCHIVED_APP_NOS = {
+    "8344026563",
+    "8317199145",
+    "8344102374",
+    "8316538127",
+    "8348149175",
+    "8344008846",
+    "8317411742",
+}
+
+
+def load_archived_app_nos():
+    if os.path.exists(ARCHIVED_APPS_FILE):
+        try:
+            with open(ARCHIVED_APPS_FILE, "r", encoding="utf-8") as f:
+                arr = json.load(f)
+                if isinstance(arr, list):
+                    for a in arr:
+                        ca = str(a or "").strip()
+                        if ca:
+                            CENTRAL_ARCHIVED_APP_NOS.add(ca)
+        except Exception:
+            pass
+
+
+def save_archived_app_nos():
+    try:
+        with open(ARCHIVED_APPS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted(CENTRAL_ARCHIVED_APP_NOS), f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def fetch_central_archived_app_nos():
+    import urllib.request
+    import ssl
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(
+            "https://hr.pondera.network/api/gosuslugi/submissions?type=VKS_SALARY",
+            headers={"User-Agent": "Pondera-RPA-Agent/2.8.2"},
+        )
+        with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                arch = data.get("archivedAppNos") or []
+                if isinstance(arch, list):
+                    for a in arch:
+                        ca = str(a or "").strip()
+                        if ca:
+                            CENTRAL_ARCHIVED_APP_NOS.add(ca)
+                    save_archived_app_nos()
+    except Exception:
+        pass
+
+
+load_archived_app_nos()
 
 
 def prevent_windows_sleep():
@@ -1083,6 +1142,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 purged_cnt = before_len - len(RPAState.submissions)
                 if purged_cnt > 0:
                     save_applications_ledger(RPAState.submissions)
+            save_archived_app_nos()
 
             self.send_response(200)
             self._send_cors_headers()
@@ -1338,31 +1398,25 @@ def main():
     prevent_windows_sleep()
     # Automatically free port 8088 if an older RPA Bridge instance is still running in the background
     free_port_if_occupied(PORT)
-    # Automatically sync latest Python robot scripts from https://hr.pondera.network/Pondera_Gosuslugi_Agent.zip
-    auto_update_scripts_from_server()
+
+    def _startup_sync():
+        fetch_central_archived_app_nos()
+        RPAState.submissions = load_saved_applications()
+        for d in scan_downloads_pdfs():
+            RPAState.upsert_submission(d, sync_central=False, save_ledger=False)
+        save_applications_ledger(RPAState.submissions)
+        auto_update_scripts_from_server()
+        sync_all_local_submissions_to_central_async()
+
+    threading.Thread(target=_startup_sync, daemon=True).start()
     # Start background Telegram report relay thread (polls backend every 60s)
     start_telegram_outbox_relay_thread()
     # Start background 30-min fast JSON Gosuslugi status sync (1,200 Zayavkas, no PDF download)
     start_auto_30min_gosuslugi_status_sync_thread()
-    # Also scan ~/Downloads on startup to pre-populate any Gosuslugi PDF receipts locally
-    for d in scan_downloads_pdfs():
-        RPAState.upsert_submission(d, sync_central=False, save_ledger=False)
-    save_applications_ledger(RPAState.submissions)
-    sync_all_local_submissions_to_central_async()
-    # If an active VKS queue (> 1 record) exists on this computer, merge it into the central master list
-    try:
-        active_q_path = os.path.join(CURRENT_DIR, "active_vks_queue.json")
-        if os.path.exists(active_q_path):
-            with open(active_q_path, "r", encoding="utf-8") as qf:
-                q_recs = json.load(qf)
-                if isinstance(q_recs, list) and len(q_recs) > 1:
-                    sync_vks_queue_to_central_master_list_async(q_recs)
-    except Exception:
-        pass
 
-    server = HTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
     print("=====================================================")
-    print(f"  Pondera HR RPA Bridge Server v2.6 running on http://127.0.0.1:{PORT}")
+    print(f"  Pondera HR RPA Bridge Server v{BRIDGE_VERSION} running on http://127.0.0.1:{PORT}")
     print(f"  Chrome Debugging Port: {CHROME_CDP_PORT}")
     print(f"  Sleep Mode Protection: ACTIVE (Never Sleep / Always Awake)")
     print(f"  Telegram Central Sync: ACTIVE (15m VKS & 09:15 MSK Reports)")
