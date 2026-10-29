@@ -2765,33 +2765,43 @@ class GosuslugiVksBot:
                 logger.info(
                     f"Step 12: Pre-selected MVD is '{cur_dept or 'non-VKS-Moscow'}' -> clicking 'Изменить' to select '{target_dept}'..."
                 )
-                try:
-                    izm_box = self.page.evaluate(
-                        """() => {
-                            const btns = Array.from(document.querySelectorAll("lib-button[data-button-type='skipstep'] button, button"));
-                            for (const b of btns) {
-                                const r = b.getBoundingClientRect();
-                                if (r.width > 20 && r.height > 10 && (b.innerText || '').trim().includes('Изменить')) {
-                                    b.click();
-                                    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-                                }
-                            }
-                            return null;
-                        }"""
-                    )
-                    if izm_box:
-                        self.page.mouse.click(float(izm_box["x"]), float(izm_box["y"]))
-                except Exception:
-                    pass
-                # Wait up to 3s for #dic18_byHand to appear
-                for _ in range(12):
-                    self.page.wait_for_timeout(250)
+                byhand_visible = False
+                for izm_try in range(1, 4):
                     try:
-                        if self.page.evaluate("() => { const el = document.querySelector('input#dic18_byHand, lib-lookup input.search-input'); return !!(el && el.getBoundingClientRect().width > 20); }"):
-                            break
+                        izm_box = self.page.evaluate(
+                            """() => {
+                                const btns = Array.from(document.querySelectorAll("lib-button[data-button-type='skipstep'] button, button"));
+                                for (const b of btns) {
+                                    const r = b.getBoundingClientRect();
+                                    if (r.width > 20 && r.height > 10 && (b.innerText || '').trim().includes('Изменить')) {
+                                        b.scrollIntoView({ block: 'center' });
+                                        b.focus();
+                                        b.click();
+                                        b.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                        b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                        b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                                    }
+                                }
+                                return null;
+                            }"""
+                        )
+                        if izm_box:
+                            self.page.mouse.click(float(izm_box["x"]), float(izm_box["y"]))
                     except Exception:
                         pass
-                self.page.wait_for_timeout(600)
+                    # Wait up to 2.5s per attempt for #dic18_byHand to appear
+                    for _ in range(10):
+                        self.page.wait_for_timeout(250)
+                        try:
+                            if self.page.evaluate("() => { const el = document.querySelector('input#dic18_byHand, lib-lookup input.search-input'); return !!(el && el.getBoundingClientRect().width > 20); }"):
+                                byhand_visible = True
+                                break
+                        except Exception:
+                            pass
+                    if byhand_visible:
+                        break
+                self.page.wait_for_timeout(500)
                 state["hasByHand"] = True
             else:
                 logger.info(f"Step 12: MVD department already set to '{cur_dept}' -> clicking 'Продолжить'...")
@@ -3200,11 +3210,28 @@ class GosuslugiVksBot:
             return False
 
     def _is_step12_continue_ready_js(self) -> bool:
-        """Non-blocking JS check: returns True if the 'Продолжить' button on Step 12 is visible and enabled."""
+        """Non-blocking JS check: returns True if the 'Продолжить' button on Step 12/14 is visible, enabled, and NOT on an unselected/district MVD screen."""
         try:
             return bool(
                 self.page.evaluate(
                     """() => {
+                        const vis = (el) => {
+                            if (!el) return false;
+                            const r = el.getBoundingClientRect();
+                            if (r.width <= 5 || r.height <= 5) return false;
+                            const st = window.getComputedStyle(el);
+                            return st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity || '1') > 0.05;
+                        };
+                        // Never allow clicking 'Продолжить' while #dic18 (readonly pre-selected MVD) or 'Изменить' button is visible with a non-VKS/district MVD!
+                        const dic18 = document.querySelector('input#dic18');
+                        const izmBtn = Array.from(document.querySelectorAll("lib-button[data-button-type='skipstep'] button, button"))
+                            .find(b => vis(b) && (b.innerText || '').trim().includes('Изменить'));
+                        if (vis(dic18) || izmBtn) {
+                            const valUp = dic18 ? (dic18.value || '').trim().toUpperCase() : '';
+                            const isExactVks = valUp.includes('ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ') && valUp.includes('МОСКВ') && !valUp.includes('РАЙОН');
+                            if (!isExactVks) return false;
+                        }
+
                         const btns = Array.from(document.querySelectorAll(
                             "lib-button[data-button-type='nextstep'] button, button"
                         ));
@@ -3225,7 +3252,6 @@ class GosuslugiVksBot:
                             (libWrap && ((libWrap.className || '').includes('disabled') || libWrap.getAttribute('disabled') !== null));
                         if (isDisabled) return false;
 
-                        // Also check if .displayed.lookup-item is visible OR if the button is genuinely enabled
                         return true;
                     }"""
                 )

@@ -18,7 +18,7 @@ export async function GET() {
   if (cachedVersionPayload) {
     return NextResponse.json(cachedVersionPayload);
   }
-  let pkgVersion = 'v2.8.0';
+  let pkgVersion = 'v2.8.1';
   try {
     const pkgRaw = fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8');
     const pkg = JSON.parse(pkgRaw);
