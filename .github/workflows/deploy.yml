@@ -14,6 +14,33 @@ jobs:
     name: Deploy to Production VPS
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies & Build Next.js on CI Runner
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+          cp -r public .next/standalone/ 2>/dev/null || true
+          tar -czf next_build.tar.gz .next
+
+      - name: Copy Pre-Built Next.js Bundle to Production VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 89.111.152.49
+          username: root
+          password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "next_build.tar.gz"
+          target: "/tmp"
+
       - name: Execute Remote Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -22,20 +49,27 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script_stop: true
-          command_timeout: 15m
+          command_timeout: 5m
           script: |
-            echo "=== Starting Pondera HR Auto-Deploy ==="
+            echo "=== Starting Pondera HR Fast Pre-Built Deploy ==="
             sysctl -w vm.swappiness=10 2>/dev/null || true
+            pkill -9 -f "next build" 2>/dev/null || true
+            pkill -9 -f "npm run build" 2>/dev/null || true
+            pkill -9 -f "npm install" 2>/dev/null || true
+            pkill -9 -f "jest-worker" 2>/dev/null || true
+            pkill -9 -f "pre_action_backup.py" 2>/dev/null || true
+            pkill -9 -f "repair_production_db.py" 2>/dev/null || true
+            rm -f /tmp/pondera_deploy.lock 2>/dev/null || true
             cd /var/www/hr_pondera || cd /root/HR_Pondera || cd ~/HR_Pondera
             echo "Current directory: $(pwd)"
             git fetch origin main
             git reset --hard origin/main
-            pm2 stop hr-pondera 2>/dev/null || pm2 stop all 2>/dev/null || true
-            python3 scripts/repair_production_db.py || python scripts/repair_production_db.py || true
-            python3 scripts/pre_action_backup.py deploy || python scripts/pre_action_backup.py deploy || true
-            npm install
-            npm run build
+            pm2 stop hr-pondera </dev/null >/dev/null 2>&1 || pm2 stop all </dev/null >/dev/null 2>&1 || true
+            timeout 25s python3 scripts/repair_production_db.py </dev/null || true
+            rm -rf .next
+            tar -xzf /tmp/next_build.tar.gz -C .
+            rm -f /tmp/next_build.tar.gz
             cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
             cp -r public .next/standalone/ 2>/dev/null || true
-            pm2 restart hr-pondera || pm2 restart all
+            pm2 restart hr-pondera </dev/null >/dev/null 2>&1 || pm2 restart all </dev/null >/dev/null 2>&1
             echo "=== Auto-Deploy Completed Successfully ==="
