@@ -33,6 +33,7 @@ import {
   Info,
   HelpCircle,
   Filter,
+  X,
   ShieldAlert,
   UserPlus,
   UserMinus,
@@ -999,6 +1000,9 @@ export default function GosuslugiVksView() {
   const [isStoppingRobot, setIsStoppingRobot] = useState(false);
   const [isTogglingPause, setIsTogglingPause] = useState(false);
   const [isCheckingStatuses, setIsCheckingStatuses] = useState(false);
+  const [isUploadingExcel, setIsUploadingExcel] = useState(false);
+  const [sendPdfMode, setSendPdfMode] = useState<'no_pdf' | 'with_pdf'>('no_pdf');
+  const [statusPdfMode, setStatusPdfMode] = useState<'no_pdf' | 'with_pdf' | 'single'>('no_pdf');
   const [showSingleStatusSearchModal, setShowSingleStatusSearchModal] = useState(false);
   const [singleSearchScope, setSingleSearchScope] = useState<'pending_only' | 'all_from_start'>('pending_only');
   const [captureStatusScreenshots, setCaptureStatusScreenshots] = useState(false);
@@ -1065,6 +1069,13 @@ export default function GosuslugiVksView() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
+
+  const triggerExcelFileSelect = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
 
   const showNotice = (type: 'success' | 'error' | 'info', text: string) => {
     setToastMsg({ type, text });
@@ -2393,343 +2404,629 @@ export default function GosuslugiVksView() {
     }
   };
 
-  // Upload & Parse Excel File (supports both 34-column HR Master Excel 'Отчет ВКС 3 квартал 2026 - Latest' and 28-column template)
+  // Upload & Parse Excel File (supports 34-column HR Master Excel, 28/32-column template, partial fix templates, and 1C exports)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsUploadingExcel(true);
+    showNotice(
+      'info',
+      lang === 'ru'
+        ? `Чтение и обновление из файла «${file.name}»...`
+        : `«${file.name}» dosyası okunuyor ve güncelleniyor...`
+    );
+
     const reader = new FileReader();
+    reader.onerror = () => {
+      setIsUploadingExcel(false);
+      showNotice(
+        'error',
+        lang === 'ru' ? 'Не удалось прочитать выбранный файл.' : 'Seçilen dosya okunamadı.'
+      );
+    };
     reader.onload = async (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        // Automatically prefer 'latest' or 'Sheet1', or the sheet with the most rows
+        const arrayBuf = evt.target?.result;
+        if (!arrayBuf) {
+          throw new Error('Empty file buffer');
+        }
+        const wb = XLSX.read(new Uint8Array(arrayBuf as ArrayBuffer), { type: 'array' });
+
+        const headerMarkers = [
+          'табельный номер',
+          'табельный',
+          'sicil',
+          'sicil no',
+          'sicil no (код)',
+          'код',
+          'code',
+          'фамилия',
+          'сотрудник',
+          'фио',
+          'soyadı',
+        ];
+
+        const findSheetHeaderRowIdx = (rows2d: any[][]): number => {
+          const scanLim = Math.min(rows2d.length, 12);
+          for (let rIdx = 0; rIdx < scanLim; rIdx++) {
+            const rowCells = Array.from(rows2d[rIdx] || [], (c: any) =>
+              String(c ?? '')
+                .trim()
+                .toLowerCase()
+            );
+            const matchCnt = rowCells.filter(
+              (cell) => cell && headerMarkers.some((m) => cell === m || cell.includes(m))
+            ).length;
+            if (matchCnt >= 1 && rowCells.filter(Boolean).length >= 2) {
+              return rIdx;
+            }
+          }
+          return -1;
+        };
+
+        // Prefer the first sheet if it has valid headers and data rows (so partial sheets like '87' or '124' are respected!)
         let sheetName = wb.SheetNames[0];
-        if (wb.SheetNames.includes('latest')) {
-          sheetName = 'latest';
-        } else if (wb.SheetNames.includes('Sheet1')) {
-          sheetName = 'Sheet1';
-        } else {
-          let maxLen = 0;
-          for (const sn of wb.SheetNames) {
-            const rowsTest = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1 });
-            if (rowsTest.length > maxLen) {
-              maxLen = rowsTest.length;
-              sheetName = sn;
+        const firstSheetRows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
+          header: 1,
+          defval: '',
+        });
+        const firstSheetHdrIdx = findSheetHeaderRowIdx(firstSheetRows);
+
+        if (firstSheetHdrIdx === -1 || firstSheetRows.length <= firstSheetHdrIdx + 1) {
+          if (wb.SheetNames.includes('latest')) {
+            sheetName = 'latest';
+          } else if (wb.SheetNames.includes('Sheet1')) {
+            sheetName = 'Sheet1';
+          } else {
+            for (const sn of wb.SheetNames) {
+              const testRows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sn], {
+                header: 1,
+                defval: '',
+              });
+              const hIdx = findSheetHeaderRowIdx(testRows);
+              if (hIdx !== -1 && testRows.length > hIdx + 1) {
+                sheetName = sn;
+                break;
+              }
             }
           }
         }
 
-        const ws = wb.Sheets[sheetName];
-        const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        // Build lookup map of existing loaded workers by normalized Sicil so partial/1C Excel files preserve missing columns
+        const existingBySicil = new Map<string, GosuslugiVksWorkerRecord>();
+        workers.forEach((w) => {
+          const k = normalizeSicilKey(w.sicil || w.code);
+          if (k) existingBySicil.set(k, w);
+        });
 
-        if (data.length <= 1) {
+        // Always fetch latest savedSubmissions from central server BEFORE mapping Excel rows
+        await refreshSavedSubmissionsFromDb();
+
+        const rawMappedBySicil = new Map<string, GosuslugiVksWorkerRecord>();
+        const parsedSheetNames: string[] = [];
+
+        const parseSheetIntoMapped = (sn: string) => {
+          const ws = wb.Sheets[sn];
+          if (!ws) return;
+          const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          const detectedHdrIdx = findSheetHeaderRowIdx(data);
+          if (detectedHdrIdx === -1 && sn !== sheetName) return;
+          const headerRowIdx = detectedHdrIdx !== -1 ? detectedHdrIdx : 0;
+          if (data.length <= headerRowIdx + 1) return;
+
+          // Use Array.from so sparse Excel rows (<1 empty item>) never produce undefined entries
+          const header = Array.from(data[headerRowIdx] || [], (h: any) =>
+            String(h ?? '')
+              .replace(/\s+/g, ' ')
+              .trim()
+          );
+          const rows = data.slice(headerRowIdx + 1);
+
+          // Determine if this sheet has recognized named column headers
+          const namedMatches = header.filter((h) => {
+            const hl = (h || '').toLowerCase();
+            return (
+              Boolean(hl) &&
+              (headerMarkers.some((m) => hl === m || hl.includes(m)) ||
+                hl.includes('паспорт') ||
+                hl.includes('удостоверение') ||
+                hl.includes('гражданство') ||
+                hl.includes('инн') ||
+                hl.includes('серия'))
+            );
+          }).length;
+          const hasNamedHeaders = namedMatches >= 2;
+
+          const findCol = (
+            candidates: string[],
+            fallbackIdx: number,
+            startFrom: number = 0
+          ): number => {
+            for (const c of candidates) {
+              const cl = c.toLowerCase();
+              const idx = header.findIndex(
+                (h, i) => i >= startFrom && (h || '').toLowerCase() === cl
+              );
+              if (idx !== -1) return idx;
+            }
+            for (const c of candidates) {
+              const cl = c.toLowerCase();
+              if (cl.length < 4) continue;
+              const idx = header.findIndex(
+                (h, i) => i >= startFrom && (h || '').toLowerCase().includes(cl)
+              );
+              if (idx !== -1) return idx;
+            }
+            return hasNamedHeaders ? -1 : fallbackIdx;
+          };
+
+          const isHrMasterFormat = header.some(
+            (h) =>
+              (h || '').toLowerCase() === 'табельный номер' ||
+              (h || '').toLowerCase() === 'серия бланка'
+          );
+          const hasLeadingRowNum =
+            header[0] === '#' ||
+            header[0] === '№' ||
+            (header[0] || '').toLowerCase().includes('п/п') ||
+            (header[0] || '').toLowerCase() === 'sıra';
+          const hasDupTabNum =
+            (header[1] || '').toLowerCase() === 'табельный номер' &&
+            (header[2] || '').toLowerCase() === 'табельный номер';
+          const baseShift = hasLeadingRowNum || hasDupTabNum ? 1 : 0;
+
+          const idxSicil = findCol(
+            [
+              'Табельный номер',
+              'Sicil No (Код)',
+              'Sicil No',
+              'Sicil',
+              'Табельный',
+              'Код',
+              'Code',
+            ],
+            hasLeadingRowNum || isHrMasterFormat ? 1 : 0
+          );
+          const idxCode = findCol(
+            ['Код', 'Code', 'Табельный номер', 'Sicil No (Код)', 'Sicil', 'Sicil No'],
+            hasDupTabNum ? 2 : idxSicil
+          );
+          const idxLastName = findCol(
+            ['Фамилия', 'Фамилия (Кириллица)', 'Soyadı (Kiril)', 'Soyadı'],
+            2 + baseShift
+          );
+          const idxFirstName = findCol(
+            ['Имя', 'Имя (Кириллица)', 'Adı (Kiril)', 'Adı'],
+            3 + baseShift
+          );
+          const idxMiddleName = findCol(
+            ['Отчество', 'Отчество (Кириллица)', 'Baba Adı (Kiril)', 'Baba Adı'],
+            4 + baseShift
+          );
+          const idxFullName = findCol(
+            ['Сотрудник', 'ФИО (Кириллица)', 'ФИО', 'Ad Soyad (Rusça)', 'Ad Soyad', 'FIO'],
+            -1
+          );
+          const idxBirthDate = findCol(
+            ['ДатаРождения', 'Дата рождения', 'Doğum Tarihi'],
+            5 + baseShift
+          );
+          const idxGender = findCol(['Пол', 'Cinsiyet'], 6 + baseShift);
+          const idxCitizenship = findCol(
+            [
+              'ТекущееГражданство',
+              'Гражданство',
+              'Страна гражданства',
+              'Гражданство (Кириллица)',
+              'Uyruk',
+            ],
+            7 + baseShift
+          );
+          const idxPlaceOfBirth = findCol(
+            ['МестоРождения', 'Место рождения', 'Doğum Yeri'],
+            8 + baseShift
+          );
+
+          const idxPassSeries = findCol(
+            ['СерияПаспорта', 'Pasaport Seri No', 'Удостоверение.Серия', 'Серия паспорта', 'Серия'],
+            9 + baseShift
+          );
+          const idxPassNumber = findCol(
+            ['НомерПаспорта', 'Pasaport No', 'Удостоверение.Номер', 'Номер паспорта', 'Номер'],
+            10 + baseShift
+          );
+          const idxPassIssueDate = findCol(
+            [
+              'ДатаВыдачи',
+              'Pasaport Düzenleme Tarihi',
+              'Удостоверение.Дата выдачи',
+              'Дата выдачи паспорта',
+            ],
+            11 + baseShift
+          );
+          const idxPassIssuedBy = findCol(
+            [
+              'ПаспортКемВыдан',
+              'КемВыдан',
+              'Pasaportu Veren Makam (Kiril)',
+              'Удостоверение.Кем выдан',
+              'Кем выдан паспорт',
+            ],
+            12 + baseShift
+          );
+          const idxInn = findCol(['ИНН', 'инн', 'INN No', 'INN'], 13 + baseShift);
+
+          const rnrSearchStart = idxPassNumber !== -1 ? idxPassNumber + 1 : 13 + baseShift;
+          const idxRnrSeries = findCol(
+            ['Серия РНР', 'Çalışma Kart Seri No', 'Серия'],
+            14 + baseShift,
+            rnrSearchStart
+          );
+          const idxRnrNumber = findCol(
+            ['Номер РНР', 'VKS RNR No', 'Çalışma Kart No', 'Номер'],
+            15 + baseShift,
+            rnrSearchStart
+          );
+          const idxRnrIssueDate = findCol(
+            ['ДатаВыдачиВКС', 'Дата выдачи РНР', 'Çalışma Kart Alış Tarihi'],
+            isHrMasterFormat ? -1 : 16 + baseShift
+          );
+          const idxBlank1 = findCol(
+            ['СерийныйНомер1', 'Серия бланка', 'Patent Form Seri No', 'Бланк серия'],
+            17 + baseShift
+          );
+          const idxBlank2 = findCol(
+            ['СерийныйНомер2', 'Номер бланка', 'Patent Form No', 'Бланк номер'],
+            18 + baseShift
+          );
+          const idxContractDate = findCol(
+            [
+              'ДатаЗаключения',
+              'ДатаПриема',
+              'Дата приема',
+              'Дата договора',
+              'Sözleşme Tarihi',
+              'İş Sözleşmesi İmza Tarihi',
+            ],
+            (isHrMasterFormat ? 19 : 19) + baseShift
+          );
+          const idxContractStart = findCol(
+            [
+              'ДатаНачалаДействия',
+              'ДатаНачала действия',
+              'Дата начала',
+              'İş Sözleşmesi Giriş Tarihi',
+            ],
+            20 + baseShift
+          );
+          const idxContractEnd = findCol(
+            [
+              'ДатаОканчанияДействия',
+              'ДатаОканчания действия',
+              'ДатаОкончанияДействия',
+              'ДатаОкончания действия',
+              'Дата окончания',
+              'Çalışma Kart Bitiş Tarihi',
+            ],
+            21 + baseShift
+          );
+          const idxPeriodStart = findCol(['НачалоПериода', 'Начало периода'], 22 + baseShift);
+          const idxPeriodEnd = findCol(['КонецПериода', 'Конец периода'], 23 + baseShift);
+          const idxMonth1 = findCol(
+            ['1-месяц', '1 месяц', 'Месяц 1', '1. Ay', 'Month1', 'Июль'],
+            -1
+          );
+          const idxMonth2 = findCol(
+            ['2-месяц', '2 месяц', 'Месяц 2', '2. Ay', 'Month2', 'август'],
+            -1
+          );
+          const idxMonth3 = findCol(
+            ['3-месяц', '3 месяц', 'Месяц 3', '3. Ay', 'Month3', 'сентябрь'],
+            -1
+          );
+          const idxExitDate = findCol(
+            ['ДатаУвольнения', 'Дата увольнения', 'Resmi Çıkış Tarihi', 'Çıkış Tarihi'],
+            -1
+          );
+          const hasMonthlyCols = idxMonth1 !== -1 || idxMonth2 !== -1 || idxMonth3 !== -1;
+          const idxSalary = findCol(
+            ['РазмерВыплаты', 'Сумма выплаты (Руб)', 'Resmi Maaş', 'Сумма', 'Toplam'],
+            isHrMasterFormat ? 31 : hasMonthlyCols ? 27 : 24
+          );
+          const idxPosition = findCol(
+            ['Должность', 'Resmi Görevi', 'Görevi'],
+            isHrMasterFormat ? 32 : hasMonthlyCols ? 28 : 25
+          );
+          const idxWorkAddr = findCol(
+            ['АдресРаботы', 'Фактический адрес работы иностранца'],
+            isHrMasterFormat ? 33 : hasMonthlyCols ? 29 : 26
+          );
+          const idxPostal = findCol(['Индекс'], isHrMasterFormat ? -1 : hasMonthlyCols ? 30 : 27);
+
+          const getVal = (r: any[], colIdx: number) => {
+            if (colIdx < 0 || !r || colIdx >= r.length) return '';
+            const v = r[colIdx];
+            return v !== undefined && v !== null ? String(v).trim() : '';
+          };
+
+          // If this is a large general 1C roster (>500 rows) without VKS RNR or Salary columns, only update Sicils already in VKS Master List
+          const isLargeGeneralRoster =
+            rows.length > 500 &&
+            hasNamedHeaders &&
+            idxRnrNumber === -1 &&
+            idxSalary === -1 &&
+            !hasMonthlyCols;
+
+          let addedFromSheet = 0;
+          rows.forEach((r, idx) => {
+            if (!r || r.length === 0) return;
+            let lName = getVal(r, idxLastName);
+            let fName = getVal(r, idxFirstName);
+            let mName = getVal(r, idxMiddleName);
+            const fullNameCell = getVal(r, idxFullName);
+            if ((!lName || !fName) && fullNameCell) {
+              const parts = fullNameCell.replace(/\s+/g, ' ').trim().split(' ');
+              if (!lName && parts[0]) lName = parts[0];
+              if (!fName && parts[1]) fName = parts[1];
+              if (!mName && parts.length > 2) mName = parts.slice(2).join(' ');
+            }
+
+            const sicilCell = getVal(r, idxSicil).replace(/\.0$/, '');
+            if (!lName && !fName && !sicilCell) return;
+
+            const sicilVal = sicilCell || String(idx + 1);
+            const normKey = normalizeSicilKey(sicilVal) || sicilVal;
+            const prevW = existingBySicil.get(normKey) || rawMappedBySicil.get(normKey);
+
+            // Skip non-VKS employees when uploading a large general 1C roster (e.g. 4900-row 1C export)
+            if (isLargeGeneralRoster && existingBySicil.size > 0 && !prevW) {
+              return;
+            }
+
+            const codeVal = getVal(r, idxCode).replace(/\.0$/, '') || prevW?.code || sicilVal;
+            const citRaw = getVal(r, idxCitizenship);
+            const citVal = citRaw || prevW?.citizenship || 'Турция';
+
+            const rawContractDate =
+              (idxContractDate !== -1 ? formatDateRu(r[idxContractDate]) : '') ||
+              prevW?.contractDate ||
+              '';
+            const rawContractStart =
+              (idxContractStart !== -1 ? formatDateRu(r[idxContractStart]) : '') ||
+              prevW?.contractStartDate ||
+              rawContractDate;
+            const rawContractEnd =
+              (idxContractEnd !== -1 ? formatDateRu(r[idxContractEnd]) : '') ||
+              prevW?.contractEndDate ||
+              '';
+
+            const rawPeriodStartCell =
+              (idxPeriodStart !== -1 ? formatDateRu(r[idxPeriodStart]) : '') ||
+              prevW?.periodStart ||
+              periodStart;
+            const rowPeriodStart = resolveEffectivePeriodStart(
+              rawPeriodStartCell,
+              periodEnd,
+              rawContractStart
+            );
+            const exitDateVal =
+              (idxExitDate !== -1 ? formatDateRu(r[idxExitDate]) : '') || prevW?.exitDate || '';
+            const rawPeriodEndCell =
+              (idxPeriodEnd !== -1 ? formatDateRu(r[idxPeriodEnd]) : '') || prevW?.periodEnd || '';
+            const rowPeriodEnd = rawPeriodEndCell
+              ? resolveEffectivePeriodEnd(rowPeriodStart, rawPeriodEndCell, exitDateVal)
+              : resolveEffectivePeriodEnd(rowPeriodStart, periodEnd, exitDateVal);
+
+            let m1 =
+              idxMonth1 !== -1
+                ? formatSalaryWithKopecks(getVal(r, idxMonth1))
+                : prevW?.month1Salary || '';
+            let m2 =
+              idxMonth2 !== -1
+                ? formatSalaryWithKopecks(getVal(r, idxMonth2))
+                : prevW?.month2Salary || '';
+            let m3 =
+              idxMonth3 !== -1
+                ? formatSalaryWithKopecks(getVal(r, idxMonth3))
+                : prevW?.month3Salary || '';
+            const rawTotalCell =
+              (idxSalary !== -1 ? formatSalaryWithKopecks(getVal(r, idxSalary)) : '') ||
+              prevW?.salaryAmount ||
+              '';
+
+            if (!m1 && !m2 && !m3 && rawTotalCell && Number(rawTotalCell) > 0) {
+              const slices = computeQuarterMonthSlices(rowPeriodStart, rowPeriodEnd);
+              const activeSlices = slices.filter((s) => s.active);
+              if (activeSlices.length > 0) {
+                const totalNum = Number(rawTotalCell);
+                const perM = Math.floor((totalNum / activeSlices.length) * 100) / 100;
+                const rem = Number((totalNum - perM * activeSlices.length).toFixed(2));
+                activeSlices.forEach((s, aIdx) => {
+                  const amtStr = (aIdx === activeSlices.length - 1 ? perM + rem : perM).toFixed(2);
+                  if (s.monthIdx === 1) m1 = amtStr;
+                  if (s.monthIdx === 2) m2 = amtStr;
+                  if (s.monthIdx === 3) m3 = amtStr;
+                });
+              }
+            }
+
+            const computedSum = sumMonthlySalaries(m1, m2, m3);
+            const finalTotal = computedSum || rawTotalCell;
+
+            const mappedCit =
+              CITIZENSHIP_MAP_RU[citVal.toUpperCase()] ||
+              sanitizeCyrillicGosuslugiText(citVal, prevW?.citizenship || 'Турция', false);
+
+            const rawAddr = getVal(r, idxWorkAddr) || prevW?.workAddress || workAddress;
+            const addrMatch = rawAddr.match(/\b(\d{6})\b/);
+            const rowPostal =
+              getVal(r, idxPostal) ||
+              prevW?.postalCode ||
+              (addrMatch ? addrMatch[1] : '') ||
+              postalCode;
+
+            // Normalize Latin B -> Cyrillic В in blank series
+            const rawBlank1Cell = getVal(r, idxBlank1)
+              .replace(/\s+/g, '')
+              .toUpperCase()
+              .replace(/B/g, 'В')
+              .replace(/A/g, 'А');
+            const rawBlank1 = rawBlank1Cell || prevW?.blankSeries || '';
+
+            let cleanBlank2 = getVal(r, idxBlank2).replace(/\.0$/, '').replace(/\s+/g, '');
+            if (/^\d{5,6}$/.test(cleanBlank2)) {
+              cleanBlank2 = cleanBlank2.padStart(7, '0');
+            }
+            if (!cleanBlank2 && prevW?.blankNumber) {
+              cleanBlank2 = prevW.blankNumber;
+            }
+
+            const cyrToLatPass: Record<string, string> = {
+              А: 'A', В: 'B', С: 'C', Е: 'E', Н: 'H', К: 'K', М: 'M', О: 'O', Р: 'P', Т: 'T', Х: 'X', У: 'Y',
+              а: 'A', в: 'B', с: 'C', е: 'E', н: 'H', к: 'K', м: 'M', о: 'O', р: 'P', т: 'T', х: 'X', у: 'Y',
+            };
+            let cleanPassNum = getVal(r, idxPassNumber)
+              .replace(/\.0$/, '')
+              .replace(/(\d{2}\.\d{2}\.\d{4})$/, '')
+              .replace(/\s+/g, '');
+            if (/^[АВЕКМНОРСТУХавекмнорстухA-Za-z]{1,3}\d{5,9}$/.test(cleanPassNum)) {
+              cleanPassNum = cleanPassNum
+                .replace(/[АВЕКМНОРСТУХавекмнорстух]/g, (ch) => cyrToLatPass[ch] || ch)
+                .toUpperCase();
+            }
+            if (!cleanPassNum && prevW?.passportNumber) {
+              cleanPassNum = prevW.passportNumber;
+            }
+
+            let cleanInnVal = getVal(r, idxInn).replace(/\.0$/, '').trim();
+            const cleanInnDigits = cleanInnVal.replace(/\s+/g, '');
+            if (/^\d{10,12}$/.test(cleanInnDigits)) {
+              cleanInnVal = cleanInnDigits;
+            } else if (cleanInnVal && !/^\d+$/.test(cleanInnDigits)) {
+              // Ignore non-numeric text notes in INN column (e.g. "yarin hazir olacak")
+              cleanInnVal = '';
+            }
+            if ((!cleanInnVal || /^0+$/.test(cleanInnVal)) && prevW?.inn && !/^0+$/.test(prevW.inn)) {
+              cleanInnVal = prevW.inn;
+            } else if (!cleanInnVal && prevW?.inn) {
+              cleanInnVal = prevW.inn;
+            }
+
+            const resolvedLastName = lName
+              ? sanitizeCyrillicGosuslugiText(lName, prevW?.lastName || 'Нет', false)
+              : prevW?.lastName || 'Нет';
+            const resolvedFirstName = fName
+              ? sanitizeCyrillicGosuslugiText(fName, prevW?.firstName || '', false)
+              : prevW?.firstName || '';
+            const resolvedMiddleName = mName
+              ? sanitizeCyrillicGosuslugiText(mName, prevW?.middleName || 'НЕТ', false)
+              : prevW?.middleName || 'НЕТ';
+
+            const record: GosuslugiVksWorkerRecord = {
+              id: prevW?.id || `excel-vks-${sn}-${idx}`,
+              selected: true,
+              status: 'pending',
+              sicil: sicilVal,
+              code: codeVal,
+              lastName: resolvedLastName,
+              firstName: resolvedFirstName,
+              middleName: resolvedMiddleName,
+              birthDate:
+                (idxBirthDate !== -1 ? formatDateRu(r[idxBirthDate]) : '') ||
+                prevW?.birthDate ||
+                '',
+              gender: getVal(r, idxGender) || prevW?.gender || 'Мужской',
+              citizenship: mappedCit,
+              placeOfBirth: sanitizeCyrillicGosuslugiText(
+                getVal(r, idxPlaceOfBirth) || prevW?.placeOfBirth || mappedCit,
+                mappedCit,
+                true
+              ),
+              passportSeries:
+                getVal(r, idxPassSeries).replace(/\.0$/, '') || prevW?.passportSeries || '',
+              passportNumber: cleanPassNum,
+              passportIssueDate:
+                (idxPassIssueDate !== -1 ? formatDateRu(r[idxPassIssueDate]) : '') ||
+                prevW?.passportIssueDate ||
+                '',
+              passportIssuedBy: sanitizeCyrillicGosuslugiText(
+                getVal(r, idxPassIssuedBy) || prevW?.passportIssuedBy || 'МВД',
+                'МВД',
+                true
+              ),
+              inn: cleanInnVal,
+              rnrSeries:
+                getVal(r, idxRnrSeries).replace(/\.0$/, '').replace(/\s+/g, '') ||
+                prevW?.rnrSeries ||
+                '',
+              rnrNumber:
+                getVal(r, idxRnrNumber).replace(/\.0$/, '').replace(/\s+/g, '') ||
+                prevW?.rnrNumber ||
+                '',
+              rnrIssueDate:
+                (idxRnrIssueDate !== -1 ? formatDateRu(r[idxRnrIssueDate]) : '') ||
+                prevW?.rnrIssueDate ||
+                '',
+              blankSeries: rawBlank1,
+              blankNumber: cleanBlank2,
+              contractDate: rawContractDate,
+              contractStartDate: rawContractStart,
+              contractEndDate: rawContractEnd,
+              periodStart: rowPeriodStart,
+              periodEnd: rowPeriodEnd,
+              exitDate: exitDateVal || undefined,
+              month1Salary: m1,
+              month2Salary: m2,
+              month3Salary: m3,
+              salaryAmount: finalTotal,
+              position: getVal(r, idxPosition) || prevW?.position || 'СПЕЦИАЛИСТ',
+              workAddress: rawAddr,
+              postalCode: rowPostal,
+            };
+
+            rawMappedBySicil.set(normKey, record);
+            existingBySicil.set(normKey, record);
+            addedFromSheet++;
+          });
+
+          if (addedFromSheet > 0) {
+            parsedSheetNames.push(sn);
+          }
+        };
+
+        // 1) Parse primary selected sheet first
+        parseSheetIntoMapped(sheetName);
+
+        // 2) If primary sheet is a partial update (<1500 rows), also parse any other small partial update sheets (<500 rows)
+        // in the same workbook (e.g. '86.xlsx' having both '87' and 'Sheet1' with extra INN updates)
+        if (rawMappedBySicil.size > 0 && rawMappedBySicil.size < 1500 && wb.SheetNames.length > 1) {
+          for (const otherSn of wb.SheetNames) {
+            if (otherSn === sheetName) continue;
+            const otherRows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[otherSn], {
+              header: 1,
+              defval: '',
+            });
+            if (otherRows.length > 1 && otherRows.length < 500 && findSheetHeaderRowIdx(otherRows) !== -1) {
+              parseSheetIntoMapped(otherSn);
+            }
+          }
+        }
+
+        const rawMapped = Array.from(rawMappedBySicil.values());
+        const sheetLabel = parsedSheetNames.join(' + ') || sheetName;
+
+        if (rawMapped.length === 0) {
           showNotice(
             'error',
             lang === 'ru'
-              ? 'Файл Excel пуст или содержит только заголовки.'
-              : 'Excel dosyası boş veya sadece başlık içeriyor.'
+              ? 'В файле Excel не найдено подходящих записей ВКС для обновления.'
+              : 'Excel dosyasında güncellenecek uygun VKS kaydı bulunamadı.'
           );
           return;
         }
 
-        const header = data[0].map((h: any) => String(h || '').trim());
-        const rows = data.slice(1);
-
-        const findCol = (candidates: string[], fallbackIdx: number, startFrom: number = 0): number => {
-          for (const c of candidates) {
-            const idx = header.findIndex(
-              (h, i) => i >= startFrom && h.toLowerCase() === c.toLowerCase()
-            );
-            if (idx !== -1) return idx;
-          }
-          return fallbackIdx;
-        };
-
-        // Support both 34-column HR Master Excel ('Табельный номер', duplicate 'Серия'/'Номер', 'Июль'/'август'/'сентябрь')
-        // and 28/32-column PAD template Excel (with or without leading '#' / '№ п/п' column)
-        const isHrMasterFormat = header.some(
-          (h) => h.toLowerCase() === 'табельный номер' || h.toLowerCase() === 'серия бланка'
-        );
-        const hasLeadingRowNum =
-          header[0] === '#' ||
-          header[0] === '№' ||
-          header[0]?.toLowerCase().includes('п/п') ||
-          header[0]?.toLowerCase() === 'sıra';
-        const hasDupTabNum =
-          header[1]?.toLowerCase() === 'табельный номер' &&
-          header[2]?.toLowerCase() === 'табельный номер';
-        const baseShift = hasLeadingRowNum || hasDupTabNum ? 1 : 0;
-
-        const idxSicil = findCol(
-          ['Табельный номер', 'Sicil', 'Sicil No', 'Табельный', 'Код', 'Code'],
-          hasLeadingRowNum || isHrMasterFormat ? 1 : 0
-        );
-        const idxCode = findCol(
-          ['Код', 'Code', 'Табельный номер', 'Sicil', 'Sicil No'],
-          hasDupTabNum ? 2 : idxSicil
-        );
-        const idxLastName = findCol(['Фамилия', 'Soyadı (Kiril)', 'Soyadı'], 2 + baseShift);
-        const idxFirstName = findCol(['Имя', 'Adı (Kiril)', 'Adı'], 3 + baseShift);
-        const idxMiddleName = findCol(['Отчество', 'Baba Adı (Kiril)', 'Baba Adı'], 4 + baseShift);
-        const idxBirthDate = findCol(
-          ['ДатаРождения', 'Дата рождения', 'Doğum Tarihi'],
-          5 + baseShift
-        );
-        const idxGender = findCol(['Пол', 'Cinsiyet'], 6 + baseShift);
-        const idxCitizenship = findCol(
-          ['ТекущееГражданство', 'Гражданство', 'Uyruk'],
-          7 + baseShift
-        );
-        const idxPlaceOfBirth = findCol(
-          ['МестоРождения', 'Место рождения', 'Doğum Yeri'],
-          8 + baseShift
-        );
-
-        // In 34-col HR Master Excel, 'Серия' and 'Номер' appear twice: first for Passport, second for RNR
-        const idxPassSeries = findCol(
-          ['СерияПаспорта', 'Pasaport Seri No', 'Серия'],
-          9 + baseShift
-        );
-        const idxPassNumber = findCol(
-          ['НомерПаспорта', 'Pasaport No', 'Номер'],
-          10 + baseShift
-        );
-        const idxPassIssueDate = findCol(
-          ['ДатаВыдачи', 'Pasaport Düzenleme Tarihi'],
-          11 + baseShift
-        );
-        const idxPassIssuedBy = findCol(
-          ['ПаспортКемВыдан', 'КемВыдан', 'Pasaportu Veren Makam (Kiril)'],
-          12 + baseShift
-        );
-        const idxInn = findCol(['ИНН', 'INN No', 'INN'], 13 + baseShift);
-
-        const rnrSearchStart = Math.max(idxPassNumber + 1, 13 + baseShift);
-        const idxRnrSeries = findCol(
-          ['Серия', 'Çalışma Kart Seri No'],
-          14 + baseShift,
-          rnrSearchStart
-        );
-        const idxRnrNumber = findCol(
-          ['Номер', 'Çalışma Kart No'],
-          15 + baseShift,
-          rnrSearchStart
-        );
-        const idxRnrIssueDate = findCol(
-          ['ДатаВыдачиВКС', 'Çalışma Kart Alış Tarihi'],
-          isHrMasterFormat ? -1 : 16 + baseShift
-        );
-        const idxBlank1 = findCol(
-          ['СерийныйНомер1', 'Серия бланка', 'Patent Form Seri No'],
-          17 + baseShift
-        );
-        const idxBlank2 = findCol(
-          ['СерийныйНомер2', 'Номер бланка', 'Patent Form No'],
-          18 + baseShift
-        );
-        const idxContractDate = findCol(
-          ['ДатаЗаключения', 'ДатаПриема', 'İş Sözleşmesi İmza Tarihi'],
-          (isHrMasterFormat ? 19 : 19) + baseShift
-        );
-        const idxContractStart = findCol(
-          ['ДатаНачалаДействия', 'ДатаНачала действия', 'İş Sözleşmesi Giriş Tarihi'],
-          20 + baseShift
-        );
-        const idxContractEnd = findCol(
-          [
-            'ДатаОканчанияДействия',
-            'ДатаОканчания действия',
-            'ДатаОкончанияДействия',
-            'ДатаОкончания действия',
-            'Çalışma Kart Bitiş Tarihi',
-          ],
-          21 + baseShift
-        );
-        const idxPeriodStart = findCol(['НачалоПериода'], 22 + baseShift);
-        const idxPeriodEnd = findCol(['КонецПериода'], 23 + baseShift);
-        const idxMonth1 = findCol(
-          ['1-месяц', '1 месяц', 'Месяц 1', '1. Ay', 'Month1', 'Июль'],
-          -1
-        );
-        const idxMonth2 = findCol(
-          ['2-месяц', '2 месяц', 'Месяц 2', '2. Ay', 'Month2', 'август'],
-          -1
-        );
-        const idxMonth3 = findCol(
-          ['3-месяц', '3 месяц', 'Месяц 3', '3. Ay', 'Month3', 'сентябрь'],
-          -1
-        );
-        const idxExitDate = findCol(['ДатаУвольнения', 'Resmi Çıkış Tarihi', 'Çıkış Tarihi'], -1);
-        const hasMonthlyCols = idxMonth1 !== -1 || idxMonth2 !== -1 || idxMonth3 !== -1;
-        const idxSalary = findCol(
-          ['РазмерВыплаты', 'Resmi Maaş', 'Сумма', 'Toplam'],
-          isHrMasterFormat ? 31 : hasMonthlyCols ? 27 : 24
-        );
-        const idxPosition = findCol(
-          ['Должность', 'Resmi Görevi', 'Görevi'],
-          isHrMasterFormat ? 32 : hasMonthlyCols ? 28 : 25
-        );
-        const idxWorkAddr = findCol(
-          ['АдресРаботы', 'Фактический адрес работы иностранца'],
-          isHrMasterFormat ? 33 : hasMonthlyCols ? 29 : 26
-        );
-        const idxPostal = findCol(['Индекс'], isHrMasterFormat ? -1 : hasMonthlyCols ? 30 : 27);
-
-        const getVal = (r: any[], colIdx: number) => {
-          if (colIdx < 0 || colIdx >= r.length) return '';
-          const v = r[colIdx];
-          return v !== undefined && v !== null ? String(v).trim() : '';
-        };
-
-        // Always fetch latest savedSubmissions from central server BEFORE mapping Excel rows
-        // so previously sent ('Отправлено') and errored ('Ошибка') statuses are 100% preserved!
-        const freshSubs = await refreshSavedSubmissionsFromDb();
-
-        const rawMapped: GosuslugiVksWorkerRecord[] = [];
-        rows.forEach((r, idx) => {
-          if (!r || r.length === 0) return;
-          const lName = getVal(r, idxLastName);
-          const fName = getVal(r, idxFirstName);
-          const sicilCell = getVal(r, idxSicil).replace(/\.0$/, '');
-          if (!lName && !fName && !sicilCell) return;
-
-          const sicilVal = sicilCell || String(idx + 1);
-          const codeVal = getVal(r, idxCode).replace(/\.0$/, '') || sicilVal;
-          const citVal = getVal(r, idxCitizenship) || 'Турция';
-
-          const contractStartCell =
-            formatDateRu(r[idxContractStart]) || formatDateRu(r[idxContractDate]);
-          const rawPeriodStartCell = formatDateRu(r[idxPeriodStart]) || periodStart;
-          const rowPeriodStart = resolveEffectivePeriodStart(
-            rawPeriodStartCell,
-            periodEnd,
-            contractStartCell
-          );
-          const exitDateVal = idxExitDate !== -1 ? formatDateRu(r[idxExitDate]) : '';
-          const rawPeriodEndCell = formatDateRu(r[idxPeriodEnd]);
-          const rowPeriodEnd = rawPeriodEndCell
-            ? resolveEffectivePeriodEnd(rowPeriodStart, rawPeriodEndCell, exitDateVal)
-            : resolveEffectivePeriodEnd(rowPeriodStart, periodEnd, exitDateVal);
-
-          let m1 = idxMonth1 !== -1 ? formatSalaryWithKopecks(getVal(r, idxMonth1)) : '';
-          let m2 = idxMonth2 !== -1 ? formatSalaryWithKopecks(getVal(r, idxMonth2)) : '';
-          let m3 = idxMonth3 !== -1 ? formatSalaryWithKopecks(getVal(r, idxMonth3)) : '';
-          const rawTotalCell = formatSalaryWithKopecks(getVal(r, idxSalary));
-
-          if (!m1 && !m2 && !m3 && rawTotalCell && Number(rawTotalCell) > 0) {
-            const slices = computeQuarterMonthSlices(rowPeriodStart, rowPeriodEnd);
-            const activeSlices = slices.filter((s) => s.active);
-            if (activeSlices.length > 0) {
-              const totalNum = Number(rawTotalCell);
-              const perM = Math.floor((totalNum / activeSlices.length) * 100) / 100;
-              const rem = Number((totalNum - perM * activeSlices.length).toFixed(2));
-              activeSlices.forEach((s, aIdx) => {
-                const amtStr = (aIdx === activeSlices.length - 1 ? perM + rem : perM).toFixed(2);
-                if (s.monthIdx === 1) m1 = amtStr;
-                if (s.monthIdx === 2) m2 = amtStr;
-                if (s.monthIdx === 3) m3 = amtStr;
-              });
-            }
-          }
-
-          const computedSum = sumMonthlySalaries(m1, m2, m3);
-          const finalTotal = computedSum || rawTotalCell;
-
-          const mappedCit =
-            CITIZENSHIP_MAP_RU[citVal.toUpperCase()] ||
-            sanitizeCyrillicGosuslugiText(citVal, 'Турция', false);
-
-          const rawAddr = getVal(r, idxWorkAddr) || workAddress;
-          const addrMatch = rawAddr.match(/\b(\d{6})\b/);
-          const rowPostal =
-            getVal(r, idxPostal) || (addrMatch ? addrMatch[1] : '') || postalCode;
-
-          // Normalize Latin B -> Cyrillic В in blank series
-          const rawBlank1 = getVal(r, idxBlank1)
-            .replace(/\s+/g, '')
-            .toUpperCase()
-            .replace(/B/g, 'В')
-            .replace(/A/g, 'А');
-
-          let cleanBlank2 = getVal(r, idxBlank2).replace(/\.0$/, '').replace(/\s+/g, '');
-          if (/^\d{5,6}$/.test(cleanBlank2)) {
-            cleanBlank2 = cleanBlank2.padStart(7, '0');
-          }
-
-          const cyrToLatPass: Record<string, string> = {
-            А: 'A', В: 'B', С: 'C', Е: 'E', Н: 'H', К: 'K', М: 'M', О: 'O', Р: 'P', Т: 'T', Х: 'X', У: 'Y',
-            а: 'A', в: 'B', с: 'C', е: 'E', н: 'H', к: 'K', м: 'M', о: 'O', р: 'P', т: 'T', х: 'X', у: 'Y',
-          };
-          let cleanPassNum = getVal(r, idxPassNumber)
-            .replace(/\.0$/, '')
-            .replace(/(\d{2}\.\d{2}\.\d{4})$/, '')
-            .replace(/\s+/g, '');
-          if (/^[АВЕКМНОРСТУХавекмнорстухA-Za-z]{1,3}\d{5,9}$/.test(cleanPassNum)) {
-            cleanPassNum = cleanPassNum
-              .replace(/[АВЕКМНОРСТУХавекмнорстух]/g, (ch) => cyrToLatPass[ch] || ch)
-              .toUpperCase();
-          }
-
-          let cleanInnVal = getVal(r, idxInn).replace(/\.0$/, '').trim();
-          const cleanInnDigits = cleanInnVal.replace(/\s+/g, '');
-          if (/^\d{10,12}$/.test(cleanInnDigits)) {
-            cleanInnVal = cleanInnDigits;
-          }
-
-          rawMapped.push({
-            id: `excel-vks-${idx}`,
-            selected: true,
-            status: 'pending',
-            sicil: sicilVal,
-            code: codeVal,
-            lastName: sanitizeCyrillicGosuslugiText(lName, 'Нет', false),
-            firstName: sanitizeCyrillicGosuslugiText(fName, '', false),
-            middleName: sanitizeCyrillicGosuslugiText(
-              getVal(r, idxMiddleName) || 'НЕТ',
-              'НЕТ',
-              false
-            ),
-            birthDate: formatDateRu(r[idxBirthDate]),
-            gender: getVal(r, idxGender) || 'Мужской',
-            citizenship: mappedCit,
-            placeOfBirth: sanitizeCyrillicGosuslugiText(
-              getVal(r, idxPlaceOfBirth) || mappedCit,
-              mappedCit,
-              true
-            ),
-            passportSeries: getVal(r, idxPassSeries).replace(/\.0$/, ''),
-            passportNumber: cleanPassNum,
-            passportIssueDate: formatDateRu(r[idxPassIssueDate]),
-            passportIssuedBy: sanitizeCyrillicGosuslugiText(
-              getVal(r, idxPassIssuedBy),
-              'МВД',
-              true
-            ),
-            inn: cleanInnVal,
-            rnrSeries: getVal(r, idxRnrSeries).replace(/\.0$/, '').replace(/\s+/g, ''),
-            rnrNumber: getVal(r, idxRnrNumber).replace(/\.0$/, '').replace(/\s+/g, ''),
-            rnrIssueDate: formatDateRu(r[idxRnrIssueDate]),
-            blankSeries: rawBlank1,
-            blankNumber: cleanBlank2,
-            contractDate: formatDateRu(r[idxContractDate]),
-            contractStartDate:
-              formatDateRu(r[idxContractStart]) || formatDateRu(r[idxContractDate]),
-            contractEndDate: formatDateRu(r[idxContractEnd]),
-            periodStart: rowPeriodStart,
-            periodEnd: rowPeriodEnd,
-            exitDate: exitDateVal || undefined,
-            month1Salary: m1,
-            month2Salary: m2,
-            month3Salary: m3,
-            salaryAmount: finalTotal,
-            position: getVal(r, idxPosition) || 'СПЕЦИАЛИСТ',
-            workAddress: rawAddr,
-            postalCode: rowPostal,
-          });
-        });
-
-        // 1) First sync uploaded rows into the 3,088 Central Master List and clear non-'Услуга оказана' statuses for updated sicils
+        // 1) Sync uploaded rows into Central Master List in chunks of 200 to prevent Nginx 413 Request Entity Too Large
         const payloadForMaster = buildPayloadRecords(rawMapped);
         let updatedMasterCnt = 0;
         let clearedErrorsCnt = 0;
@@ -2737,32 +3034,51 @@ export default function GosuslugiVksView() {
         let reopenedPendingCnt = 0;
         let skippedOkazanaCnt = 0;
         let readyToQueueCnt = 0;
-        try {
-          const masterRes = await fetch('/api/gosuslugi/master-list', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              records: payloadForMaster,
-              mode: 'merge',
-              clearErrorsForUpdated: true,
-              reopenNonOkazana: rawMapped.length < 1500,
-              sourceTag: `excel_${file.name}`,
-            }),
-          });
-          if (masterRes.ok) {
-            const mJson = await masterRes.json();
-            updatedMasterCnt = Number(mJson.updated || 0) + Number(mJson.inserted || 0);
-            clearedErrorsCnt = Number(mJson.clearedErrors || 0);
-            reopenedRefusedCnt = Number(mJson.reopenedRefused || 0);
-            reopenedPendingCnt = Number(mJson.reopenedPending || 0);
-            skippedOkazanaCnt = Number(mJson.skippedOkazana || 0);
-            readyToQueueCnt = Number(mJson.readyToQueue || 0);
-          }
-        } catch {}
+        let anyChunkOk = false;
 
-        // 2) Re-fetch submissions & master list after clearing non-'Услуга оказана' rows so edited rows are unlocked and ready in queue!
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < payloadForMaster.length; i += CHUNK_SIZE) {
+          const chunk = payloadForMaster.slice(i, i + CHUNK_SIZE);
+          try {
+            const masterRes = await fetch('/api/gosuslugi/master-list', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                records: chunk,
+                mode: 'merge',
+                clearErrorsForUpdated: true,
+                reopenNonOkazana: rawMapped.length < 1500,
+                skipBackup: i > 0,
+                sourceTag: `excel_${file.name}`,
+              }),
+            });
+            if (masterRes.ok) {
+              anyChunkOk = true;
+              const mJson = await masterRes.json();
+              updatedMasterCnt += Number(mJson.updated || 0) + Number(mJson.inserted || 0);
+              clearedErrorsCnt += Number(mJson.clearedErrors || 0);
+              reopenedRefusedCnt += Number(mJson.reopenedRefused || 0);
+              reopenedPendingCnt += Number(mJson.reopenedPending || 0);
+              skippedOkazanaCnt += Number(mJson.skippedOkazana || 0);
+              readyToQueueCnt = Number(mJson.readyToQueue || readyToQueueCnt);
+            }
+          } catch {}
+        }
+
+        if (!anyChunkOk) {
+          showNotice(
+            'error',
+            lang === 'ru'
+              ? 'Ошибка сохранения данных на сервере при обновлении из Excel.'
+              : 'Excel verileri sunucuya kaydedilirken hata oluştu.'
+          );
+          return;
+        }
+
+        // 2) Reload authoritative merged Master List & submissions so edited rows are unlocked and ready in queue
         const freshSubsAfterMerge = await refreshSavedSubmissionsFromDb();
         await refreshMasterListSummary();
+        await handleLoadFromMasterList(activeComputerFilter, 'all', true);
 
         const { processed, invalidCnt } = applyInitialValidationSelection(
           rawMapped,
@@ -2770,11 +3086,9 @@ export default function GosuslugiVksView() {
           true
         );
 
-        if (rawMapped.length < 1500) {
-          await handleLoadFromMasterList(activeComputerFilter, 'all', true);
+        if (rawMapped.length < 1500 && (readyToQueueCnt > 0 || clearedErrorsCnt + reopenedRefusedCnt + reopenedPendingCnt > 0)) {
           setQueueFilter('ready');
         } else {
-          setWorkers(processed);
           setQueueFilter('all');
         }
 
@@ -2786,7 +3100,7 @@ export default function GosuslugiVksView() {
               : ` (${skippedOkazanaCnt} «Услуга оказана» kaydına dokunulmadı)`
             : '';
         const unlockedExtraText =
-          reopenedRefusedCnt + reopenedPendingCnt > 0
+          clearedErrorsCnt + reopenedRefusedCnt + reopenedPendingCnt > 0
             ? lang === 'ru'
               ? `, возвращено в очередь: ${clearedErrorsCnt + reopenedRefusedCnt + reopenedPendingCnt}`
               : `, toplam ${clearedErrorsCnt + reopenedRefusedCnt + reopenedPendingCnt} eski statü sıfırlanıp kuyruğa alındı`
@@ -2796,15 +3110,15 @@ export default function GosuslugiVksView() {
           showNotice(
             'info',
             lang === 'ru'
-              ? `Обновлено в базе (3088): ${updatedMasterCnt || processed.length} стр.${okazanaNote}${unlockedExtraText}. Готовы к отправке: ${readyUnsentCnt}, ещё требуют правки: ${invalidCnt}.`
-              : `Merkezi 3.088 listede ${updatedMasterCnt || processed.length} kayıt güncellendi${okazanaNote}${unlockedExtraText}. ${readyUnsentCnt} kayıt gönderime hazır kuyruğa alındı, ${invalidCnt} kayıtta hala eksik veri var.`
+              ? `Обновлено из «${file.name}» (лист «${sheetLabel}»): ${updatedMasterCnt || processed.length} стр.${okazanaNote}${unlockedExtraText}. Готовы к отправке: ${readyUnsentCnt}, требуют правки: ${invalidCnt}.`
+              : `«${file.name}» («${sheetLabel}» sayfası) ile ${updatedMasterCnt || processed.length} kayıt güncellendi${okazanaNote}${unlockedExtraText}. ${readyUnsentCnt} kayıt gönderime hazır, ${invalidCnt} kayıtta eksik veri var.`
           );
         } else {
           showNotice(
             'success',
             lang === 'ru'
-              ? `В центральном списке (3088) успешно обновлено ${updatedMasterCnt || processed.length} записей${okazanaNote}${unlockedExtraText} — ${readyUnsentCnt} готовы к отправке в очереди!`
-              : `Merkezi 3.088 kişilik listede ${updatedMasterCnt || processed.length} kayıt başarıyla güncellendi${okazanaNote}${unlockedExtraText} — ${readyUnsentCnt} kayıt gönderime hazır kuyruğa alındı!`
+              ? `Из файла «${file.name}» (лист «${sheetLabel}») успешно обновлено ${updatedMasterCnt || processed.length} записей${okazanaNote}${unlockedExtraText} — ${readyUnsentCnt} готовы к отправке!`
+              : `«${file.name}» («${sheetLabel}» sayfası) ile ${updatedMasterCnt || processed.length} kayıt başarıyla güncellendi${okazanaNote}${unlockedExtraText} — ${readyUnsentCnt} kayıt gönderime hazır!`
           );
         }
       } catch {
@@ -2813,10 +3127,11 @@ export default function GosuslugiVksView() {
           lang === 'ru' ? 'Ошибка чтения файла Excel.' : 'Excel dosyası okunurken bir hata oluştu.'
         );
       } finally {
+        setIsUploadingExcel(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   // Apply global Period / Address to all loaded rows and re-validate selection
@@ -3020,12 +3335,26 @@ export default function GosuslugiVksView() {
     setIsLaunchingChrome(true);
     try {
       const res = await fetch(`${activeBridgeUrl}/open-chrome`, { method: 'POST' });
+      // Also trigger a 1-second __OPEN_CHROME_ONLY__ robot wakeup when idle so even un-restarted local agents
+      // auto-update from the server, launch/attach to Chrome on port 9222, and bring the window to the foreground.
+      if (!bridgeStatus.running) {
+        fetch(`${activeBridgeUrl}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'vks',
+            limit: 1,
+            skip_pdf: true,
+            records: [{ Sicil: '__OPEN_CHROME_ONLY__', Код: '__OPEN_CHROME_ONLY__' }],
+          }),
+        }).catch(() => {});
+      }
       if (res.ok) {
         showNotice(
           'success',
           lang === 'ru'
-            ? 'Google Chrome запущен в режиме отладки (порт 9222)! Войдите в Госуслуги.'
-            : 'Google Chrome hata ayıklama modunda (Port 9222) açıldı! Gosuslugi hesabınıza giriş yapın.'
+            ? 'Окно Google Chrome (порт 9222) открыто и выведено на передний план! Войдите в Госуслуги.'
+            : 'Google Chrome (Port 9222) penceresi açıldı ve ekrana getirildi! Gosuslugi hesabınıza giriş yapın.'
         );
       } else {
         showNotice('error', 'Chrome başlatılamadı.');
@@ -4080,12 +4409,25 @@ export default function GosuslugiVksView() {
           {/* Right: Clean Consolidated Toolbar */}
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
+              onClick={triggerExcelFileSelect}
+              disabled={isUploadingExcel}
+              className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-60"
               title="Yeni VKS listesi veya düzeltilmiş şablon Excel dosyasını yükle"
             >
-              <Upload className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Загрузить Excel' : 'Excel Yükle'}</span>
+              {isUploadingExcel ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {isUploadingExcel
+                  ? lang === 'ru'
+                    ? 'Загрузка...'
+                    : 'Yükleniyor...'
+                  : lang === 'ru'
+                  ? 'Загрузить Excel'
+                  : 'Excel Yükle'}
+              </span>
             </button>
 
             <button
@@ -4648,169 +4990,83 @@ export default function GosuslugiVksView() {
         </div>
       </div>
 
-      {/* Unified Control Bar: Search, Single Status Filter Strip & Robot Launch Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#131C31] p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
-        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
-          <div className="relative flex-1 min-w-[200px] max-w-xs">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                lang === 'ru'
-                  ? 'Поиск по ФИО, табельному, ИНН...'
-                  : 'Ad Soyad, Sicil, Pasaport, INN ara...'
-              }
-              className="w-full h-9 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-            />
-          </div>
-
-          {/* Single Unified Filter & Count Tabs (No Duplicate KPI Cards Above) */}
-          {workers.length > 0 && (
-            <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300/80 dark:border-slate-800 text-xs font-medium gap-1">
-              <button
-                onClick={() => setQueueFilter('all')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition ${
-                  queueFilter === 'all'
-                    ? 'bg-white dark:bg-slate-800 text-slate-950 dark:text-white shadow-2xs font-semibold'
-                    : 'text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white'
-                }`}
-              >
-                {lang === 'ru' ? `Все (${workers.length})` : `Tümü (${workers.length})`}
-              </button>
-              <button
-                onClick={() => setQueueFilter('ready')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
-                  queueFilter === 'ready'
-                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
-                    : 'text-indigo-800 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
-                }`}
-              >
-                <CheckCircle2 className="w-3 h-3" />
-                <span>
-                  {lang === 'ru' ? `Готовы (${selectedValidCount})` : `Hazır (${selectedValidCount})`}
-                </span>
-              </button>
-              <button
-                onClick={() => setQueueFilter('sent')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
-                  queueFilter === 'sent'
-                    ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
-                    : 'text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                }`}
-              >
-                <ShieldCheck className="w-3 h-3" />
-                <span>
-                  {lang === 'ru' ? `Отправлено (${completedCount})` : `Gönderilen (${completedCount})`}
-                </span>
-              </button>
-              <button
-                onClick={() => setQueueFilter('has_status_pdf')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
-                  queueFilter === 'has_status_pdf'
-                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
-                    : statusPdfCount > 0
-                    ? 'text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-                title="Gosuslugi A4 Statü Ekran Görüntüsü (_STATUS_A4.pdf) indirilen kayıtlar"
-              >
-                <FileText className="w-3 h-3" />
-                <span>
-                  {lang === 'ru'
-                    ? `Статус PDF (${statusPdfCount})`
-                    : `Statü PDF (${statusPdfCount})`}
-                </span>
-              </button>
-              <button
-                onClick={() => setQueueFilter('mvd_not_found')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
-                  queueFilter === 'mvd_not_found'
-                    ? 'bg-purple-600 text-white shadow-2xs font-semibold'
-                    : mvdNotFoundCount > 0
-                    ? 'text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-                title="Gosuslugi Adım 9'da «Данные не найдены в базе МВД» uyarısı veren ve gönderilmeyen kayıtlar"
-              >
-                <AlertCircle className="w-3 h-3" />
-                <span>
-                  {lang === 'ru'
-                    ? `Не найдено в МВД (${mvdNotFoundCount})`
-                    : `MVD Bulunamadı (${mvdNotFoundCount})`}
-                </span>
-              </button>
-              <button
-                onClick={() => setQueueFilter('error')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
-                  queueFilter === 'error'
-                    ? 'bg-rose-600 text-white shadow-2xs font-semibold'
-                    : errorCount > 0
-                    ? 'text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <AlertCircle className="w-3 h-3" />
-                <span>
-                  {lang === 'ru' ? `Ошибки (${errorCount})` : `Hata (${errorCount})`}
-                </span>
-              </button>
-              <button
-                onClick={() => setQueueFilter('invalid')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 ${
-                  queueFilter === 'invalid'
-                    ? 'bg-amber-600 text-white shadow-2xs font-semibold'
-                    : invalidCount > 0
-                    ? 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <AlertTriangle className="w-3 h-3" />
-                <span>
-                  {lang === 'ru' ? `Пропуски (${invalidCount})` : `Eksik Veri (${invalidCount})`}
-                </span>
-              </button>
-            </div>
-          )}
+      {/* Unified Gosuslugi VKS Action Bar: Excel Update & Streamlined Robot Controls with PDF/No-PDF Mode Selectors */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 bg-white dark:bg-[#131C31] px-3.5 py-2.5 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={triggerExcelFileSelect}
+            disabled={isUploadingExcel}
+            className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-60"
+            title="Düzeltilmiş Excel dosyasını yükleyerek verileri günceller ve («Услуга оказана» hariç) gönderime hazır kuyruğa alır"
+          >
+            {isUploadingExcel ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Upload className="w-3.5 h-3.5" />
+            )}
+            <span>
+              {isUploadingExcel
+                ? lang === 'ru'
+                  ? 'Обновление...'
+                  : 'Güncelleniyor...'
+                : lang === 'ru'
+                ? 'Обновить из Excel'
+                : 'Excel ile Güncelle'}
+            </span>
+          </button>
 
           {workers.length > 0 && (
-            <>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="h-9 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
-                title="Düzeltilmiş Excel dosyasını yükleyerek verileri günceller ve («Услуга оказана» hariç) gönderime hazır kuyruğa alır"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>{lang === 'ru' ? 'Обновить из Excel' : 'Excel ile Güncelle'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setWorkers([]);
-                  setQueueFilter('all');
-                }}
-                className="h-9 px-2.5 rounded-xl border border-slate-300/80 dark:border-slate-700 text-slate-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs inline-flex items-center gap-1 cursor-pointer transition"
-                title={lang === 'ru' ? 'Очистить список' : 'Listeyi Temizle'}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </>
+            <button
+              onClick={() => {
+                setWorkers([]);
+                setQueueFilter('all');
+              }}
+              className="h-9 px-2.5 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold inline-flex items-center gap-1 cursor-pointer transition"
+              title={lang === 'ru' ? 'Очистить список' : 'Listeyi Temizle'}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
 
-        {/* Clean Streamlined Robot Action Buttons */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* Streamlined Robot Action Buttons (Unified Style + PDF/No-PDF Mode Options, Default = No-PDF) */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 1. Open Chrome Button with Google Chrome Multicolor SVG Icon */}
           <button
             onClick={handleOpenChrome}
             disabled={isLaunchingChrome}
-            className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+            className="h-9 px-3.5 rounded-xl border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-semibold text-xs inline-flex items-center gap-2 cursor-pointer shadow-2xs transition disabled:opacity-60"
+            title={
+              lang === 'ru'
+                ? 'Открыть окно Google Chrome (порт 9222) и вывести на передний план'
+                : 'Google Chrome (Port 9222) penceresini aç ve ekrana getir'
+            }
           >
-            <Globe className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            {isLaunchingChrome ? (
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+            ) : (
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 48 48" aria-hidden="true">
+                <path
+                  fill="#EA4335"
+                  d="M24 4C14.05 4 5.8 11.26 4.26 20.8L13.1 36.1l6.45-11.17C18.61 23.35 18 21.75 18 20c0-3.31 2.69-6 6-6h19.1C39.88 8.03 32.49 4 24 4z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M24 44c8.97 0 16.56-5.91 19.1-14.04L34.26 14.6H24c3.31 0 6 2.69 6 6 0 1.3-.42 2.5-1.13 3.48L20.1 39.27A20.09 20.09 0 0 0 24 44z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M4.26 20.8A19.93 19.93 0 0 0 4 24c0 10.42 7.97 18.98 18.14 19.91l8.84-15.31c-.97.87-2.25 1.4-3.66 1.4-3.04 0-5.55-2.26-5.94-5.2L12.54 9.5A19.93 19.93 0 0 0 4.26 20.8z"
+                />
+                <circle cx="24" cy="24" r="7.5" fill="#FFFFFF" />
+                <circle cx="24" cy="24" r="5.8" fill="#4285F4" />
+              </svg>
+            )}
             <span>
               {bridgeStatus.chrome_ready
                 ? lang === 'ru'
-                  ? 'Chrome Готов'
-                  : 'Chrome Hazır'
+                  ? '1. Chrome Открыт'
+                  : '1. Chrome Açık'
                 : lang === 'ru'
                 ? '1. Открыть Chrome'
                 : '1. Chrome Aç'}
@@ -4882,75 +5138,109 @@ export default function GosuslugiVksView() {
             </>
           ) : (
             <>
+              {/* Test (1 Row) Button */}
               <button
-                onClick={() => handleStartRobot(1)}
+                onClick={() => handleStartRobot(1, undefined, sendPdfMode === 'no_pdf')}
                 disabled={isStartingRobot || selectedValidCount === 0}
-                className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                className="h-9 px-3 rounded-xl border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-40 transition"
+                title={
+                  sendPdfMode === 'no_pdf'
+                    ? '1 satırı PDF indirmeden hızlı test et'
+                    : '1 satırı PDF indirerek test et'
+                }
               >
-                <Play className="w-3.5 h-3.5" />
-                <span>{lang === 'ru' ? 'Тест (1)' : 'Test (1 Satır)'}</span>
+                <Play className="w-3.5 h-3.5 text-emerald-500" />
+                <span>{lang === 'ru' ? 'Тест (1)' : 'Test (1)'}</span>
               </button>
 
-              <button
-                onClick={() => handleStartRobot(0, undefined, false)}
-                disabled={isStartingRobot || selectedValidCount === 0}
-                className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
-              >
-                <Play className="w-3.5 h-3.5 fill-white" />
-                <span>
-                  {lang === 'ru'
-                    ? `2. Отправить (${selectedValidCount})`
-                    : `2. Gönder (${selectedValidCount})`}
-                </span>
-              </button>
+              {/* 2. Unified Send Button + Mode Selector (Default = Без PDF / PDF'siz) */}
+              <div className="inline-flex items-center h-9 rounded-xl overflow-hidden shadow-2xs border border-emerald-600/60 dark:border-emerald-500/50 bg-emerald-600">
+                <button
+                  onClick={() => handleStartRobot(0, undefined, sendPdfMode === 'no_pdf')}
+                  disabled={isStartingRobot || selectedValidCount === 0}
+                  className="h-full px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                  title={
+                    sendPdfMode === 'no_pdf'
+                      ? 'Seçili kayıtları PDF indirmeden hızlı gönder'
+                      : 'Seçili kayıtları PDF makbuzlarıyla birlikte gönder'
+                  }
+                >
+                  {sendPdfMode === 'no_pdf' ? (
+                    <Zap className="w-3.5 h-3.5 fill-white" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-white" />
+                  )}
+                  <span>
+                    {lang === 'ru'
+                      ? `2. Отправить (${selectedValidCount})`
+                      : `2. Gönder (${selectedValidCount})`}
+                  </span>
+                </button>
+                <select
+                  value={sendPdfMode}
+                  onChange={(e) => setSendPdfMode(e.target.value as 'no_pdf' | 'with_pdf')}
+                  aria-label="Send PDF mode"
+                  className="h-full px-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-[11px] border-l border-emerald-500/50 focus:outline-none cursor-pointer"
+                >
+                  <option value="no_pdf" className="bg-slate-900 text-white">
+                    {lang === 'ru' ? '⚡ Без PDF' : "⚡ PDF'siz"}
+                  </option>
+                  <option value="with_pdf" className="bg-slate-900 text-white">
+                    {lang === 'ru' ? '📄 С PDF' : "📄 PDF'li"}
+                  </option>
+                </select>
+              </div>
 
-              <button
-                onClick={() => handleStartRobot(0, undefined, true)}
-                disabled={isStartingRobot || selectedValidCount === 0}
-                title="PDF beklemeksizin hızlı gönderim"
-                className="h-9 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40 transition"
-              >
-                <Zap className="w-3.5 h-3.5 fill-white" />
-                <span>
-                  {lang === 'ru'
-                    ? `Быстро без PDF (${selectedValidCount})`
-                    : `Hızlı Gönder (${selectedValidCount})`}
-                </span>
-              </button>
-
-              <button
-                onClick={() => handleCheckGosuslugiStatuses(true)}
-                disabled={isCheckingStatuses}
-                title="PDF indirmeden ve tek tek arama yapmadan Gosuslugi JSON üzerinden statüleri birkaç saniyede hızlıca sorgula"
-                className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-500" />
-                <span>{lang === 'ru' ? 'Быстрый статус' : 'Hızlı Statü'}</span>
-              </button>
-
-              <button
-                onClick={() => setShowSingleStatusSearchModal(true)}
-                disabled={isCheckingStatuses}
-                title="Gosuslugi üzerinde başvuru numaralarını tek tek aratarak statü kontrol et (ve isteğe bağlı A4 Print Screen kaydet)"
-                className="h-9 px-3 rounded-xl border border-indigo-300/90 dark:border-indigo-700 bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
-              >
-                <Search className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>{lang === 'ru' ? 'Поштучный поиск' : 'Tek Tek Statü Ara'}</span>
-              </button>
-
-              <button
-                onClick={() => handleCheckGosuslugiStatuses(false)}
-                disabled={isCheckingStatuses}
-                title="Gosuslugi durumlarını sorgula ve PDF makbuzlarını indir"
-                className="h-9 px-3 rounded-xl border border-slate-300/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
-              >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 ${
-                    isCheckingStatuses ? 'animate-spin' : ''
-                  }`}
-                />
-                <span>{lang === 'ru' ? '3. PDF и Статус' : '3. PDF & Statü'}</span>
-              </button>
+              {/* 3. Unified Status Check Button + Mode Selector (Default = Без PDF / PDF'siz) */}
+              <div className="inline-flex items-center h-9 rounded-xl overflow-hidden shadow-2xs border border-indigo-500/50 bg-indigo-600">
+                <button
+                  onClick={() => {
+                    if (statusPdfMode === 'single') {
+                      setShowSingleStatusSearchModal(true);
+                    } else {
+                      handleCheckGosuslugiStatuses(statusPdfMode === 'no_pdf');
+                    }
+                  }}
+                  disabled={isCheckingStatuses}
+                  className="h-full px-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                  title={
+                    statusPdfMode === 'no_pdf'
+                      ? 'PDF indirmeden Gosuslugi JSON üzerinden statüleri birkaç saniyede hızlıca sorgula'
+                      : statusPdfMode === 'with_pdf'
+                      ? 'Gosuslugi durumlarını sorgula ve PDF makbuzlarını indir'
+                      : 'Başvuru numaralarını Gosuslugi üzerinde tek tek aratarak statü kontrol et'
+                  }
+                >
+                  {isCheckingStatuses ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : statusPdfMode === 'no_pdf' ? (
+                    <Zap className="w-3.5 h-3.5 fill-white" />
+                  ) : statusPdfMode === 'single' ? (
+                    <Search className="w-3.5 h-3.5" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  <span>{lang === 'ru' ? '3. Статус' : '3. Statü'}</span>
+                </button>
+                <select
+                  value={statusPdfMode}
+                  onChange={(e) =>
+                    setStatusPdfMode(e.target.value as 'no_pdf' | 'with_pdf' | 'single')
+                  }
+                  aria-label="Status PDF mode"
+                  className="h-full px-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold text-[11px] border-l border-indigo-400/40 focus:outline-none cursor-pointer"
+                >
+                  <option value="no_pdf" className="bg-slate-900 text-white">
+                    {lang === 'ru' ? '⚡ Без PDF' : "⚡ PDF'siz"}
+                  </option>
+                  <option value="with_pdf" className="bg-slate-900 text-white">
+                    {lang === 'ru' ? '📄 С PDF' : "📄 PDF'li"}
+                  </option>
+                  <option value="single" className="bg-slate-900 text-white">
+                    {lang === 'ru' ? '🔍 Поштучно' : '🔍 Tek Tek'}
+                  </option>
+                </select>
+              </div>
             </>
           )}
         </div>
@@ -4958,6 +5248,142 @@ export default function GosuslugiVksView() {
 
       {/* Main VKS Queue Table */}
       <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#131C31] overflow-hidden shadow-xs">
+        {/* Single-Line Search + Filter Row Directly Above Table Header */}
+        {workers.length > 0 && (
+          <div className="flex items-center gap-2.5 px-3 py-2 bg-slate-50/90 dark:bg-slate-900/75 border-b border-slate-200/90 dark:border-slate-800 overflow-x-auto whitespace-nowrap">
+            {/* Left: Search Input on Same Line */}
+            <div className="relative w-64 sm:w-72 shrink-0">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={
+                  lang === 'ru'
+                    ? 'Поиск по ФИО, табельному, ИНН...'
+                    : 'Ad Soyad, Sicil, Pasaport, INN ara...'
+                }
+                className="w-full h-8 pl-8 pr-7 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  title={lang === 'ru' ? 'Очистить поиск' : 'Aramayı temizle'}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Right: Single-Row Status Filter Pills */}
+            <div className="inline-flex items-center p-1 rounded-xl bg-slate-200/70 dark:bg-slate-950/80 border border-slate-300/80 dark:border-slate-800 text-xs font-medium gap-1 shrink-0 flex-nowrap">
+              <button
+                onClick={() => setQueueFilter('all')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition whitespace-nowrap ${
+                  queueFilter === 'all'
+                    ? 'bg-white dark:bg-slate-800 text-slate-950 dark:text-white shadow-2xs font-semibold'
+                    : 'text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white'
+                }`}
+              >
+                {lang === 'ru' ? `Все (${workers.length})` : `Tümü (${workers.length})`}
+              </button>
+              <button
+                onClick={() => setQueueFilter('ready')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
+                  queueFilter === 'ready'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                    : 'text-indigo-800 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                <span>
+                  {lang === 'ru' ? `Готовы (${selectedValidCount})` : `Hazır (${selectedValidCount})`}
+                </span>
+              </button>
+              <button
+                onClick={() => setQueueFilter('sent')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
+                  queueFilter === 'sent'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
+                    : 'text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                }`}
+              >
+                <ShieldCheck className="w-3 h-3 shrink-0" />
+                <span>
+                  {lang === 'ru' ? `Отправлено (${completedCount})` : `Gönderilen (${completedCount})`}
+                </span>
+              </button>
+              <button
+                onClick={() => setQueueFilter('has_status_pdf')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
+                  queueFilter === 'has_status_pdf'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                    : statusPdfCount > 0
+                    ? 'text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+                title="Gosuslugi A4 Statü Ekran Görüntüsü (_STATUS_A4.pdf) indirilen kayıtlar"
+              >
+                <FileText className="w-3 h-3 shrink-0" />
+                <span>
+                  {lang === 'ru'
+                    ? `Статус PDF (${statusPdfCount})`
+                    : `Statü PDF (${statusPdfCount})`}
+                </span>
+              </button>
+              <button
+                onClick={() => setQueueFilter('mvd_not_found')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
+                  queueFilter === 'mvd_not_found'
+                    ? 'bg-purple-600 text-white shadow-2xs font-semibold'
+                    : mvdNotFoundCount > 0
+                    ? 'text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+                title="Gosuslugi Adım 9'da «Данные не найдены в базе МВД» uyarısı veren ve gönderilmeyen kayıtlar"
+              >
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>
+                  {lang === 'ru'
+                    ? `Не найдено в МВД (${mvdNotFoundCount})`
+                    : `MVD Bulunamadı (${mvdNotFoundCount})`}
+                </span>
+              </button>
+              <button
+                onClick={() => setQueueFilter('error')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
+                  queueFilter === 'error'
+                    ? 'bg-rose-600 text-white shadow-2xs font-semibold'
+                    : errorCount > 0
+                    ? 'text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>
+                  {lang === 'ru' ? `Ошибки (${errorCount})` : `Hata (${errorCount})`}
+                </span>
+              </button>
+              <button
+                onClick={() => setQueueFilter('invalid')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
+                  queueFilter === 'invalid'
+                    ? 'bg-amber-600 text-white shadow-2xs font-semibold'
+                    : invalidCount > 0
+                    ? 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                <span>
+                  {lang === 'ru' ? `Пропуски (${invalidCount})` : `Eksik Veri (${invalidCount})`}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {workers.length === 0 ? (
           <div className="p-10 sm:p-12 text-center flex flex-col items-center justify-center space-y-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200/70 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs">
@@ -4978,8 +5404,9 @@ export default function GosuslugiVksView() {
 
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-xs transition"
+                onClick={triggerExcelFileSelect}
+                disabled={isUploadingExcel}
+                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-xs transition disabled:opacity-60"
               >
                 <Upload className="w-4 h-4" />
                 <span>

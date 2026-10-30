@@ -559,6 +559,83 @@ def free_port_if_occupied(port: int):
             pass
 
 
+def bring_chrome_window_to_front_win32():
+    """Brings the Google Chrome window (Gosuslugi / RPA) to the foreground on Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        matched_hwnds = []
+
+        def _enum_cb(hwnd, _lparam):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = (buf.value or "").lower()
+            cls_buf = ctypes.create_unicode_buffer(64)
+            user32.GetClassNameW(hwnd, cls_buf, 64)
+            cls_name = cls_buf.value or ""
+            if cls_name == "Chrome_WidgetWin_1" and "chrome" in title:
+                if "госуслуг" in title or "gosuslugi" in title or "портал государственных" in title:
+                    matched_hwnds.insert(0, hwnd)
+                elif "pondera" not in title:
+                    matched_hwnds.append(hwnd)
+            return True
+
+        user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+        if matched_hwnds:
+            target_hwnd = matched_hwnds[0]
+            # Simulate neutral key event so Windows allows background process to set foreground window
+            user32.keybd_event(0, 0, 0, 0)
+            if user32.IsIconic(target_hwnd):
+                user32.ShowWindow(target_hwnd, 9)  # SW_RESTORE
+            else:
+                user32.ShowWindow(target_hwnd, 5)  # SW_SHOW
+            user32.SetForegroundWindow(target_hwnd)
+            user32.BringWindowToTop(target_hwnd)
+    except Exception:
+        pass
+
+
+def activate_or_open_gosuslugi_tab_cdp() -> bool:
+    """Uses Chrome DevTools HTTP endpoint on port 9222 to activate or open the Gosuslugi tab."""
+    if not is_port_open(CHROME_CDP_PORT):
+        return False
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{CHROME_CDP_PORT}/json")
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            tabs = json.loads(resp.read().decode("utf-8"))
+        page_tabs = [t for t in tabs if isinstance(t, dict) and t.get("type") == "page"]
+        target_tab = None
+        for t in page_tabs:
+            u = str(t.get("url") or "").lower()
+            if "gosuslugi.ru" in u and "chrome-error" not in u:
+                target_tab = t
+                break
+        if not target_tab and page_tabs:
+            target_tab = page_tabs[0]
+        if target_tab and target_tab.get("id"):
+            tid = target_tab["id"]
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{CHROME_CDP_PORT}/json/activate/{tid}", timeout=2).read()
+            except Exception:
+                pass
+            bring_chrome_window_to_front_win32()
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def launch_chrome_debug():
     RPAState.add_log("Запуск Google Chrome в режиме отладки (порт 9222)...")
     chrome_paths = [
@@ -568,18 +645,52 @@ def launch_chrome_debug():
     ]
     chrome_exe = next((p for p in chrome_paths if os.path.exists(p)), "chrome.exe")
     user_data = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data RPA")
+
+    # If port 9222 is already open, activate the Gosuslugi tab via CDP and bring window to front
+    if is_port_open(CHROME_CDP_PORT):
+        if activate_or_open_gosuslugi_tab_cdp():
+            RPAState.add_log("Google Chrome (порт 9222) уже запущен — окно выведено на передний план!")
+            return True
+    elif sys.platform == "win32":
+        # Clean up any hung zombie Chrome processes holding 'User Data RPA' without port 9222 open
+        try:
+            ps_clean = (
+                "Get-CimInstance Win32_Process -Filter \"Name = 'chrome.exe'\" | "
+                "Where-Object { $_.CommandLine -match 'User Data RPA' } | "
+                "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_clean],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=4,
+            )
+            time.sleep(0.4)
+        except Exception:
+            pass
+
     cmd = [
         chrome_exe,
         f"--remote-debugging-port={CHROME_CDP_PORT}",
         f"--user-data-dir={user_data}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--start-maximized",
+        "--new-window",
         "--disable-background-timer-throttling",
         "--disable-backgrounding-occluded-windows",
         "--disable-renderer-backgrounding",
         "--disable-features=CalculateNativeWindowOcclusion,IntensiveWakeUpThrottling",
-        "https://www.gosuslugi.ru/600585/1/form"
+        "https://www.gosuslugi.ru/600585/1/form",
     ]
     try:
         subprocess.Popen(cmd, shell=False)
+        for _ in range(12):
+            time.sleep(0.3)
+            if is_port_open(CHROME_CDP_PORT):
+                activate_or_open_gosuslugi_tab_cdp()
+                break
+        bring_chrome_window_to_front_win32()
         RPAState.add_log("Google Chrome успешно запущен. Войдите в Госуслуги.")
         return True
     except Exception as e:

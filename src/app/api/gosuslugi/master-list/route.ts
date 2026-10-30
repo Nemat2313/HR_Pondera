@@ -586,7 +586,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (rawRecords.length > 5) {
+    if (rawRecords.length > 5 && !body?.skipBackup) {
       createPreActionBackup(
         'vks_master_upload',
         `VKS Liste / Şablon Yükleme Öncesi (${rawRecords.length} Kayıt)`,
@@ -715,7 +715,7 @@ export async function POST(request: Request) {
 
     const clearErrorStmt = db.prepare(`
       DELETE FROM gosuslugi_submissions
-      WHERE sicil_no = ? AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%' OR gosuslugi_status LIKE '%ошибк%')
+      WHERE sicil_no = ? AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%' OR gosuslugi_status LIKE '%ошибк%' OR gosuslugi_status LIKE '%не найден%')
     `);
 
     const archiveRefusedBySicilStmt = db.prepare(`
@@ -727,12 +727,12 @@ export async function POST(request: Request) {
         sicil_no, worker_name, citizenship, notification_type, period_code,
         application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, ?
       FROM gosuslugi_submissions
-      WHERE sicil_no = ? AND (gosuslugi_status LIKE '%отказан%' OR (application_no != '' AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')))
+      WHERE sicil_no = ? AND (gosuslugi_status LIKE '%отказан%' OR gosuslugi_status LIKE '%не найден%' OR (application_no != '' AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')))
     `);
 
     const clearRefusedBySicilStmt = db.prepare(`
       DELETE FROM gosuslugi_submissions
-      WHERE sicil_no = ? AND gosuslugi_status LIKE '%отказан%'
+      WHERE sicil_no = ? AND (gosuslugi_status LIKE '%отказан%' OR gosuslugi_status LIKE '%не найден%')
     `);
 
     let inserted = 0;
@@ -743,7 +743,7 @@ export async function POST(request: Request) {
     let skippedOkazana = 0;
     const seenSicilCounts = new Map<string, number>();
 
-    const processStatusResetForSicil = (sicilKey: string) => {
+    const processStatusResetForSicil = (sicilKey: string, dataModified: boolean = false) => {
       if (!clearErrorsForUpdated) return;
       const curSub = checkSubBySicilStmt.get(sicilKey) as
         | { id: number; application_no: string; gosuslugi_status: string }
@@ -754,13 +754,13 @@ export async function POST(request: Request) {
         skippedOkazana++;
         return;
       }
-      if (isSubsetRequeueUpload) {
+      if (isSubsetRequeueUpload || dataModified) {
         archiveNonOkazanaBySicilStmt.run(nowStr, sicilKey);
         const delRes = clearNonOkazanaBySicilStmt.run(sicilKey);
         const changes = Number(delRes.changes || 0);
         if (/отказан/i.test(st)) {
           reopenedRefused += changes;
-        } else if (/ошибк/i.test(st)) {
+        } else if (/ошибк|не найден/i.test(st)) {
           clearedErrors += changes;
         } else {
           reopenedPending += changes;
@@ -883,6 +883,27 @@ export async function POST(request: Request) {
             assignedComputer: finalComputer,
           };
 
+          const keyFieldsToCompare = [
+            'lastName',
+            'firstName',
+            'birthDate',
+            'inn',
+            'passportNumber',
+            'passportIssueDate',
+            'rnrSeries',
+            'rnrNumber',
+            'rnrIssueDate',
+            'blankSeries',
+            'blankNumber',
+            'contractDate',
+            'salaryAmount',
+          ];
+          const dataModified = keyFieldsToCompare.some(
+            (kf) =>
+              String(mergedWorker[kf] || '').trim() !== '' &&
+              String(mergedWorker[kf] || '').trim() !== String(safePrev[kf] || '').trim()
+          );
+
           upsertStmt.run(
             targetRowKey,
             targetRowKey,
@@ -894,7 +915,7 @@ export async function POST(request: Request) {
           );
           updated++;
 
-          processStatusResetForSicil(targetRowKey);
+          processStatusResetForSicil(targetRowKey, dataModified);
         } else {
           const finalRowOrder = mode === 'seed' ? norm.rowOrder : ++maxRowOrder;
           const finalComputer =

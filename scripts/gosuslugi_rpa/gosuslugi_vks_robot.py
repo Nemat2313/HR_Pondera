@@ -5274,6 +5274,7 @@ def connect_or_launch_chrome_page(p, cdp_port: int):
             page.bring_to_front()
         except Exception:
             pass
+        bring_chrome_window_to_front_win32()
         logger.info(f"Successfully connected to Chrome! Active Tab URL: {page.url}")
         return browser, context, page
     except Exception:
@@ -5290,6 +5291,10 @@ def connect_or_launch_chrome_page(p, cdp_port: int):
             chrome_exe,
             f"--remote-debugging-port={cdp_port}",
             f"--user-data-dir={user_data}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--start-maximized",
+            "--new-window",
             "--disable-background-timer-throttling",
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding",
@@ -5304,8 +5309,53 @@ def connect_or_launch_chrome_page(p, cdp_port: int):
             page.bring_to_front()
         except Exception:
             pass
+        bring_chrome_window_to_front_win32()
         logger.info(f"Successfully launched Chrome and connected! Active Tab URL: {page.url}")
         return browser, context, page
+
+
+def bring_chrome_window_to_front_win32():
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        matched_hwnds = []
+
+        def _enum_cb(hwnd, _lparam):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = (buf.value or "").lower()
+            cls_buf = ctypes.create_unicode_buffer(64)
+            user32.GetClassNameW(hwnd, cls_buf, 64)
+            cls_name = cls_buf.value or ""
+            if cls_name == "Chrome_WidgetWin_1" and "chrome" in title:
+                if "госуслуг" in title or "gosuslugi" in title or "портал государственных" in title:
+                    matched_hwnds.insert(0, hwnd)
+                elif "pondera" not in title:
+                    matched_hwnds.append(hwnd)
+            return True
+
+        user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+        if matched_hwnds:
+            target_hwnd = matched_hwnds[0]
+            user32.keybd_event(0, 0, 0, 0)
+            if user32.IsIconic(target_hwnd):
+                user32.ShowWindow(target_hwnd, 9)
+            else:
+                user32.ShowWindow(target_hwnd, 5)
+            user32.SetForegroundWindow(target_hwnd)
+            user32.BringWindowToTop(target_hwnd)
+    except Exception:
+        pass
 
 
 def run_mvd_warning_status_sync_and_cooldown(bot: GosuslugiVksBot, cooldown_seconds: int = 600):
@@ -5411,6 +5461,18 @@ def main():
             browser, context, page = connect_or_launch_chrome_page(p, args.cdp_port)
         except Exception as ex2:
             logger.error(f"Could not connect to Chrome on port {args.cdp_port}: {ex2}")
+            return
+
+        if len(records) == 1 and str(records[0].get("Sicil") or records[0].get("Код") or "") == "__OPEN_CHROME_ONLY__":
+            try:
+                cur_u = (page.url or "").lower()
+                if "gosuslugi.ru" not in cur_u:
+                    page.goto(DEFAULT_CONFIG["FORM_URL"], wait_until="domcontentloaded", timeout=25000)
+                page.bring_to_front()
+            except Exception:
+                pass
+            bring_chrome_window_to_front_win32()
+            logger.info("Google Chrome (порт 9222) открыт и выведен на передний план!")
             return
 
         bot = GosuslugiVksBot(page, custom_cfg)
