@@ -2,6 +2,7 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
+import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 
 export function getTelegramConfig() {
   let dbToken = '';
@@ -842,24 +843,26 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
     const uyrukUpper = (r.uyruk || '').trim().toUpperCase();
     const regionTrim = (r.region || '').trim();
     const kartTuru = (rawJson['Çalışma Kart Türü'] || '').toUpperCase();
+    const permitCategory = classifyWorkPermitFromRow(r.uyruk, rawJson);
 
     const isRf =
       uyrukUpper === 'RUSYA' ||
       uyrukUpper === 'BEYAZ RUSYA' ||
       kartTuru === 'MUAF' ||
       kartTuru === 'РФ' ||
-      uyrukUpper.includes('RUS');
+      uyrukUpper.includes('RUS') ||
+      permitCategory === 'RF_CITIZEN';
     const isEaes =
       ['KIRGIZISTAN', 'KAZAKISTAN', 'ERMENISTAN'].includes(uyrukUpper) ||
       kartTuru.includes('ЕАЭС') ||
-      kartTuru.includes('EAES');
-    const isVks = kartTuru.includes('ВКС') || kartTuru.includes('VKS');
+      kartTuru.includes('EAES') ||
+      permitCategory === 'EAES';
+    const isVks = permitCategory === 'VKS';
     const isPatent =
-      kartTuru.includes('ПАТЕНТ') ||
-      kartTuru.includes('PATENT') ||
+      permitCategory === 'PATENT' ||
       (['OZBEKISTAN', 'TACIKISTAN', 'AZERBAYCAN'].includes(uyrukUpper) && !isVks && !isRf);
-    const isVnjRvp = ['ВНЖ', 'РВП', 'VNJ', 'RVP'].some((x: string) => kartTuru.includes(x));
-    const isQuotaRnr = ['КВОТА', 'KOTA', 'РНР', 'RNR'].some((x: string) => kartTuru.includes(x));
+    const isVnjRvp = permitCategory === 'VNJ_RVP';
+    const isQuotaRnr = permitCategory === 'QUOTA_RNR';
 
     for (const d of docDefinitions) {
       let isApplicable = false;
@@ -901,7 +904,7 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
       } else if (d.id === 'propusk') {
         status = categorizeDays(getDaysDiff(r.propusk_bitis_tarihi, referenceDate), d.id);
       } else if (d.id === 'patent') {
-        const dt = r.patent_bitis_tarihi || rawJson['Çalışma Kartı Bitiş Tarihi'];
+        const dt = r.patent_bitis_tarihi || rawJson['Çalışma Kart Bitiş Tarihi'] || rawJson['Çalışma Kartı Bitiş Tarihi'];
         status = categorizeDays(getDaysDiff(dt, referenceDate), d.id);
       } else if (d.id === 'registrasyon') {
         status = categorizeDays(getDaysDiff(rawJson['Registrasyon Bitiş Tarihi'], referenceDate), d.id);

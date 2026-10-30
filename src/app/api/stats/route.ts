@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { WORK_PERMIT_CASE_SQL } from '@/lib/workPermits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -445,26 +446,7 @@ export async function GET(request: Request) {
     try {
       const permitQuery = db.prepare(`
         SELECT 
-          CASE 
-            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ВКС%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%VKS%' THEN 'VKS'
-            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ПАТЕНТ%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%PATENT%' THEN 'PATENT'
-            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ВНЖ%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%РВП%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%VNJ%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%RVP%' THEN 'VNJ_RVP'
-            WHEN uyruk = 'RUSYA' THEN 'RF_CITIZEN'
-            WHEN uyruk IN ('KIRGIZISTAN', 'BELARUS', 'KAZAKISTAN', 'ERMENISTAN') 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%ЕАЭС%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%EAES%' THEN 'EAES'
-            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) IN ('MUAF', 'РФ') THEN 'RF_CITIZEN'
-            WHEN UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%КВОТА%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%KOTA%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%РНР%' 
-              OR UPPER(json_extract(all_data_json, '$."Çalışma Kart Türü"')) LIKE '%RNR%' THEN 'QUOTA_RNR'
-            ELSE 'OTHER_PENDING'
-          END as permit_type,
+          ${WORK_PERMIT_CASE_SQL} as permit_type,
           COUNT(*) as count
         FROM personnel
         ${overallWhere.clause}

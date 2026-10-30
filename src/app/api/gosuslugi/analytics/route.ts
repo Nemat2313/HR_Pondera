@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
 import { getMoscowTimeParts } from '@/lib/telegramNotifier';
+import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -473,8 +474,7 @@ export async function GET(request: Request) {
             rawJson = JSON.parse(p.all_data_json);
           } catch {}
         }
-        const kartTuru = String(rawJson['Çalışma Kart Türü'] || '').toUpperCase();
-        const isVks = kartTuru.includes('ВКС') || kartTuru.includes('VKS');
+        const isVks = classifyWorkPermitFromRow(p.uyruk, rawJson) === 'VKS';
         const guncelLower = String(p.guncel_durum || '').trim().toLowerCase();
         const isActive = ACTIVE_STATUS_SET.has(guncelLower);
         const isVksActive = isVks && isActive;

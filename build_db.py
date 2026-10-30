@@ -486,6 +486,26 @@ def build_database():
                 h_name = headers[idx] if idx < len(headers) else f"Col_{idx+1}"
                 row_dict[h_name] = cleaned_v
 
+        # Normalize 'Çalışma Kart Türü' strictly from Work Permit ('Çalışma Kart *' / 'Patent Form *') columns
+        # (never from Visa columns) when 'Çalışma Kart Türü' is left blank or entered as generic 'РНР' on a Series 77 VKS permit.
+        kt_val = row_dict.get("Çalışma Kart Türü", "").strip()
+        kt_upper = kt_val.upper()
+        sn_val = row_dict.get("Çalışma Kart Seri No", "").strip()
+        kn_val = row_dict.get("Çalışma Kart No", "").strip()
+        pfs_upper = row_dict.get("Patent Form Seri No", "").strip().upper()
+        bg_val = row_dict.get("Çalışma Kart Bölgesi", "").strip()
+        mk_upper = row_dict.get("Çalışma Kartı Veren Makam", "").strip().upper()
+        uyruk_upper = get_val(row, idx_uyruk).strip().upper()
+
+        if kt_upper not in ("ВНЖ", "РВП", "VNJ", "RVP", "MUAF", "РФ", "ЕАЭС", "EAES"):
+            if sn_val == "77" or (kt_upper in ("", "РНР", "RNR") and ("," in bg_val or "МОСКВ" in mk_upper or "MOSKV" in mk_upper)):
+                row_dict["Çalışma Kart Türü"] = "ВКС"
+            elif kt_upper == "" and (sn_val or kn_val):
+                if pfs_upper in ("ПР", "ПP", "РР", "PP", "РМ") or uyruk_upper in ("OZBEKISTAN", "TACIKISTAN", "AZERBAYCAN"):
+                    row_dict["Çalışma Kart Türü"] = "ПАТЕНТ"
+                else:
+                    row_dict["Çalışma Kart Türü"] = "РНР"
+
         sira_no_raw = get_val(row, idx_sira)
         try:
             sira_no = int(sira_no_raw)

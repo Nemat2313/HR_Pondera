@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -250,13 +251,14 @@ export async function GET(request: Request) {
       const uyrukUpper = (r.uyruk || '').trim().toUpperCase();
       const regionTrim = (r.region || '').trim();
       const kartTuru = (rawJson['Çalışma Kart Türü'] || '').toUpperCase();
+      const permitCategory = classifyWorkPermitFromRow(r.uyruk, rawJson);
 
-      const isRf = uyrukUpper === 'RUSYA' || uyrukUpper === 'BEYAZ RUSYA' || kartTuru === 'MUAF' || kartTuru === 'РФ' || uyrukUpper.includes('RUS');
-      const isEaes = ['KIRGIZISTAN', 'KAZAKISTAN', 'ERMENISTAN'].includes(uyrukUpper) || kartTuru.includes('ЕАЭС') || kartTuru.includes('EAES');
-      const isVks = kartTuru.includes('ВКС') || kartTuru.includes('VKS');
-      const isPatent = kartTuru.includes('ПАТЕНТ') || kartTuru.includes('PATENT') || (['OZBEKISTAN', 'TACIKISTAN', 'AZERBAYCAN'].includes(uyrukUpper) && !isVks && !isRf);
-      const isVnjRvp = ['ВНЖ', 'РВП', 'VNJ', 'RVP'].some((x: string) => kartTuru.includes(x));
-      const isQuotaRnr = ['КВОТА', 'KOTA', 'РНР', 'RNR'].some((x: string) => kartTuru.includes(x));
+      const isRf = uyrukUpper === 'RUSYA' || uyrukUpper === 'BEYAZ RUSYA' || kartTuru === 'MUAF' || kartTuru === 'РФ' || uyrukUpper.includes('RUS') || permitCategory === 'RF_CITIZEN';
+      const isEaes = ['KIRGIZISTAN', 'KAZAKISTAN', 'ERMENISTAN'].includes(uyrukUpper) || kartTuru.includes('ЕАЭС') || kartTuru.includes('EAES') || permitCategory === 'EAES';
+      const isVks = permitCategory === 'VKS';
+      const isPatent = permitCategory === 'PATENT' || (['OZBEKISTAN', 'TACIKISTAN', 'AZERBAYCAN'].includes(uyrukUpper) && !isVks && !isRf);
+      const isVnjRvp = permitCategory === 'VNJ_RVP';
+      const isQuotaRnr = permitCategory === 'QUOTA_RNR';
 
       for (const d of docDefinitions) {
         // Determine whether this document type is legally required for this individual
@@ -330,7 +332,7 @@ export async function GET(request: Request) {
           expiryDateDisplay = formatDateDisplay(dateVal);
         } else if (d.id === 'patent') {
           docNo = r.patent_alis_tarihi || rawJson['Çalışma Kart No'] || rawJson['Patent No'] || '-';
-          dateVal = r.patent_bitis_tarihi || rawJson['Çalışma Kartı Bitiş Tarihi'];
+          dateVal = r.patent_bitis_tarihi || rawJson['Çalışma Kart Bitiş Tarihi'] || rawJson['Çalışma Kartı Bitiş Tarihi'];
           days = getDaysDiff(dateVal, referenceDate);
           status = categorizeDays(days, d.id);
           expiryDateDisplay = formatDateDisplay(dateVal);

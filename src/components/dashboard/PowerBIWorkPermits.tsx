@@ -93,13 +93,13 @@ const PERMIT_CONFIG: Record<
 
 // Fallback data in case permits array is empty initially
 const DEFAULT_PERMIT_DATA: WorkPermitStat[] = [
-  { key: 'VKS', name: 'ВКС (Yüksek Nitelikli Uzman)', nameRu: 'ВКС (Высококвалифицированный специалист)', count: 2049, percentage: 38.2, color: '#06B6D4' },
-  { key: 'PATENT', name: 'Патент (Çalışma Patenti)', nameRu: 'Патент (Трудовой патент)', count: 1590, percentage: 29.6, color: '#3B82F6' },
-  { key: 'QUOTA_RNR', name: 'Квота / РНР (Standart İzin)', nameRu: 'Квота / РНР (Разрешение на работу)', count: 814, percentage: 15.2, color: '#10B981' },
-  { key: 'RF_CITIZEN', name: 'Граждане РФ (İzin Gerekmez)', nameRu: 'Граждане РФ (Без разрешения)', count: 383, percentage: 7.1, color: '#8B5CF6' },
-  { key: 'OTHER_PENDING', name: 'İşlemde / Diğer', nameRu: 'В оформлении / Прочее', count: 397, percentage: 7.4, color: '#64748B' },
-  { key: 'EAES', name: 'Граждане ЕАЭС (Serbest Dolaşım)', nameRu: 'Граждане ЕАЭС (Без разрешения)', count: 102, percentage: 1.9, color: '#F59E0B' },
-  { key: 'VNJ_RVP', name: 'ВНЖ / РВП (Oturma İzni)', nameRu: 'ВНЖ / РВП (Вид на жительство)', count: 29, percentage: 0.5, color: '#EC4899' },
+  { key: 'VKS', name: 'ВКС (Yüksek Nitelikli Uzman)', nameRu: 'ВКС (Высококвалифицированный специалист)', count: 1895, percentage: 37.1, color: '#06B6D4' },
+  { key: 'PATENT', name: 'Патент (Çalışma Patenti)', nameRu: 'Патент (Трудовой патент)', count: 1564, percentage: 30.6, color: '#3B82F6' },
+  { key: 'QUOTA_RNR', name: 'Квота / РНР (Standart İzin)', nameRu: 'Квота / РНР (Разрешение на работу)', count: 656, percentage: 12.8, color: '#10B981' },
+  { key: 'OTHER_PENDING', name: 'İşlemde / Diğer', nameRu: 'В оформлении / Прочее', count: 478, percentage: 9.4, color: '#64748B' },
+  { key: 'RF_CITIZEN', name: 'Граждане РФ (İzin Gerekmez)', nameRu: 'Граждане РФ (Без разрешения)', count: 374, percentage: 7.3, color: '#8B5CF6' },
+  { key: 'EAES', name: 'Граждане ЕАЭС (Serbest Dolaşım)', nameRu: 'Граждане ЕАЭС (Без разрешения)', count: 111, percentage: 2.2, color: '#F59E0B' },
+  { key: 'VNJ_RVP', name: 'ВНЖ / РВП (Oturma İzni)', nameRu: 'ВНЖ / РВП (Вид на жительство)', count: 28, percentage: 0.5, color: '#EC4899' },
 ];
 
 function getShortCode(key: string, lang: 'tr' | 'ru'): string {
