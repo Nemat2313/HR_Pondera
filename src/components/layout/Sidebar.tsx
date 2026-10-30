@@ -275,7 +275,7 @@ export default function Sidebar({
                       TeamHub
                     </span>
                     <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 dark:bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-mono font-normal text-[9.5px] leading-tight">
-                      {versionInfo?.version || 'v2.8.5'}
+                      {versionInfo?.version || 'v2.8.6'}
                     </span>
                   </div>
                 </div>

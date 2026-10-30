@@ -1293,10 +1293,12 @@ def download_missing_pdf_for_order(
 
     click_time = time.time()
 
-    def trigger_dl():
+    def trigger_dl(use_mouse_fallback: bool = False):
         try:
-            target_box = page.evaluate(
+            res = page.evaluate(
                 r"""() => {
+                    let reqEl = null;
+                    let reqRect = null;
                     let reqY = null;
                     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
                     while (walker.nextNode()) {
@@ -1305,24 +1307,58 @@ def download_missing_pdf_for_order(
                             n.parentElement.scrollIntoView({ block: 'center' });
                             const rr = n.parentElement.getBoundingClientRect();
                             if (rr.width > 5 && rr.height > 5) {
+                                reqEl = n.parentElement;
+                                reqRect = rr;
                                 reqY = rr.top + rr.height / 2;
                                 break;
                             }
                         }
                     }
 
-                    let downloadAllY = null;
-                    const allEls = Array.from(document.querySelectorAll('a, button, span, div'));
-                    for (const el of allEls) {
-                        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                        if (t === 'скачать всё' || t === 'скачать все') {
-                            const r = el.getBoundingClientRect();
-                            if (r.width > 15 && r.height > 8) {
-                                downloadAllY = r.top + r.height / 2;
+                    let reqRow = reqEl;
+                    if (reqEl) {
+                        let p = reqEl.parentElement;
+                        for (let d = 0; d < 6 && p; d++) {
+                            const pt = (p.innerText || p.textContent || '');
+                            const pr = p.getBoundingClientRect();
+                            if (
+                                pt.includes('pd_Agreement') ||
+                                pt.includes('Ещё файлы') ||
+                                pt.includes('Документы') ||
+                                /скачать\s+вс[её]/i.test(pt) ||
+                                pr.height > 120
+                            ) {
                                 break;
                             }
+                            reqRow = p;
+                            p = p.parentElement;
                         }
                     }
+
+                    let downloadAllY = null;
+                    let docHeaderY = null;
+                    let pdAgreementY = null;
+                    const allEls = Array.from(document.querySelectorAll('a, button, [role="button"], span, div, li, p, h3, h4, svg'));
+                    for (const el of allEls) {
+                        if (el.closest('header, footer, nav')) continue;
+                        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                        if ((t === 'скачать всё' || t === 'скачать все') && downloadAllY === null) {
+                            const r = el.getBoundingClientRect();
+                            if (r.width > 15 && r.height > 8) downloadAllY = r.top + r.height / 2;
+                        } else if (t === 'документы' && docHeaderY === null) {
+                            const r = el.getBoundingClientRect();
+                            if (r.width > 15 && r.height > 8 && r.height < 60) docHeaderY = r.top + r.height / 2;
+                        } else if (t === 'pd_agreement' && pdAgreementY === null) {
+                            const r = el.getBoundingClientRect();
+                            if (r.width > 15 && r.height > 8 && r.height < 60) pdAgreementY = r.top + r.height / 2;
+                        }
+                    }
+
+                    const isDisplayed = (el) => {
+                        if (!el) return false;
+                        const st = window.getComputedStyle(el);
+                        return st.display !== 'none' && st.visibility !== 'hidden' && parseFloat(st.opacity || '1') > 0.05;
+                    };
 
                     const candidates = [];
                     for (const el of allEls) {
@@ -1330,71 +1366,191 @@ def download_missing_pdf_for_order(
                         const rawText = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
                         if (rawText !== 'Скачать') continue;
 
-                        const clickable = el.closest('a, button, [role="button"]') || el;
+                        const clickable = el.closest('a, button, [role="button"], li, .dropdown-item, .menu-item') || el;
                         const cText = (clickable.innerText || clickable.textContent || '').replace(/\s+/g, ' ').trim();
                         const pText = ((clickable.parentElement && clickable.parentElement.innerText) || '').replace(/\s+/g, ' ').trim();
                         if (cText !== 'Скачать' || /вс[её]/i.test(cText) || /^Скачать\s+вс[её]$/i.test(pText)) {
                             continue;
                         }
+                        if (!isDisplayed(clickable) || !isDisplayed(el)) continue;
 
                         const r = clickable.getBoundingClientRect();
-                        if (r.width < 15 || r.height < 8 || r.height > 90) continue;
+                        if (r.width < 12 || r.height < 8 || r.height > 95) continue;
                         const btnY = r.top + r.height / 2;
-                        if (downloadAllY !== null && Math.abs(btnY - downloadAllY) < 18) {
-                            continue;
-                        }
+                        if (downloadAllY !== null && Math.abs(btnY - downloadAllY) < 18) continue;
+                        if (docHeaderY !== null && Math.abs(btnY - docHeaderY) < 16) continue;
 
                         const yDiff = (reqY !== null) ? Math.abs(btnY - reqY) : 999;
+                        const inReqRow = Boolean(reqRow && reqRow.contains(clickable));
                         candidates.push({
+                            clickable,
+                            el,
                             x: Math.round(r.left + r.width / 2),
                             y: Math.round(r.top + r.height / 2),
                             yDiff,
+                            inReqRow,
                             top: r.top
                         });
                     }
 
                     let chosen = null;
                     if (reqY !== null) {
-                        const rowMatches = candidates.filter(c => c.yDiff < 40).sort((a, b) => a.yDiff - b.yDiff);
+                        const rowMatches = candidates
+                            .filter(c => c.inReqRow || c.yDiff < 42)
+                            .sort((a, b) => (Number(b.inReqRow) - Number(a.inReqRow)) || (a.yDiff - b.yDiff));
                         if (rowMatches.length > 0) {
                             chosen = rowMatches[0];
                         }
                     }
                     if (!chosen && candidates.length > 0) {
-                        candidates.sort((a, b) => a.top - b.top);
-                        chosen = candidates[0];
+                        candidates.sort((a, b) => a.yDiff - b.yDiff);
+                        if (candidates[0].yDiff < 95) {
+                            chosen = candidates[0];
+                        }
                     }
-                    return chosen ? { x: chosen.x, y: chosen.y } : null;
+                    if (chosen) {
+                        if (chosen.clickable && chosen.clickable.tagName === 'A') {
+                            chosen.clickable.click();
+                        } else {
+                            chosen.el.click();
+                        }
+                        return { mode: 'direct_skachat', x: chosen.x, y: chosen.y };
+                    }
+
+                    // Narrow / Half-Screen Chrome Layout: click '⋮' three-dots menu next to 'req_preview'
+                    if (reqRect && reqY !== null) {
+                        const kebabCandidates = [];
+                        const searchScope = reqRow ? Array.from(reqRow.querySelectorAll('*')) : allEls;
+                        const pool = searchScope.length > 0 ? searchScope : allEls;
+                        for (const el of pool) {
+                            if (el.closest('header, footer, nav')) continue;
+                            if (!isDisplayed(el)) continue;
+                            const clickable = el.closest('button, [role="button"], a, .dropdown-toggle, .menu-toggle, lib-button, epgu-cf-ui-button') || el;
+                            const r = clickable.getBoundingClientRect();
+                            if (r.width < 6 || r.width > 90 || r.height < 6 || r.height > 65) continue;
+                            const centerY = r.top + r.height / 2;
+                            const centerX = r.left + r.width / 2;
+                            if (r.left < reqRect.right - 8) continue;
+                            const yDiff = Math.abs(centerY - reqY);
+                            if (yDiff > 28) continue;
+                            if (docHeaderY !== null && Math.abs(centerY - docHeaderY) < 18) continue;
+                            if (pdAgreementY !== null && Math.abs(centerY - pdAgreementY) < 18) continue;
+
+                            const tag = (clickable.tagName || '').toLowerCase();
+                            const isBtn = tag === 'button' || tag === 'a' || clickable.getAttribute('role') === 'button';
+                            const hasSvg = Boolean(clickable.querySelector('svg') || tag === 'svg');
+                            const isPointer = window.getComputedStyle(clickable).cursor === 'pointer';
+                            if (!isBtn && !hasSvg && !isPointer) continue;
+
+                            const score = (isBtn ? 100 : 0) + (hasSvg ? 50 : 0) + (isPointer ? 25 : 0) - yDiff;
+                            kebabCandidates.push({
+                                clickable,
+                                x: Math.round(centerX),
+                                y: Math.round(centerY),
+                                score
+                            });
+                        }
+                        if (kebabCandidates.length > 0) {
+                            kebabCandidates.sort((a, b) => b.score - a.score);
+                            const bestKebab = kebabCandidates[0];
+                            bestKebab.clickable.click();
+                            return { mode: 'kebab_menu', x: bestKebab.x, y: bestKebab.y };
+                        }
+                    }
+
+                    if (reqRow) {
+                        const hiddenEls = Array.from(reqRow.querySelectorAll('a, button, [role="button"], span, div, li'));
+                        for (const h of hiddenEls) {
+                            const ht = (h.innerText || h.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (ht === 'Скачать') {
+                                const target = h.closest('a, button, [role="button"]') || h;
+                                target.click();
+                                return { mode: 'hidden_dom_click', x: 0, y: 0 };
+                            }
+                        }
+                    }
+                    return null;
                 }"""
             )
-            if target_box and target_box.get("x") and target_box.get("y"):
-                cx, cy = int(target_box["x"]), int(target_box["y"])
-                page.mouse.move(cx, cy)
-                page.wait_for_timeout(80)
-                page.mouse.click(cx, cy)
-                return True
+            if res and isinstance(res, dict):
+                mode = res.get("mode")
+                cx, cy = int(res.get("x") or 0), int(res.get("y") or 0)
+                if mode == "direct_skachat":
+                    if use_mouse_fallback and cx > 0 and cy > 0:
+                        page.mouse.move(cx, cy)
+                        page.wait_for_timeout(60)
+                        page.mouse.click(cx, cy)
+                    return True
+                if mode == "kebab_menu":
+                    page.wait_for_timeout(350)
+
+                    def _click_menu_skachat():
+                        return page.evaluate(
+                            r"""(kebabY) => {
+                                const allEls = Array.from(document.querySelectorAll('a, button, [role="button"], li, span, div'));
+                                const matches = [];
+                                for (const el of allEls) {
+                                    if (el.closest('header, footer, nav')) continue;
+                                    const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+                                    if (t !== 'Скачать') continue;
+                                    const clickable = el.closest('a, button, [role="button"], li, .dropdown-item, .menu-item') || el;
+                                    const ct = (clickable.innerText || clickable.textContent || '').replace(/\s+/g, ' ').trim();
+                                    if (ct !== 'Скачать' || /вс[её]/i.test(ct)) continue;
+                                    const st = window.getComputedStyle(clickable);
+                                    if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity || '1') <= 0.05) continue;
+                                    const r = clickable.getBoundingClientRect();
+                                    if (r.width < 10 || r.height < 8 || r.height > 95) continue;
+                                    const cy = r.top + r.height / 2;
+                                    const yDiff = kebabY ? Math.abs(cy - kebabY) : 0;
+                                    if (yDiff < 180) {
+                                        matches.push({ clickable, el, x: Math.round(r.left + r.width / 2), y: Math.round(cy), yDiff });
+                                    }
+                                }
+                                if (matches.length > 0) {
+                                    matches.sort((a, b) => a.yDiff - b.yDiff);
+                                    const m = matches[0];
+                                    if (m.clickable && m.clickable.tagName === 'A') {
+                                        m.clickable.click();
+                                    } else {
+                                        m.el.click();
+                                    }
+                                    return { x: m.x, y: m.y };
+                                }
+                                return null;
+                            }""",
+                            cy,
+                        )
+
+                    m_res = _click_menu_skachat()
+                    if not m_res and cx > 0 and cy > 0:
+                        page.mouse.move(cx, cy)
+                        page.wait_for_timeout(60)
+                        page.mouse.click(cx, cy)
+                        page.wait_for_timeout(350)
+                        m_res = _click_menu_skachat()
+                    if m_res and isinstance(m_res, dict):
+                        mx, my = int(m_res.get("x") or 0), int(m_res.get("y") or 0)
+                        if use_mouse_fallback and mx > 0 and my > 0:
+                            page.mouse.move(mx, my)
+                            page.wait_for_timeout(60)
+                            page.mouse.click(mx, my)
+                        return True
+                if mode == "hidden_dom_click":
+                    return True
         except Exception:
             pass
         return False
 
     downloaded_path: Optional[Path] = None
-    try:
-        with page.expect_download(timeout=5000) as dl_info:
-            trigger_dl()
-        dl = dl_info.value
-        temp_target = downloads_dir / f"tmp_{os.getpid()}_{int(click_time)}_{clean_no}.pdf"
-        dl.save_as(str(temp_target))
-        downloaded_path = temp_target
-    except Exception:
-        pass
+    trigger_dl(use_mouse_fallback=False)
 
     already_renamed_re = re.compile(r"^(?:\d+_)?\d{8,14}_.+_20\d{2}-[1-4]\.pdf$", re.IGNORECASE)
     uuid_blob_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\s*\(\d+\))?$", re.IGNORECASE)
     if not downloaded_path or not downloaded_path.exists():
         for wait_idx in range(20):
-            page.wait_for_timeout(500)
-            if wait_idx == 6:
-                trigger_dl()
+            page.wait_for_timeout(400)
+            if wait_idx in (5, 11):
+                trigger_dl(use_mouse_fallback=True)
             active_cr = [p for p in downloads_dir.glob("*.crdownload") if (time.time() - p.stat().st_mtime) < 30]
             if active_cr:
                 continue

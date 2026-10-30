@@ -4102,6 +4102,9 @@ class GosuslugiVksBot:
                 if self.does_citizen_match_worker(citizen_name, row):
                     candidates.append(item_info)
             else:
+                # If we already know the exact expected_order_no from Step 15, never queue a different order number!
+                if expected_order_no and ext_id and ext_id != expected_order_no:
+                    continue
                 if order_url not in recent_unverified_urls and len(recent_unverified_urls) < 3:
                     recent_unverified_urls.append(order_url)
 
@@ -4304,19 +4307,25 @@ class GosuslugiVksBot:
                             continue
                         if ("мвд" in c_text_low or "уведомлени" in c_text_low or "выдан" in c_text_low) and "трудовой деятельности" not in c_text_low:
                             continue
+                        full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
+                        known_card_no = url_to_order_no.get(full_u, "")
+                        if expected_order_no and search_pass < 3 and known_card_no and known_card_no != expected_order_no:
+                            continue
                         card_cit_str = _extract_multiline_citizen(c_text)
                         if card_cit_str and not self.does_citizen_match_worker(card_cit_str, row, c_text_low):
                             logger.info(
                                 f"Step 16.2: Skipping card in list because Гражданин '{card_cit_str}' != '{clean_worker_name}'"
                             )
                             continue
-                        full_u = c_href if c_href.startswith("http") else f"https://lk.gosuslugi.ru{c_href if c_href.startswith('/') else '/' + c_href}"
                         if full_u not in candidate_hrefs and full_u not in rejected_urls:
                             candidate_hrefs.append(full_u)
             except Exception:
                 pass
 
             for cand_idx, cand_url in enumerate(candidate_hrefs[:3]):
+                known_cand_no = url_to_order_no.get(cand_url, "")
+                if expected_order_no and search_pass < 3 and known_cand_no and known_cand_no != expected_order_no:
+                    continue
                 logger.info(f"Step 16.2: Opening candidate order {cand_url} (will expand 'Показать историю' to verify & download PDF)...")
                 try:
                     self.page.goto(cand_url, wait_until="domcontentloaded", timeout=30000)
@@ -4520,26 +4529,26 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
-        # Wait up to 8s specifically for 'req_preview' (NOT 'Скачать', which prematurely matches 'Скачать всё')
-        for _ in range(16):
+        # Wait up to 6s specifically for 'req_preview' (NOT 'Скачать', which prematurely matches 'Скачать всё')
+        for _ in range(15):
             try:
                 if self.page.evaluate("() => { const t = (document.body && document.body.innerText) || ''; return t.includes('req_preview'); }"):
                     break
             except Exception:
                 pass
-            self.page.wait_for_timeout(450)
-        self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(400)
+        self.page.wait_for_timeout(300)
 
         downloaded_path: Optional[Path] = None
         click_time = time.time()
 
         logger.info("Step 16.5: Clicking 'Скачать' for 'req_preview' PDF...")
 
-        def trigger_download_click():
+        def trigger_download_click(use_mouse_fallback: bool = False):
             # Scroll 'req_preview' row into the center of the viewport first so it is never cut off at the bottom edge
             try:
                 self.page.evaluate(
-                    """() => {
+                    r"""() => {
                         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
                         while (walker.nextNode()) {
                             const n = walker.currentNode;
@@ -4550,134 +4559,313 @@ class GosuslugiVksBot:
                         }
                     }"""
                 )
-                self.page.wait_for_timeout(350)
+                self.page.wait_for_timeout(250)
             except Exception:
                 pass
 
-            # Find the exact 'Скачать' button on the same horizontal row as 'req_preview' (strictly excluding 'Скачать всё')
+            # Find & click 'Скачать' on the 'req_preview' row (supports both wide desktop 'Скачать' button AND narrow/half-screen '⋮' three-dots menu)
             try:
-                target_box = self.page.evaluate(
-                    """() => {
+                res = self.page.evaluate(
+                    r"""() => {
+                        let reqEl = null;
+                        let reqRect = null;
                         let reqY = null;
-                        let reqBottom = null;
                         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
                         while (walker.nextNode()) {
                             const n = walker.currentNode;
                             if ((n.nodeValue || '').includes('req_preview') && n.parentElement) {
                                 const rr = n.parentElement.getBoundingClientRect();
                                 if (rr.width > 5 && rr.height > 5) {
+                                    reqEl = n.parentElement;
+                                    reqRect = rr;
                                     reqY = rr.top + rr.height / 2;
-                                    reqBottom = rr.bottom;
                                     break;
                                 }
                             }
                         }
 
-                        // Also find 'Скачать всё' Y coordinate so we NEVER click anything at or above 'Скачать всё'
+                        // Find the specific row container for 'req_preview' (excluding outer container that holds 'pd_Agreement' or 'Документы')
+                        let reqRow = reqEl;
+                        if (reqEl) {
+                            let p = reqEl.parentElement;
+                            for (let d = 0; d < 6 && p; d++) {
+                                const pt = (p.innerText || p.textContent || '');
+                                const pr = p.getBoundingClientRect();
+                                if (
+                                    pt.includes('pd_Agreement') ||
+                                    pt.includes('Ещё файлы') ||
+                                    pt.includes('Документы') ||
+                                    /скачать\s+вс[её]/i.test(pt) ||
+                                    pr.height > 120
+                                ) {
+                                    break;
+                                }
+                                reqRow = p;
+                                p = p.parentElement;
+                            }
+                        }
+
                         let downloadAllY = null;
-                        const allEls = Array.from(document.querySelectorAll('a, button, span, div'));
-                        for (const el of allEls) {
-                            const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-                            if (t === 'скачать всё' || t === 'скачать все') {
-                                const r = el.getBoundingClientRect();
-                                if (r.width > 15 && r.height > 8) {
-                                    downloadAllY = r.top + r.height / 2;
-                                    break;
-                                }
-                            }
-                        }
-
-                        const candidates = [];
+                        let docHeaderY = null;
+                        let pdAgreementY = null;
+                        const allEls = Array.from(document.querySelectorAll('a, button, [role="button"], span, div, li, p, h3, h4, svg'));
                         for (const el of allEls) {
                             if (el.closest('header, footer, nav')) continue;
-                            const rawText = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+                            const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                            if ((t === 'скачать всё' || t === 'скачать все') && downloadAllY === null) {
+                                const r = el.getBoundingClientRect();
+                                if (r.width > 15 && r.height > 8) downloadAllY = r.top + r.height / 2;
+                            } else if (t === 'документы' && docHeaderY === null) {
+                                const r = el.getBoundingClientRect();
+                                if (r.width > 15 && r.height > 8 && r.height < 60) docHeaderY = r.top + r.height / 2;
+                            } else if (t === 'pd_agreement' && pdAgreementY === null) {
+                                const r = el.getBoundingClientRect();
+                                if (r.width > 15 && r.height > 8 && r.height < 60) pdAgreementY = r.top + r.height / 2;
+                            }
+                        }
+
+                        const isDisplayed = (el) => {
+                            if (!el) return false;
+                            const st = window.getComputedStyle(el);
+                            return st.display !== 'none' && st.visibility !== 'hidden' && parseFloat(st.opacity || '1') > 0.05;
+                        };
+
+                        // 1. Look for a visible 'Скачать' button/link on the 'req_preview' row (strictly excluding 'Скачать всё')
+                        const skachatCandidates = [];
+                        for (const el of allEls) {
+                            if (el.closest('header, footer, nav')) continue;
+                            const rawText = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
                             if (rawText !== 'Скачать') continue;
 
-                            const clickable = el.closest('a, button, [role="button"]') || el;
-                            const cText = (clickable.innerText || clickable.textContent || '').replace(/\\s+/g, ' ').trim();
-                            const pText = ((clickable.parentElement && clickable.parentElement.innerText) || '').replace(/\\s+/g, ' ').trim();
-                            if (cText !== 'Скачать' || /вс[её]/i.test(cText) || /^Скачать\\s+вс[её]$/i.test(pText)) {
+                            const clickable = el.closest('a, button, [role="button"], li, .dropdown-item, .menu-item') || el;
+                            const cText = (clickable.innerText || clickable.textContent || '').replace(/\s+/g, ' ').trim();
+                            const pText = ((clickable.parentElement && clickable.parentElement.innerText) || '').replace(/\s+/g, ' ').trim();
+                            if (cText !== 'Скачать' || /вс[её]/i.test(cText) || /^Скачать\s+вс[её]$/i.test(pText)) {
                                 continue;
                             }
+                            if (!isDisplayed(clickable) || !isDisplayed(el)) continue;
 
                             const r = clickable.getBoundingClientRect();
-                            if (r.width < 15 || r.height < 8 || r.height > 90) continue;
+                            if (r.width < 12 || r.height < 8 || r.height > 95) continue;
                             const btnY = r.top + r.height / 2;
 
-                            // Never match 'Скачать всё' row
-                            if (downloadAllY !== null && Math.abs(btnY - downloadAllY) < 18) {
-                                continue;
-                            }
+                            if (downloadAllY !== null && Math.abs(btnY - downloadAllY) < 18) continue;
+                            if (docHeaderY !== null && Math.abs(btnY - docHeaderY) < 16) continue;
 
                             const yDiff = (reqY !== null) ? Math.abs(btnY - reqY) : 999;
-                            candidates.push({
+                            const inReqRow = Boolean(reqRow && reqRow.contains(clickable));
+                            skachatCandidates.push({
                                 clickable,
                                 el,
                                 x: Math.round(r.left + r.width / 2),
                                 y: Math.round(r.top + r.height / 2),
                                 yDiff,
+                                inReqRow,
                                 top: r.top
                             });
                         }
 
                         let chosen = null;
                         if (reqY !== null) {
-                            const rowMatches = candidates.filter(c => c.yDiff < 40).sort((a, b) => a.yDiff - b.yDiff);
+                            const rowMatches = skachatCandidates
+                                .filter(c => c.inReqRow || c.yDiff < 42)
+                                .sort((a, b) => (Number(b.inReqRow) - Number(a.inReqRow)) || (a.yDiff - b.yDiff));
                             if (rowMatches.length > 0) {
                                 chosen = rowMatches[0];
                             }
                         }
-                        if (!chosen && candidates.length > 0) {
-                            candidates.sort((a, b) => a.top - b.top);
-                            chosen = candidates[0];
+                        if (!chosen && skachatCandidates.length > 0) {
+                            skachatCandidates.sort((a, b) => a.yDiff - b.yDiff);
+                            if (skachatCandidates[0].yDiff < 95) {
+                                chosen = skachatCandidates[0];
+                            }
                         }
 
                         if (chosen) {
-                            return { x: chosen.x, y: chosen.y, yDiff: Math.round(chosen.yDiff) };
+                            if (chosen.clickable && chosen.clickable.tagName === 'A') {
+                                chosen.clickable.click();
+                            } else {
+                                chosen.el.click();
+                            }
+                            return {
+                                mode: 'direct_skachat',
+                                x: chosen.x,
+                                y: chosen.y,
+                                yDiff: Math.round(chosen.yDiff)
+                            };
                         }
+
+                        // 2. Narrow / Half-Screen Chrome Layout: 'Скачать' is inside the '⋮' (three-dots) menu on the right side of the 'req_preview' row!
+                        if (reqRect && reqY !== null) {
+                            const kebabCandidates = [];
+                            const searchScope = reqRow ? Array.from(reqRow.querySelectorAll('*')) : allEls;
+                            const pool = searchScope.length > 0 ? searchScope : allEls;
+                            for (const el of pool) {
+                                if (el.closest('header, footer, nav')) continue;
+                                if (!isDisplayed(el)) continue;
+                                const clickable = el.closest('button, [role="button"], a, .dropdown-toggle, .menu-toggle, lib-button, epgu-cf-ui-button') || el;
+                                const r = clickable.getBoundingClientRect();
+                                if (r.width < 6 || r.width > 90 || r.height < 6 || r.height > 65) continue;
+                                const centerY = r.top + r.height / 2;
+                                const centerX = r.left + r.width / 2;
+
+                                // Must be to the right of 'req_preview' text and on the same horizontal line
+                                if (r.left < reqRect.right - 8) continue;
+                                const yDiff = Math.abs(centerY - reqY);
+                                if (yDiff > 28) continue;
+                                if (docHeaderY !== null && Math.abs(centerY - docHeaderY) < 18) continue;
+                                if (pdAgreementY !== null && Math.abs(centerY - pdAgreementY) < 18) continue;
+
+                                const tag = (clickable.tagName || '').toLowerCase();
+                                const isBtn = tag === 'button' || tag === 'a' || clickable.getAttribute('role') === 'button';
+                                const hasSvg = Boolean(clickable.querySelector('svg') || tag === 'svg');
+                                const isPointer = window.getComputedStyle(clickable).cursor === 'pointer';
+                                if (!isBtn && !hasSvg && !isPointer) continue;
+
+                                const score = (isBtn ? 100 : 0) + (hasSvg ? 50 : 0) + (isPointer ? 25 : 0) - yDiff;
+                                kebabCandidates.push({
+                                    clickable,
+                                    x: Math.round(centerX),
+                                    y: Math.round(centerY),
+                                    yDiff: Math.round(yDiff),
+                                    score
+                                });
+                            }
+
+                            if (kebabCandidates.length > 0) {
+                                kebabCandidates.sort((a, b) => b.score - a.score);
+                                const bestKebab = kebabCandidates[0];
+                                bestKebab.clickable.click();
+                                return {
+                                    mode: 'kebab_menu',
+                                    x: bestKebab.x,
+                                    y: bestKebab.y,
+                                    yDiff: bestKebab.yDiff
+                                };
+                            }
+                        }
+
+                        // 3. Fallback: if a hidden 'Скачать' element exists inside reqRow, click it via DOM
+                        if (reqRow) {
+                            const hiddenEls = Array.from(reqRow.querySelectorAll('a, button, [role="button"], span, div, li'));
+                            for (const h of hiddenEls) {
+                                const ht = (h.innerText || h.textContent || '').replace(/\s+/g, ' ').trim();
+                                if (ht === 'Скачать') {
+                                    const target = h.closest('a, button, [role="button"]') || h;
+                                    target.click();
+                                    return { mode: 'hidden_dom_click', x: 0, y: 0, yDiff: 0 };
+                                }
+                            }
+                        }
+
                         return null;
                     }"""
                 )
-                if target_box and target_box.get("x") and target_box.get("y"):
-                    cx, cy = int(target_box["x"]), int(target_box["y"])
-                    logger.info(
-                        f"Step 16.5: Clicking 'Скачать' next to 'req_preview' at ({cx}, {cy}) [yDiff={target_box.get('yDiff')}px]..."
-                    )
-                    self.page.mouse.move(cx, cy)
-                    self.page.wait_for_timeout(80)
-                    self.page.mouse.click(cx, cy)
-                    return True
+
+                if res and isinstance(res, dict):
+                    mode = res.get("mode")
+                    cx, cy = int(res.get("x") or 0), int(res.get("y") or 0)
+                    if mode == "direct_skachat":
+                        logger.info(
+                            f"Step 16.5: Clicked 'Скачать' next to 'req_preview' via DOM at ({cx}, {cy}) [yDiff={res.get('yDiff')}px]..."
+                        )
+                        if use_mouse_fallback and cx > 0 and cy > 0:
+                            self.page.mouse.move(cx, cy)
+                            self.page.wait_for_timeout(60)
+                            self.page.mouse.click(cx, cy)
+                        return True
+
+                    if mode == "kebab_menu":
+                        logger.info(
+                            f"Step 16.5: Narrow window layout detected — opened '⋮' menu next to 'req_preview' at ({cx}, {cy})..."
+                        )
+                        self.page.wait_for_timeout(350)
+
+                        def _click_opened_menu_skachat():
+                            return self.page.evaluate(
+                                r"""(kebabY) => {
+                                    const allEls = Array.from(document.querySelectorAll('a, button, [role="button"], li, span, div'));
+                                    const matches = [];
+                                    for (const el of allEls) {
+                                        if (el.closest('header, footer, nav')) continue;
+                                        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+                                        if (t !== 'Скачать') continue;
+                                        const clickable = el.closest('a, button, [role="button"], li, .dropdown-item, .menu-item') || el;
+                                        const ct = (clickable.innerText || clickable.textContent || '').replace(/\s+/g, ' ').trim();
+                                        if (ct !== 'Скачать' || /вс[её]/i.test(ct)) continue;
+                                        const st = window.getComputedStyle(clickable);
+                                        if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity || '1') <= 0.05) continue;
+                                        const r = clickable.getBoundingClientRect();
+                                        if (r.width < 10 || r.height < 8 || r.height > 95) continue;
+                                        const cy = r.top + r.height / 2;
+                                        const yDiff = kebabY ? Math.abs(cy - kebabY) : 0;
+                                        if (yDiff < 180) {
+                                            matches.push({
+                                                clickable,
+                                                el,
+                                                x: Math.round(r.left + r.width / 2),
+                                                y: Math.round(cy),
+                                                yDiff: Math.round(yDiff)
+                                            });
+                                        }
+                                    }
+                                    if (matches.length > 0) {
+                                        matches.sort((a, b) => a.yDiff - b.yDiff);
+                                        const m = matches[0];
+                                        if (m.clickable && m.clickable.tagName === 'A') {
+                                            m.clickable.click();
+                                        } else {
+                                            m.el.click();
+                                        }
+                                        return { x: m.x, y: m.y, yDiff: m.yDiff };
+                                    }
+                                    return null;
+                                }""",
+                                cy,
+                            )
+
+                        menu_clicked = _click_opened_menu_skachat()
+                        if not menu_clicked and cx > 0 and cy > 0:
+                            # If DOM .click() on '⋮' didn't open the Angular menu, click '⋮' with mouse and try again
+                            self.page.mouse.move(cx, cy)
+                            self.page.wait_for_timeout(60)
+                            self.page.mouse.click(cx, cy)
+                            self.page.wait_for_timeout(350)
+                            menu_clicked = _click_opened_menu_skachat()
+
+                        if menu_clicked and isinstance(menu_clicked, dict):
+                            mx, my = int(menu_clicked.get("x") or 0), int(menu_clicked.get("y") or 0)
+                            logger.info(
+                                f"Step 16.5: Clicked 'Скачать' inside '⋮' dropdown menu at ({mx}, {my})..."
+                            )
+                            if use_mouse_fallback and mx > 0 and my > 0:
+                                self.page.mouse.move(mx, my)
+                                self.page.wait_for_timeout(60)
+                                self.page.mouse.click(mx, my)
+                            return True
+
+                    if mode == "hidden_dom_click":
+                        logger.info("Step 16.5: Triggered DOM click on 'Скачать' inside 'req_preview' container...")
+                        return True
             except Exception as e:
-                logger.debug(f"Step 16.5 mouse click note: {e}")
+                logger.debug(f"Step 16.5 download click note: {e}")
 
             return False
 
-        # Attempt Playwright download capture + native Chrome ~/Downloads fallback
-        try:
-            with self.page.expect_download(timeout=6000) as download_info:
-                trigger_download_click()
-            dl = download_info.value
-            suggested_name = dl.suggested_filename or f"{gosuslugi_order_no or 'req_preview'}.pdf"
-            if not suggested_name.lower().endswith(".pdf"):
-                suggested_name += ".pdf"
-            temp_target = downloads_dir / f"tmp_{os.getpid()}_{int(click_time)}_{suggested_name}"
-            dl.save_as(str(temp_target))
-            downloaded_path = temp_target
-        except Exception:
-            # In CDP mode Chrome often handles the download directly in ~/Downloads without triggering expect_download
-            pass
+        # Trigger download immediately via DOM (without blocking for 6s inside expect_download in CDP mode)
+        trigger_download_click(use_mouse_fallback=False)
 
         # Regex matching already-renamed Pondera PDFs so we never pick up an already-renamed PDF from another worker
         already_renamed_re = re.compile(r"^(?:\d+_)?\d{8,14}_.+_20\d{2}-[1-4]\.pdf$", re.IGNORECASE)
         uuid_blob_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\s*\(\d+\))?$", re.IGNORECASE)
 
-        # If Chrome handled the download natively, poll ~/Downloads for the newly created/updated .pdf or extensionless UUID PDF blob file
+        # Poll ~/Downloads every 400ms (up to ~9 seconds total) for the newly created/updated .pdf or extensionless UUID PDF blob file
         if not downloaded_path or not downloaded_path.exists():
-            for wait_idx in range(30):
-                self.page.wait_for_timeout(500)
-                # If nothing started downloading after 4 seconds, re-trigger DOM click once
-                if wait_idx == 8:
-                    trigger_download_click()
+            for wait_idx in range(22):
+                self.page.wait_for_timeout(400)
+                # If nothing started downloading after 2.0s or 4.4s, re-trigger with mouse click fallback
+                if wait_idx in (5, 11):
+                    trigger_download_click(use_mouse_fallback=True)
 
                 active_crdownloads = [
                     p for p in downloads_dir.glob("*.crdownload")
