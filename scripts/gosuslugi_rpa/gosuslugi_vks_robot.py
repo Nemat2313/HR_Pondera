@@ -287,6 +287,51 @@ class GosuslugiVksBot:
         except Exception:
             pass
 
+    def switch_to_logged_in_tab_if_available(self) -> bool:
+        """
+        If Chrome has multiple tabs open and the user logged into Gosuslugi in another tab
+        while self.page is still pointing to an old esia.gosuslugi.ru/login tab, switches self.page
+        to the active logged-in Gosuslugi tab and closes stale login tabs.
+        """
+        try:
+            ctx = self.page.context
+            pages = [p for p in ctx.pages if not p.is_closed()]
+            if len(pages) <= 1:
+                return False
+
+            best_page = None
+            for p_item in reversed(pages):
+                u = (p_item.url or "").lower()
+                if "600585/1/form" in u and "esia.gosuslugi.ru" not in u:
+                    best_page = p_item
+                    break
+            if not best_page:
+                for p_item in reversed(pages):
+                    u = (p_item.url or "").lower()
+                    if "gosuslugi.ru" in u and "esia.gosuslugi.ru/login" not in u and "esia.gosuslugi.ru/idp" not in u and "chrome-error" not in u:
+                        best_page = p_item
+                        break
+
+            if best_page and best_page != self.page:
+                logger.info(f"Switched active Chrome tab to logged-in Gosuslugi tab: {best_page.url}")
+                self.attach_page(best_page)
+                try:
+                    best_page.bring_to_front()
+                except Exception:
+                    pass
+                for p_item in pages:
+                    if p_item != best_page:
+                        u = (p_item.url or "").lower()
+                        if "esia.gosuslugi.ru/login" in u or "esia.gosuslugi.ru/idp" in u:
+                            try:
+                                p_item.close()
+                            except Exception:
+                                pass
+                return True
+        except Exception:
+            pass
+        return False
+
     def is_on_login_page(self) -> bool:
         """
         Detects if Gosuslugi logged out and redirected or rendered the ESIA login card
@@ -295,20 +340,41 @@ class GosuslugiVksBot:
         try:
             cur_url = (self.page.url or "").lower()
             if "esia.gosuslugi.ru/login" in cur_url or "esia.gosuslugi.ru/idp" in cur_url:
+                if self.switch_to_logged_in_tab_if_available():
+                    cur_url = (self.page.url or "").lower()
+                    if "esia.gosuslugi.ru/login" not in cur_url and "esia.gosuslugi.ru/idp" not in cur_url:
+                        return False
                 return True
+
+            # If we are already on 600585/1/form and form controls/headings are visible, we are NOT logged out
+            if "600585/1/form" in cur_url:
+                form_markers = self.page.locator(
+                    "button:has-text('Начать заново'):visible, "
+                    "button:has-text('Создать заявление'):visible, "
+                    "button:has-text('Перейти к заявлению'):visible, "
+                    "button:has-text('Далее'):visible, "
+                    "epgu-cf-ui-constructor:visible"
+                )
+                if form_markers.count() > 0:
+                    return False
+
             login_inputs = self.page.locator(
                 "input#login:visible, input#password:visible, input[name='login']:visible, input[type='password']:visible"
             )
             if login_inputs.count() > 0:
+                if self.switch_to_logged_in_tab_if_available():
+                    return False
                 return True
             body_text = self.page.locator("body").inner_text(timeout=1200)
             if (
                 ("Телефон / Эл. почта / СНИЛС" in body_text and "Войти" in body_text)
-                or "Другой пользователь" in body_text
+                or ("Другой пользователь" in body_text and "Пароль" in body_text)
                 or "Войти другим способом" in body_text
                 or "Не удаётся войти" in body_text
                 or ("Пароль" in body_text and "Восстановить" in body_text and "Войти" in body_text)
             ):
+                if self.switch_to_logged_in_tab_if_available():
+                    return False
                 return True
         except Exception:
             pass
@@ -322,9 +388,22 @@ class GosuslugiVksBot:
         Returns True if a logout or pause was detected and recovered.
         """
         paused_once = False
+        probed_form_url = False
         while True:
             logged_out = self.is_on_login_page()
             manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
+
+            # Before pausing for login on an old/stale tab, probe navigating to 600585/1/form once
+            # in case the Gosuslugi session cookie is already active!
+            if logged_out and not manual_paused and not probed_form_url:
+                probed_form_url = True
+                self.switch_to_logged_in_tab_if_available()
+                try:
+                    self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=25000)
+                    self.page.wait_for_timeout(1500)
+                except Exception:
+                    pass
+                logged_out = self.is_on_login_page()
 
             if not logged_out and not manual_paused:
                 break
@@ -368,6 +447,15 @@ class GosuslugiVksBot:
                         pass
                     break
                 self.page.wait_for_timeout(1000)
+
+            # After user clicks Resume, switch to any newly logged-in tab or navigate away from stale login URL
+            self.switch_to_logged_in_tab_if_available()
+            if self.is_on_login_page():
+                try:
+                    self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=25000)
+                    self.page.wait_for_timeout(1500)
+                except Exception:
+                    pass
 
             if self.is_on_login_page():
                 logger.warning(
@@ -4936,15 +5024,52 @@ def connect_or_launch_chrome_page(p, cdp_port: int):
         context = browser.contexts[0] if browser.contexts else browser.new_context()
         page = None
         if context.pages:
-            for p_item in context.pages:
+            open_pages = [p_item for p_item in context.pages if not p_item.is_closed()]
+            # Priority 1: Active VKS form tab (newest first)
+            for p_item in reversed(open_pages):
                 try:
-                    if not p_item.is_closed() and "gosuslugi.ru" in (p_item.url or "") and "chrome-error" not in (p_item.url or ""):
+                    u = (p_item.url or "").lower()
+                    if "600585/1/form" in u and "esia.gosuslugi.ru" not in u and "chrome-error" not in u:
                         page = p_item
                         break
                 except Exception:
                     pass
+            # Priority 2: Logged-in Gosuslugi tab (not on esia.gosuslugi.ru/login)
             if not page:
-                for p_item in context.pages:
+                for p_item in reversed(open_pages):
+                    try:
+                        u = (p_item.url or "").lower()
+                        if (
+                            "gosuslugi.ru" in u
+                            and "esia.gosuslugi.ru/login" not in u
+                            and "esia.gosuslugi.ru/idp" not in u
+                            and "chrome-error" not in u
+                        ):
+                            page = p_item
+                            break
+                    except Exception:
+                        pass
+            # If a logged-in tab was selected, close any leftover stale esia.gosuslugi.ru/login tabs
+            if page and len(open_pages) > 1:
+                for p_item in open_pages:
+                    if p_item != page:
+                        try:
+                            u = (p_item.url or "").lower()
+                            if "esia.gosuslugi.ru/login" in u or "esia.gosuslugi.ru/idp" in u:
+                                p_item.close()
+                        except Exception:
+                            pass
+            # Priority 3: Any gosuslugi.ru tab (newest first)
+            if not page:
+                for p_item in reversed(open_pages):
+                    try:
+                        if "gosuslugi.ru" in (p_item.url or "") and "chrome-error" not in (p_item.url or ""):
+                            page = p_item
+                            break
+                    except Exception:
+                        pass
+            if not page:
+                for p_item in reversed(open_pages):
                     try:
                         if not p_item.is_closed():
                             page = p_item
