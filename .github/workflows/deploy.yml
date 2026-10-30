@@ -53,23 +53,17 @@ jobs:
           script: |
             echo "=== Starting Pondera HR Fast Pre-Built Deploy ==="
             sysctl -w vm.swappiness=10 2>/dev/null || true
-            pkill -9 -f "next build" 2>/dev/null || true
-            pkill -9 -f "npm run build" 2>/dev/null || true
-            pkill -9 -f "npm install" 2>/dev/null || true
-            pkill -9 -f "jest-worker" 2>/dev/null || true
-            pkill -9 -f "pre_action_backup.py" 2>/dev/null || true
-            pkill -9 -f "repair_production_db.py" 2>/dev/null || true
             rm -f /tmp/pondera_deploy.lock 2>/dev/null || true
             cd /var/www/hr_pondera || cd /root/HR_Pondera || cd ~/HR_Pondera
             echo "Current directory: $(pwd)"
             git fetch origin main
             git reset --hard origin/main
-            pm2 stop hr-pondera </dev/null >/dev/null 2>&1 || pm2 stop all </dev/null >/dev/null 2>&1 || true
-            timeout 25s python3 scripts/repair_production_db.py </dev/null || true
+            pm2 stop hr-pondera 2>/dev/null || pm2 stop all 2>/dev/null || true
+            python3 scripts/repair_production_db.py 2>/dev/null || true
             rm -rf .next
             tar -xzf /tmp/next_build.tar.gz -C .
             rm -f /tmp/next_build.tar.gz
             cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
             cp -r public .next/standalone/ 2>/dev/null || true
-            pm2 restart hr-pondera </dev/null >/dev/null 2>&1 || pm2 restart all </dev/null >/dev/null 2>&1
+            pm2 restart hr-pondera || pm2 restart all
             echo "=== Auto-Deploy Completed Successfully ==="
