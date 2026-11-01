@@ -25,6 +25,9 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  X,
   Layers,
   Filter,
 } from 'lucide-react';
@@ -172,6 +175,8 @@ export default function OfficialVsRealView() {
   const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
   const [search, setSearch] = useState<string>('');
   const [page, setPage] = useState<number>(1);
+  const [showExplanation, setShowExplanation] = useState<boolean>(false);
+  const [showOutdatedModal, setShowOutdatedModal] = useState<boolean>(false);
   const pageSize = 25;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -634,56 +639,64 @@ export default function OfficialVsRealView() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-7 space-y-5 font-normal max-w-[1440px] mx-auto">
-      {/* TOP HEADER, 1C ZUP EXCEL UPLOAD & OUTDATED LIST WARNING */}
-      <div className="p-5 rounded-3xl bg-gradient-to-r from-indigo-50/90 via-white to-slate-50 dark:from-[#0F172A] dark:via-[#131C31] dark:to-indigo-950/70 border border-indigo-200/80 dark:border-indigo-900/60 text-slate-900 dark:text-white shadow-sm space-y-4">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center shrink-0 mt-0.5">
-              <Scale className="w-5 h-5" />
+      {/* COMPACT TOP HEADER (MAX 2-3 LINES), COLLAPSIBLE EXPLANATION & ANIMATED WARNING POPUP TRIGGER */}
+      <div className="px-4 py-3 rounded-2xl bg-gradient-to-r from-indigo-50/90 via-white to-slate-50 dark:from-[#0F172A] dark:via-[#131C31] dark:to-indigo-950/70 border border-indigo-200/80 dark:border-indigo-900/60 text-slate-900 dark:text-white shadow-2xs space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          {/* Left: Compact Icon + Single-Line Title + Collapsible Info Toggle */}
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center shrink-0">
+              <Scale className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-lg sm:text-xl font-normal tracking-tight text-slate-900 dark:text-white">
-                  {lang === 'ru'
-                    ? 'Сверка 1С ЗУП (Официальный штат) и eBA (Реальный штат)'
-                    : '1C ZUP (Resmi) & eBA (Real) Personel Karşılaştırma Merkezi'}
-                </h1>
-                <span className="px-2.5 py-0.5 text-[11px] rounded-full bg-indigo-100 dark:bg-indigo-500/25 text-indigo-700 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-400/30">
-                  {lang === 'ru' ? '1С ЗУП ↔ eBA Real' : '1C ZUP ↔ eBA Real Çapraz Denetim'}
-                </span>
-                <span className="px-2.5 py-0.5 text-[10.5px] rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                  {lang === 'ru'
-                    ? 'Подготовка к прямой API-интеграции с 1С ЗУП'
-                    : 'Manuel Excel • İleride 1C ZUP API / Otomatik Günlük Aktarım'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-3xl leading-relaxed">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <h1 className="text-base sm:text-lg font-normal tracking-tight text-slate-900 dark:text-white truncate">
                 {lang === 'ru'
-                  ? 'Пошаговый профессиональный анализ: от доли текущих сотрудников, трудоустроенных официально в 1С ЗУП, до выявления уволенных в eBA (но активных в ЗУП) и расхождений в паспортах, ИНН, статусах ВКС/Патент и табельных номерах.'
-                  : 'Mevcut çalışanların kaçının resmi 1C ZUP bordrosunda çalıştığından başlayarak; sahadan çıkış yapıp 1C ZUP’ta aktif kalanları ve pasaport, İNN, çalışma izni statüsü (VKS/Patent) ile sicil verilerindeki farkları tespit eden denetim merkezi.'}
-              </p>
+                  ? 'Сверка 1С ЗУП (Офиц.) и eBA (Реал)'
+                  : '1C ZUP (Resmi) & eBA (Real) Karşılaştırma'}
+              </h1>
+              <span className="px-2 py-0.5 text-[10.5px] rounded-full bg-indigo-100 dark:bg-indigo-500/25 text-indigo-700 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-400/30 whitespace-nowrap">
+                {lang === 'ru' ? 'Перекрестный аудит' : 'Çapraz Denetim'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowExplanation((prev) => !prev)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-[11px] transition-all cursor-pointer whitespace-nowrap"
+              >
+                <Info className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>{lang === 'ru' ? 'Описание и метод' : 'Açıklama & Nasıl Çalışır?'}</span>
+                {showExplanation ? (
+                  <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Action Buttons + Warning Banner right next to 1C ZUP Upload Button */}
-          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 shrink-0">
-            {/* Warning Box Right Next to ZUP Upload Button */}
+          {/* Right: Animated Outdated Warning Button + Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Animated Warning Trigger (Opens Popup Modal on Click) */}
             {metadata.isZupOutdated && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700/80 text-amber-900 dark:text-amber-200 text-[11.5px] leading-snug max-w-md shadow-2xs">
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <div>
-                  <span className="font-medium">
-                    {lang === 'ru'
-                      ? `Текущий список 1С ЗУП от ${metadata.zupDate} (eBA Real: ${metadata.ebaDate})`
-                      : `Mevcut 1C ZUP listesi ${metadata.zupDate} tarihlidir (Real eBA: ${metadata.ebaDate})`}
-                  </span>
-                  <span className="block text-[10.5px] text-amber-700 dark:text-amber-300">
-                    {lang === 'ru'
-                      ? 'Требуется обновление официального списка 1С ЗУП!'
-                      : 'Resmi 1C ZUP listesinin güncellenmesi gerekiyor!'}
-                  </span>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowOutdatedModal(true)}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100/90 hover:bg-amber-200/80 dark:bg-amber-950/90 dark:hover:bg-amber-900/80 border border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-200 text-xs transition-all cursor-pointer shadow-2xs ring-2 ring-amber-400/40 animate-pulse"
+                title={
+                  lang === 'ru'
+                    ? 'Нажмите для просмотра деталей предупреждения об актуальности списка 1С ЗУП'
+                    : 'Uyarı detayını görmek için tıklayın'
+                }
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-600 dark:bg-amber-400" />
+                </span>
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 animate-bounce" />
+                <span className="whitespace-nowrap">
+                  {lang === 'ru'
+                    ? `Обновить ЗУП (${metadata.zupDate})`
+                    : `Liste Güncelleme Uyarısı (${metadata.zupDate})`}
+                </span>
+              </button>
             )}
 
             {/* Hidden file input for 1C ZUP Excel Upload */}
@@ -699,7 +712,7 @@ export default function OfficialVsRealView() {
               type="button"
               disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs transition-all cursor-pointer shadow-xs"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
             >
               {uploading ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -709,11 +722,11 @@ export default function OfficialVsRealView() {
               <span>
                 {uploading
                   ? lang === 'ru'
-                    ? 'Загрузка ЗУП...'
-                    : '1C ZUP Yükleniyor...'
+                    ? 'Загрузка...'
+                    : 'Yükleniyor...'
                   : lang === 'ru'
-                  ? 'Загрузить список 1С ЗУП (.xlsx)'
-                  : '1C ZUP Personel Listesi Yükle (.xlsx)'}
+                  ? 'Загрузить 1С ЗУП (.xlsx)'
+                  : '1C ZUP Listesi Yükle (.xlsx)'}
               </span>
             </button>
 
@@ -721,11 +734,11 @@ export default function OfficialVsRealView() {
               type="button"
               disabled={sendingTelegram}
               onClick={handleSendTelegramSummary}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-xs transition-all cursor-pointer shadow-xs"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
               title={
                 lang === 'ru'
-                  ? 'Отправить сводку расхождений в группу Telegram (также отправляется автоматически после ежедневного отчета)'
-                  : 'Fark özetini Telegram grubuna gönder (Günlük eksik evrak raporunu takiben otomatik de gönderilir)'
+                  ? 'Отправить сводку расхождений в группу Telegram'
+                  : 'Fark özetini Telegram grubuna gönder'
               }
             >
               {sendingTelegram ? (
@@ -733,26 +746,49 @@ export default function OfficialVsRealView() {
               ) : (
                 <Send className="w-3.5 h-3.5" />
               )}
-              <span>
-                {lang === 'ru' ? 'Сводка в Telegram' : 'Telegram’a Fark Özeti Gönder'}
-              </span>
+              <span>{lang === 'ru' ? 'В Telegram' : 'Telegram’a Gönder'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleExportExcel}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs transition-all cursor-pointer shadow-xs"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Скачать Excel (5 листов)' : 'Detaylı Rapor İndir (.xlsx)'}</span>
+              <span>{lang === 'ru' ? 'Excel отчет' : 'Rapor İndir (.xlsx)'}</span>
             </button>
           </div>
         </div>
 
+        {/* Collapsible Explanation Panel (Closed by Default) */}
+        {showExplanation && (
+          <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-slate-900/80 border border-indigo-200/70 dark:border-indigo-900/60 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-indigo-700 dark:text-indigo-300">
+                {lang === 'ru'
+                  ? 'Как работает сверка 1С ЗУП (Официальная база) и eBA (Реальная база)?'
+                  : '1C ZUP (Resmi Bordro) ve eBA (Real Saha) Çapraz Karşılaştırma Sistemi Nasıl Çalışır?'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowExplanation(false)}
+                className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
+              >
+                {lang === 'ru' ? 'Скрыть ✕' : 'Kapat ✕'}
+              </button>
+            </div>
+            <p className="leading-relaxed text-[11.5px]">
+              {lang === 'ru'
+                ? '1) На первом шаге определяется, сколько из текущих активных сотрудников eBA официально трудоустроены в 1С ЗУП. 2) Выявляются критические расхождения: сотрудники, уволенные на площадке (в eBA статус "Çıkış"), но продолжающие числиться активными в 1С ЗУП, а также сотрудники основного штата Pondera без записи в 1С ЗУП. 3) На последнем шаге проверяются несовпадения в паспортах, ИНН, налоговых статусах (ВКС/Патент/РНР), датах рождения и формате табельных номеров. В дальнейшем загрузка из 1С ЗУП будет автоматизирована через API.'
+                : '1) İlk adımda sahada (eBA Real) aktif çalışan personelin kaçının 1C ZUP resmi bordrosunda kayıtlı olduğu analiz edilir. 2) Sahadan çıkış yaptığı halde 1C ZUP resmi sistemde hala aktif görünenler ile Pondera ana kadroda olup 1C ZUP kaydı bulunmayanlar tespit edilir. 3) Son adımda eşleşen personellerin pasaport no, İNN, çalışma/vergi statüsü (VKS/Patent/RNR), doğum tarihi ve sicil formatı farkları listelenir. Günlük eksik evrak raporunu takiben fark özeti Telegram grubuna otomatik iletilir.'}
+            </p>
+          </div>
+        )}
+
         {/* Status / Notification Feedback Banner */}
         {bannerMessage && (
           <div
-            className={`px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between border ${
+            className={`px-3.5 py-2 rounded-xl text-xs flex items-center justify-between border ${
               bannerMessage.type === 'success'
                 ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
                 : bannerMessage.type === 'error'
@@ -771,6 +807,96 @@ export default function OfficialVsRealView() {
           </div>
         )}
       </div>
+
+      {/* POPUP MODAL FOR OUTDATED 1C ZUP LIST WARNING */}
+      {showOutdatedModal && (
+        <div
+          onClick={() => setShowOutdatedModal(false)}
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-3xl bg-white dark:bg-[#131C31] border border-amber-300 dark:border-amber-700/80 shadow-2xl p-5 space-y-4 text-slate-900 dark:text-white"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base text-slate-900 dark:text-white">
+                    {lang === 'ru'
+                      ? 'Требуется обновление списка 1С ЗУП'
+                      : '1C ZUP Resmi Liste Güncelleme Uyarısı'}
+                  </h3>
+                  <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                    {lang === 'ru' ? 'Разница в датах выгрузки баз данных' : 'Veri Tarihleri Arasında Fark Tespit Edildi'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOutdatedModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-300">
+                  {lang === 'ru' ? 'Текущий список 1С ЗУП (Офиц.):' : 'Mevcut 1C ZUP Resmi Liste Tarihi:'}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-400/40">
+                  {metadata.zupDate} ({summary.zupOfficialTotal.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'})
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-300">
+                  {lang === 'ru' ? 'Реальная база eBA (Актив):' : 'Canlı eBA (Real) Liste Tarihi:'}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-400/40">
+                  {metadata.ebaDate} ({summary.realActiveTotal.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'})
+                </span>
+              </div>
+              <div className="pt-1 border-t border-amber-200/70 dark:border-amber-800/60 text-[11px] text-slate-600 dark:text-slate-300">
+                {lang === 'ru' ? 'Файл источника:' : 'Yüklü ZUP Dosyası:'}{' '}
+                <span className="text-slate-900 dark:text-white">{metadata.zupSourceFile}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              {lang === 'ru'
+                ? `В системе загружен список eBA от ${metadata.ebaDate}, тогда как официальная выгрузка из 1С ЗУП датирована ${metadata.zupDate}. Для 100% точной сверки недавно принятых и уволенных сотрудников рекомендуется загрузить свежий Excel-файл из 1С ЗУП.`
+                : `Sistemde şu an ${metadata.ebaDate} tarihli Real eBA personel listesi yüklüdür; ancak 1C ZUP resmi personel listesi ${metadata.zupDate} tarihlidir. Son günlerdeki işe giriş ve çıkışların tam mutabakatı için güncel 1C ZUP Excel listesinin yüklenmesi gerekmektedir.`}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOutdatedModal(false);
+                  fileInputRef.current?.click();
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs cursor-pointer transition-all"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>
+                  {lang === 'ru' ? 'Загрузить новый список 1С ЗУП' : 'Yeni 1C ZUP Listesi Yükle (.xlsx)'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowOutdatedModal(false)}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs cursor-pointer transition-all"
+              >
+                {lang === 'ru' ? 'Понятно' : 'Anladım / Kapat'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* =====================================================================
           ADIM 1: MEVCUT ÇALIŞANLARIN KAÇI RESMİDE (1C ZUP) ÇALIŞIYOR?

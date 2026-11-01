@@ -13,23 +13,23 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>('light');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     try {
-      const savedTheme = localStorage.getItem('pondera_theme') as Theme | null;
+      const savedTheme = localStorage.getItem('pondera_theme_v2') as Theme | null;
       if (savedTheme === 'light' || savedTheme === 'dark') {
         setThemeState(savedTheme);
         document.documentElement.classList.toggle('dark', savedTheme === 'dark');
       } else {
-        // Default to dark mode per user request
-        setThemeState('dark');
-        document.documentElement.classList.add('dark');
-        localStorage.setItem('pondera_theme', 'dark');
+        // Default to light mode per user request
+        setThemeState('light');
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('pondera_theme_v2', 'light');
       }
     } catch {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('dark');
     } finally {
       setMounted(true);
     }
@@ -38,7 +38,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
     try {
-      localStorage.setItem('pondera_theme', newTheme);
+      localStorage.setItem('pondera_theme_v2', newTheme);
       document.documentElement.classList.toggle('dark', newTheme === 'dark');
     } catch {}
   };

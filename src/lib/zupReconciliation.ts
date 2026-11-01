@@ -150,11 +150,24 @@ export function ensureZupTableAndSeed(db: any): void {
   `);
 
   const countRow = db.prepare('SELECT COUNT(*) as c FROM zup_official_personnel').get() as { c: number };
-  if (countRow && countRow.c > 0) {
+  const srcRow = db
+    .prepare("SELECT value FROM system_info WHERE key = 'zup_source_file'")
+    .get() as { value?: string } | undefined;
+  const vksCountRow = db
+    .prepare("SELECT COUNT(*) as c FROM zup_official_personnel WHERE permit_category = 'VKS'")
+    .get() as { c: number };
+
+  const needsReseed =
+    !countRow ||
+    countRow.c === 0 ||
+    (srcRow?.value && srcRow.value.includes('???')) ||
+    (countRow.c === 4594 && (!vksCountRow || vksCountRow.c === 0));
+
+  if (!needsReseed) {
     return;
   }
 
-  // Auto-seed from data/zup_official_seed.json.gz if table is empty
+  // Auto-seed from data/zup_official_seed.json.gz if table is empty or had mangled encoding
   try {
     const seedPath = path.join(process.cwd(), 'data', 'zup_official_seed.json.gz');
     if (!fs.existsSync(seedPath)) return;
@@ -165,14 +178,23 @@ export function ensureZupTableAndSeed(db: any): void {
       source_file?: string;
       records?: ZupOfficialRecord[];
     };
-    const records = parsed.records || [];
+    const records = (parsed.records || []).map((r) => ({
+      ...r,
+      permit_category: mapZupTaxStatusToPermitCategory(r.tax_status),
+      citizenship_tr: CITIZENSHIP_RU_TO_TR[String(r.citizenship_ru || '').toUpperCase()] || r.citizenship_tr || r.citizenship_ru,
+    }));
     if (records.length === 0) return;
+
+    const cleanSource =
+      parsed.source_file && !parsed.source_file.includes('???')
+        ? parsed.source_file
+        : 'Список сотрудников на 29.10.xlsx';
 
     saveZupRecordsToDb(
       db,
       records,
       parsed.report_date || '29.10.2026',
-      parsed.source_file || 'Список сотрудников на 29.10.xlsx'
+      cleanSource
     );
   } catch {}
 }
@@ -347,7 +369,10 @@ export function computeZupVsRealReconciliation(db: any) {
 
   const ebaDate = sysMap['data_freshness'] || '31.10.2026';
   const zupDate = sysMap['zup_data_freshness'] || '29.10.2026';
-  const zupSourceFile = sysMap['zup_source_file'] || 'Список сотрудников на 29.10.xlsx';
+  const rawZupSource = sysMap['zup_source_file'] || 'Список сотрудников на 29.10.xlsx';
+  const zupSourceFile = rawZupSource.includes('???')
+    ? 'Список сотрудников на 29.10.xlsx'
+    : rawZupSource;
   const zupLastUpdated = sysMap['zup_last_updated'] || '';
 
   const cacheKey = `${pVer.cnt}:${pVer.maxId}:${zVer.cnt}:${zVer.maxId}:${ebaDate}:${zupDate}`;
@@ -358,9 +383,16 @@ export function computeZupVsRealReconciliation(db: any) {
     return gCache.__ponderaZupReconciliationCache.data;
   }
 
-  const zupRows = db
-    .prepare('SELECT * FROM zup_official_personnel ORDER BY row_no ASC')
-    .all() as ZupOfficialRecord[];
+  const zupRows = (
+    db.prepare('SELECT * FROM zup_official_personnel ORDER BY row_no ASC').all() as ZupOfficialRecord[]
+  ).map((r) => ({
+    ...r,
+    permit_category: mapZupTaxStatusToPermitCategory(r.tax_status),
+    citizenship_tr:
+      CITIZENSHIP_RU_TO_TR[String(r.citizenship_ru || '').toUpperCase()] ||
+      r.citizenship_tr ||
+      r.citizenship_ru,
+  }));
 
   const ebaRows = db
     .prepare(
