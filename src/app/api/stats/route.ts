@@ -4,7 +4,7 @@ import {
   WORK_PERMIT_CASE_SQL,
   normalizePermitFilterKey,
   buildNormalizedDateSql,
-  getDatasetReferenceDate,
+  getDatasetReferenceDates,
 } from '@/lib/workPermits';
 
 export const runtime = 'nodejs';
@@ -509,7 +509,7 @@ export async function GET(request: Request) {
     }
 
     // 11b. Turnover & Entry/Exit Period Analytics (1d, 3d, 7d, 30d, all + VKS Breakdown)
-    const refDate = getDatasetReferenceDate(db);
+    const { refDate, inRefDate, outRefDate } = getDatasetReferenceDates(db);
     const turnoverBaseWhere = buildWhere(['status', 'permit']);
     let turnoverAnalytics: any = undefined;
     try {
@@ -553,42 +553,42 @@ export async function GET(request: Request) {
           )`
         )
         .get(
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
-          refDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          inRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
+          outRefDate,
           ...turnoverBaseWhere.params
         ) as any;
 

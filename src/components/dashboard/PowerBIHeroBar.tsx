@@ -35,6 +35,10 @@ interface PowerBIHeroBarProps {
   annualExits?: number;
   last30dIn?: number;
   last30dOut?: number;
+  last30dInVks?: number;
+  last30dOutVks?: number;
+  allInVks?: number;
+  allOutVks?: number;
   firmFilter: 'all' | 'main' | 'subcon';
   setFirmFilter: (filter: 'all' | 'main' | 'subcon') => void;
   onRefresh: () => void;
@@ -57,6 +61,10 @@ export default function PowerBIHeroBar({
   annualExits = 205,
   last30dIn,
   last30dOut,
+  last30dInVks,
+  last30dOutVks,
+  allInVks,
+  allOutVks,
   firmFilter,
   setFirmFilter,
   onRefresh,
@@ -86,6 +94,10 @@ export default function PowerBIHeroBar({
     last30dOut !== undefined
       ? last30dOut
       : monthlyExits[monthlyExits.length - 1]?.out_count || 703;
+  const inVksLatest = last30dInVks ?? 45;
+  const outVksLatest = last30dOutVks ?? 396;
+  const inVksRate = inLatest > 0 ? Math.round((inVksLatest / inLatest) * 100) : 0;
+  const outVksRate = outLatest > 0 ? Math.round((outVksLatest / outLatest) * 100) : 0;
   const totalFlow = inLatest + outLatest || 1;
   const inPct = Math.round((inLatest / totalFlow) * 100);
   const outPct = Math.round((outLatest / totalFlow) * 100);
@@ -222,8 +234,15 @@ export default function PowerBIHeroBar({
             <span className="text-[11px] text-emerald-700 dark:text-teal-400 font-medium">{lang === 'ru' ? 'В месяц' : 'Aylık Devir'}</span>
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-            <span>{lang === 'ru' ? 'Уволено 2026:' : '2026 Çıkış:'} <strong className="text-slate-800 dark:text-slate-200 font-medium">{annualExits.toLocaleString('tr-TR')} {t('unit_person')}</strong></span>
-            <span className="font-mono text-emerald-700 dark:text-teal-300 group-hover:underline">{lang === 'ru' ? 'Детали →' : 'Detay Gör →'}</span>
+            <span>
+              {lang === 'ru' ? 'Уволено 2026:' : '2026 Çıkış:'}{' '}
+              <strong className="text-slate-800 dark:text-slate-200 font-bold">
+                {annualExits.toLocaleString('tr-TR')}
+              </strong>
+            </span>
+            <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-bold border border-purple-300/60 dark:border-purple-700/60">
+              VKS: -{outVksLatest} (%{outVksRate})
+            </span>
           </div>
         </div>
 
@@ -258,13 +277,17 @@ export default function PowerBIHeroBar({
             </span>
             <ArrowUpRight className="w-3.5 h-3.5 text-rose-500 dark:text-teal-400 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
           </div>
-          <div className="mt-1">
+          <div className="mt-1 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">+{inLatest} {lang === 'ru' ? 'Прием' : 'Giriş'}</span>
-              <span className="text-rose-700 dark:text-rose-400 font-semibold">-{outLatest} {lang === 'ru' ? 'Увольнение' : 'Çıkış'}</span>
+              <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+                +{inLatest.toLocaleString('tr-TR')} {lang === 'ru' ? 'Прием' : 'Giriş'}
+              </span>
+              <span className="text-rose-700 dark:text-rose-400 font-bold">
+                -{outLatest.toLocaleString('tr-TR')} {lang === 'ru' ? 'Увольнение' : 'Çıkış'}
+              </span>
             </div>
             {/* Dual color flow bar matching Power BI */}
-            <div className="w-full h-3 rounded-full mt-1.5 overflow-hidden flex text-[10px] font-semibold text-slate-900">
+            <div className="w-full h-3 rounded-full overflow-hidden flex text-[10px] font-bold text-slate-900">
               <div
                 className="bg-emerald-400 h-full flex items-center justify-center transition-all"
                 style={{ width: `${Math.max(15, inPct)}%` }}
@@ -277,6 +300,15 @@ export default function PowerBIHeroBar({
               >
                 %{outPct}
               </div>
+            </div>
+            {/* VKS count & ratio row inside Giriş / Çıkış Akışı */}
+            <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px] font-bold">
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                VKS: +{inVksLatest} (%{inVksRate})
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                VKS: -{outVksLatest} (%{outVksRate})
+              </span>
             </div>
           </div>
         </div>

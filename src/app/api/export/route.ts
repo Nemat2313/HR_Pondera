@@ -5,7 +5,7 @@ import {
   WORK_PERMIT_CASE_SQL,
   normalizePermitFilterKey,
   buildNormalizedDateSql,
-  getDatasetReferenceDate,
+  getDatasetReferenceDates,
 } from '@/lib/workPermits';
 import * as XLSX from 'xlsx';
 
@@ -250,7 +250,8 @@ export async function GET(request: Request) {
 
     // Status or Movement/Period filter
     if (movementType === 'entry' || movementType === 'exit') {
-      const refDate = getDatasetReferenceDate(db);
+      const { inRefDate, outRefDate } = getDatasetReferenceDates(db);
+      const refDate = movementType === 'entry' ? inRefDate : outRefDate;
       const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
       const daysMap: Record<string, number> = { '1d': 1, '3d': 3, '7d': 7, '30d': 30 };
       const days = daysMap[period];

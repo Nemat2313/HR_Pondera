@@ -357,6 +357,10 @@ export default function OverviewView({
         annualExits={pbi?.annualExits || 205}
         last30dIn={stats?.turnoverAnalytics?.periods?.['30d']?.inTotal}
         last30dOut={stats?.turnoverAnalytics?.periods?.['30d']?.outTotal}
+        last30dInVks={stats?.turnoverAnalytics?.periods?.['30d']?.inVks}
+        last30dOutVks={stats?.turnoverAnalytics?.periods?.['30d']?.outVks}
+        allInVks={stats?.turnoverAnalytics?.periods?.all?.inVks}
+        allOutVks={stats?.turnoverAnalytics?.periods?.all?.outVks}
         firmFilter={firmFilter}
         setFirmFilter={setFirmFilter}
         onRefresh={() => onResetFilters()}
