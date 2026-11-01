@@ -79,20 +79,23 @@ interface EmailLogItem {
 }
 
 export const CORPORATE_IT_EMAIL_SUBJECT =
-  'Pondera HR TeamHub (hr.pondera.network) — Kurumsal Bildirim Mail Hesabı (info@pondera.ru), Güvenlik Özeti ve 1C ZUP Günlük Otomatik Veri Aktarımı Hk.';
+  'Pondera HR TeamHub (hr.pondera.network) — Kurumsal Bildirim Mail Hesabı (info@pondera.ru), Gosuslugi RPA Robotu, Güvenlik Özeti ve 1C ZUP Günlük Otomatik Veri Aktarımı Hk.';
 
 export const CORPORATE_IT_EMAIL_BODY = `Sayın Barış Bey,
 
 Temin etmiş olduğunuz sunucu ve altyapı yetkileri doğrultusunda geliştirdiğimiz Pondera İK & Saha Operasyon Yönetim Platformu (https://hr.pondera.network) canlı ortamda aktif olarak çalışmaya başlamıştır.
 
-Rusya genelinde Telegram servislerine VPN olmadan erişim sağlanamaması sebebiyle, sistemin ürettiği günlük kritik İK ve saha denetim raporlarını ilgili yöneticilerimize doğrudan Kurumsal E-Posta (To / CC) üzerinden otomatik paylaşacak altyapıyı uygulamamıza entegre ettik. Ayrıca resmi 1C ZUP bordro sistemi ile sahadaki eBA Real verilerini çapraz karşılaştıran modülümüzü de devreye aldık.
+Şu anda sistemimizin ürettiği otomatik bildirimler ve günlük raporlar aktif olarak Telegram grubumuza gönderilmektedir. Dilerseniz aşağıdaki bağlantı üzerinden gruba katılarak canlı bildirim akışını inceleyebilirsiniz:
+🔗 Telegram Bildirim Grubu: https://t.me/+kLoRhALjYC8zNDdi
+
+Ancak Rusya genelinde Telegram servisleri VPN olmadan çalışmadığı için, bu bildirimleri ve günlük kritik İK / saha denetim raporlarını ilgili yöneticilerimize aynı zamanda doğrudan Kurumsal E-Posta (To / CC) üzerinden de otomatik paylaşacak altyapıyı uygulamamıza entegre ettik. Ayrıca Gosuslugi başvurularını RPA robotumuz ile otomatize ettik ve resmi 1C ZUP bordro sistemi ile sahadaki eBA Real verilerini çapraz karşılaştıran modülümüzü de devreye aldık.
 
 Bu kapsamda iki konuda desteğinizi ve yönlendirmenizi rica ederiz:
 
 ====================================================================
 1. KURUMSAL BİLDİRİM MAİL HESABI AÇILMASI (Örn: info@pondera.ru)
 ====================================================================
-Uygulamamızın "Ayarlar > Mail Bildirimleri" ekranından günlük raporların (Eksik Evrak Süre Raporu, 1C ZUP vs eBA Real Fark Özeti, VKS Gosuslugi Bildirim Takibi ve Turnover Raporu) otomatik gönderilebilmesi için "info@pondera.ru" (veya uygun göreceğiniz "ik-bildirim@pondera.ru" / "noreply@pondera.ru") adında bir mail hesabı açılmasını ve aşağıdaki bağlantı bilgilerinin tarafımızla paylaşılmasını rica ederiz:
+Rusya'da Telegram'ın VPN gerektirmesi nedeniyle, uygulamamızın "Ayarlar > Mail Bildirimleri" ekranından günlük raporların (Eksik Evrak Süre Raporu, 1C ZUP vs eBA Real Fark Özeti, VKS Gosuslugi Bildirim Takibi ve Turnover Raporu) mail üzerinden de otomatik gönderilebilmesi için "info@pondera.ru" (veya uygun göreceğiniz "ik-bildirim@pondera.ru" / "noreply@pondera.ru") adında bir mail hesabı açılmasını ve aşağıdaki bağlantı bilgilerinin tarafımızla paylaşılmasını rica ederiz:
 
 • E-Posta Adresi (Kullanıcı Adı): info@pondera.ru
 • Şifre / Uygulama Şifresi (App Password):
@@ -126,12 +129,12 @@ Ancak 1C ZUP Excel listesinin her gün manuel indirilip yüklenmesi yerine bu s�
 ====================================================================
 Sunucu ve uygulama yetkileri halihazırda IT direktörlüğünüz kontrolünde olup, geliştirdiğimiz sistemde devreye alınan başlıca modüller ve güvenlik katmanları şunlardır:
 
-A) Canlıya Alınan Modüller:
-1. Genel Dashboard & Şantiye Analitiği: 5.221 aktif personel, Kazan (4 alt şantiye kırılımlı), Svobodny-AGHK, Tobolsk, Ust Luga ve Merkez Ofis canlı kadro dağılımları.
-2. Yönetim & Turnover Analizi: Şirket içi şantiye transferleri çıkış sayılarından arındırılarak son 1 gün, 3 gün, 1 hafta ve 1 aylık gerçek giriş/çıkışlar ile VKS uzman oranları.
-3. Evrak & Süre Analitiği: Pasaport, Vize, Patent, Registrasyon, DMS, Daktiloskopiya ve Propusk bitiş süreleri ile Standby (evrak bekleyen) personel takibi.
-4. 1C ZUP (Resmi) & eBA (Real) Çapraz Karşılaştırma Merkezi: Resmi bordro ile fiili saha kadrosunun yan yana grafiksel ve tablosal mutabakatı, şantiye transferlerinde çalışma izni bölge kontrolü.
-5. VKS Gosuslugi Robotu & İstatistikleri: VKS uzmanlarının 3 iş günü yasal MVD bildirim sürelerinin takibi.
+A) Canlıya Alınan Modüller & Gosuslugi RPA Robot Otomasyonu:
+1. Gosuslugi Başvuru Robotu (RPA Otomasyonu) & VKS İstatistikleri: VKS (Yüksek Nitelikli Uzman) personellerin Gosuslugi / MVD işe giriş ve işten çıkış yasal bildirim başvurularını geliştirdiğimiz robot ile otomatize ettik; 3 iş günü yasal bildirim sürelerini ve başvuru durumlarını canlı takip ediyoruz. İlerleyen aşamada diğer tüm personel kategorilerinin işe giriş/çıkış bildirimlerini ve personel registrasyon (Миграционный учет) işlemlerini de aynı robot altyapısı üzerinden tam otomatik hale getirecek şekilde geliştirmeye devam edeceğiz.
+2. Genel Dashboard & Şantiye Analitiği: 5.221 aktif personel, Kazan (4 alt şantiye kırılımlı), Svobodny-AGHK, Tobolsk, Ust Luga ve Merkez Ofis canlı kadro dağılımları.
+3. Yönetim & Turnover Analizi: Şirket içi şantiye transferleri çıkış sayılarından arındırılarak son 1 gün, 3 gün, 1 hafta ve 1 aylık gerçek giriş/çıkışlar ile VKS uzman oranları.
+4. Evrak & Süre Analitiği: Pasaport, Vize, Patent, Registrasyon, DMS, Daktiloskopiya ve Propusk bitiş süreleri ile Standby (evrak bekleyen) personel takibi.
+5. 1C ZUP (Resmi) & eBA (Real) Çapraz Karşılaştırma Merkezi: Resmi bordro ile fiili saha kadrosunun yan yana grafiksel ve tablosal mutabakatı, şantiye transferlerinde çalışma izni bölge kontrolü.
 
 B) Uygulanan Güvenlik ve Veri Koruma Önlemleri:
 1. İzole Kurumsal Veritabanı (On-Premise SQLite WAL): Tüm personel verileri dış bulut servislerine çıkmadan yalnızca kendi sunucumuzda (hr.pondera.network) izole olarak tutulmaktadır.
