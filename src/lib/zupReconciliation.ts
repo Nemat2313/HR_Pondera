@@ -412,6 +412,11 @@ export function computeZupVsRealReconciliation(db: any) {
   const ebaByInn = new Map<string, any>();
   const ebaByKirilName = new Map<string, any>();
 
+  // Active-only indexes to detect when a transferred employee has a newer 'Mevcut' record under a new sicil
+  const ebaActiveByPassport = new Map<string, any>();
+  const ebaActiveByInn = new Map<string, any>();
+  const ebaActiveByKirilName = new Map<string, any>();
+
   for (const r of ebaRows) {
     const exactSicil = String(r.sicil_no || '').trim();
     const normSicil = normalizeSicilDigits(exactSicil);
@@ -424,16 +429,31 @@ export function computeZupVsRealReconciliation(db: any) {
       ebaByNormSicil.set(normSicil, r);
     }
     const passDigits = normalizeDigitsOnly(r.pasaport_no);
-    if (passDigits.length >= 5 && (!ebaByPassport.has(passDigits) || isActive)) {
-      ebaByPassport.set(passDigits, r);
+    if (passDigits.length >= 5) {
+      if (!ebaByPassport.has(passDigits) || isActive) {
+        ebaByPassport.set(passDigits, r);
+      }
+      if (isActive) {
+        ebaActiveByPassport.set(passDigits, r);
+      }
     }
     const innDigits = normalizeDigitsOnly(r.inn_no);
-    if (innDigits.length >= 10 && (!ebaByInn.has(innDigits) || isActive)) {
-      ebaByInn.set(innDigits, r);
+    if (innDigits.length >= 10) {
+      if (!ebaByInn.has(innDigits) || isActive) {
+        ebaByInn.set(innDigits, r);
+      }
+      if (isActive) {
+        ebaActiveByInn.set(innDigits, r);
+      }
     }
     const kirilNorm = normalizeCyrillicName(r.tam_adi_kiril);
-    if (kirilNorm && (!ebaByKirilName.has(kirilNorm) || isActive)) {
-      ebaByKirilName.set(kirilNorm, r);
+    if (kirilNorm) {
+      if (!ebaByKirilName.has(kirilNorm) || isActive) {
+        ebaByKirilName.set(kirilNorm, r);
+      }
+      if (isActive) {
+        ebaActiveByKirilName.set(kirilNorm, r);
+      }
     }
   }
 
@@ -445,7 +465,13 @@ export function computeZupVsRealReconciliation(db: any) {
   let matchedByDocOrInnCount = 0;
   let matchedActiveBoth = 0;
   let zupActiveButRealExited = 0;
+  let zupTransferPermitCheckCount = 0;
   let zupOnlyNotInRealDB = 0;
+
+  // Permit-level breakdown counters for interactive comparison chart
+  const zupPermitActiveMatched: Record<string, number> = { VKS: 0, PATENT: 0, QUOTA_RNR: 0, RESIDENT: 0, EAES: 0 };
+  const zupPermitTransfer: Record<string, number> = { VKS: 0, PATENT: 0, QUOTA_RNR: 0, RESIDENT: 0, EAES: 0 };
+  const zupPermitRealExited: Record<string, number> = { VKS: 0, PATENT: 0, QUOTA_RNR: 0, RESIDENT: 0, EAES: 0 };
 
   // Field-level discrepancy counters among matched employees
   let diffSicilFormatCount = 0;
@@ -468,6 +494,7 @@ export function computeZupVsRealReconciliation(db: any) {
 
     let matchedEba: any = null;
     let matchMethod: 'EXACT_SICIL' | 'NORM_SICIL' | 'PASSPORT' | 'INN' | 'KIRIL_NAME' | 'NONE' = 'NONE';
+    let transferredFromOldRow: any = null;
 
     if (zTabel && ebaByExactSicil.has(zTabel)) {
       matchedEba = ebaByExactSicil.get(zTabel);
@@ -494,6 +521,22 @@ export function computeZupVsRealReconciliation(db: any) {
       matchMethod = 'KIRIL_NAME';
       matchedByDocOrInnCount++;
     }
+
+    // If matched by sicil to an exited row, check if the employee was transferred and has a newer 'Mevcut' row
+    if (matchedEba && matchedEba.genel_durum !== 'Mevcut') {
+      const altActive =
+        (zPassDigits.length >= 5 && ebaActiveByPassport.get(zPassDigits)) ||
+        (zFullPassDigits.length >= 6 && ebaActiveByPassport.get(zFullPassDigits)) ||
+        (zInnDigits.length >= 10 && ebaActiveByInn.get(zInnDigits)) ||
+        (zKirilNorm && ebaActiveByKirilName.get(zKirilNorm)) ||
+        null;
+      if (altActive && altActive.id !== matchedEba.id) {
+        transferredFromOldRow = matchedEba;
+        matchedEba = altActive;
+      }
+    }
+
+    const zPermitBucket = zr.permit_category || 'QUOTA_RNR';
 
     if (!matchedEba) {
       zupOnlyNotInRealDB++;
@@ -531,6 +574,9 @@ export function computeZupVsRealReconciliation(db: any) {
     }
 
     matchedEbaIds.add(matchedEba.id);
+    if (transferredFromOldRow) {
+      matchedEbaIds.add(transferredFromOldRow.id);
+    }
 
     let rawJson: Record<string, any> = {};
     if (matchedEba.all_data_json) {
@@ -553,17 +599,49 @@ export function computeZupVsRealReconciliation(db: any) {
     const diffDetailsRu: string[] = [];
 
     const isEbaActive = matchedEba.genel_durum === 'Mevcut';
+    const exitReasonStr = String(matchedEba.cikis_sebebi || '').trim();
+    const isInterSiteTransfer =
+      Boolean(transferredFromOldRow) ||
+      (!isEbaActive && exitReasonStr.toLowerCase().includes('transfer'));
+
     if (isEbaActive) {
       matchedActiveBoth++;
+      if (transferredFromOldRow) {
+        zupTransferPermitCheckCount++;
+        zupPermitTransfer[zPermitBucket] = (zupPermitTransfer[zPermitBucket] || 0) + 1;
+        diffFlags.push('SITE_TRANSFER_PERMIT_CHECK');
+        diffDetailsTr.push(
+          `Şantiye Transferi (${transferredFromOldRow.region}/${transferredFromOldRow.proje_adi} → ${matchedEba.region}/${matchedEba.proje_adi}): Resmi 1C ZUP çıkışına gerek yok; çalışma izni/patent bölge geçerliliği kontrol edilmeli.`
+        );
+        diffDetailsRu.push(
+          `Перевод между участками (${transferredFromOldRow.region} → ${matchedEba.region}): увольнение в 1С ЗУП не требуется; проверьте регион действия разрешения/патента.`
+        );
+      } else {
+        zupPermitActiveMatched[zPermitBucket] = (zupPermitActiveMatched[zPermitBucket] || 0) + 1;
+      }
+    } else if (isInterSiteTransfer) {
+      // Inter-site transfer: NOT a real company exit! Counted as official & transfer-active
+      matchedActiveBoth++;
+      zupTransferPermitCheckCount++;
+      zupPermitTransfer[zPermitBucket] = (zupPermitTransfer[zPermitBucket] || 0) + 1;
+      diffFlags.push('SITE_TRANSFER_PERMIT_CHECK');
+      const exitStr = formatIsoToDisplay(ebaExitIso);
+      diffDetailsTr.push(
+        `Şirket İçi Şantiye Transferi (${matchedEba.region} - ${exitReasonStr || 'Transfer'}, ${exitStr}): 1C ZUP'ta çıkış işlemine gerek yoktur; yalnızca yeni şantiye bölgesine göre Çalışma İzni / Patent kontrol edilmelidir.`
+      );
+      diffDetailsRu.push(
+        `Внутренний перевод между объектами (${matchedEba.region} - ${exitReasonStr || 'Transfer'}, ${exitStr}): увольнение в 1С ЗУП не требуется; необходим только контроль региона разрешения на работу / патента.`
+      );
     } else {
       zupActiveButRealExited++;
+      zupPermitRealExited[zPermitBucket] = (zupPermitRealExited[zPermitBucket] || 0) + 1;
       diffFlags.push('STATUS_EXIT');
       const exitStr = formatIsoToDisplay(ebaExitIso);
       diffDetailsTr.push(
-        `Real (eBA) sistemde ÇIKIŞ (${exitStr}${matchedEba.cikis_sebebi ? ' - ' + matchedEba.cikis_sebebi : ''}), 1C ZUP'ta hala AKTİF!`
+        `Real (eBA) sistemde ÇIKIŞ (${exitStr}${exitReasonStr ? ' - ' + exitReasonStr : ''}), 1C ZUP'ta hala AKTİF!`
       );
       diffDetailsRu.push(
-        `В eBA Real статус УВОЛЕН (${exitStr}), но в 1С ЗУП все еще АКТИВЕН!`
+        `В eBA Real статус УВОЛЕН (${exitStr}${exitReasonStr ? ' - ' + exitReasonStr : ''}), но в 1С ЗУП все еще АКТИВЕН!`
       );
     }
 
@@ -636,20 +714,25 @@ export function computeZupVsRealReconciliation(db: any) {
       diffHireDateCount++;
     }
 
-    if (diffFlags.length > 0 && isEbaActive) {
+    if (diffFlags.length > 0 && (isEbaActive || isInterSiteTransfer)) {
       totalMatchedWithDataDiff++;
     }
 
-    const category = !isEbaActive
+    const category = isInterSiteTransfer
+      ? 'SITE_TRANSFER_PERMIT_CHECK'
+      : !isEbaActive
       ? 'ZUP_ACTIVE_REAL_EXIT'
       : diffFlags.length > 0
       ? 'DATA_DIFF'
       : 'FULL_MATCH';
 
     const risk =
-      !isEbaActive
+      !isEbaActive && !isInterSiteTransfer
         ? 'Kritik'
-        : diffFlags.includes('PASSPORT_DIFF') || diffFlags.includes('PERMIT_DIFF') || diffFlags.includes('INN_DIFF')
+        : isInterSiteTransfer ||
+          diffFlags.includes('PASSPORT_DIFF') ||
+          diffFlags.includes('PERMIT_DIFF') ||
+          diffFlags.includes('INN_DIFF')
         ? 'Orta'
         : 'Dusuk';
 
@@ -669,7 +752,7 @@ export function computeZupVsRealReconciliation(db: any) {
       firma: matchedEba.firma || 'PONDERA',
       gorev: matchedEba.gorevi || zr.position_ru,
       zup_position: zr.position_ru,
-      eba_status: matchedEba.genel_durum,
+      eba_status: isInterSiteTransfer && !isEbaActive ? `Şantiye Transferi (${exitReasonStr || 'Transfer'})` : matchedEba.genel_durum,
       zup_status: '1C ZUP Aktif',
       eba_permit: ebaPermit,
       zup_permit: zr.permit_category,
@@ -701,6 +784,16 @@ export function computeZupVsRealReconciliation(db: any) {
   let realActiveNotInZupSubcon = 0;
   let realActiveNotInZupRecentHire = 0;
 
+  interface SiteBucket {
+    project: string;
+    realActive: number;
+    inZupOfficial: number;
+    missingMainFirm: number;
+    missingSubcon: number;
+    zupActiveRealExit: number;
+    transferCount: number;
+  }
+
   const regionStatsMap: Record<
     string,
     {
@@ -710,11 +803,14 @@ export function computeZupVsRealReconciliation(db: any) {
       missingMainFirm: number;
       missingSubcon: number;
       zupActiveRealExit: number;
+      transferCount: number;
+      projectsMap: Record<string, SiteBucket>;
     }
   > = {};
 
   for (const r of ebaRows) {
     const reg = r.region || 'Diğer';
+    const prj = r.proje_adi || reg;
     if (!regionStatsMap[reg]) {
       regionStatsMap[reg] = {
         region: reg,
@@ -723,15 +819,33 @@ export function computeZupVsRealReconciliation(db: any) {
         missingMainFirm: 0,
         missingSubcon: 0,
         zupActiveRealExit: 0,
+        transferCount: 0,
+        projectsMap: {},
       };
     }
+    if (!regionStatsMap[reg].projectsMap[prj]) {
+      regionStatsMap[reg].projectsMap[prj] = {
+        project: prj,
+        realActive: 0,
+        inZupOfficial: 0,
+        missingMainFirm: 0,
+        missingSubcon: 0,
+        zupActiveRealExit: 0,
+        transferCount: 0,
+      };
+    }
+    const pBucket = regionStatsMap[reg].projectsMap[prj];
 
     const isMatched = matchedEbaIds.has(r.id);
     const isMainFirm = String(r.firma || '').toUpperCase().includes('PONDERA');
+    const isTransferRow =
+      r.genel_durum !== 'Mevcut' &&
+      String(r.cikis_sebebi || '').toLowerCase().includes('transfer');
 
     if (r.genel_durum === 'Mevcut') {
       realActiveTotal++;
       regionStatsMap[reg].realActive++;
+      pBucket.realActive++;
       if (isMainFirm) {
         realActiveMainFirm++;
       } else {
@@ -740,6 +854,7 @@ export function computeZupVsRealReconciliation(db: any) {
 
       if (isMatched) {
         regionStatsMap[reg].inZupOfficial++;
+        pBucket.inZupOfficial++;
       } else {
         realActiveNotInZupTotal++;
         const hireIso = normalizeDateValue(r.ise_giris_tarihi);
@@ -750,9 +865,11 @@ export function computeZupVsRealReconciliation(db: any) {
         if (isMainFirm) {
           realActiveNotInZupMainFirm++;
           regionStatsMap[reg].missingMainFirm++;
+          pBucket.missingMainFirm++;
         } else {
           realActiveNotInZupSubcon++;
           regionStatsMap[reg].missingSubcon++;
+          pBucket.missingSubcon++;
         }
 
         let rawJson: Record<string, any> = {};
@@ -812,17 +929,40 @@ export function computeZupVsRealReconciliation(db: any) {
         });
       }
     } else if (isMatched) {
-      regionStatsMap[reg].zupActiveRealExit++;
+      if (isTransferRow) {
+        regionStatsMap[reg].transferCount++;
+        pBucket.transferCount++;
+      } else {
+        regionStatsMap[reg].zupActiveRealExit++;
+        pBucket.zupActiveRealExit++;
+      }
     }
   }
 
-  // Sort regions by realActive descending
+  // Sort regions by realActive descending, including expandable projects array
   const byRegion = Object.values(regionStatsMap)
-    .filter((r) => r.realActive > 0 || r.zupActiveRealExit > 0)
-    .map((r) => ({
-      ...r,
-      officialRatePct: r.realActive > 0 ? Math.round((r.inZupOfficial / r.realActive) * 100) : 0,
-    }))
+    .filter((r) => r.realActive > 0 || r.zupActiveRealExit > 0 || r.transferCount > 0)
+    .map((r) => {
+      const projects = Object.values(r.projectsMap)
+        .filter((p) => p.realActive > 0 || p.zupActiveRealExit > 0 || p.transferCount > 0)
+        .map((p) => ({
+          ...p,
+          officialRatePct: p.realActive > 0 ? Math.round((p.inZupOfficial / p.realActive) * 100) : 0,
+        }))
+        .sort((a, b) => b.realActive - a.realActive);
+
+      return {
+        region: r.region,
+        realActive: r.realActive,
+        inZupOfficial: r.inZupOfficial,
+        missingMainFirm: r.missingMainFirm,
+        missingSubcon: r.missingSubcon,
+        zupActiveRealExit: r.zupActiveRealExit,
+        transferCount: r.transferCount,
+        officialRatePct: r.realActive > 0 ? Math.round((r.inZupOfficial / r.realActive) * 100) : 0,
+        projects,
+      };
+    })
     .sort((a, b) => b.realActive - a.realActive);
 
   // Permit category comparison (1C ZUP vs eBA Real Active)
@@ -845,6 +985,21 @@ export function computeZupVsRealReconciliation(db: any) {
     RESIDENT: 0,
     EAES: 0,
   };
+  const ebaRealOnlyMainPermitCounts: Record<string, number> = {
+    VKS: 0,
+    PATENT: 0,
+    QUOTA_RNR: 0,
+    RESIDENT: 0,
+    EAES: 0,
+  };
+  const ebaRealOnlySubconPermitCounts: Record<string, number> = {
+    VKS: 0,
+    PATENT: 0,
+    QUOTA_RNR: 0,
+    RESIDENT: 0,
+    EAES: 0,
+  };
+
   for (const r of ebaRows) {
     if (r.genel_durum !== 'Mevcut') continue;
     let rawJson: Record<string, any> = {};
@@ -856,22 +1011,37 @@ export function computeZupVsRealReconciliation(db: any) {
     const p = classifyWorkPermitFromRow(r.uyruk, rawJson);
     const bucket = p === 'RF_CITIZEN' || p === 'VNJ_RVP' ? 'RESIDENT' : p === 'OTHER_PENDING' ? 'QUOTA_RNR' : p;
     ebaActivePermitCounts[bucket] = (ebaActivePermitCounts[bucket] || 0) + 1;
+    if (!matchedEbaIds.has(r.id)) {
+      const isMainFirm = String(r.firma || '').toUpperCase().includes('PONDERA');
+      if (isMainFirm) {
+        ebaRealOnlyMainPermitCounts[bucket] = (ebaRealOnlyMainPermitCounts[bucket] || 0) + 1;
+      } else {
+        ebaRealOnlySubconPermitCounts[bucket] = (ebaRealOnlySubconPermitCounts[bucket] || 0) + 1;
+      }
+    }
   }
 
-  const permitLabels: Record<string, { tr: string; ru: string }> = {
-    VKS: { tr: 'VKS (Yüksek Nitelikli Uzman)', ru: 'ВКС (Высококвалиф. специалист)' },
-    PATENT: { tr: 'Patent (Çalışma Patenti)', ru: 'Патент (Трудовой патент)' },
-    QUOTA_RNR: { tr: 'Kota / RNR (Standart İzin)', ru: 'Квота / РНР (Нерезидент)' },
-    RESIDENT: { tr: 'Rezident (RF Vatandaşı / VNJ)', ru: 'Резидент (Граждане РФ / ВНЖ)' },
-    EAES: { tr: 'EAES (Avrasya Birliği)', ru: 'ЕАЭС (Граждане ЕАЭС)' },
+  const permitLabels: Record<string, { tr: string; ru: string; shortTr: string; shortRu: string }> = {
+    VKS: { tr: 'VKS (Yüksek Nitelikli Uzman)', ru: 'ВКС (Высококвалиф. специалист)', shortTr: 'VKS (ВКС)', shortRu: 'ВКС' },
+    PATENT: { tr: 'Patent (Çalışma Patenti)', ru: 'Патент (Трудовой патент)', shortTr: 'Patent', shortRu: 'Патент' },
+    QUOTA_RNR: { tr: 'Kota / RNR (Standart İzin)', ru: 'Квота / РНР (Нерезидент)', shortTr: 'Kota / RNR', shortRu: 'Квота / РНР' },
+    RESIDENT: { tr: 'Rezident (RF Vatandaşı / VNJ)', ru: 'Резидент (Граждане РФ / ВНЖ)', shortTr: 'Rezident / RF', shortRu: 'Резидент РФ' },
+    EAES: { tr: 'EAES (Avrasya Birliği)', ru: 'ЕАЭС (Граждане ЕАЭС)', shortTr: 'EAES (ЕАЭС)', shortRu: 'ЕАЭС' },
   };
 
   const byPermitStatus = ['VKS', 'PATENT', 'QUOTA_RNR', 'RESIDENT', 'EAES'].map((key) => ({
     key,
     labelTr: permitLabels[key].tr,
     labelRu: permitLabels[key].ru,
+    shortTr: permitLabels[key].shortTr,
+    shortRu: permitLabels[key].shortRu,
     zupCount: zupPermitCounts[key] || 0,
+    zupActiveMatched: zupPermitActiveMatched[key] || 0,
+    zupTransferCount: zupPermitTransfer[key] || 0,
+    zupRealExitedCount: zupPermitRealExited[key] || 0,
     realActiveCount: ebaActivePermitCounts[key] || 0,
+    realOnlyMainCount: ebaRealOnlyMainPermitCounts[key] || 0,
+    realOnlySubconCount: ebaRealOnlySubconPermitCounts[key] || 0,
     diff: (ebaActivePermitCounts[key] || 0) - (zupPermitCounts[key] || 0),
   }));
 
@@ -907,10 +1077,12 @@ export function computeZupVsRealReconciliation(db: any) {
       realActiveNotInZupSubcon,
       realActiveNotInZupRecentHire,
       zupActiveButRealExited,
+      zupTransferPermitCheckCount,
       zupOnlyNotInRealDB,
       totalMatchedWithDataDiff,
       discrepancyCounts: {
         statusExitInReal: zupActiveButRealExited,
+        siteTransferPermitCheck: zupTransferPermitCheckCount,
         missingInZupMainFirm: realActiveNotInZupMainFirm,
         missingInZupSubcon: realActiveNotInZupSubcon,
         zupOnlyNoEba: zupOnlyNotInRealDB,

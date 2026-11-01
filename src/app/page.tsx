@@ -24,6 +24,7 @@ const QuotaTrackingView = dynamic(() => import('@/components/quotas/QuotaTrackin
 const InvitationsTrackingView = dynamic(() => import('@/components/invitations/InvitationsTrackingView'));
 const TravelTicketsAdminView = dynamic(() => import('@/components/powerise/TravelTicketsAdminView'));
 const CampManagementView = dynamic(() => import('@/components/powerise/CampManagementView'));
+const SettingsView = dynamic(() => import('@/components/settings/SettingsView'));
 const ExcelUploadModal = dynamic(() => import('@/components/modals/ExcelUploadModal'));
 
 export default function Home() {
@@ -294,15 +295,32 @@ export default function Home() {
           <ManagementReportsView stats={stats} onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
 
-        {activeTab === 'database' && user?.role !== 'viewer' && (
-          <DatabaseManagementView
+        {activeTab === 'settings' && user?.role !== 'viewer' && (
+          <SettingsView
             stats={stats}
             onOpenUpload={() => setIsUploadModalOpen(true)}
             onRefreshData={fetchStats}
+            initialSubTab="users_rls"
           />
         )}
 
-        {activeTab === 'admin' && user?.role === 'admin' && <UserManagementView />}
+        {activeTab === 'database' && user?.role !== 'viewer' && (
+          <SettingsView
+            stats={stats}
+            onOpenUpload={() => setIsUploadModalOpen(true)}
+            onRefreshData={fetchStats}
+            initialSubTab="database_excel"
+          />
+        )}
+
+        {activeTab === 'admin' && user?.role === 'admin' && (
+          <SettingsView
+            stats={stats}
+            onOpenUpload={() => setIsUploadModalOpen(true)}
+            onRefreshData={fetchStats}
+            initialSubTab="users_rls"
+          />
+        )}
       </main>
 
       {/* Excel Upload Modal (disabled for viewer role) */}

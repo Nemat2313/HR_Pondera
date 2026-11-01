@@ -260,9 +260,10 @@ export async function GET(request: Request) {
       ORDER BY month ASC
     `).all(...nonStatusWhere.params);
 
+    const nonTransferExitCond = "LOWER(COALESCE(cikis_sebebi, '')) NOT LIKE '%transfer%'";
     const monthlyExitWhere = nonStatusWhere.clause
-      ? `${nonStatusWhere.clause} AND (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31'`
-      : `WHERE (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31'`;
+      ? `${nonStatusWhere.clause} AND (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`
+      : `WHERE (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`;
 
     const monthlyExits = db.prepare(`
       SELECT 
@@ -412,12 +413,12 @@ export async function GET(request: Request) {
     `);
     const titlePyramid = titlePyramidQuery.all(...titleWhere.params);
 
-    // E. Turnover Calculation (Aylık Ortalama Sirkülasyon Oranı)
+    // E. Turnover Calculation (Aylık Ortalama Sirkülasyon Oranı — şirket içi şantiye transferleri hariç)
     // Megaproje sahasında aylık ortalama çıkan personel / aktif mevcut kadro
     const totalExitsRow = db.prepare(`
       SELECT COUNT(*) as exit_count 
       FROM personnel 
-      ${nonStatusWhere.clause ? nonStatusWhere.clause + ` AND (${outDateExpr}) LIKE '2026-%'` : `WHERE (${outDateExpr}) LIKE '2026-%'`}
+      ${nonStatusWhere.clause ? nonStatusWhere.clause + ` AND (${outDateExpr}) LIKE '2026-%' AND ${nonTransferExitCond}` : `WHERE (${outDateExpr}) LIKE '2026-%' AND ${nonTransferExitCond}`}
     `).get(...nonStatusWhere.params) as any;
     const annualExits = totalExitsRow?.exit_count || 4166;
     const monthlyAvgExits = Math.round(annualExits / 9.2); // ~9.2 months elapsed in 2026
@@ -524,30 +525,31 @@ export async function GET(request: Request) {
             date(?, '-30 days') as start_30d,
             SUM(CASE WHEN in_d >= date(?, '-1 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_1d,
             SUM(CASE WHEN in_d >= date(?, '-1 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_1d,
-            SUM(CASE WHEN out_d >= date(?, '-1 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_1d,
-            SUM(CASE WHEN out_d >= date(?, '-1 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_1d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-1 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_1d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-1 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_1d,
             SUM(CASE WHEN in_d >= date(?, '-3 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_3d,
             SUM(CASE WHEN in_d >= date(?, '-3 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_3d,
-            SUM(CASE WHEN out_d >= date(?, '-3 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_3d,
-            SUM(CASE WHEN out_d >= date(?, '-3 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_3d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-3 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_3d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-3 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_3d,
             SUM(CASE WHEN in_d >= date(?, '-7 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_7d,
             SUM(CASE WHEN in_d >= date(?, '-7 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_7d,
-            SUM(CASE WHEN out_d >= date(?, '-7 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_7d,
-            SUM(CASE WHEN out_d >= date(?, '-7 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_7d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-7 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_7d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-7 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_7d,
             SUM(CASE WHEN in_d >= date(?, '-30 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_30d,
             SUM(CASE WHEN in_d >= date(?, '-30 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_30d,
-            SUM(CASE WHEN out_d >= date(?, '-30 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_30d,
-            SUM(CASE WHEN out_d >= date(?, '-30 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_30d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-30 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_30d,
+            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-30 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_30d,
             SUM(CASE WHEN in_d IS NOT NULL THEN 1 ELSE 0 END) as in_all,
             SUM(CASE WHEN in_d IS NOT NULL AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_all,
-            SUM(CASE WHEN genel_durum = 'Cikis' OR out_d IS NOT NULL THEN 1 ELSE 0 END) as out_all,
-            SUM(CASE WHEN (genel_durum = 'Cikis' OR out_d IS NOT NULL) AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_all
+            SUM(CASE WHEN is_transfer = 0 AND (genel_durum = 'Cikis' OR out_d IS NOT NULL) THEN 1 ELSE 0 END) as out_all,
+            SUM(CASE WHEN is_transfer = 0 AND (genel_durum = 'Cikis' OR out_d IS NOT NULL) AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_all
           FROM (
             SELECT
               genel_durum,
               (${inDateExpr}) as in_d,
               (${outDateExpr}) as out_d,
-              CASE WHEN (${WORK_PERMIT_CASE_SQL}) = 'VKS' THEN 1 ELSE 0 END as is_vks
+              CASE WHEN (${WORK_PERMIT_CASE_SQL}) = 'VKS' THEN 1 ELSE 0 END as is_vks,
+              CASE WHEN LOWER(COALESCE(cikis_sebebi, '')) LIKE '%transfer%' THEN 1 ELSE 0 END as is_transfer
             FROM personnel
             ${turnoverBaseWhere.clause}
           )`
@@ -593,8 +595,8 @@ export async function GET(request: Request) {
         ) as any;
 
       const reasonCond = turnoverBaseWhere.clause
-        ? `${turnoverBaseWhere.clause} AND (genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL) AND cikis_sebebi IS NOT NULL AND TRIM(cikis_sebebi) != ''`
-        : `WHERE (genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL) AND cikis_sebebi IS NOT NULL AND TRIM(cikis_sebebi) != ''`;
+        ? `${turnoverBaseWhere.clause} AND (genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL) AND cikis_sebebi IS NOT NULL AND TRIM(cikis_sebebi) != '' AND ${nonTransferExitCond}`
+        : `WHERE (genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL) AND cikis_sebebi IS NOT NULL AND TRIM(cikis_sebebi) != '' AND ${nonTransferExitCond}`;
 
       const reasonRows = db
         .prepare(

@@ -1,17 +1,26 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, LabelList } from 'recharts';
-import { MapPin, Globe2, FileSpreadsheet } from 'lucide-react';
+import { MapPin, Globe2, FileSpreadsheet, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+
+interface RegionTreeItem {
+  name: string;
+  count: number;
+  projects: { name: string; count: number }[];
+}
 
 interface PowerBIRankedRegionBarsProps {
   regionData: { label: string; count: number }[];
   nationalityData: { label: string; count: number }[];
+  regionProjectsTree?: RegionTreeItem[];
   totalCount?: number;
   selectedRegion: string;
+  selectedProject?: string;
   selectedNationality?: string;
   onSelectRegion: (region: string) => void;
+  onSelectProject?: (project: string) => void;
   onSelectNationality: (nat: string) => void;
   onOpenRegionDetail?: (region: string) => void;
   onOpenNationalityDetail?: (nat: string) => void;
@@ -22,15 +31,23 @@ const TEAL_GRADIENT = ['#0d9488', '#0e7490', '#0284c7', '#0369a1', '#1d4ed8', '#
 export default function PowerBIRankedRegionBars({
   regionData,
   nationalityData,
+  regionProjectsTree = [],
   totalCount = 0,
   selectedRegion,
+  selectedProject = 'all',
   selectedNationality,
   onSelectRegion,
+  onSelectProject,
   onSelectNationality,
   onOpenRegionDetail,
   onOpenNationalityDetail,
 }: PowerBIRankedRegionBarsProps) {
   const { lang, translateVal } = useLanguage();
+  const [expandedRegions, setExpandedRegions] = useState<Record<string, boolean>>({ Kazan: false });
+
+  const toggleRegionExpand = (regName: string) => {
+    setExpandedRegions((prev) => ({ ...prev, [regName]: !prev[regName] }));
+  };
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* 1. BÖLGELERE GÖRE SIRALI ÇALIŞAN SAYILARI (Değerler ve Oranlar Barların Üzerinde) */}
@@ -139,8 +156,94 @@ export default function PowerBIRankedRegionBars({
           </ResponsiveContainer>
         </div>
 
+        {/* Expandable Site Breakdown (Multi-site regions like Kazan have Aç/Kapa toggle; single-site regions do not) */}
+        {regionProjectsTree.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+            {regionProjectsTree.map((regNode) => {
+              const hasMultipleSites = regNode.projects && regNode.projects.length > 1;
+              const isExpanded = Boolean(expandedRegions[regNode.name]);
+              const isRegActive = selectedRegion === regNode.name;
+
+              if (!hasMultipleSites) {
+                return null;
+              }
+
+              return (
+                <div
+                  key={regNode.name}
+                  className="rounded-xl bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 px-3 py-2 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                      <button
+                        type="button"
+                        onClick={() => onSelectRegion(regNode.name)}
+                        className={`cursor-pointer hover:underline ${
+                          isRegActive
+                            ? 'text-teal-700 dark:text-teal-300 font-bold'
+                            : 'text-slate-800 dark:text-slate-200 font-semibold'
+                        }`}
+                      >
+                        {regNode.name} {lang === 'ru' ? '— Разбивка по объектам' : '— Şantiye Kırılımı'} ({regNode.projects.length}{' '}
+                        {lang === 'ru' ? 'объекта' : 'Şantiye'})
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleRegionExpand(regNode.name)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 text-teal-700 dark:text-teal-300 border border-teal-500/30 text-[11px] cursor-pointer transition-all"
+                    >
+                      <span>
+                        {isExpanded
+                          ? lang === 'ru'
+                            ? 'Скрыть участки'
+                            : 'Şantiyeleri Kapat'
+                          : lang === 'ru'
+                          ? 'Показать участки'
+                          : 'Şantiyeleri Aç'}
+                      </span>
+                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2 pt-2 border-t border-slate-200/70 dark:border-slate-800">
+                      {regNode.projects.map((p) => {
+                        const pct = regNode.count > 0 ? Math.round((p.count / regNode.count) * 100) : 0;
+                        const isPrjSelected = selectedProject === p.name;
+                        return (
+                          <button
+                            key={p.name}
+                            type="button"
+                            onClick={() => onSelectProject && onSelectProject(p.name)}
+                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer ${
+                              isPrjSelected
+                                ? 'bg-teal-600 text-white border-teal-600'
+                                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-teal-400 text-slate-800 dark:text-slate-200'
+                            }`}
+                          >
+                            <span className="truncate text-[11px]">{p.name}</span>
+                            <span
+                              className={`text-[11px] font-mono shrink-0 ml-2 ${
+                                isPrjSelected ? 'text-white' : 'text-teal-600 dark:text-teal-400'
+                              }`}
+                            >
+                              {p.count.toLocaleString('tr-TR')} (%{pct})
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-          <span>{lang === 'ru' ? 'Казань и Свободный — крупнейшие стройплощадки' : 'Kazan ve Svobodny en büyük şantiyelerdir'}</span>
+          <span>{lang === 'ru' ? 'Казань и Свободный — крупнейшие стройплощадки' : 'Kazan (4 şantiye) ve Svobodny en büyük bölgelerdir'}</span>
           <span className="text-teal-600 dark:text-teal-400 font-semibold">
             {regionData.length} {lang === 'ru' ? 'активных регионов' : 'Aktif Bölge'}
           </span>

@@ -8,6 +8,7 @@ import {
   saveZupRecordsToDb,
 } from '@/lib/zupReconciliation';
 import { sendZupVsRealTelegramReport } from '@/lib/telegramNotifier';
+import { checkAndImportZupAutoFolder, sendReportEmailById } from '@/lib/emailNotifier';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,7 @@ function extractReportDateFromFileName(fileName: string, fallback = '29.10.2026'
 export async function GET() {
   try {
     const db = getDb();
+    checkAndImportZupAutoFolder(db);
     const data = computeZupVsRealReconciliation(db);
     return NextResponse.json(data);
   } catch (err: any) {
@@ -55,12 +57,22 @@ export async function POST(request: Request) {
       const body = await request.json();
       if (body?.action === 'send_telegram') {
         const tgRes = await sendZupVsRealTelegramReport(true);
+        const mailRes = await sendReportEmailById('zup_vs_real');
         return NextResponse.json({
-          success: tgRes.sent,
+          success: tgRes.sent || mailRes.ok,
           sent: tgRes.sent,
+          emailStatus: mailRes.status,
           message: tgRes.sent
-            ? '1C ZUP & eBA Real fark özeti Telegram grubuna başarıyla gönderildi.'
-            : `Telegram gönderimi kuyruğa alındı (${tgRes.reason || 'Outbox'}).`,
+            ? '1C ZUP & eBA Real fark özeti Telegram grubuna ve tanımlı e-posta alıcılarına başarıyla gönderildi.'
+            : `Rapor e-posta/Telegram gönderim kuyruğuna alındı (${mailRes.message}).`,
+        });
+      }
+      if (body?.action === 'send_email') {
+        const mailRes = await sendReportEmailById('zup_vs_real');
+        return NextResponse.json({
+          success: mailRes.ok,
+          status: mailRes.status,
+          message: mailRes.message,
         });
       }
       return NextResponse.json({ success: false, message: 'Geçersiz işlem.' }, { status: 400 });

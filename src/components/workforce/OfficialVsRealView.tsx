@@ -30,7 +30,20 @@ import {
   X,
   Layers,
   Filter,
+  BarChart3,
+  ArrowLeftRight,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+  LabelList,
+} from 'recharts';
 import * as XLSX from 'xlsx';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -44,6 +57,7 @@ interface ZupMetadata {
 
 interface ZupDiscrepancyCounts {
   statusExitInReal: number;
+  siteTransferPermitCheck?: number;
   missingInZupMainFirm: number;
   missingInZupSubcon: number;
   zupOnlyNoEba: number;
@@ -74,9 +88,21 @@ interface ZupSummary {
   realActiveNotInZupSubcon: number;
   realActiveNotInZupRecentHire: number;
   zupActiveButRealExited: number;
+  zupTransferPermitCheckCount?: number;
   zupOnlyNotInRealDB: number;
   totalMatchedWithDataDiff: number;
   discrepancyCounts: ZupDiscrepancyCounts;
+}
+
+interface ProjectComparison {
+  project: string;
+  realActive: number;
+  inZupOfficial: number;
+  missingMainFirm: number;
+  missingSubcon: number;
+  zupActiveRealExit: number;
+  transferCount?: number;
+  officialRatePct: number;
 }
 
 interface RegionComparison {
@@ -86,15 +112,24 @@ interface RegionComparison {
   missingMainFirm: number;
   missingSubcon: number;
   zupActiveRealExit: number;
+  transferCount?: number;
   officialRatePct: number;
+  projects?: ProjectComparison[];
 }
 
 interface PermitComparison {
   key: string;
   labelTr: string;
   labelRu: string;
+  shortTr?: string;
+  shortRu?: string;
   zupCount: number;
+  zupActiveMatched?: number;
+  zupTransferCount?: number;
+  zupRealExitedCount?: number;
   realActiveCount: number;
+  realOnlyMainCount?: number;
+  realOnlySubconCount?: number;
   diff: number;
 }
 
@@ -102,6 +137,7 @@ interface AuditRecord {
   id: string;
   category:
     | 'ZUP_ACTIVE_REAL_EXIT'
+    | 'SITE_TRANSFER_PERMIT_CHECK'
     | 'REAL_ACTIVE_NO_ZUP_MAIN'
     | 'REAL_ACTIVE_NO_ZUP_SUBCON'
     | 'ZUP_ONLY_NO_EBA'
@@ -149,6 +185,7 @@ type FilterCategory =
   | 'ALL_DIFFS'
   | 'ALL'
   | 'ZUP_ACTIVE_REAL_EXIT'
+  | 'SITE_TRANSFER_PERMIT_CHECK'
   | 'REAL_ACTIVE_NO_ZUP_MAIN'
   | 'REAL_ACTIVE_NO_ZUP_SUBCON'
   | 'ZUP_ONLY_NO_EBA'
@@ -173,11 +210,21 @@ export default function OfficialVsRealView() {
 
   const [selectedFilter, setSelectedFilter] = useState<FilterCategory>('ALL_DIFFS');
   const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
+  const [selectedProject, setSelectedProject] = useState<string>('ALL');
+  const [selectedPermitKey, setSelectedPermitKey] = useState<string>('ALL');
+  const [expandedRegions, setExpandedRegions] = useState<Record<string, boolean>>({ Kazan: false });
   const [search, setSearch] = useState<string>('');
   const [page, setPage] = useState<number>(1);
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
   const [showOutdatedModal, setShowOutdatedModal] = useState<boolean>(false);
   const pageSize = 25;
+  const tableSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToTable = () => {
+    setTimeout(() => {
+      tableSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -287,6 +334,15 @@ export default function OfficialVsRealView() {
       if (selectedRegion !== 'ALL' && r.region !== selectedRegion) {
         return false;
       }
+      if (selectedProject !== 'ALL' && r.proje_adi !== selectedProject) {
+        return false;
+      }
+      if (selectedPermitKey !== 'ALL') {
+        const ebaNorm = r.eba_permit === 'RF_CITIZEN' || r.eba_permit === 'VNJ_RVP' ? 'RESIDENT' : r.eba_permit;
+        if (r.zup_permit !== selectedPermitKey && ebaNorm !== selectedPermitKey) {
+          return false;
+        }
+      }
 
       switch (selectedFilter) {
         case 'ALL_DIFFS':
@@ -294,6 +350,10 @@ export default function OfficialVsRealView() {
           break;
         case 'ZUP_ACTIVE_REAL_EXIT':
           if (r.category !== 'ZUP_ACTIVE_REAL_EXIT') return false;
+          break;
+        case 'SITE_TRANSFER_PERMIT_CHECK':
+          if (r.category !== 'SITE_TRANSFER_PERMIT_CHECK' && !r.diffFlags.includes('SITE_TRANSFER_PERMIT_CHECK'))
+            return false;
           break;
         case 'REAL_ACTIVE_NO_ZUP_MAIN':
           if (r.category !== 'REAL_ACTIVE_NO_ZUP_MAIN') return false;
@@ -337,11 +397,11 @@ export default function OfficialVsRealView() {
 
       return true;
     });
-  }, [data, selectedFilter, selectedRegion, search]);
+  }, [data, selectedFilter, selectedRegion, selectedProject, selectedPermitKey, search]);
 
   useEffect(() => {
     setPage(1);
-  }, [selectedFilter, selectedRegion, search]);
+  }, [selectedFilter, selectedRegion, selectedProject, selectedPermitKey, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const paginatedRecords = useMemo(() => {
@@ -549,10 +609,19 @@ export default function OfficialVsRealView() {
       id: 'ZUP_ACTIVE_REAL_EXIT',
       titleTr: "1C ZUP'ta Aktif / Real'de Çıkış",
       titleRu: 'В 1С ЗУП Активен / В eBA Уволен',
-      subTr: 'Sahadan ayrılmış ama resmi çıkışı düşülmemiş',
-      subRu: 'Уволен на объекте, но числится в 1С ЗУП',
+      subTr: 'Transfer hariç gerçek çıkış (Resmi düşülmeli)',
+      subRu: 'Уволен на объекте (кроме перевода)',
       count: dc.statusExitInReal,
       tone: 'rose',
+    },
+    {
+      id: 'SITE_TRANSFER_PERMIT_CHECK',
+      titleTr: 'Şirket İçi Şantiye Transferi',
+      titleRu: 'Перевод между объектами',
+      subTr: 'ZUP çıkış gerekmez, izin bölgesi kontrolü',
+      subRu: 'Проверка региона разрешения на работу',
+      count: dc.siteTransferPermitCheck ?? summary.zupTransferPermitCheckCount ?? 0,
+      tone: 'indigo',
     },
     {
       id: 'REAL_ACTIVE_NO_ZUP_MAIN',
@@ -1015,9 +1084,12 @@ export default function OfficialVsRealView() {
             </div>
           </div>
 
-          {/* Card 4: Active in 1C ZUP but EXITED in Real eBA */}
+          {/* Card 4: Active in 1C ZUP but EXITED in Real eBA (Transfers Excluded) */}
           <div
-            onClick={() => setSelectedFilter('ZUP_ACTIVE_REAL_EXIT')}
+            onClick={() => {
+              setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
+              scrollToTable();
+            }}
             className="p-4 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/70 hover:border-rose-400 transition-all cursor-pointer shadow-2xs space-y-1.5"
           >
             <div className="flex items-center justify-between text-[11px] text-rose-800 dark:text-rose-300">
@@ -1029,19 +1101,34 @@ export default function OfficialVsRealView() {
                 {summary.zupActiveButRealExited.toLocaleString('tr-TR')}
               </span>
               <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white text-[10.5px]">
-                {lang === 'ru' ? 'Критично' : 'Resmi Çıkış Bekleyen'}
+                {lang === 'ru' ? 'Без переводов' : 'Transfer Hariç Çıkış'}
               </span>
             </div>
-            <p className="text-[10.5px] text-rose-700/90 dark:text-rose-300/90 leading-snug pt-0.5">
-              {lang === 'ru'
-                ? 'Уволены на площадке (eBA), но продолжают числиться в 1С ЗУП'
-                : 'Sahadan (eBA) çıkışı yapılmış ancak 1C ZUP resmi bordrodan henüz düşülmemiş'}
-            </p>
+            <div className="flex items-center justify-between text-[10.5px] pt-1 border-t border-rose-200/60 dark:border-rose-800/60">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
+                  scrollToTable();
+                }}
+                className="text-indigo-700 dark:text-indigo-300 hover:underline cursor-pointer"
+              >
+                {lang === 'ru' ? 'Перевод объекта:' : 'Şantiye Transferi:'}{' '}
+                <strong>{summary.zupTransferPermitCheckCount ?? 0}</strong>
+              </button>
+              <span className="text-rose-700 dark:text-rose-300">
+                {lang === 'ru' ? 'Уволен:' : 'Gerçek Çıkış:'} <strong>{summary.zupActiveButRealExited}</strong>
+              </span>
+            </div>
           </div>
 
           {/* Card 5: Active in Real eBA but NOT in 1C ZUP */}
           <div
-            onClick={() => setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN')}
+            onClick={() => {
+              setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
+              scrollToTable();
+            }}
             className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 hover:border-amber-400 transition-all cursor-pointer shadow-2xs space-y-1.5"
           >
             <div className="flex items-center justify-between text-[11px] text-amber-800 dark:text-amber-300">
@@ -1068,32 +1155,501 @@ export default function OfficialVsRealView() {
             </div>
           </div>
         </div>
+
+        {/* =====================================================================
+            ADIM 1.2: MEVCUT KADROLAR VE ÇIKIŞLILAR YAN YANA GÖRSEL KARŞILAŞTIRMA GRAFİĞİ
+            (Üzerine tıklayınca alttaki tabloda filtreler ve listeler)
+        ===================================================================== */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 text-[10.5px] inline-flex items-center gap-1">
+                <BarChart3 className="w-3 h-3" />
+                {lang === 'ru' ? 'ГРАФИК СВЕРКИ' : 'GÖRSEL MUTABAKAT GRAFİĞİ'}
+              </span>
+              <h3 className="text-xs sm:text-sm text-slate-900 dark:text-white">
+                {lang === 'ru'
+                  ? 'Сравнение текущего штата, переводов и уволенных (1С ЗУП vs eBA Real) — нажмите на сегмент для фильтрации таблицы'
+                  : 'Resmi (1C ZUP) ve Real (eBA) Mevcut Kadrolar, Şantiye Transferleri & Çıkışlılar Yan Yana Karşılaştırma Grafiği'}
+              </h3>
+            </div>
+            <span className="text-[11px] text-indigo-600 dark:text-indigo-400">
+              {lang === 'ru'
+                ? '💡 Нажмите на любой столбец или статус для вывода списка в таблице ниже'
+                : '💡 Grafik üzerindeki barlara veya sayılara tıkladığınızda alttaki tabloda ilgili kişiler listelenir'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Left 6 Cols: Side-by-Side Stacked & Grouped Bar Comparison of Workforce Status */}
+            <div className="lg:col-span-6 p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>
+                    {lang === 'ru'
+                      ? '1. Сопоставление численности и статуса работы (1С ЗУП ↔ eBA Real)'
+                      : '1. Toplam Personel ve Çalışma Durumu Yan Yana Dağılımı (1C ZUP ↔ eBA Real)'}
+                  </span>
+                </div>
+                <span className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                  ZUP: <strong>{summary.zupOfficialTotal.toLocaleString('tr-TR')}</strong> | Real:{' '}
+                  <strong>{summary.realActiveTotal.toLocaleString('tr-TR')}</strong>
+                </span>
+              </div>
+
+              {/* Visual Side-by-Side Comparison Bars (1C ZUP vs eBA Real) */}
+              <div className="space-y-3">
+                {/* Bar 1: 1C ZUP Official Total Breakdown */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-indigo-700 dark:text-indigo-300">
+                      {lang === 'ru' ? 'Официальный штат 1С ЗУП' : '1C ZUP Resmi Bordro Kadrosu'}
+                    </span>
+                    <span className="text-slate-900 dark:text-white text-xs">
+                      Toplam: <strong>{summary.zupOfficialTotal.toLocaleString('tr-TR')} Kişi</strong>
+                    </span>
+                  </div>
+                  <div className="h-8 w-full rounded-xl bg-slate-200/70 dark:bg-slate-800 overflow-hidden flex p-0.5 gap-0.5">
+                    {/* Segment A: Active Matched in Both */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPermitKey('ALL');
+                        setSelectedFilter('FULL_MATCH');
+                        scrollToTable();
+                      }}
+                      style={{
+                        width: `${Math.max(
+                          12,
+                          Math.round(
+                            ((summary.matchedActiveBoth - (summary.zupTransferPermitCheckCount || 0)) /
+                              Math.max(summary.zupOfficialTotal, 1)) *
+                              100
+                          )
+                        )}%`,
+                      }}
+                      className="h-full rounded-l-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[10.5px] flex items-center justify-center gap-1 px-2 transition-all cursor-pointer truncate"
+                      title="Hem Real'de Mevcut Hem 1C ZUP'ta Resmi Çalışan (Tıkla & Listele)"
+                    >
+                      <span>
+                        Mevcut Eşleşen:{' '}
+                        {(summary.matchedActiveBoth - (summary.zupTransferPermitCheckCount || 0)).toLocaleString(
+                          'tr-TR'
+                        )}
+                      </span>
+                    </button>
+                    {/* Segment B: Inter-Site Transfer (Active in ZUP, Transfer in eBA) */}
+                    {(summary.zupTransferPermitCheckCount || 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPermitKey('ALL');
+                          setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
+                          scrollToTable();
+                        }}
+                        style={{
+                          width: `${Math.max(
+                            8,
+                            Math.round(
+                              ((summary.zupTransferPermitCheckCount || 0) /
+                                Math.max(summary.zupOfficialTotal, 1)) *
+                                100
+                            )
+                          )}%`,
+                        }}
+                        className="h-full bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] flex items-center justify-center px-1.5 transition-all cursor-pointer truncate"
+                        title="Şirket İçi Şantiye Transferi — Resmi çıkış gerekmez, izin bölgesi kontrol edilmeli (Tıkla & Listele)"
+                      >
+                        <span>Transfer: {summary.zupTransferPermitCheckCount}</span>
+                      </button>
+                    )}
+                    {/* Segment C: Genuine Exits in Real eBA but Still Active in ZUP */}
+                    {summary.zupActiveButRealExited > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPermitKey('ALL');
+                          setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
+                          scrollToTable();
+                        }}
+                        style={{
+                          width: `${Math.max(
+                            7,
+                            Math.round(
+                              (summary.zupActiveButRealExited / Math.max(summary.zupOfficialTotal, 1)) * 100
+                            )
+                          )}%`,
+                        }}
+                        className="h-full rounded-r-lg bg-rose-500 hover:bg-rose-600 text-white text-[10px] flex items-center justify-center px-1.5 transition-all cursor-pointer truncate"
+                        title="Real'de Çıkış Yapılmış / 1C ZUP'ta Hala Aktif (Tıkla & Listele)"
+                      >
+                        <span>Çıkış: {summary.zupActiveButRealExited}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bar 2: eBA Real Active Workforce Breakdown */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-emerald-700 dark:text-emerald-300">
+                      {lang === 'ru' ? 'Реальный активный штат (eBA Real)' : 'eBA Real Saha Mevcut Kadrosu'}
+                    </span>
+                    <span className="text-slate-900 dark:text-white text-xs">
+                      Toplam: <strong>{summary.realActiveTotal.toLocaleString('tr-TR')} Kişi</strong>
+                    </span>
+                  </div>
+                  <div className="h-8 w-full rounded-xl bg-slate-200/70 dark:bg-slate-800 overflow-hidden flex p-0.5 gap-0.5">
+                    {/* Segment A: Active & in ZUP */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPermitKey('ALL');
+                        setSelectedFilter('FULL_MATCH');
+                        scrollToTable();
+                      }}
+                      style={{
+                        width: `${Math.max(
+                          15,
+                          Math.round((summary.matchedActiveBoth / Math.max(summary.realActiveTotal, 1)) * 100)
+                        )}%`,
+                      }}
+                      className="h-full rounded-l-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[10.5px] flex items-center justify-center gap-1 px-2 transition-all cursor-pointer truncate"
+                      title="Mevcut Kadrodan 1C ZUP Resmi Bordroda Çalışanlar (Tıkla & Listele)"
+                    >
+                      <span>Resmide Çalışan: {summary.matchedActiveBoth.toLocaleString('tr-TR')}</span>
+                    </button>
+                    {/* Segment B: Pondera Main Firm Missing in ZUP */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPermitKey('ALL');
+                        setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
+                        scrollToTable();
+                      }}
+                      style={{
+                        width: `${Math.max(
+                          10,
+                          Math.round(
+                            (summary.realActiveNotInZupMainFirm / Math.max(summary.realActiveTotal, 1)) * 100
+                          )
+                        )}%`,
+                      }}
+                      className="h-full bg-amber-500 hover:bg-amber-600 text-white text-[10px] flex items-center justify-center px-1.5 transition-all cursor-pointer truncate"
+                      title="Pondera Ana Kadroda Aktif Olup 1C ZUP'ta Kaydı Olmayanlar (Tıkla & Listele)"
+                    >
+                      <span>Ana Kadro Eksik: {summary.realActiveNotInZupMainFirm}</span>
+                    </button>
+                    {/* Segment C: Subcontractor Active (Outside ZUP) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPermitKey('ALL');
+                        setSelectedFilter('REAL_ACTIVE_NO_ZUP_SUBCON');
+                        scrollToTable();
+                      }}
+                      style={{
+                        width: `${Math.max(
+                          10,
+                          Math.round((summary.realActiveNotInZupSubcon / Math.max(summary.realActiveTotal, 1)) * 100)
+                        )}%`,
+                      }}
+                      className="h-full rounded-r-lg bg-slate-500 hover:bg-slate-600 text-white text-[10px] flex items-center justify-center px-1.5 transition-all cursor-pointer truncate"
+                      title="Taşeron Firma Bordrosunda Çalışanlar (Tıkla & Listele)"
+                    >
+                      <span>Taşeron: {summary.realActiveNotInZupSubcon}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Status Breakdown Grid (6 Clickable Status Pills with Exact Counts) */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPermitKey('ALL');
+                    setSelectedFilter('FULL_MATCH');
+                    scrollToTable();
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedFilter === 'FULL_MATCH'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white dark:bg-[#131C31] border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400'
+                  }`}
+                >
+                  <div className="text-[10.5px] opacity-85">Mevcut & Resmide Aktif</div>
+                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                    <span>{summary.matchedActiveBoth.toLocaleString('tr-TR')}</span>
+                    <span className="text-[10px] opacity-80">%{summary.matchedActiveRateMainFirm}</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPermitKey('ALL');
+                    setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
+                    scrollToTable();
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedFilter === 'SITE_TRANSFER_PERMIT_CHECK'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-[#131C31] border-indigo-200 dark:border-indigo-900/60 hover:border-indigo-400'
+                  }`}
+                >
+                  <div className="text-[10.5px] opacity-85">Şantiye Transferi (ZUP Aktif)</div>
+                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                    <span>{(summary.zupTransferPermitCheckCount || 0).toLocaleString('tr-TR')}</span>
+                    <span className="text-[10px] opacity-80">İzin Kontrolü</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPermitKey('ALL');
+                    setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
+                    scrollToTable();
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedFilter === 'ZUP_ACTIVE_REAL_EXIT'
+                      ? 'bg-rose-600 text-white border-rose-600'
+                      : 'bg-white dark:bg-[#131C31] border-rose-200 dark:border-rose-900/60 hover:border-rose-400'
+                  }`}
+                >
+                  <div className="text-[10.5px] opacity-85">ZUP Aktif / Real Çıkışlı</div>
+                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                    <span>{summary.zupActiveButRealExited.toLocaleString('tr-TR')}</span>
+                    <span className="text-[10px] opacity-80">Resmi Düşülecek</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPermitKey('ALL');
+                    setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
+                    scrollToTable();
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedFilter === 'REAL_ACTIVE_NO_ZUP_MAIN'
+                      ? 'bg-amber-600 text-white border-amber-600'
+                      : 'bg-white dark:bg-[#131C31] border-amber-200 dark:border-amber-900/60 hover:border-amber-400'
+                  }`}
+                >
+                  <div className="text-[10.5px] opacity-85">Ana Kadro / ZUP Eksik</div>
+                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                    <span>{summary.realActiveNotInZupMainFirm.toLocaleString('tr-TR')}</span>
+                    <span className="text-[10px] opacity-80">Pondera</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPermitKey('ALL');
+                    setSelectedFilter('REAL_ACTIVE_NO_ZUP_SUBCON');
+                    scrollToTable();
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedFilter === 'REAL_ACTIVE_NO_ZUP_SUBCON'
+                      ? 'bg-slate-700 text-white border-slate-700'
+                      : 'bg-white dark:bg-[#131C31] border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                  }`}
+                >
+                  <div className="text-[10.5px] opacity-85">Taşeron Aktif (ZUP Dışı)</div>
+                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                    <span>{summary.realActiveNotInZupSubcon.toLocaleString('tr-TR')}</span>
+                    <span className="text-[10px] opacity-80">Alt İşveren</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPermitKey('ALL');
+                    setSelectedFilter('ZUP_ONLY_NO_EBA');
+                    scrollToTable();
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedFilter === 'ZUP_ONLY_NO_EBA'
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-white dark:bg-[#131C31] border-purple-200 dark:border-purple-900/60 hover:border-purple-400'
+                  }`}
+                >
+                  <div className="text-[10.5px] opacity-85">Sadece ZUP&apos;ta Var</div>
+                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                    <span>{summary.zupOnlyNotInRealDB.toLocaleString('tr-TR')}</span>
+                    <span className="text-[10px] opacity-80">eBA Kaydı Yok</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Right 6 Cols: Interactive Recharts Side-by-Side BarChart by Work Permit Status & Active/Exit Breakdown */}
+            <div className="lg:col-span-6 p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs text-slate-800 dark:text-slate-200">
+                  {lang === 'ru'
+                    ? '2. Разбивка по статусам разрешения на работу (ВКС, Патент, РНР, Резидент, ЕАЭС)'
+                    : '2. Çalışma Durumu / İzin Statüsüne Göre Resmi vs Real Yan Yana Kırılım Grafiği'}
+                </div>
+                {selectedPermitKey !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPermitKey('ALL')}
+                    className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white text-[10.5px] cursor-pointer"
+                  >
+                    Statü Filtresi: {selectedPermitKey} ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={byPermitStatus.map((ps) => ({
+                      key: ps.key,
+                      name:
+                        ps.key === 'VKS'
+                          ? 'VKS (BKC)'
+                          : ps.key === 'PATENT'
+                          ? 'Patent'
+                          : ps.key === 'RNR_QUOTA'
+                          ? 'Kota / RNR'
+                          : ps.key === 'RESIDENT'
+                          ? 'Rezident / RF'
+                          : 'EAES',
+                      zupCount: ps.zupCount,
+                      realActiveCount: ps.realActiveCount,
+                      zupTransferCount: ps.zupTransferCount || 0,
+                      zupRealExitedCount: ps.zupRealExitedCount || 0,
+                    }))}
+                    margin={{ top: 18, right: 12, left: -10, bottom: 4 }}
+                    onClick={(state) => {
+                      const payload = state?.activePayload?.[0]?.payload;
+                      if (payload?.key) {
+                        setSelectedPermitKey((prev) => (prev === payload.key ? 'ALL' : payload.key));
+                        setSelectedFilter('ALL');
+                        scrollToTable();
+                      }
+                    }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.2} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderColor: '#334155',
+                        borderRadius: '12px',
+                        color: '#f8fafc',
+                        fontSize: '11px',
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    <Bar
+                      dataKey="zupCount"
+                      name={lang === 'ru' ? '1С ЗУП (Офиц.)' : '1C ZUP (Resmi)'}
+                      fill="#6366f1"
+                      radius={[6, 6, 0, 0]}
+                      className="cursor-pointer"
+                    >
+                      <LabelList dataKey="zupCount" position="top" style={{ fontSize: '10px', fill: '#6366f1' }} />
+                    </Bar>
+                    <Bar
+                      dataKey="realActiveCount"
+                      name={lang === 'ru' ? 'eBA Real (Актив)' : 'eBA Real (Mevcut)'}
+                      fill="#10b981"
+                      radius={[6, 6, 0, 0]}
+                      className="cursor-pointer"
+                    >
+                      <LabelList
+                        dataKey="realActiveCount"
+                        position="top"
+                        style={{ fontSize: '10px', fill: '#10b981' }}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Quick clickable permit status chips with Transfer & Exit counts */}
+              <div className="grid grid-cols-5 gap-1.5 pt-1">
+                {byPermitStatus.map((ps) => {
+                  const isPermitSelected = selectedPermitKey === ps.key;
+                  const shortLabel =
+                    ps.key === 'VKS'
+                      ? 'VKS'
+                      : ps.key === 'PATENT'
+                      ? 'Patent'
+                      : ps.key === 'RNR_QUOTA'
+                      ? 'Kota/RNR'
+                      : ps.key === 'RESIDENT'
+                      ? 'Rezident'
+                      : 'EAES';
+                  return (
+                    <button
+                      key={ps.key}
+                      type="button"
+                      onClick={() => {
+                        setSelectedPermitKey(isPermitSelected ? 'ALL' : ps.key);
+                        setSelectedFilter('ALL');
+                        scrollToTable();
+                      }}
+                      className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        isPermitSelected
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white dark:bg-[#131C31] border-slate-200 dark:border-slate-800 hover:border-indigo-400'
+                      }`}
+                    >
+                      <div className="text-[10.5px] truncate">{shortLabel}</div>
+                      <div className="text-[10px] opacity-85">
+                        ZUP:{ps.zupCount} / Real:{ps.realActiveCount}
+                      </div>
+                      <div className="text-[9.5px] opacity-75">
+                        Trf:{ps.zupTransferCount || 0} • Çık:{ps.zupRealExitedCount || 0}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* =====================================================================
-          ADIM 2: BÖLGE BAZLI RESMİ ÇALIŞMA ORANI & İZİN STATÜSÜ KARŞILAŞTIRMASI
+          ADIM 2: BÖLGE BAZLI RESMİ ÇALIŞMA ORANI (ŞANTİYE AÇ/KAPA) & İZİN STATÜSÜ
       ===================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left 7 Cols: Regional Official Coverage Breakdown */}
+        {/* Left 7 Cols: Regional Official Coverage Breakdown with Expandable Multi-Site (Kazan) */}
         <div className="lg:col-span-7 p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 text-[10.5px]">
-                {lang === 'ru' ? 'ШАГ 2.1' : '2.1 BÖLGE ANALİZİ'}
+                {lang === 'ru' ? 'ШАГ 2.1' : '2.1 BÖLGE & ŞANTİYE ANALİZİ'}
               </span>
               <h3 className="text-xs sm:text-sm text-slate-900 dark:text-white">
                 {lang === 'ru'
                   ? 'Доля официально оформленных (1С ЗУП) по регионам и объектам'
-                  : 'Şantiye / Bölge Bazında Mevcut Personelin Resmi (1C ZUP) Çalışma Oranı'}
+                  : 'Bölge ve Şantiye Kırılımında Mevcut Personelin Resmi (1C ZUP) Çalışma Oranı'}
               </h3>
             </div>
-            {selectedRegion !== 'ALL' && (
+            {(selectedRegion !== 'ALL' || selectedProject !== 'ALL') && (
               <button
                 type="button"
-                onClick={() => setSelectedRegion('ALL')}
+                onClick={() => {
+                  setSelectedRegion('ALL');
+                  setSelectedProject('ALL');
+                }}
                 className="text-[11px] px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 cursor-pointer"
               >
-                {lang === 'ru' ? `Фильтр: ${selectedRegion} (Сбросить)` : `Bölge: ${selectedRegion} (Tümünü Gör)`}
+                {lang === 'ru'
+                  ? `Фильтр: ${selectedProject !== 'ALL' ? selectedProject : selectedRegion} (Сбросить)`
+                  : `Filtre: ${selectedProject !== 'ALL' ? selectedProject : selectedRegion} (Tümünü Gör)`}
               </button>
             )}
           </div>
@@ -1110,71 +1666,196 @@ export default function OfficialVsRealView() {
                     {lang === 'ru' ? 'Pondera Нет в ЗУП' : 'Ana Kadro Eksik'}
                   </th>
                   <th className="py-2 pl-2 text-right font-normal">
-                    {lang === 'ru' ? 'Уволен (В ЗУП Актив)' : 'ZUP Çıkış Bekleyen'}
+                    {lang === 'ru' ? 'Перевод / Уволен' : 'Transfer / Çıkış'}
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
                 {byRegion.map((reg) => {
-                  const isSelected = selectedRegion === reg.region;
+                  const isSelected = selectedRegion === reg.region && selectedProject === 'ALL';
+                  const hasMultipleProjects = Array.isArray(reg.projects) && reg.projects.length > 1;
+                  const isExpanded = !!expandedRegions[reg.region];
+
                   return (
-                    <tr
-                      key={reg.region}
-                      onClick={() => setSelectedRegion(isSelected ? 'ALL' : reg.region)}
-                      className={`cursor-pointer transition-colors ${
-                        isSelected
-                          ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <td className="py-2.5 pr-3 text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                        <span className="truncate">{reg.region}</span>
-                      </td>
-                      <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-200">
-                        {reg.realActive.toLocaleString('tr-TR')}
-                      </td>
-                      <td className="py-2.5 px-2 text-right text-emerald-600 dark:text-emerald-400">
-                        {reg.inZupOfficial.toLocaleString('tr-TR')}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                reg.officialRatePct >= 90
-                                  ? 'bg-emerald-500'
-                                  : reg.officialRatePct >= 75
-                                  ? 'bg-indigo-500'
-                                  : 'bg-amber-500'
-                              }`}
-                              style={{ width: `${Math.min(100, reg.officialRatePct)}%` }}
-                            />
+                    <React.Fragment key={reg.region}>
+                      <tr
+                        onClick={() => {
+                          setSelectedProject('ALL');
+                          setSelectedRegion(isSelected ? 'ALL' : reg.region);
+                        }}
+                        className={`cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <td className="py-2.5 pr-3 text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span className="truncate">{reg.region}</span>
+                            {hasMultipleProjects && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedRegions((prev) => ({
+                                    ...prev,
+                                    [reg.region]: !prev[reg.region],
+                                  }));
+                                }}
+                                className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 border border-indigo-500/25 text-[10px] transition-colors cursor-pointer"
+                                title="Şantiye kırılımını Aç / Kapat"
+                              >
+                                <Layers className="w-2.5 h-2.5" />
+                                <span>
+                                  {isExpanded
+                                    ? lang === 'ru'
+                                      ? 'Скрыть'
+                                      : 'Şantiyeleri Kapat'
+                                    : lang === 'ru'
+                                    ? `${reg.projects?.length} объекта`
+                                    : `${reg.projects?.length} Şantiye Aç`}
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-2.5 h-2.5" />
+                                ) : (
+                                  <ChevronDown className="w-2.5 h-2.5" />
+                                )}
+                              </button>
+                            )}
                           </div>
-                          <span className="text-[11px] text-slate-700 dark:text-slate-300 w-9 text-right">
-                            %{reg.officialRatePct}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-2 text-right">
-                        {reg.missingMainFirm > 0 ? (
-                          <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-300 text-[11px]">
-                            {reg.missingMainFirm}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">0</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 pl-2 text-right">
-                        {reg.zupActiveRealExit > 0 ? (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[11px]">
-                            {reg.zupActiveRealExit}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">0</span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-slate-700 dark:text-slate-200">
+                          {reg.realActive.toLocaleString('tr-TR')}
+                        </td>
+                        <td className="py-2.5 px-2 text-right text-emerald-600 dark:text-emerald-400">
+                          {reg.inZupOfficial.toLocaleString('tr-TR')}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  reg.officialRatePct >= 90
+                                    ? 'bg-emerald-500'
+                                    : reg.officialRatePct >= 75
+                                    ? 'bg-indigo-500'
+                                    : 'bg-amber-500'
+                                }`}
+                                style={{ width: `${Math.min(100, reg.officialRatePct)}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] text-slate-700 dark:text-slate-300 w-9 text-right">
+                              %{reg.officialRatePct}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-2 text-right">
+                          {reg.missingMainFirm > 0 ? (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-300 text-[11px]">
+                              {reg.missingMainFirm}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">0</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 pl-2 text-right">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            {(reg.transferCount || 0) > 0 && (
+                              <span
+                                className="px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10.5px]"
+                                title="Şirket İçi Şantiye Transferi"
+                              >
+                                Trf:{reg.transferCount}
+                              </span>
+                            )}
+                            {reg.zupActiveRealExit > 0 ? (
+                              <span
+                                className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10.5px]"
+                                title="Gerçek Çıkış (ZUP Aktif)"
+                              >
+                                Çık:{reg.zupActiveRealExit}
+                              </span>
+                            ) : (
+                              (reg.transferCount || 0) === 0 && <span className="text-slate-400">0</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Sub-rows for Multi-Project Regions (e.g. Kazan's 4 Sites) */}
+                      {hasMultipleProjects &&
+                        isExpanded &&
+                        reg.projects?.map((proj) => {
+                          const isProjSelected = selectedProject === proj.project;
+                          return (
+                            <tr
+                              key={`${reg.region}-${proj.project}`}
+                              onClick={() => {
+                                setSelectedRegion(reg.region);
+                                setSelectedProject(isProjSelected ? 'ALL' : proj.project);
+                                scrollToTable();
+                              }}
+                              className={`cursor-pointer transition-colors text-[11px] ${
+                                isProjSelected
+                                  ? 'bg-indigo-100/70 dark:bg-indigo-900/40'
+                                  : 'bg-slate-50/70 dark:bg-slate-900/40 hover:bg-indigo-50/40 dark:hover:bg-slate-800/60'
+                              }`}
+                            >
+                              <td className="py-2 pl-6 pr-3 text-slate-700 dark:text-slate-300">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                                  <span className="truncate">{proj.project}</span>
+                                </div>
+                              </td>
+                              <td className="py-2 px-2 text-right text-slate-600 dark:text-slate-300">
+                                {proj.realActive.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2 px-2 text-right text-emerald-600 dark:text-emerald-400">
+                                {proj.inZupOfficial.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-indigo-500"
+                                      style={{ width: `${Math.min(100, proj.officialRatePct)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[10.5px] text-slate-600 dark:text-slate-400 w-9 text-right">
+                                    %{proj.officialRatePct}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-2 px-2 text-right">
+                                {proj.missingMainFirm > 0 ? (
+                                  <span className="px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-300 text-[10px]">
+                                    {proj.missingMainFirm}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">0</span>
+                                )}
+                              </td>
+                              <td className="py-2 pl-2 text-right">
+                                <div className="inline-flex items-center justify-end gap-1">
+                                  {(proj.transferCount || 0) > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-[10px]">
+                                      Trf:{proj.transferCount}
+                                    </span>
+                                  )}
+                                  {proj.zupActiveRealExit > 0 ? (
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px]">
+                                      Çık:{proj.zupActiveRealExit}
+                                    </span>
+                                  ) : (
+                                    (proj.transferCount || 0) === 0 && <span className="text-slate-400">0</span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -1202,11 +1883,21 @@ export default function OfficialVsRealView() {
               const maxVal = Math.max(ps.zupCount, ps.realActiveCount, 1);
               const zupPct = Math.round((ps.zupCount / maxVal) * 100);
               const realPct = Math.round((ps.realActiveCount / maxVal) * 100);
+              const isSelectedPermit = selectedPermitKey === ps.key;
 
               return (
                 <div
                   key={ps.key}
-                  className="p-2.5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 space-y-1.5"
+                  onClick={() => {
+                    setSelectedPermitKey(isSelectedPermit ? 'ALL' : ps.key);
+                    setSelectedFilter('ALL');
+                    scrollToTable();
+                  }}
+                  className={`p-2.5 rounded-2xl border space-y-1.5 cursor-pointer transition-all ${
+                    isSelectedPermit
+                      ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50'
+                      : 'bg-slate-50/80 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
+                  }`}
                 >
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-900 dark:text-white">
@@ -1378,7 +2069,10 @@ export default function OfficialVsRealView() {
       {/* =====================================================================
           ADIM 4: DETAYLI ÇAPRAZ DENETİM VE FARK TABLOSU
       ===================================================================== */}
-      <div className="p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+      <div
+        ref={tableSectionRef}
+        className="p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-xs space-y-4"
+      >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm text-slate-900 dark:text-white">
@@ -1389,6 +2083,24 @@ export default function OfficialVsRealView() {
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
               {filteredRecords.length.toLocaleString('tr-TR')} {lang === 'ru' ? 'записей' : 'Kayıt'}
             </span>
+            {selectedProject !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedProject('ALL')}
+                className="text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-600 text-white cursor-pointer"
+              >
+                Şantiye: {selectedProject} ✕
+              </button>
+            )}
+            {selectedPermitKey !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedPermitKey('ALL')}
+                className="text-[11px] px-2.5 py-0.5 rounded-full bg-teal-600 text-white cursor-pointer"
+              >
+                Statü: {selectedPermitKey} ✕
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

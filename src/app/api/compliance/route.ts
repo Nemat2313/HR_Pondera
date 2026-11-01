@@ -223,7 +223,21 @@ export async function GET(request: Request) {
     let totalValid = 0;
 
     // Region & Uyruk breakdown counters
-    const regionBreakdown: Record<string, { region: string; total: number; expired: number; critical: number; missing: number; compliant: number }> = {};
+    const regionBreakdown: Record<
+      string,
+      {
+        region: string;
+        total: number;
+        expired: number;
+        critical: number;
+        missing: number;
+        compliant: number;
+        projectsMap: Record<
+          string,
+          { projeAdi: string; total: number; expired: number; critical: number; missing: number; compliant: number }
+        >;
+      }
+    > = {};
     const uyrukBreakdown: Record<string, { uyruk: string; total: number; expired: number; critical: number; missing: number }> = {};
 
     for (const r of rows) {
@@ -236,10 +250,30 @@ export async function GET(request: Request) {
 
       // Region breakdown tracker
       const reg = r.region || 'Bilinmiyor';
+      const proj = (r.proje_adi || reg || 'Genel').trim();
       if (!regionBreakdown[reg]) {
-        regionBreakdown[reg] = { region: reg, total: 0, expired: 0, critical: 0, missing: 0, compliant: 0 };
+        regionBreakdown[reg] = {
+          region: reg,
+          total: 0,
+          expired: 0,
+          critical: 0,
+          missing: 0,
+          compliant: 0,
+          projectsMap: {},
+        };
       }
       regionBreakdown[reg].total++;
+      if (!regionBreakdown[reg].projectsMap[proj]) {
+        regionBreakdown[reg].projectsMap[proj] = {
+          projeAdi: proj,
+          total: 0,
+          expired: 0,
+          critical: 0,
+          missing: 0,
+          compliant: 0,
+        };
+      }
+      regionBreakdown[reg].projectsMap[proj].total++;
 
       // Uyruk breakdown tracker
       const u = r.uyruk || 'Diğer';
@@ -379,11 +413,13 @@ export async function GET(request: Request) {
           docStats[d.id].expiredCount++;
           totalExpired++;
           regionBreakdown[reg].expired++;
+          regionBreakdown[reg].projectsMap[proj].expired++;
           uyrukBreakdown[u].expired++;
         } else if (status === 'critical') {
           docStats[d.id].criticalCount++;
           totalCritical++;
           regionBreakdown[reg].critical++;
+          regionBreakdown[reg].projectsMap[proj].critical++;
           uyrukBreakdown[u].critical++;
         } else if (status === 'warning') {
           docStats[d.id].warningCount++;
@@ -392,14 +428,17 @@ export async function GET(request: Request) {
           docStats[d.id].normalCount++;
           totalValid++;
           regionBreakdown[reg].compliant++;
+          regionBreakdown[reg].projectsMap[proj].compliant++;
         } else if (status === 'valid') {
           docStats[d.id].validCount++;
           totalValid++;
           regionBreakdown[reg].compliant++;
+          regionBreakdown[reg].projectsMap[proj].compliant++;
         } else {
           docStats[d.id].missingCount++;
           totalMissing++;
           regionBreakdown[reg].missing++;
+          regionBreakdown[reg].projectsMap[proj].missing++;
           uyrukBreakdown[u].missing++;
         }
 
@@ -477,7 +516,17 @@ export async function GET(request: Request) {
         complianceRate, // %
       },
       docStats: Object.values(docStats),
-      regionBreakdown: Object.values(regionBreakdown).sort((a, b) => b.expired + b.critical - (a.expired + a.critical)),
+      regionBreakdown: Object.values(regionBreakdown)
+        .map((r) => ({
+          region: r.region,
+          total: r.total,
+          expired: r.expired,
+          critical: r.critical,
+          missing: r.missing,
+          compliant: r.compliant,
+          projects: Object.values(r.projectsMap).sort((a, b) => b.expired + b.critical - (a.expired + a.critical)),
+        }))
+        .sort((a, b) => b.expired + b.critical - (a.expired + a.critical)),
       uyrukBreakdown: Object.values(uyrukBreakdown).sort((a, b) => b.total - a.total).slice(0, 8),
       items: filteredItems, // Unlimited - full list for export and client pagination
       totalFilteredItems: filteredItems.length,

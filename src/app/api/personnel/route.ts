@@ -139,13 +139,16 @@ export async function GET(request: Request) {
     const inDateExpr = buildNormalizedDateSql('ise_giris_tarihi');
     const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
 
-    // Movement & Period filter (for Management & Turnover view)
+    // Movement & Period filter (for Management & Turnover view — excludes inter-site transfers from exits)
     if (movementType === 'entry' || movementType === 'exit') {
       const { inRefDate, outRefDate } = getDatasetReferenceDates(db);
       const refDate = movementType === 'entry' ? inRefDate : outRefDate;
       const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
       const daysMap: Record<string, number> = { '1d': 1, '3d': 3, '7d': 7, '30d': 30 };
       const days = daysMap[period];
+      if (movementType === 'exit') {
+        conditions.push(`LOWER(COALESCE(cikis_sebebi, '')) NOT LIKE '%transfer%'`);
+      }
       if (days) {
         conditions.push(`(${dateColExpr}) >= date(?, '-${days} days') AND (${dateColExpr}) <= ?`);
         params.push(refDate, refDate);

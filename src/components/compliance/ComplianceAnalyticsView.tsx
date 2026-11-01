@@ -101,6 +101,8 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
   const [filterDocType, setFilterDocType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRegion, setFilterRegion] = useState('all');
+  const [filterProject, setFilterProject] = useState('all');
+  const [expandedRegions, setExpandedRegions] = useState<Record<string, boolean>>({});
   const [filterGuncelDurum, setFilterGuncelDurum] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -112,6 +114,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
     if (filterDocType !== 'all') params.set('docType', filterDocType);
     if (filterStatus !== 'all') params.set('status', filterStatus);
     if (filterRegion !== 'all') params.set('region', filterRegion);
+    if (filterProject !== 'all') params.set('project', filterProject);
     if (filterGuncelDurum !== 'all') params.set('guncelDurum', filterGuncelDurum);
     if (search.trim()) params.set('search', search.trim());
 
@@ -133,7 +136,7 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
 
   useEffect(() => {
     fetchCompliance();
-  }, [filterDocType, filterStatus, filterRegion, filterGuncelDurum, search]);
+  }, [filterDocType, filterStatus, filterRegion, filterProject, filterGuncelDurum, search]);
 
   // Export to Excel
   const handleExportExcel = () => {
@@ -562,30 +565,91 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
             <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
               {data?.regionBreakdown.map((r, idx) => {
                 const totalRisk = r.expired + r.critical;
+                const hasMultiSites = Array.isArray(r.projects) && r.projects.length > 1;
+                const isExpanded = !!expandedRegions[r.region];
+
                 return (
-                  <div
-                    key={idx}
-                    onClick={() => setFilterRegion(filterRegion === r.region ? 'all' : r.region)}
-                    className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
-                      filterRegion === r.region
-                        ? 'bg-emerald-50/90 dark:bg-emerald-950/60 border-emerald-400'
-                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-900 dark:text-white truncate">{r.region}</span>
-                      <span className="font-black text-rose-600 dark:text-rose-400">{totalRisk} Riskli</span>
+                  <div key={idx} className="space-y-1.5">
+                    <div
+                      onClick={() => {
+                        setFilterProject('all');
+                        setFilterRegion(filterRegion === r.region ? 'all' : r.region);
+                      }}
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        filterRegion === r.region && filterProject === 'all'
+                          ? 'bg-emerald-50/90 dark:bg-emerald-950/60 border-emerald-400'
+                          : 'bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-bold text-slate-900 dark:text-white truncate">{r.region}</span>
+                          {hasMultiSites && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedRegions((prev) => ({
+                                  ...prev,
+                                  [r.region]: !prev[r.region],
+                                }));
+                              }}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 text-[10px] font-semibold cursor-pointer"
+                            >
+                              <Layers className="w-2.5 h-2.5" />
+                              <span>{isExpanded ? 'Kapat ▴' : `${r.projects.length} Şantiye ▾`}</span>
+                            </button>
+                          )}
+                        </div>
+                        <span className="font-black text-rose-600 dark:text-rose-400 shrink-0">{totalRisk} Riskli</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-400">
+                        <span className="text-rose-500 font-semibold">{r.expired} Doldu</span>
+                        <span>•</span>
+                        <span className="text-amber-500 font-semibold">{r.critical} 0-15g</span>
+                        <span>•</span>
+                        <span className="text-slate-600 dark:text-slate-400">{r.missing} Eksik</span>
+                        <span className="ml-auto font-bold text-slate-700 dark:text-slate-300">
+                          Toplam {r.total} Kişi
+                        </span>
+                      </div>
                     </div>
-                    <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-400">
-                      <span className="text-rose-500 font-semibold">{r.expired} Doldu</span>
-                      <span>•</span>
-                      <span className="text-amber-500 font-semibold">{r.critical} 0-15g</span>
-                      <span>•</span>
-                      <span className="text-slate-600 dark:text-slate-400">{r.missing} Eksik</span>
-                      <span className="ml-auto font-bold text-slate-700 dark:text-slate-300">
-                        Toplam {r.total} Kişi
-                      </span>
-                    </div>
+
+                    {hasMultiSites && isExpanded && (
+                      <div className="ml-3 pl-2.5 border-l-2 border-emerald-500/30 space-y-1">
+                        {r.projects.map((p: any, pIdx: number) => {
+                          const pRisk = p.expired + p.critical;
+                          const isProjSelected = filterProject === p.projeAdi;
+                          return (
+                            <div
+                              key={pIdx}
+                              onClick={() => {
+                                setFilterRegion(r.region);
+                                setFilterProject(isProjSelected ? 'all' : p.projeAdi);
+                              }}
+                              className={`p-2 rounded-lg border text-[11px] transition-all cursor-pointer ${
+                                isProjSelected
+                                  ? 'bg-emerald-100/80 dark:bg-emerald-950/80 border-emerald-400'
+                                  : 'bg-white dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-emerald-300'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                  {p.projeAdi}
+                                </span>
+                                <span className="font-bold text-rose-600 dark:text-rose-400">{pRisk} Riskli</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[9.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                <span className="text-rose-500">{p.expired} Doldu</span>
+                                <span>•</span>
+                                <span className="text-amber-500">{p.critical} 0-15g</span>
+                                <span className="ml-auto">{p.total} Kişi</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -593,11 +657,14 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
           </div>
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
-            <span>Bölgeye tıklayarak tabloyu filtreleyin</span>
-            {filterRegion !== 'all' && (
+            <span>Bölgeye / Şantiyeye tıklayarak tabloyu filtreleyin</span>
+            {(filterRegion !== 'all' || filterProject !== 'all') && (
               <button
-                onClick={() => setFilterRegion('all')}
-                className="text-rose-600 dark:text-rose-400 font-bold hover:underline"
+                onClick={() => {
+                  setFilterRegion('all');
+                  setFilterProject('all');
+                }}
+                className="text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer"
               >
                 Filtreyi Temizle
               </button>

@@ -24,6 +24,7 @@ import {
   Mail,
   Plane,
   Building,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -110,6 +111,13 @@ export default function Sidebar({
           badgeColor: 'bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-700/50',
         },
         {
+          id: 'official_real',
+          label: t('nav_official_real'),
+          icon: Scale,
+          badge: '1C ZUP',
+          badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
+        },
+        {
           id: 'personnel',
           label: t('nav_personnel'),
           icon: Users,
@@ -150,22 +158,11 @@ export default function Sidebar({
         ...(user?.role !== 'viewer'
           ? [
               {
-                id: 'database',
-                label: t('nav_database'),
-                icon: Database,
-                badge: 'SQLite',
+                id: 'settings',
+                label: lang === 'ru' ? 'Настройки системы' : 'Ayarlar & Yönetim',
+                icon: Settings,
+                badge: 'RLS • DB • Mail',
                 badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
-              },
-            ]
-          : []),
-        ...(user?.role === 'admin'
-          ? [
-              {
-                id: 'admin',
-                label: t('nav_admin'),
-                icon: UserCog,
-                badge: 'Admin',
-                badgeColor: 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50',
               },
             ]
           : []),
@@ -176,13 +173,6 @@ export default function Sidebar({
       title: lang === 'ru' ? '2. ПЛАНИРУЕМЫЕ ЗАДАЧИ' : '2. PLANLANAN İŞLER (Zahid Bey)',
       tag: lang === 'ru' ? 'В плане' : 'Planlandı',
       items: [
-        {
-          id: 'official_real',
-          label: t('nav_official_real'),
-          icon: Scale,
-          badge: '1C ZUP',
-          badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
-        },
         {
           id: 'quotas',
           label: t('nav_quotas'),

@@ -432,11 +432,16 @@ export default function OverviewView({
       <PowerBIRankedRegionBars
         regionData={stats?.regionDistribution || []}
         nationalityData={stats?.nationalityDistribution || []}
+        regionProjectsTree={pbi?.decompositionTree || []}
         totalCount={total}
         selectedRegion={selectedRegion}
+        selectedProject={selectedProject}
         selectedNationality={selectedNationality}
         onSelectRegion={(reg) => {
           setSelectedRegion(selectedRegion === reg ? 'all' : reg);
+        }}
+        onSelectProject={(prj) => {
+          setSelectedProject(selectedProject === prj ? 'all' : prj);
         }}
         onSelectNationality={(nat) => {
           setSelectedNationality(selectedNationality === nat ? 'all' : nat);
