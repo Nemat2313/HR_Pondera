@@ -180,7 +180,7 @@ export default function Sidebar({
           id: 'official_real',
           label: t('nav_official_real'),
           icon: Scale,
-          badge: lang === 'ru' ? 'Аудит' : 'Denetim',
+          badge: '1C ZUP',
           badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
         },
         {

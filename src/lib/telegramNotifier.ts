@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
+import { computeZupVsRealReconciliation } from '@/lib/zupReconciliation';
 
 export function getTelegramConfig() {
   let dbToken = '';
@@ -1007,6 +1008,96 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
   const tgRes = await sendTelegramMessage(msg);
   if (!tgRes.ok) {
     enqueueTelegramOutbox(db, 'compliance', msg);
+  }
+
+  // Send 1C ZUP (Official) vs eBA (Real) Reconciliation Summary right after the daily compliance report
+  await sendZupVsRealTelegramReport(true);
+
+  return { sent: tgRes.ok, reason: tgRes.error };
+}
+
+export async function sendZupVsRealTelegramReport(force = false): Promise<{
+  sent: boolean;
+  reason?: string;
+}> {
+  const db = getDb();
+  const msk = getMoscowTimeParts();
+
+  if (!force) {
+    const lastSent = getSystemInfoValue(db, 'telegram_zup_last_sent_date');
+    if (lastSent === msk.dateIso) {
+      return { sent: false, reason: `Already sent today (${msk.dateIso})` };
+    }
+  }
+
+  const recon = computeZupVsRealReconciliation(db);
+  const s = recon.summary;
+  const meta = recon.metadata;
+  const dc = s.discrepancyCounts;
+
+  const regHdr = `${'Bölge'.padEnd(15)} ${'Real'.padStart(5)} ${'ZUP'.padStart(5)} ${'Oran'.padStart(5)} ${'Eksik'.padStart(5)} ${'Çıkış'.padStart(5)}`;
+  const regSep = '-'.repeat(regHdr.length);
+  const regRows = (recon.byRegion || []).slice(0, 6).map((r: any) => {
+    const rName = String(r.region || 'Diğer').slice(0, 15).padEnd(15);
+    return `${rName} ${String(r.realActive).padStart(5)} ${String(r.inZupOfficial).padStart(5)} ${(r.officialRatePct + '%').padStart(5)} ${String(r.missingMainFirm).padStart(5)} ${String(r.zupActiveRealExit).padStart(5)}`;
+  });
+
+  const permitHdr = `${'Statü / İzin'.padEnd(16)} ${'1C ZUP'.padStart(7)} ${'eBA Real'.padStart(8)} ${'Fark'.padStart(6)}`;
+  const permitSep = '-'.repeat(permitHdr.length);
+  const permitRows = (recon.byPermitStatus || []).map((p: any) => {
+    const shortName =
+      p.key === 'VKS'
+        ? 'VKS (ВКС)'
+        : p.key === 'PATENT'
+        ? 'Patent'
+        : p.key === 'QUOTA_RNR'
+        ? 'Kota / RNR'
+        : p.key === 'RESIDENT'
+        ? 'Rezident / RF'
+        : 'EAES';
+    const diffStr = p.diff > 0 ? `+${p.diff}` : String(p.diff);
+    return `${shortName.padEnd(16)} ${String(p.zupCount).padStart(7)} ${String(p.realActiveCount).padStart(8)} ${diffStr.padStart(6)}`;
+  });
+
+  const dateWarningLine = meta.isZupOutdated
+    ? `⚠️ <b>Not:</b> <i>Real eBA listesi <b>${meta.ebaDate}</b>, 1C ZUP resmi listesi <b>${meta.zupDate}</b> tarihlidir (ZUP listesinin güncellenmesi gerekmektedir).</i>`
+    : `✅ <i>Her iki liste de güncel (${meta.ebaDate}).</i>`;
+
+  const msg = [
+    `⚖️ <b>HR Pondera — 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu</b>`,
+    `🕘 <i>Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay}</i>`,
+    dateWarningLine,
+    ``,
+    `📊 <b>1. Genel Kadro Mutabakatı (Mevcut Çalışanların Resmi Durumu):</b>`,
+    `• <b>eBA Real Aktif Kadro (${meta.ebaDate}):</b> <b>${s.realActiveTotal}</b> kişi <i>(Ana Kadro: ${s.realActiveMainFirm} | Taşeron: ${s.realActiveSubcon})</i>`,
+    `• <b>1C ZUP Resmi Kadro (${meta.zupDate}):</b> <b>${s.zupOfficialTotal}</b> kişi`,
+    `• ✅ <b>Hem Real'de Aktif Hem Resmide Çalışan:</b> <b>${s.matchedActiveBoth}</b> kişi <i>(Ana Kadro Resmi Oranı: <b>%${s.matchedActiveRateMainFirm}</b> | Genel: <b>%${s.matchedActiveRateAll}</b>)</i>`,
+    ``,
+    `🚨 <b>2. Kadro & Durum Farkları (Kritik Sapmalar):</b>`,
+    `• 🔴 <b>1C ZUP'ta Aktif / Real'de ÇIKIŞ Yapılmış:</b> <b>${s.zupActiveButRealExited}</b> kişi <i>(Sahadan ayrılmış, ZUP resmi çıkışı düşülmemiş!)</i>`,
+    `• 🟠 <b>Real Ana Kadroda Aktif / 1C ZUP'ta YOK:</b> <b>${s.realActiveNotInZupMainFirm}</b> kişi <i>(${s.realActiveNotInZupRecentHire} kişi 29.10 sonrası yeni giriş)</i>`,
+    `• 🟡 <b>Real Taşeronda Aktif / 1C ZUP Dışı:</b> <b>${s.realActiveNotInZupSubcon}</b> kişi`,
+    `• 🟣 <b>Sadece 1C ZUP'ta Var / eBA'da Kaydı Yok:</b> <b>${s.zupOnlyNotInRealDB}</b> kişi`,
+    ``,
+    `🔍 <b>3. Eşleşen Personellerde Veri & Kimlik Farkları:</b>`,
+    `• 🛂 <b>Pasaport Numarası Farklı:</b> <b>${dc.passportMismatch}</b> kişi`,
+    `• 🪪 <b>Çalışma Statüsü (VKS/Patent/RNR) Farklı:</b> <b>${dc.permitStatusMismatch}</b> kişi`,
+    `• 🧾 <b>İNN Farklı / eBA'da İNN Eksik:</b> <b>${dc.innMismatch}</b> farklı / <b>${dc.missingInnInEba}</b> eBA'da boş`,
+    `• 🔢 <b>Sicil No Format Farkı (Örn. nokta/harf eki):</b> <b>${dc.sicilFormatDiff}</b> kişi`,
+    `• 🎂 <b>Doğum Tarihi Farklı:</b> <b>${dc.birthDateMismatch}</b> kişi`,
+    `• 🔤 <b>Kiril Ad Soyad Yazım Farkı:</b> <b>${dc.kirilNameDiff}</b> kişi`,
+    ``,
+    `🪪 <b>Statü Bazlı 1C ZUP vs eBA Real Dağılımı:</b>`,
+    `<pre>${[permitHdr, permitSep, ...permitRows].join('\n')}</pre>`,
+    ``,
+    `🏗 <b>Bölge Bazlı Resmi (1C ZUP) Çalışma Oranı:</b>`,
+    `<pre>${[regHdr, regSep, ...regRows].join('\n')}</pre>`,
+  ].join('\n');
+
+  setSystemInfoValue(db, 'telegram_zup_last_sent_date', msk.dateIso);
+  const tgRes = await sendTelegramMessage(msg);
+  if (!tgRes.ok) {
+    enqueueTelegramOutbox(db, 'zup_reconciliation', msg);
   }
   return { sent: tgRes.ok, reason: tgRes.error };
 }

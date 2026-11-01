@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import {
   checkAndSendVks15MinReport,
   sendDailyCompliance915Report,
+  sendZupVsRealTelegramReport,
   sendTelegramMessage,
   getMoscowTimeParts,
   claimPendingOutboxMessages,
@@ -46,6 +47,14 @@ export async function GET(request: Request) {
         success: true,
         mode: 'test_compliance',
         compRes,
+      });
+    }
+    if (testMode === 'zup') {
+      const zupRes = await sendZupVsRealTelegramReport(true);
+      return NextResponse.json({
+        success: true,
+        mode: 'test_zup',
+        zupRes,
       });
     }
     if (testMode === 'both') {
