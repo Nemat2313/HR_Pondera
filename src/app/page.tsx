@@ -44,6 +44,8 @@ export default function Home() {
   const [selectedNationality, setSelectedNationality] = useState('all');
   const [selectedCollar, setSelectedCollar] = useState('all');
   const [selectedTitle, setSelectedTitle] = useState('all');
+  const [selectedPermit, setSelectedPermit] = useState('all');
+  const [selectedGender, setSelectedGender] = useState('all');
   const [firmFilter, setFirmFilter] = useState<'all' | 'main' | 'subcon'>('all');
 
   // Cross-page navigation state for Personnel List
@@ -68,6 +70,8 @@ export default function Home() {
     if (selectedNationality !== 'all') params.set('nationality', selectedNationality);
     if (selectedCollar !== 'all') params.set('collar', selectedCollar);
     if (selectedTitle !== 'all') params.set('title', selectedTitle);
+    if (selectedPermit !== 'all') params.set('permit', selectedPermit);
+    if (selectedGender !== 'all') params.set('gender', selectedGender);
     if (firmFilter !== 'all') params.set('firmType', firmFilter);
 
     // Apply RLS scope from active user
@@ -94,6 +98,8 @@ export default function Home() {
     selectedNationality,
     selectedCollar,
     selectedTitle,
+    selectedPermit,
+    selectedGender,
     firmFilter,
     user,
   ]);
@@ -135,6 +141,8 @@ export default function Home() {
     setSelectedNationality('all');
     setSelectedCollar('all');
     setSelectedTitle('all');
+    setSelectedPermit('all');
+    setSelectedGender('all');
     setFirmFilter('all');
     setSearchQuery('');
   };
@@ -147,6 +155,8 @@ export default function Home() {
     (selectedNationality !== 'all' ? 1 : 0) +
     (selectedCollar !== 'all' ? 1 : 0) +
     (selectedTitle !== 'all' ? 1 : 0) +
+    (selectedPermit !== 'all' ? 1 : 0) +
+    (selectedGender !== 'all' ? 1 : 0) +
     (firmFilter !== 'all' ? 1 : 0);
 
   if (authLoading) {
@@ -233,9 +243,14 @@ export default function Home() {
             setSelectedCollar={setSelectedCollar}
             selectedTitle={selectedTitle}
             setSelectedTitle={setSelectedTitle}
+            selectedPermit={selectedPermit}
+            setSelectedPermit={setSelectedPermit}
+            selectedGender={selectedGender}
+            setSelectedGender={setSelectedGender}
             firmFilter={firmFilter}
             setFirmFilter={setFirmFilter}
             onNavigateToPersonnel={handleNavigateToPersonnel}
+            onNavigateToTurnover={() => setActiveTab('turnover')}
             onResetFilters={handleResetFilters}
           />
         )}

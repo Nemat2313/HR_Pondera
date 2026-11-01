@@ -33,10 +33,13 @@ interface PowerBIHeroBarProps {
   monthlyExits: { month: string; out_count: number }[];
   turnoverRate?: number;
   annualExits?: number;
+  last30dIn?: number;
+  last30dOut?: number;
   firmFilter: 'all' | 'main' | 'subcon';
   setFirmFilter: (filter: 'all' | 'main' | 'subcon') => void;
   onRefresh: () => void;
   onOpenDetailList?: () => void;
+  onNavigateToTurnover?: () => void;
 }
 
 export default function PowerBIHeroBar({
@@ -52,10 +55,13 @@ export default function PowerBIHeroBar({
   monthlyExits,
   turnoverRate = 3.8,
   annualExits = 205,
+  last30dIn,
+  last30dOut,
   firmFilter,
   setFirmFilter,
   onRefresh,
   onOpenDetailList,
+  onNavigateToTurnover,
 }: PowerBIHeroBarProps) {
   const { lang, t } = useLanguage();
   const [selectedMonthRange, setSelectedMonthRange] = useState<number>(8); // 3 to 8 months
@@ -71,9 +77,15 @@ export default function PowerBIHeroBar({
     ? `За последние ${selectedMonthRange} мес. (${startMonthName} 2026 - Октябрь 2026)`
     : `Son ${selectedMonthRange} Ay (${startMonthName} 2026 - Ekim 2026)`;
 
-  // In / Out ratio bar (latest month flow)
-  const inLatest = monthlyEntries[monthlyEntries.length - 1]?.in_count || 128;
-  const outLatest = monthlyExits[monthlyExits.length - 1]?.out_count || 703;
+  // In / Out ratio bar (latest 30d or latest month flow)
+  const inLatest =
+    last30dIn !== undefined
+      ? last30dIn
+      : monthlyEntries[monthlyEntries.length - 1]?.in_count || 128;
+  const outLatest =
+    last30dOut !== undefined
+      ? last30dOut
+      : monthlyExits[monthlyExits.length - 1]?.out_count || 703;
   const totalFlow = inLatest + outLatest || 1;
   const inPct = Math.round((inLatest / totalFlow) * 100);
   const outPct = Math.round((outLatest / totalFlow) * 100);
@@ -188,11 +200,16 @@ export default function PowerBIHeroBar({
           <span className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{lang === 'ru' ? 'Молодой коллектив' : 'Genç & Dinamik Kadro'}</span>
         </div>
 
-        {/* Metric 3: Turnover (Sirkülasyon) Oranı */}
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
+        {/* Metric 3: Turnover (Sirkülasyon) Oranı - Clickable to open Yönetim & Turnover */}
+        <div
+          onClick={() => onNavigateToTurnover && onNavigateToTurnover()}
+          title={lang === 'ru' ? 'Перейти к отчету по текучести и увольнениям' : 'Yönetim & Turnover Detay Sayfasına Git'}
+          className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 hover:bg-emerald-50/40 dark:hover:bg-slate-800 transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1">
               {lang === 'ru' ? 'Ср. текучесть' : 'Aylık Ort. Turnover'}
+              <ArrowUpRight className="w-3 h-3 text-teal-500 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
             </span>
             <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-emerald-100 dark:bg-teal-900/60 text-emerald-800 dark:text-teal-300 border border-emerald-200 dark:border-teal-600/40">
               {turnoverRate <= 8.5 ? (lang === 'ru' ? 'Баланс' : 'Dengeli Devir') : (lang === 'ru' ? 'Контроль' : 'İzlenmeli')}
@@ -206,7 +223,7 @@ export default function PowerBIHeroBar({
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
             <span>{lang === 'ru' ? 'Уволено 2026:' : '2026 Çıkış:'} <strong className="text-slate-800 dark:text-slate-200 font-medium">{annualExits.toLocaleString('tr-TR')} {t('unit_person')}</strong></span>
-            <span className="font-mono text-emerald-700 dark:text-teal-300">{lang === 'ru' ? 'Стабильно' : 'Stabil Kadro'}</span>
+            <span className="font-mono text-emerald-700 dark:text-teal-300 group-hover:underline">{lang === 'ru' ? 'Детали →' : 'Detay Gör →'}</span>
           </div>
         </div>
 
@@ -229,9 +246,18 @@ export default function PowerBIHeroBar({
           </div>
         </div>
 
-        {/* Metric 6: İşe Alım ve Çıkış Oranları Gauge Bar */}
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between">
-          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">{lang === 'ru' ? 'Динамика движения' : 'Giriş / Çıkış Akışı'}</span>
+        {/* Metric 6: İşe Alım ve Çıkış Oranları Gauge Bar - Clickable to open Yönetim & Turnover */}
+        <div
+          onClick={() => onNavigateToTurnover && onNavigateToTurnover()}
+          title={lang === 'ru' ? 'Перейти к деталям приемов и увольнений' : 'Giriş & Çıkış Detayları İçin Yönetim & Turnover Sayfasına Git'}
+          className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-rose-400 dark:hover:border-teal-400 hover:bg-rose-50/30 dark:hover:bg-slate-800 transition-all cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+              {lang === 'ru' ? 'Динамика движения' : 'Giriş / Çıkış Akışı'}
+            </span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-rose-500 dark:text-teal-400 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+          </div>
           <div className="mt-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-emerald-700 dark:text-emerald-400 font-semibold">+{inLatest} {lang === 'ru' ? 'Прием' : 'Giriş'}</span>

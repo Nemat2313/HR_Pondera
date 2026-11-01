@@ -4,17 +4,32 @@ import React from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Briefcase, Globe2, FileSpreadsheet, Users2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { WorkPermitStat } from '@/types';
+import PowerBIWorkPermits from './PowerBIWorkPermits';
 
 interface PowerBIDualDonutsProps {
   collarData: { label: string; count: number }[];
   categoryData: { label: string; count: number }[];
+  permitsData?: WorkPermitStat[];
   totalCount: number;
   maleCount?: number;
   femaleCount?: number;
   selectedCollar?: string;
   selectedCategory?: string;
+  selectedPermit?: string;
   onSelectSlice?: (type: 'collar' | 'category' | 'gender', value: string) => void;
+  onSelectPermit?: (permitKey: string) => void;
   onOpenDetail?: (type: 'collar' | 'category' | 'gender', value: string) => void;
+  onOpenPermitDetail?: (permitKey?: string) => void;
+}
+
+export interface PowerBIGenderCardProps {
+  totalCount: number;
+  maleCount: number;
+  femaleCount: number;
+  selectedGender?: string;
+  onSelectGender?: (gender: string) => void;
+  onOpenDetail?: () => void;
 }
 
 const COLLAR_COLORS = ['#0d9488', '#0284c7', '#64748b']; // Teal, Sky-Blue, Slate
@@ -85,16 +100,156 @@ export function WcFemaleIcon({ className = 'w-11 h-28' }: { className?: string }
   );
 }
 
-export default function PowerBIDualDonuts({
-  collarData,
-  categoryData,
+export function PowerBIGenderCard({
   totalCount,
   maleCount = 0,
   femaleCount = 0,
+  selectedGender = 'all',
+  onSelectGender,
+  onOpenDetail,
+}: PowerBIGenderCardProps) {
+  const { lang } = useLanguage();
+  const malePct = totalCount > 0 ? Math.round((maleCount / totalCount) * 100) : 97;
+  const femalePct = totalCount > 0 ? Math.max(1, Math.round((femaleCount / totalCount) * 100)) : 3;
+
+  return (
+    <div className="p-4 sm:p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl flex flex-col justify-between transition-colors h-full">
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-500/20 flex items-center justify-center border border-teal-200/60 dark:border-teal-500/30">
+            <Users2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+          </div>
+          <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
+            {lang === 'ru' ? 'Распределение по полу (Мужчины / Женщины)' : 'Cinsiyet Dağılımı (Erkek / Kadın)'}
+          </h3>
+        </div>
+        {onOpenDetail && (
+          <button
+            onClick={onOpenDetail}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-800 dark:text-teal-200 text-xs font-medium border border-teal-300/80 dark:border-teal-500/30 transition-all cursor-pointer shrink-0"
+            title={lang === 'ru' ? 'Открыть детализацию по полу' : 'Cinsiyet Detayını Aç'}
+          >
+            <FileSpreadsheet className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+            <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Center: Side-by-side Tall Human Silhouettes & KPI counts */}
+      <div className="flex-1 min-h-[280px] flex flex-col justify-between py-3">
+        <div className="grid grid-cols-2 gap-3.5 flex-1 items-stretch">
+          {/* ERKEK (Tall Full-Body Male Figure Card) */}
+          <div
+            onClick={() => onSelectGender && onSelectGender('Erkek')}
+            className={`p-3.5 rounded-2xl bg-gradient-to-b from-teal-50/80 via-emerald-50/40 to-teal-100/50 dark:from-teal-950/50 dark:via-slate-900/70 dark:to-teal-950/40 border transition-all cursor-pointer flex items-center gap-3 group shadow-xs ${
+              selectedGender === 'Erkek'
+                ? 'border-teal-500 ring-2 ring-teal-500/40'
+                : selectedGender !== 'all'
+                ? 'border-teal-200/50 dark:border-teal-500/20 opacity-45'
+                : 'border-teal-200/90 dark:border-teal-500/30 hover:border-teal-400'
+            }`}
+          >
+            <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-teal-200/70 dark:border-teal-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
+              <WcMaleIcon className="w-11 h-28" />
+            </div>
+            <div className="min-w-0 flex flex-col justify-center">
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
+                {lang === 'ru' ? 'Мужской штат' : 'Erkek Kadro'}
+              </span>
+              <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-700 font-medium">
+                %{malePct}
+              </span>
+              <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
+                {maleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+                {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
+              </p>
+            </div>
+          </div>
+
+          {/* KADIN (Tall Full-Body Female Figure Card) */}
+          <div
+            onClick={() => onSelectGender && onSelectGender('Kadin')}
+            className={`p-3.5 rounded-2xl bg-gradient-to-b from-violet-50/80 via-purple-50/40 to-violet-100/50 dark:from-violet-950/45 dark:via-slate-900/70 dark:to-violet-950/40 border transition-all cursor-pointer flex items-center gap-3 group shadow-xs ${
+              selectedGender === 'Kadin'
+                ? 'border-violet-500 ring-2 ring-violet-500/40'
+                : selectedGender !== 'all'
+                ? 'border-violet-200/50 dark:border-violet-500/20 opacity-45'
+                : 'border-violet-200/90 dark:border-violet-500/30 hover:border-violet-400'
+            }`}
+          >
+            <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-violet-200/70 dark:border-violet-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
+              <WcFemaleIcon className="w-11 h-28" />
+            </div>
+            <div className="min-w-0 flex flex-col justify-center">
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
+                {lang === 'ru' ? 'Женский штат' : 'Kadın Kadro'}
+              </span>
+              <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700 font-medium">
+                %{femalePct}
+              </span>
+              <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
+                {femaleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+                {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Proportional dual progress bar & ratio footer */}
+        <div className="space-y-2 pt-3">
+          <div className="space-y-1 px-0.5">
+            <div className="flex items-center justify-between text-xs font-medium">
+              <span className="text-teal-800 dark:text-teal-300">
+                %{malePct} {lang === 'ru' ? 'Мужчины' : 'Erkek'}
+              </span>
+              <span className="text-purple-800 dark:text-purple-300">
+                %{femalePct} {lang === 'ru' ? 'Женщины' : 'Kadın'}
+              </span>
+            </div>
+            <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner p-0.5 gap-0.5">
+              <div
+                className="bg-gradient-to-r from-teal-500 to-emerald-400 h-full rounded-l-full transition-all duration-500"
+                style={{ width: `${malePct}%` }}
+                title={`${lang === 'ru' ? 'Мужчины' : 'Erkek'}: %${malePct}`}
+              />
+              <div
+                className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full rounded-r-full transition-all duration-500"
+                style={{ width: `${femalePct}%` }}
+                title={`${lang === 'ru' ? 'Женщины' : 'Kadın'}: %${femalePct}`}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
+              {lang === 'ru' ? 'Преимущественно полевой / строительный штат' : 'Saha / Şantiye yoğunluklu kadro'}
+            </span>
+            <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
+              {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотношение' : 'Oran'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function PowerBIDualDonuts({
+  collarData,
+  categoryData,
+  permitsData = [],
+  totalCount,
   selectedCollar,
   selectedCategory,
+  selectedPermit,
   onSelectSlice,
+  onSelectPermit,
   onOpenDetail,
+  onOpenPermitDetail,
 }: PowerBIDualDonutsProps) {
   const { lang, translateVal } = useLanguage();
 
@@ -119,9 +274,6 @@ export default function PowerBIDualDonuts({
 
   const expat = categoryData.find((c) => c.label === 'Ekspat')?.count || 0;
   const expatPct = totalCount > 0 ? Math.round((expat / totalCount) * 100) : 55;
-
-  const malePct = totalCount > 0 ? Math.round((maleCount / totalCount) * 100) : 97;
-  const femalePct = totalCount > 0 ? Math.max(1, Math.round((femaleCount / totalCount) * 100)) : 3;
 
   // Custom External Callout Line & Label Renderer (no redundant % inside slices)
   const createExternalCalloutRenderer = (colors: string[]) => {
@@ -388,117 +540,15 @@ export default function PowerBIDualDonuts({
         </div>
       </div>
 
-      {/* 3. CİNSİYET DAĞILIMI (TALL STANDING HUMAN FIGURES MATCHING APP DESIGN) */}
-      <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-500/20 flex items-center justify-center border border-teal-200/60 dark:border-teal-500/30">
-              <Users2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-            </div>
-            <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
-              {lang === 'ru' ? 'Распределение по полу (Мужчины / Женщины)' : 'Cinsiyet Dağılımı (Erkek / Kadın)'}
-            </h3>
-          </div>
-          {onOpenDetail && (
-            <button
-              onClick={() => onOpenDetail('gender', 'all')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-800 dark:text-teal-200 text-xs font-medium border border-teal-300/80 dark:border-teal-500/30 transition-all cursor-pointer shrink-0"
-              title={lang === 'ru' ? 'Открыть детализацию по полу' : 'Cinsiyet Detayını Aç'}
-            >
-              <FileSpreadsheet className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-              <span>{lang === 'ru' ? 'Детали' : 'Detay Gör'}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Center: Side-by-side Tall Human Silhouettes & KPI counts */}
-        <div className="h-72 flex flex-col justify-between py-2">
-          <div className="grid grid-cols-2 gap-3.5 flex-1 items-stretch">
-            {/* ERKEK (Tall Full-Body Male Figure Card) */}
-            <div
-              onClick={() => onSelectSlice && onSelectSlice('gender', 'Erkek')}
-              className="p-3.5 rounded-2xl bg-gradient-to-b from-teal-50/80 via-emerald-50/40 to-teal-100/50 dark:from-teal-950/50 dark:via-slate-900/70 dark:to-teal-950/40 border border-teal-200/90 dark:border-teal-500/30 hover:border-teal-400 transition-all cursor-pointer flex items-center gap-3 group shadow-xs"
-            >
-              <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-teal-200/70 dark:border-teal-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
-                <WcMaleIcon className="w-11 h-28" />
-              </div>
-              <div className="min-w-0 flex flex-col justify-center">
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
-                  {lang === 'ru' ? 'Мужской штат' : 'Erkek Kadro'}
-                </span>
-                <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-700 font-medium">
-                  %{malePct}
-                </span>
-                <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
-                  {maleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-                  {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
-                </p>
-              </div>
-            </div>
-
-            {/* KADIN (Tall Full-Body Female Figure Card) */}
-            <div
-              onClick={() => onSelectSlice && onSelectSlice('gender', 'Kadin')}
-              className="p-3.5 rounded-2xl bg-gradient-to-b from-violet-50/80 via-purple-50/40 to-violet-100/50 dark:from-violet-950/45 dark:via-slate-900/70 dark:to-violet-950/40 border border-violet-200/90 dark:border-violet-500/30 hover:border-violet-400 transition-all cursor-pointer flex items-center gap-3 group shadow-xs"
-            >
-              <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-violet-200/70 dark:border-violet-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
-                <WcFemaleIcon className="w-11 h-28" />
-              </div>
-              <div className="min-w-0 flex flex-col justify-center">
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
-                  {lang === 'ru' ? 'Женский штат' : 'Kadın Kadro'}
-                </span>
-                <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700 font-medium">
-                  %{femalePct}
-                </span>
-                <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
-                  {femaleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-                  {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Proportional dual progress bar & ratio footer */}
-          <div className="space-y-2 pt-3">
-            <div className="space-y-1 px-0.5">
-              <div className="flex items-center justify-between text-xs font-medium">
-                <span className="text-teal-800 dark:text-teal-300">
-                  %{malePct} {lang === 'ru' ? 'Мужчины' : 'Erkek'}
-                </span>
-                <span className="text-purple-800 dark:text-purple-300">
-                  %{femalePct} {lang === 'ru' ? 'Женщины' : 'Kadın'}
-                </span>
-              </div>
-              <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner p-0.5 gap-0.5">
-                <div
-                  className="bg-gradient-to-r from-teal-500 to-emerald-400 h-full rounded-l-full transition-all duration-500"
-                  style={{ width: `${malePct}%` }}
-                  title={`${lang === 'ru' ? 'Мужчины' : 'Erkek'}: %${malePct}`}
-                />
-                <div
-                  className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full rounded-r-full transition-all duration-500"
-                  style={{ width: `${femalePct}%` }}
-                  title={`${lang === 'ru' ? 'Женщины' : 'Kadın'}: %${femalePct}`}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
-                {lang === 'ru' ? 'Преимущественно полевой / строительный штат' : 'Saha / Şantiye yoğunluklu kadro'}
-              </span>
-              <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
-                {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотношение' : 'Oran'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* 3. YASAL ÇALIŞMA İZİNLERİ (SWAPPED WITH CİNSİYET TO BE AT THE VERY TOP ROW) */}
+      <PowerBIWorkPermits
+        permits={permitsData}
+        totalCount={totalCount}
+        selectedPermit={selectedPermit}
+        compact={true}
+        onSelectPermit={onSelectPermit}
+        onOpenDetail={onOpenPermitDetail}
+      />
     </div>
   );
 }

@@ -86,6 +86,53 @@ export function normalizePermitFilterKey(permit: string): WorkPermitCategoryKey 
   return null;
 }
 
+export function buildNormalizedDateSql(col: string): string {
+  return `CASE
+    WHEN ${col} GLOB '[0-9][0-9][0-9][0-9][0-9]*' AND CAST(${col} AS INTEGER) BETWEEN 30000 AND 60000
+      THEN date('1899-12-30', '+' || CAST(${col} AS INTEGER) || ' days')
+    WHEN ${col} LIKE '____-__-__%'
+      THEN substr(${col}, 1, 10)
+    WHEN ${col} LIKE '__.__.____%'
+      THEN substr(${col}, 7, 4) || '-' || substr(${col}, 4, 2) || '-' || substr(${col}, 1, 2)
+    ELSE NULL
+  END`;
+}
+
+export function getDatasetReferenceDate(db: any): string {
+  try {
+    const inExpr = buildNormalizedDateSql('ise_giris_tarihi');
+    const outExpr = buildNormalizedDateSql('cikis_tarihi');
+    const row = db
+      .prepare(
+        `SELECT MAX(d) as max_date FROM (
+          SELECT MAX(${inExpr}) as d FROM personnel WHERE (${inExpr}) >= '2020-01-01' AND (${inExpr}) <= '2027-12-31'
+          UNION ALL
+          SELECT MAX(${outExpr}) as d FROM personnel WHERE (${outExpr}) >= '2020-01-01' AND (${outExpr}) <= '2027-12-31'
+        )`
+      )
+      .get() as { max_date?: string } | undefined;
+    if (row?.max_date && /^\d{4}-\d{2}-\d{2}$/.test(row.max_date)) {
+      return row.max_date;
+    }
+  } catch {}
+
+  try {
+    const dfRow = db
+      .prepare("SELECT value FROM system_info WHERE key = 'data_freshness'")
+      .get() as { value?: string } | undefined;
+    const val = (dfRow?.value || '').trim();
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(val)) {
+      const [dd, mm, yyyy] = val.split('.');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      return val;
+    }
+  } catch {}
+
+  return '2026-10-18';
+}
+
 export function classifyWorkPermitFromRow(
   uyrukRaw: string | null | undefined,
   rawJson: Record<string, any> | null | undefined

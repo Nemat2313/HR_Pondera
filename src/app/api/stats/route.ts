@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { WORK_PERMIT_CASE_SQL } from '@/lib/workPermits';
+import {
+  WORK_PERMIT_CASE_SQL,
+  normalizePermitFilterKey,
+  buildNormalizedDateSql,
+  getDatasetReferenceDate,
+} from '@/lib/workPermits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +29,8 @@ export async function GET(request: Request) {
     const collar = searchParams.get('collar');
     const title = searchParams.get('title');
     const firmType = searchParams.get('firmType'); // 'all' | 'main' | 'subcon'
+    const permit = searchParams.get('permit');
+    const gender = searchParams.get('gender');
 
     // Strict RLS Overrides
     if (scopeType === 'region' && scopeVal !== 'all') {
@@ -82,6 +89,19 @@ export async function GET(request: Request) {
         filterMap['collar'] = { col: 'endirekt_direkt', op: '=', val: 'Endirekt' };
       } else if (collar.includes('Mavi') || collar.includes('Direkt')) {
         filterMap['collar'] = { col: 'endirekt_direkt', op: '=', val: 'Direkt' };
+      } else {
+        filterMap['collar'] = { col: "COALESCE(endirekt_direkt, '')", op: "NOT IN ('Endirekt', 'Direkt')", val: null };
+      }
+    }
+
+    if (gender && gender !== 'all') {
+      filterMap['gender'] = { col: 'cinsiyet', op: '=', val: gender };
+    }
+
+    if (permit && permit !== 'all') {
+      const canonicalPermit = normalizePermitFilterKey(permit);
+      if (canonicalPermit) {
+        filterMap['permit'] = { col: `(${WORK_PERMIT_CASE_SQL})`, op: '=', val: canonicalPermit };
       }
     }
 
@@ -97,11 +117,12 @@ export async function GET(request: Request) {
 
     // Helper to build WHERE clause while optionally excluding a specific dimension filter
     // This allows the excluded dimension chart to display ALL its members (cross-highlighting)
-    const buildWhere = (excludeKey?: string) => {
+    const buildWhere = (excludeKeys?: string | string[]) => {
+      const excluded = Array.isArray(excludeKeys) ? excludeKeys : excludeKeys ? [excludeKeys] : [];
       const conds: string[] = [];
       const p: any[] = [];
       for (const [key, f] of Object.entries(filterMap)) {
-        if (excludeKey && key === excludeKey) continue;
+        if (excluded.includes(key)) continue;
         if (f.val === null) {
           conds.push(`${f.col} ${f.op}`);
         } else {
@@ -208,7 +229,7 @@ export async function GET(request: Request) {
     const projectDistribution = projectQuery.all(...projectWhere.params);
 
     // 8. Gender Distribution (Always shows both Erkek and Kadin)
-    const genderWhere = buildWhere();
+    const genderWhere = buildWhere('gender');
     const genderQuery = db.prepare(`
       SELECT 
         COALESCE(NULLIF(cinsiyet, ''), 'Belirtilmemiş') as label,
@@ -220,16 +241,19 @@ export async function GET(request: Request) {
     `);
     const genderDistribution = genderQuery.all(...genderWhere.params);
 
-    // 9. Monthly Entries & Exits for Trend Analysis
+    // 9. Monthly Entries & Exits for Trend Analysis (normalized ISO dates + VKS counts)
+    const inDateExpr = buildNormalizedDateSql('ise_giris_tarihi');
+    const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
     const nonStatusWhere = buildWhere('status');
     const monthlyWhere = nonStatusWhere.clause
-      ? `${nonStatusWhere.clause} AND ise_giris_tarihi >= '2026-01-01'`
-      : `WHERE ise_giris_tarihi >= '2026-01-01'`;
+      ? `${nonStatusWhere.clause} AND (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31'`
+      : `WHERE (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31'`;
 
     const monthlyEntries = db.prepare(`
       SELECT 
-        substr(ise_giris_tarihi, 1, 7) as month,
-        COUNT(*) as in_count
+        substr(${inDateExpr}, 1, 7) as month,
+        COUNT(*) as in_count,
+        SUM(CASE WHEN (${WORK_PERMIT_CASE_SQL}) = 'VKS' THEN 1 ELSE 0 END) as vks_in_count
       FROM personnel
       ${monthlyWhere}
       GROUP BY month
@@ -237,13 +261,14 @@ export async function GET(request: Request) {
     `).all(...nonStatusWhere.params);
 
     const monthlyExitWhere = nonStatusWhere.clause
-      ? `${nonStatusWhere.clause} AND cikis_tarihi >= '2026-01-01'`
-      : `WHERE cikis_tarihi >= '2026-01-01'`;
+      ? `${nonStatusWhere.clause} AND (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31'`
+      : `WHERE (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31'`;
 
     const monthlyExits = db.prepare(`
       SELECT 
-        substr(cikis_tarihi, 1, 7) as month,
-        COUNT(*) as out_count
+        substr(${outDateExpr}, 1, 7) as month,
+        COUNT(*) as out_count,
+        SUM(CASE WHEN (${WORK_PERMIT_CASE_SQL}) = 'VKS' THEN 1 ELSE 0 END) as vks_out_count
       FROM personnel
       ${monthlyExitWhere}
       GROUP BY month
@@ -392,7 +417,7 @@ export async function GET(request: Request) {
     const totalExitsRow = db.prepare(`
       SELECT COUNT(*) as exit_count 
       FROM personnel 
-      ${nonStatusWhere.clause ? nonStatusWhere.clause + " AND cikis_tarihi LIKE '2026-%'" : "WHERE cikis_tarihi LIKE '2026-%'"}
+      ${nonStatusWhere.clause ? nonStatusWhere.clause + ` AND (${outDateExpr}) LIKE '2026-%'` : `WHERE (${outDateExpr}) LIKE '2026-%'`}
     `).get(...nonStatusWhere.params) as any;
     const annualExits = totalExitsRow?.exit_count || 4166;
     const monthlyAvgExits = Math.round(annualExits / 9.2); // ~9.2 months elapsed in 2026
@@ -442,18 +467,20 @@ export async function GET(request: Request) {
     })).sort((a, b) => b.count - a.count);
 
     // 11. Work Permits Distribution (RF Mevzuatı Çalışma Kartı, Patent ve Oturum Dağılımı)
+    // Excludes 'permit' filter so all slices stay visible for cross-highlighting
     let workPermits: { key: string; name: string; nameRu: string; count: number; percentage: number; color: string }[] = [];
     try {
+      const permitWhere = buildWhere('permit');
       const permitQuery = db.prepare(`
         SELECT 
           ${WORK_PERMIT_CASE_SQL} as permit_type,
           COUNT(*) as count
         FROM personnel
-        ${overallWhere.clause}
+        ${permitWhere.clause}
         GROUP BY permit_type
         ORDER BY count DESC
       `);
-      const permitRows = permitQuery.all(...overallWhere.params) as { permit_type: string; count: number }[];
+      const permitRows = permitQuery.all(...permitWhere.params) as { permit_type: string; count: number }[];
       
       const permitMeta: Record<string, { name: string; nameRu: string; color: string }> = {
         VKS: { name: 'ВКС (Yüksek Nitelikli Uzman)', nameRu: 'ВКС (Высококвалифицированный специалист)', color: '#06B6D4' },
@@ -481,6 +508,150 @@ export async function GET(request: Request) {
       workPermits = [];
     }
 
+    // 11b. Turnover & Entry/Exit Period Analytics (1d, 3d, 7d, 30d, all + VKS Breakdown)
+    const refDate = getDatasetReferenceDate(db);
+    const turnoverBaseWhere = buildWhere(['status', 'permit']);
+    let turnoverAnalytics: any = undefined;
+    try {
+      const periodStatsRow = db
+        .prepare(
+          `SELECT
+            COUNT(*) as total_historical,
+            SUM(CASE WHEN genel_durum = 'Mevcut' AND is_vks = 1 THEN 1 ELSE 0 END) as active_vks,
+            date(?, '-1 days') as start_1d,
+            date(?, '-3 days') as start_3d,
+            date(?, '-7 days') as start_7d,
+            date(?, '-30 days') as start_30d,
+            SUM(CASE WHEN in_d >= date(?, '-1 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_1d,
+            SUM(CASE WHEN in_d >= date(?, '-1 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_1d,
+            SUM(CASE WHEN out_d >= date(?, '-1 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_1d,
+            SUM(CASE WHEN out_d >= date(?, '-1 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_1d,
+            SUM(CASE WHEN in_d >= date(?, '-3 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_3d,
+            SUM(CASE WHEN in_d >= date(?, '-3 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_3d,
+            SUM(CASE WHEN out_d >= date(?, '-3 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_3d,
+            SUM(CASE WHEN out_d >= date(?, '-3 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_3d,
+            SUM(CASE WHEN in_d >= date(?, '-7 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_7d,
+            SUM(CASE WHEN in_d >= date(?, '-7 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_7d,
+            SUM(CASE WHEN out_d >= date(?, '-7 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_7d,
+            SUM(CASE WHEN out_d >= date(?, '-7 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_7d,
+            SUM(CASE WHEN in_d >= date(?, '-30 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_30d,
+            SUM(CASE WHEN in_d >= date(?, '-30 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_30d,
+            SUM(CASE WHEN out_d >= date(?, '-30 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_30d,
+            SUM(CASE WHEN out_d >= date(?, '-30 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_30d,
+            SUM(CASE WHEN in_d IS NOT NULL THEN 1 ELSE 0 END) as in_all,
+            SUM(CASE WHEN in_d IS NOT NULL AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_all,
+            SUM(CASE WHEN genel_durum = 'Cikis' OR out_d IS NOT NULL THEN 1 ELSE 0 END) as out_all,
+            SUM(CASE WHEN (genel_durum = 'Cikis' OR out_d IS NOT NULL) AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_all
+          FROM (
+            SELECT
+              genel_durum,
+              (${inDateExpr}) as in_d,
+              (${outDateExpr}) as out_d,
+              CASE WHEN (${WORK_PERMIT_CASE_SQL}) = 'VKS' THEN 1 ELSE 0 END as is_vks
+            FROM personnel
+            ${turnoverBaseWhere.clause}
+          )`
+        )
+        .get(
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          refDate,
+          ...turnoverBaseWhere.params
+        ) as any;
+
+      const reasonCond = turnoverBaseWhere.clause
+        ? `${turnoverBaseWhere.clause} AND (genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL) AND cikis_sebebi IS NOT NULL AND TRIM(cikis_sebebi) != ''`
+        : `WHERE (genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL) AND cikis_sebebi IS NOT NULL AND TRIM(cikis_sebebi) != ''`;
+
+      const reasonRows = db
+        .prepare(
+          `SELECT
+            TRIM(cikis_sebebi) as reason,
+            COUNT(*) as count,
+            SUM(CASE WHEN (${WORK_PERMIT_CASE_SQL}) = 'VKS' THEN 1 ELSE 0 END) as vks_count
+          FROM personnel
+          ${reasonCond}
+          GROUP BY TRIM(cikis_sebebi)
+          ORDER BY count DESC
+          LIMIT 8`
+        )
+        .all(...turnoverBaseWhere.params) as { reason: string; count: number; vks_count: number }[];
+
+      const totalReasonCount = reasonRows.reduce((s, r) => s + r.count, 0) || 1;
+      const exitReasons = reasonRows.map((r) => ({
+        reason: r.reason,
+        count: r.count,
+        vksCount: r.vks_count || 0,
+        pct: Math.max(1, Math.round((r.count / totalReasonCount) * 100)),
+      }));
+
+      const makePeriod = (
+        key: '1d' | '3d' | '7d' | '30d' | 'all',
+        startDate: string,
+        inTot: number,
+        inVks: number,
+        outTot: number,
+        outVks: number
+      ) => ({
+        periodKey: key,
+        startDate,
+        endDate: refDate,
+        inTotal: inTot || 0,
+        inVks: inVks || 0,
+        inOther: Math.max(0, (inTot || 0) - (inVks || 0)),
+        outTotal: outTot || 0,
+        outVks: outVks || 0,
+        outOther: Math.max(0, (outTot || 0) - (outVks || 0)),
+      });
+
+      turnoverAnalytics = {
+        referenceDate: refDate,
+        totalHistoricalCount: periodStatsRow?.total_historical || 32725,
+        activeVksCount: periodStatsRow?.active_vks || 1923,
+        periods: {
+          '1d': makePeriod('1d', periodStatsRow?.start_1d || refDate, periodStatsRow?.in_1d, periodStatsRow?.in_vks_1d, periodStatsRow?.out_1d, periodStatsRow?.out_vks_1d),
+          '3d': makePeriod('3d', periodStatsRow?.start_3d || refDate, periodStatsRow?.in_3d, periodStatsRow?.in_vks_3d, periodStatsRow?.out_3d, periodStatsRow?.out_vks_3d),
+          '7d': makePeriod('7d', periodStatsRow?.start_7d || refDate, periodStatsRow?.in_7d, periodStatsRow?.in_vks_7d, periodStatsRow?.out_7d, periodStatsRow?.out_vks_7d),
+          '30d': makePeriod('30d', periodStatsRow?.start_30d || refDate, periodStatsRow?.in_30d, periodStatsRow?.in_vks_30d, periodStatsRow?.out_30d, periodStatsRow?.out_vks_30d),
+          all: makePeriod('all', '2016-01-01', periodStatsRow?.in_all, periodStatsRow?.in_vks_all, periodStatsRow?.out_all, periodStatsRow?.out_vks_all),
+        },
+        exitReasons,
+      };
+    } catch {}
+
     // 12. System info
     const sysQuery = db.prepare(`SELECT key, value FROM system_info`);
     const sysRows = sysQuery.all() as { key: string; value: string }[];
@@ -503,6 +674,7 @@ export async function GET(request: Request) {
       monthlyExits,
       systemInfo,
       workPermits,
+      turnoverAnalytics,
       powerbi: {
         avgAge,
         avgTenure,

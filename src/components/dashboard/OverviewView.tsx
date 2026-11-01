@@ -25,10 +25,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PowerBIHeroBar from './PowerBIHeroBar';
 import PowerBIDecompositionTree from './PowerBIDecompositionTree';
-import PowerBIWorkPermits from './PowerBIWorkPermits';
 import PowerBITitlePyramid from './PowerBITitlePyramid';
 import PowerBIAgeDemographics from './PowerBIAgeDemographics';
-import PowerBIDualDonuts from './PowerBIDualDonuts';
+import PowerBIDualDonuts, { PowerBIGenderCard } from './PowerBIDualDonuts';
 import PowerBIRankedRegionBars from './PowerBIRankedRegionBars';
 import PowerBITenureAndFirms from './PowerBITenureAndFirms';
 
@@ -47,11 +46,16 @@ interface OverviewViewProps {
   setSelectedNationality: (nat: string) => void;
   selectedCollar: string;
   setSelectedCollar: (collar: string) => void;
+  selectedPermit: string;
+  setSelectedPermit: (permit: string) => void;
+  selectedGender: string;
+  setSelectedGender: (gender: string) => void;
   selectedTitle: string;
   setSelectedTitle: (title: string) => void;
   firmFilter: 'all' | 'main' | 'subcon';
   setFirmFilter: (filter: 'all' | 'main' | 'subcon') => void;
   onNavigateToPersonnel: (filterType?: string, filterValue?: string) => void;
+  onNavigateToTurnover: () => void;
   onResetFilters: () => void;
 }
 
@@ -70,11 +74,16 @@ export default function OverviewView({
   setSelectedNationality,
   selectedCollar,
   setSelectedCollar,
+  selectedPermit,
+  setSelectedPermit,
+  selectedGender,
+  setSelectedGender,
   selectedTitle,
   setSelectedTitle,
   firmFilter,
   setFirmFilter,
   onNavigateToPersonnel,
+  onNavigateToTurnover,
   onResetFilters,
 }: OverviewViewProps) {
   const { user } = useAuth();
@@ -82,7 +91,7 @@ export default function OverviewView({
   const [drillModal, setDrillModal] = useState<{
     isOpen: boolean;
     title: string;
-    filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit';
+    filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender';
     filterValue: string;
   }>({
     isOpen: false,
@@ -119,14 +128,19 @@ export default function OverviewView({
     selectedCategory !== 'all' ||
     selectedNationality !== 'all' ||
     selectedCollar !== 'all' ||
+    selectedPermit !== 'all' ||
+    selectedGender !== 'all' ||
     selectedTitle !== 'all' ||
     firmFilter !== 'all';
 
   const openActiveFiltersDetail = () => {
-    let fType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' = 'region';
+    let fType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender' = 'region';
     let fVal = 'all';
 
-    if (selectedRegion !== 'all') {
+    if (selectedPermit !== 'all') {
+      fType = 'permit';
+      fVal = selectedPermit;
+    } else if (selectedRegion !== 'all') {
       fType = 'region';
       fVal = selectedRegion;
     } else if (selectedProject !== 'all') {
@@ -144,6 +158,9 @@ export default function OverviewView({
     } else if (selectedCollar !== 'all') {
       fType = 'collar';
       fVal = selectedCollar;
+    } else if (selectedGender !== 'all') {
+      fType = 'gender';
+      fVal = selectedGender;
     }
 
     setDrillModal({
@@ -255,6 +272,26 @@ export default function OverviewView({
               </span>
             )}
 
+            {selectedPermit !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-cyan-50 dark:bg-cyan-950/80 text-cyan-800 dark:text-cyan-200 font-semibold rounded-lg border border-cyan-200 dark:border-cyan-500/50 text-[11px] shadow-sm">
+                {lang === 'ru' ? 'Разрешение: ' : 'Çalışma İzni: '}
+                {selectedPermit}
+                <button onClick={() => setSelectedPermit('all')} className="hover:text-rose-400 ml-0.5">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {selectedGender !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 dark:bg-purple-950/80 text-purple-800 dark:text-purple-200 font-semibold rounded-lg border border-purple-200 dark:border-purple-500/50 text-[11px] shadow-sm">
+                {lang === 'ru' ? 'Пол: ' : 'Cinsiyet: '}
+                {translateVal(selectedGender)}
+                <button onClick={() => setSelectedGender('all')} className="hover:text-rose-400 ml-0.5">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
             {selectedTitle !== 'all' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-teal-300 font-semibold rounded-lg border border-teal-500/40 text-[11px] shadow-sm">
                 {lang === 'ru' ? 'Должность: ' : 'Ünvan: '}
@@ -318,28 +355,43 @@ export default function OverviewView({
         monthlyExits={stats?.monthlyExits || []}
         turnoverRate={pbi?.turnoverRate || 3.8}
         annualExits={pbi?.annualExits || 205}
+        last30dIn={stats?.turnoverAnalytics?.periods?.['30d']?.inTotal}
+        last30dOut={stats?.turnoverAnalytics?.periods?.['30d']?.outTotal}
         firmFilter={firmFilter}
         setFirmFilter={setFirmFilter}
         onRefresh={() => onResetFilters()}
         onOpenDetailList={openActiveFiltersDetail}
+        onNavigateToTurnover={onNavigateToTurnover}
       />
 
-      {/* 2. THREE SUMMARY CHARTS ROW: BEYAZ/MAVI YAKA, EXPAT/SNG/YEREL, CİNSİYET WC STANDARDI */}
+      {/* 2. THREE SUMMARY PIE CHARTS ROW: BEYAZ/MAVI YAKA, EXPAT/SNG/YEREL, YASAL ÇALIŞMA İZİNLERİ */}
       <PowerBIDualDonuts
         collarData={stats?.collarDistribution || []}
         categoryData={stats?.categoryDistribution || []}
+        permitsData={stats?.workPermits || pbi?.workPermits || []}
         totalCount={total}
         maleCount={maleCount}
         femaleCount={femaleCount}
         selectedCollar={selectedCollar}
         selectedCategory={selectedCategory}
+        selectedPermit={selectedPermit}
         onSelectSlice={(type, value) => {
           if (type === 'collar') {
-            const collarVal = value.includes('Endirekt') ? 'Beyaz Yaka' : 'Mavi Yaka';
+            const collarVal =
+              value.includes('Beyaz') || value.includes('Endirekt')
+                ? 'Beyaz Yaka'
+                : value.includes('Mavi') || value.includes('Direkt')
+                ? 'Mavi Yaka'
+                : 'Diğer / Pasif';
             setSelectedCollar(selectedCollar === collarVal ? 'all' : collarVal);
           } else if (type === 'category') {
             setSelectedCategory(selectedCategory === value ? 'all' : value);
+          } else if (type === 'gender') {
+            setSelectedGender(selectedGender === value ? 'all' : value);
           }
+        }}
+        onSelectPermit={(permitKey) => {
+          setSelectedPermit(permitKey);
         }}
         onOpenDetail={(type, value) => {
           setDrillModal({
@@ -356,8 +408,18 @@ export default function OverviewView({
                 : lang === 'ru'
                 ? 'Детализация по полу персонала'
                 : 'Cinsiyet Dağılımı Detayı',
-            filterType: type === 'collar' ? 'collar' : type === 'category' ? 'category' : 'region',
+            filterType: type === 'collar' ? 'collar' : type === 'category' ? 'category' : 'gender',
             filterValue: value === 'all' && selectedRegion !== 'all' ? selectedRegion : value,
+          });
+        }}
+        onOpenPermitDetail={(permitKey) => {
+          const permitObj = permitKey ? (stats?.workPermits || pbi?.workPermits || []).find((p) => p.key === permitKey) : null;
+          const label = permitObj ? (lang === 'ru' ? permitObj.nameRu : permitObj.name) : (lang === 'ru' ? 'Все статусы' : 'Tüm Statüler');
+          setDrillModal({
+            isOpen: true,
+            title: `${lang === 'ru' ? 'Список персонала по статусу' : 'Çalışma İzni Listesi'}: ${label}`,
+            filterType: 'permit',
+            filterValue: permitKey || 'all',
           });
         }}
       />
@@ -393,7 +455,7 @@ export default function OverviewView({
         }}
       />
 
-      {/* 4. DECOMPOSITION TREE (2/3) & RUSSIAN WORK PERMITS DONUT (1/3) */}
+      {/* 4. DECOMPOSITION TREE (2/3) & GENDER DISTRIBUTION CARD (1/3 - SWAPPED WITH WORK PERMITS) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         <div className="lg:col-span-2 flex flex-col">
           <PowerBIDecompositionTree
@@ -426,17 +488,18 @@ export default function OverviewView({
           />
         </div>
         <div className="lg:col-span-1 flex flex-col">
-          <PowerBIWorkPermits
-            permits={stats?.workPermits || pbi?.workPermits || []}
+          <PowerBIGenderCard
             totalCount={total}
-            onOpenDetail={(permitKey) => {
-              const permitObj = permitKey ? (stats?.workPermits || pbi?.workPermits || []).find((p) => p.key === permitKey) : null;
-              const label = permitObj ? (lang === 'ru' ? permitObj.nameRu : permitObj.name) : (lang === 'ru' ? 'Все статусы' : 'Tüm Statüler');
+            maleCount={maleCount}
+            femaleCount={femaleCount}
+            selectedGender={selectedGender}
+            onSelectGender={(g) => setSelectedGender(selectedGender === g ? 'all' : g)}
+            onOpenDetail={() => {
               setDrillModal({
                 isOpen: true,
-                title: `${lang === 'ru' ? 'Список персонала по статусу' : 'Çalışma İzni Listesi'}: ${label}`,
-                filterType: 'permit',
-                filterValue: permitKey || 'all',
+                title: lang === 'ru' ? 'Детализация по полу персонала' : 'Cinsiyet Dağılımı Detayı',
+                filterType: 'gender',
+                filterValue: selectedGender !== 'all' ? selectedGender : 'all',
               });
             }}
           />

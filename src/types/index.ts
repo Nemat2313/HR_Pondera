@@ -90,6 +90,26 @@ export interface WorkPermitStat {
   color: string;
 }
 
+export interface TurnoverPeriodMetric {
+  periodKey: '1d' | '3d' | '7d' | '30d' | 'all';
+  startDate: string;
+  endDate: string;
+  inTotal: number;
+  inVks: number;
+  inOther: number;
+  outTotal: number;
+  outVks: number;
+  outOther: number;
+}
+
+export interface TurnoverAnalytics {
+  referenceDate: string;
+  totalHistoricalCount: number;
+  activeVksCount: number;
+  periods: Record<'1d' | '3d' | '7d' | '30d' | 'all', TurnoverPeriodMetric>;
+  exitReasons: { reason: string; count: number; vksCount: number; pct: number }[];
+}
+
 export interface StatsData {
   totalCount: number;
   collarDistribution: { label: string; count: number }[];
@@ -99,11 +119,12 @@ export interface StatsData {
   departmentDistribution: { label: string; count: number }[];
   projectDistribution: { label: string; count: number }[];
   genderDistribution: { label: string; count: number }[];
-  monthlyEntries: { month: string; in_count: number }[];
-  monthlyExits: { month: string; out_count: number }[];
+  monthlyEntries: { month: string; in_count: number; vks_in_count?: number }[];
+  monthlyExits: { month: string; out_count: number; vks_out_count?: number }[];
   systemInfo: Record<string, string>;
   workPermits?: WorkPermitStat[];
   powerbi?: PowerBIMetrics;
+  turnoverAnalytics?: TurnoverAnalytics;
 }
 
 export interface FilterOptions {

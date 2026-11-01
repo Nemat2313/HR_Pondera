@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
-import { WORK_PERMIT_CASE_SQL, normalizePermitFilterKey } from '@/lib/workPermits';
+import {
+  WORK_PERMIT_CASE_SQL,
+  normalizePermitFilterKey,
+  buildNormalizedDateSql,
+  getDatasetReferenceDate,
+} from '@/lib/workPermits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,6 +37,8 @@ export async function GET(request: Request) {
     const collar = searchParams.get('collar') || 'all';
     const gender = searchParams.get('gender') || 'all';
     const permit = searchParams.get('permit') || 'all';
+    const movementType = searchParams.get('movementType') || ''; // 'entry' | 'exit'
+    const period = searchParams.get('period') || ''; // '1d' | '3d' | '7d' | '30d' | 'all'
     const sortBy = searchParams.get('sortBy') || 'sira_no';
     const sortOrder = searchParams.get('sortOrder')?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
     const includeDetails = searchParams.get('includeDetails') === 'true';
@@ -129,9 +136,24 @@ export async function GET(request: Request) {
     };
 
     const dismissalCandidate = searchParams.get('dismissalCandidate') === 'true';
+    const inDateExpr = buildNormalizedDateSql('ise_giris_tarihi');
+    const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
 
-    // Status filter
-    if (dismissalCandidate) {
+    // Movement & Period filter (for Management & Turnover view)
+    if (movementType === 'entry' || movementType === 'exit') {
+      const refDate = getDatasetReferenceDate(db);
+      const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
+      const daysMap: Record<string, number> = { '1d': 1, '3d': 3, '7d': 7, '30d': 30 };
+      const days = daysMap[period];
+      if (days) {
+        conditions.push(`(${dateColExpr}) >= date(?, '-${days} days') AND (${dateColExpr}) <= ?`);
+        params.push(refDate, refDate);
+      } else if (movementType === 'exit') {
+        conditions.push(`(genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL)`);
+      } else {
+        conditions.push(`(${inDateExpr}) IS NOT NULL`);
+      }
+    } else if (dismissalCandidate) {
       conditions.push(`(
         genel_durum = 'Cikis'
         OR (cikis_tarihi IS NOT NULL AND cikis_tarihi != '')
@@ -193,10 +215,14 @@ export async function GET(request: Request) {
       params.push(gender);
     }
     if (permit !== 'all') {
-      const canonicalPermit = normalizePermitFilterKey(permit);
-      if (canonicalPermit) {
-        conditions.push(`(${WORK_PERMIT_CASE_SQL}) = ?`);
-        params.push(canonicalPermit);
+      if (permit.toUpperCase() === 'NON_VKS') {
+        conditions.push(`(${WORK_PERMIT_CASE_SQL}) != 'VKS'`);
+      } else {
+        const canonicalPermit = normalizePermitFilterKey(permit);
+        if (canonicalPermit) {
+          conditions.push(`(${WORK_PERMIT_CASE_SQL}) = ?`);
+          params.push(canonicalPermit);
+        }
       }
     }
 
@@ -239,10 +265,21 @@ export async function GET(request: Request) {
       uyruk: 'uyruk',
       gorevi: 'gorevi',
       endirekt_direkt: 'endirekt_direkt',
-      ise_giris_tarihi: 'ise_giris_tarihi',
-      cikis_tarihi: 'cikis_tarihi',
+      ise_giris_tarihi: `(${inDateExpr})`,
+      cikis_tarihi: `(${outDateExpr})`,
     };
-    const orderColumn = allowedSortCols[sortBy] || 'sira_no';
+    const defaultSortCol =
+      movementType === 'exit'
+        ? `(${outDateExpr})`
+        : movementType === 'entry'
+        ? `(${inDateExpr})`
+        : 'sira_no';
+    const orderColumn =
+      movementType && !searchParams.get('sortBy')
+        ? defaultSortCol
+        : allowedSortCols[sortBy] || 'sira_no';
+    const effectiveSortOrder =
+      movementType && !searchParams.get('sortOrder') ? 'DESC' : sortOrder;
 
     // Total filtered count
     const countSql = `SELECT COUNT(*) as total FROM personnel ${whereClause}`;
@@ -253,14 +290,14 @@ export async function GET(request: Request) {
 
     // Fetch records
     const selectCols = includeDetails
-      ? `id, sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no, all_data_json`
-      : `id, sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no`;
+      ? `id, sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no, (${WORK_PERMIT_CASE_SQL}) as permit_type, all_data_json`
+      : `id, sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no, (${WORK_PERMIT_CASE_SQL}) as permit_type`;
 
     const dataSql = `
       SELECT ${selectCols}
       FROM personnel
       ${whereClause}
-      ORDER BY ${orderColumn} ${sortOrder}
+      ORDER BY ${orderColumn} ${effectiveSortOrder}
       LIMIT ? OFFSET ?
     `;
 

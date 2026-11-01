@@ -10,7 +10,7 @@ interface DrillDownModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit';
+  filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender';
   filterValue: string;
   onNavigateToPersonnel: (filterType: string, filterValue: string) => void;
 }
@@ -49,8 +49,14 @@ export default function DrillDownModal({
     else if (filterType === 'category') params.set('category', filterValue);
     else if (filterType === 'nationality') params.set('nationality', filterValue);
     else if (filterType === 'permit') params.set('permit', filterValue);
+    else if (filterType === 'gender' && filterValue !== 'all') params.set('gender', filterValue);
     else if (filterType === 'collar') {
-      const collarVal = filterValue.includes('Endirekt') ? 'Endirekt' : filterValue.includes('Direkt') ? 'Direkt' : '';
+      const collarVal =
+        filterValue.includes('Endirekt') || filterValue.includes('Beyaz')
+          ? 'Endirekt'
+          : filterValue.includes('Direkt') || filterValue.includes('Mavi')
+          ? 'Direkt'
+          : '';
       if (collarVal) params.set('collar', collarVal);
     }
 
@@ -101,8 +107,14 @@ export default function DrillDownModal({
       else if (filterType === 'category') params.set('category', filterValue);
       else if (filterType === 'nationality') params.set('nationality', filterValue);
       else if (filterType === 'permit') params.set('permit', filterValue);
+      else if (filterType === 'gender' && filterValue !== 'all') params.set('gender', filterValue);
       else if (filterType === 'collar') {
-        const collarVal = filterValue.includes('Endirekt') ? 'Endirekt' : filterValue.includes('Direkt') ? 'Direkt' : '';
+        const collarVal =
+          filterValue.includes('Endirekt') || filterValue.includes('Beyaz')
+            ? 'Endirekt'
+            : filterValue.includes('Direkt') || filterValue.includes('Mavi')
+            ? 'Direkt'
+            : '';
         if (collarVal) params.set('collar', collarVal);
       }
 

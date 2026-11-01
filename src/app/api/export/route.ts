@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
+import {
+  WORK_PERMIT_CASE_SQL,
+  normalizePermitFilterKey,
+  buildNormalizedDateSql,
+  getDatasetReferenceDate,
+} from '@/lib/workPermits';
 import * as XLSX from 'xlsx';
 
 export const runtime = 'nodejs';
@@ -222,6 +228,9 @@ export async function GET(request: Request) {
     const nationality = searchParams.get('nationality') || 'all';
     const collar = searchParams.get('collar') || 'all';
     const gender = searchParams.get('gender') || 'all';
+    const permit = searchParams.get('permit') || 'all';
+    const movementType = searchParams.get('movementType') || '';
+    const period = searchParams.get('period') || '';
     const sortBy = searchParams.get('sortBy') || 'sira_no';
     const sortOrder = searchParams.get('sortOrder')?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
     const customColsParam = searchParams.get('columns')?.trim() || '';
@@ -236,9 +245,24 @@ export async function GET(request: Request) {
     const db = getDb();
     const conditions: string[] = [];
     const params: any[] = [];
+    const inDateExpr = buildNormalizedDateSql('ise_giris_tarihi');
+    const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
 
-    // Status filter
-    if (status !== 'all') {
+    // Status or Movement/Period filter
+    if (movementType === 'entry' || movementType === 'exit') {
+      const refDate = getDatasetReferenceDate(db);
+      const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
+      const daysMap: Record<string, number> = { '1d': 1, '3d': 3, '7d': 7, '30d': 30 };
+      const days = daysMap[period];
+      if (days) {
+        conditions.push(`(${dateColExpr}) >= date(?, '-${days} days') AND (${dateColExpr}) <= ?`);
+        params.push(refDate, refDate);
+      } else if (movementType === 'exit') {
+        conditions.push(`(genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL)`);
+      } else {
+        conditions.push(`(${inDateExpr}) IS NOT NULL`);
+      }
+    } else if (status !== 'all') {
       conditions.push('genel_durum = ?');
       params.push(status);
     }
@@ -271,6 +295,17 @@ export async function GET(request: Request) {
     if (gender !== 'all') {
       conditions.push('cinsiyet = ?');
       params.push(gender);
+    }
+    if (permit !== 'all') {
+      if (permit.toUpperCase() === 'NON_VKS') {
+        conditions.push(`(${WORK_PERMIT_CASE_SQL}) != 'VKS'`);
+      } else {
+        const canonicalPermit = normalizePermitFilterKey(permit);
+        if (canonicalPermit) {
+          conditions.push(`(${WORK_PERMIT_CASE_SQL}) = ?`);
+          params.push(canonicalPermit);
+        }
+      }
     }
 
     // Global Search

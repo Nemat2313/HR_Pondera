@@ -9,6 +9,8 @@ import { WorkPermitStat } from '@/types';
 interface PowerBIWorkPermitsProps {
   permits: WorkPermitStat[];
   totalCount: number;
+  selectedPermit?: string;
+  compact?: boolean;
   onSelectPermit?: (permitKey: string) => void;
   onOpenDetail?: (permitKey?: string) => void;
 }
@@ -111,15 +113,25 @@ function getShortCode(key: string, lang: 'tr' | 'ru'): string {
 export default function PowerBIWorkPermits({
   permits,
   totalCount,
+  selectedPermit,
+  compact = true,
   onSelectPermit,
   onOpenDetail,
 }: PowerBIWorkPermitsProps) {
   const { lang, t } = useLanguage();
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [internalSelectedKey, setInternalSelectedKey] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<WorkPermitStat | null>(null);
 
+  const selectedKey =
+    selectedPermit !== undefined
+      ? selectedPermit === 'all'
+        ? null
+        : selectedPermit
+      : internalSelectedKey;
+
   const data = permits && permits.length > 0 ? permits : DEFAULT_PERMIT_DATA;
-  const grandTotal = totalCount > 0 ? totalCount : data.reduce((acc, d) => acc + d.count, 0) || 5364;
+  const sumOfPermits = data.reduce((acc, d) => acc + d.count, 0);
+  const grandTotal = sumOfPermits > 0 ? sumOfPermits : totalCount > 0 ? totalCount : 5364;
 
   // Active display item in center of donut
   const activeCenterItem = hoveredItem || (selectedKey ? data.find((d) => d.key === selectedKey) : null);
@@ -215,25 +227,25 @@ export default function PowerBIWorkPermits({
 
   const handleSliceClick = (entry: WorkPermitStat) => {
     const nextKey = selectedKey === entry.key ? null : entry.key;
-    setSelectedKey(nextKey);
+    setInternalSelectedKey(nextKey);
     if (onSelectPermit) {
-      onSelectPermit(entry.key);
+      onSelectPermit(nextKey || 'all');
     }
   };
 
   return (
-    <div className="p-4 sm:p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden transition-colors h-full flex flex-col justify-between">
+    <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl relative overflow-hidden transition-colors h-full flex flex-col justify-between">
       {/* Background ambient glow */}
       <div className="hidden dark:block absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="hidden dark:block absolute bottom-0 left-0 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Header - Clean single line, won't truncate */}
-      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-2 relative z-10">
+      {/* Header - Clean single line, matching top row cards */}
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 relative z-10">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/30 shrink-0">
-            <ShieldCheck className="w-4 h-4" />
-          </span>
-          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight truncate">
+          <div className="w-7 h-7 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30 shrink-0">
+            <ShieldCheck className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+          </div>
+          <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
             {t('permits_title')}
           </h3>
         </div>
@@ -241,10 +253,10 @@ export default function PowerBIWorkPermits({
         {onOpenDetail && (
           <button
             onClick={() => onOpenDetail(selectedKey || undefined)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-xs font-bold border border-cyan-200 dark:border-cyan-500/40 transition-all cursor-pointer shadow-2xs shrink-0"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-800 dark:text-cyan-300 text-xs font-medium border border-cyan-300/80 dark:border-cyan-500/30 transition-all cursor-pointer shrink-0"
             title={lang === 'ru' ? 'Открыть список персонала' : 'Çalışma İzni Detay Listesi'}
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+            <FileSpreadsheet className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
             <span>
               {selectedKey
                 ? lang === 'ru'
@@ -258,16 +270,16 @@ export default function PowerBIWorkPermits({
         )}
       </div>
 
-      {/* DONUT PIE CHART STAGE (380px Height - Matches Decomposition Tree exactly) */}
-      <div className="h-[380px] w-full relative flex items-center justify-center my-auto z-10">
+      {/* DONUT PIE CHART STAGE */}
+      <div className={`${compact ? 'h-72' : 'h-[380px]'} w-full relative flex items-center justify-center my-auto z-10`}>
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart margin={{ top: 20, right: 32, bottom: 20, left: 32 }}>
+          <PieChart margin={{ top: 18, right: 28, bottom: 18, left: 28 }}>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={58}
-              outerRadius={100}
+              innerRadius={compact ? 48 : 58}
+              outerRadius={compact ? 86 : 100}
               cornerRadius={4}
               paddingAngle={2.5}
               dataKey="count"
