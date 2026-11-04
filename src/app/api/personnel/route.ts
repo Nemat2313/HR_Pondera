@@ -7,6 +7,7 @@ import {
   buildNormalizedDateSql,
   getDatasetReferenceDates,
 } from '@/lib/workPermits';
+import { stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -308,11 +309,11 @@ export async function GET(request: Request) {
     const dataStmt = db.prepare(dataSql);
     const rows = dataStmt.all(...params, limit, offset) as any[];
 
-    // Parse all_data_json if requested
+    // Parse all_data_json if requested (stripping any official salary fields per privacy policy)
     const formattedRows = rows.map((r) => {
       if (r.all_data_json && typeof r.all_data_json === 'string') {
         try {
-          r.raw = JSON.parse(r.all_data_json);
+          r.raw = stripOfficialSalaryFromRaw(JSON.parse(r.all_data_json));
         } catch {
           r.raw = {};
         }

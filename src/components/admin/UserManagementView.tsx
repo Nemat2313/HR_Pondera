@@ -67,7 +67,7 @@ export default function UserManagementView() {
           setUsers(data.users || []);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   };
 
@@ -87,7 +87,7 @@ export default function UserManagementView() {
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -214,7 +214,7 @@ export default function UserManagementView() {
       } else {
         alert(data.message || (lang === 'ru' ? 'Не удалось удалить пользователя.' : 'Kullanıcı silinemedi.'));
       }
-    } catch {}
+    } catch { }
   };
 
   return (
@@ -243,9 +243,9 @@ export default function UserManagementView() {
             setFormError(null);
             setFormSuccess(null);
           }}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors shrink-0"
+          className="flex items-center gap-2 px-4 py-2 border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
         >
-          <UserPlus className="w-4 h-4" />
+          <UserPlus className="w-4 h-4 text-indigo-700 dark:text-indigo-300" />
           <span>{lang === 'ru' ? 'Создать пользователя' : 'Yeni Kullanıcı Tanımla'}</span>
         </button>
       </div>
@@ -330,9 +330,8 @@ export default function UserManagementView() {
                 return (
                   <tr
                     key={u.id}
-                    className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors ${
-                      isCurrent ? 'bg-indigo-50/50 dark:bg-indigo-950/35' : ''
-                    }`}
+                    className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors ${isCurrent ? 'bg-indigo-50/50 dark:bg-indigo-950/35' : ''
+                      }`}
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2.5">
@@ -354,25 +353,24 @@ export default function UserManagementView() {
                     <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">••••••••</td>
                     <td className="py-3 px-4">
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                          u.role === 'admin'
-                            ? 'bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
-                            : u.role === 'viewer'
+                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${u.role === 'admin'
+                          ? 'bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
+                          : u.role === 'viewer'
                             ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                        }`}
+                          }`}
                       >
                         {u.role === 'admin'
                           ? lang === 'ru'
                             ? '🛡️ Администратор'
                             : '🛡️ Admin'
                           : u.role === 'viewer'
-                          ? lang === 'ru'
-                            ? '👁️ Наблюдатель (Viewer)'
-                            : '👁️ Gözlemci (Viewer)'
-                          : lang === 'ru'
-                          ? '👤 Пользователь'
-                          : '👤 Kullanıcı'}
+                            ? lang === 'ru'
+                              ? '👁️ Наблюдатель (Viewer)'
+                              : '👁️ Gözlemci (Viewer)'
+                            : lang === 'ru'
+                              ? '👤 Пользователь'
+                              : '👤 Kullanıcı'}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -549,8 +547,8 @@ export default function UserManagementView() {
                           e.target.value === 'region'
                             ? filterOptions.regions[0] || 'Kazan'
                             : e.target.value === 'project'
-                            ? filterOptions.projects[0] || 'DGP-02'
-                            : 'all',
+                              ? filterOptions.projects[0] || 'DGP-02'
+                              : 'all',
                       })
                     }
                     disabled={formData.role === 'admin'}
@@ -593,8 +591,8 @@ export default function UserManagementView() {
                         ? 'Назначаемый регион'
                         : 'Atanacak Bölge (Region)'
                       : lang === 'ru'
-                      ? 'Назначаемый проект'
-                      : 'Atanacak Proje'}
+                        ? 'Назначаемый проект'
+                        : 'Atanacak Proje'}
                   </label>
                   <select
                     value={formData.scope_value}
@@ -603,15 +601,15 @@ export default function UserManagementView() {
                   >
                     {formData.scope_type === 'region'
                       ? filterOptions.regions.map((r) => (
-                          <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {r}
-                          </option>
-                        ))
+                        <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                          {r}
+                        </option>
+                      ))
                       : filterOptions.projects.map((p) => (
-                          <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {p}
-                          </option>
-                        ))}
+                        <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                          {p}
+                        </option>
+                      ))}
                   </select>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
                     {lang === 'ru'
@@ -646,15 +644,15 @@ export default function UserManagementView() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 rounded-xl shadow-2xs disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   {submitting
                     ? lang === 'ru'
                       ? 'Сохранение...'
                       : 'Kaydediliyor...'
                     : lang === 'ru'
-                    ? 'Создать пользователя'
-                    : 'Kullanıcıyı Oluştur'}
+                      ? 'Создать пользователя'
+                      : 'Kullanıcıyı Oluştur'}
                 </button>
               </div>
             </form>
@@ -760,8 +758,8 @@ export default function UserManagementView() {
                           e.target.value === 'region'
                             ? filterOptions.regions[0] || 'Kazan'
                             : e.target.value === 'project'
-                            ? filterOptions.projects[0] || 'DGP-02'
-                            : 'all',
+                              ? filterOptions.projects[0] || 'DGP-02'
+                              : 'all',
                       })
                     }
                     disabled={editFormData.role === 'admin'}
@@ -803,8 +801,8 @@ export default function UserManagementView() {
                         ? 'Назначаемый регион'
                         : 'Atanacak Bölge (Region)'
                       : lang === 'ru'
-                      ? 'Назначаемый проект'
-                      : 'Atanacak Proje'}
+                        ? 'Назначаемый проект'
+                        : 'Atanacak Proje'}
                   </label>
                   <select
                     value={editFormData.scope_value}
@@ -813,15 +811,15 @@ export default function UserManagementView() {
                   >
                     {editFormData.scope_type === 'region'
                       ? filterOptions.regions.map((r) => (
-                          <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {r}
-                          </option>
-                        ))
+                        <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                          {r}
+                        </option>
+                      ))
                       : filterOptions.projects.map((p) => (
-                          <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {p}
-                          </option>
-                        ))}
+                        <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                          {p}
+                        </option>
+                      ))}
                   </select>
                 </div>
               )}
@@ -850,15 +848,15 @@ export default function UserManagementView() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 rounded-xl shadow-2xs disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   {submitting
                     ? lang === 'ru'
                       ? 'Сохранение...'
                       : 'Kaydediliyor...'
                     : lang === 'ru'
-                    ? 'Сохранить изменения'
-                    : 'Değişiklikleri Kaydet'}
+                      ? 'Сохранить изменения'
+                      : 'Değişiklikleri Kaydet'}
                 </button>
               </div>
             </form>

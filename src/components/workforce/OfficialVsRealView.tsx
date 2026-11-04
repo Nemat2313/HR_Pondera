@@ -781,12 +781,12 @@ export default function OfficialVsRealView() {
               type="button"
               disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 disabled:opacity-60 text-indigo-950 dark:text-indigo-100 font-semibold text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
             >
               {uploading ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" />
               ) : (
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
               )}
               <span>
                 {uploading
@@ -803,7 +803,7 @@ export default function OfficialVsRealView() {
               type="button"
               disabled={sendingTelegram}
               onClick={handleSendTelegramSummary}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-300 dark:border-sky-500/40 bg-sky-100/85 hover:bg-sky-200/80 dark:bg-sky-500/20 dark:hover:bg-sky-500/30 disabled:opacity-60 text-sky-950 dark:text-sky-100 font-semibold text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
               title={
                 lang === 'ru'
                   ? 'Отправить сводку расхождений в группу Telegram'
@@ -811,9 +811,9 @@ export default function OfficialVsRealView() {
               }
             >
               {sendingTelegram ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-700 dark:text-sky-300" />
               ) : (
-                <Send className="w-3.5 h-3.5" />
+                <Send className="w-3.5 h-3.5 text-sky-700 dark:text-sky-300" />
               )}
               <span>{lang === 'ru' ? 'В Telegram' : 'Telegram’a Gönder'}</span>
             </button>
@@ -821,9 +821,9 @@ export default function OfficialVsRealView() {
             <button
               type="button"
               onClick={handleExportExcel}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-semibold text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
               <span>{lang === 'ru' ? 'Excel отчет' : 'Rapor İndir (.xlsx)'}</span>
             </button>
           </div>
@@ -948,9 +948,9 @@ export default function OfficialVsRealView() {
                   setShowOutdatedModal(false);
                   fileInputRef.current?.click();
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs cursor-pointer transition-all"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs cursor-pointer transition-all shadow-2xs"
               >
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
                 <span>
                   {lang === 'ru' ? 'Загрузить новый список 1С ЗУП' : 'Yeni 1C ZUP Listesi Yükle (.xlsx)'}
                 </span>
@@ -1500,7 +1500,7 @@ export default function OfficialVsRealView() {
                   <button
                     type="button"
                     onClick={() => setSelectedPermitKey('ALL')}
-                    className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white text-[10.5px] cursor-pointer"
+                    className="px-2.5 py-0.5 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 text-indigo-950 dark:bg-indigo-500/25 dark:text-indigo-100 font-semibold text-[10.5px] cursor-pointer"
                   >
                     Statü Filtresi: {selectedPermitKey} ✕
                   </button>
@@ -2087,7 +2087,7 @@ export default function OfficialVsRealView() {
               <button
                 type="button"
                 onClick={() => setSelectedProject('ALL')}
-                className="text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-600 text-white cursor-pointer"
+                className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 text-indigo-950 dark:bg-indigo-500/25 dark:text-indigo-100 cursor-pointer"
               >
                 Şantiye: {selectedProject} ✕
               </button>
@@ -2096,7 +2096,7 @@ export default function OfficialVsRealView() {
               <button
                 type="button"
                 onClick={() => setSelectedPermitKey('ALL')}
-                className="text-[11px] px-2.5 py-0.5 rounded-full bg-teal-600 text-white cursor-pointer"
+                className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-teal-300 dark:border-teal-500/40 bg-teal-100/85 text-teal-950 dark:bg-teal-500/25 dark:text-teal-100 cursor-pointer"
               >
                 Statü: {selectedPermitKey} ✕
               </button>

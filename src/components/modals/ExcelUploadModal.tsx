@@ -473,16 +473,16 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
           <button
             onClick={handleUpload}
             disabled={!file || uploading}
-            className="flex items-center gap-2 px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2 text-xs font-semibold border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-xl shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
           >
             {uploading ? (
               <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-700 dark:text-emerald-300" />
                 <span>{lang === 'ru' ? 'Обработка...' : 'İşleniyor...'}</span>
               </>
             ) : (
               <>
-                <UploadCloud className="w-3.5 h-3.5" />
+                <UploadCloud className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
                 <span>{lang === 'ru' ? 'Импортировать в базу данных' : 'Veritabanına Aktar & Güncelle'}</span>
               </>
             )}

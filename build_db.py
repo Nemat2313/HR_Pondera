@@ -478,12 +478,30 @@ def build_database():
 
         total_count += 1
 
-        # Build lean JSON dictionary (non-empty only)
+        # Build lean JSON dictionary (non-empty only, strictly excluding official salary values per company privacy policy)
         row_dict = {}
         for idx, val in enumerate(row):
             cleaned_v = clean_val(val)
             if cleaned_v:
                 h_name = headers[idx] if idx < len(headers) else f"Col_{idx+1}"
+                h_norm = (
+                    h_name.strip()
+                    .lower()
+                    .replace("İ", "i")
+                    .replace("I", "i")
+                    .replace("ı", "i")
+                    .replace("ş", "s")
+                    .replace("ğ", "g")
+                    .replace("ü", "u")
+                    .replace("ö", "o")
+                    .replace("ç", "c")
+                )
+                if (
+                    h_norm in ("resmi maas", "resmi maas yazili", "maas", "maas yazili", "maas / ucret", "оклад", "зарплата", "тарифная ставка")
+                    or h_norm.startswith("resmi maas")
+                    or "maas" in h_norm.split()
+                ):
+                    continue
                 row_dict[h_name] = cleaned_v
 
         # Normalize 'Çalışma Kart Türü' strictly from Work Permit ('Çalışma Kart *' / 'Patent Form *') columns

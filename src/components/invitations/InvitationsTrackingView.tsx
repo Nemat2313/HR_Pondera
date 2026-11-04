@@ -134,9 +134,9 @@ export default function InvitationsTrackingView() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs transition-all cursor-pointer font-normal shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-sky-300 dark:border-sky-500/40 bg-sky-100/85 hover:bg-sky-200/80 dark:bg-sky-500/20 dark:hover:bg-sky-500/30 text-sky-950 dark:text-sky-100 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3.5 h-3.5 text-sky-700 dark:text-sky-300" />
               <span>{lang === 'ru' ? 'Синхронизировать почту МВД' : 'MVD Posta Kutusunu Tara'}</span>
             </button>
           </div>

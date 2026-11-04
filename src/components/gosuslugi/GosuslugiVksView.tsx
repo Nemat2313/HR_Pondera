@@ -1031,9 +1031,11 @@ export default function GosuslugiVksView() {
     >;
   } | null>(null);
   const [activeComputerFilter, setActiveComputerFilter] = useState<'all' | '1' | '2' | '3' | '4'>('all');
-  const [isLoadingMaster, setIsLoadingMaster] = useState(false);
+  const [isLoadingMaster, setIsLoadingMaster] = useState(true);
   const [isSplittingMaster, setIsSplittingMaster] = useState(false);
   const [isRetryingErrors, setIsRetryingErrors] = useState(false);
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(100);
 
   // Mail.ru IMAP Background Status Checker State
   const [showMailRuModal, setShowMailRuModal] = useState(false);
@@ -1131,7 +1133,9 @@ export default function GosuslugiVksView() {
         }
         setSavedSubmissions(bySicil);
         setWorkers((prev) =>
-          prev.map((w) => {
+          prev.length === 0
+            ? prev
+            : prev.map((w) => {
             const sicilKey = String(w.sicil || '').trim();
             const codeKey = String(w.code || w.sicil || '').trim();
             const normKey = normalizeSicilKey(sicilKey || codeKey);
@@ -1171,7 +1175,10 @@ export default function GosuslugiVksView() {
             const nextGosStatus = normalizeSentGosuslugiStatus(
               matchedSub.gosuslugi_status || w.gosuslugiStatus || 'Отправлено'
             );
-            const nextPdf = sanitizePdfForAppNo(matchedSub.pdf_filename || '', nextAppNo);
+            const nextPdf =
+              sanitizePdfForAppNo(matchedSub.pdf_filename || '', nextAppNo) ||
+              sanitizePdfForAppNo(w.pdfFilename, nextAppNo) ||
+              '';
             const nextStatusPdf =
               sanitizePdfForAppNo(matchedSub.status_pdf_filename, nextAppNo) ||
               sanitizePdfForAppNo(w.statusPdfFilename, nextAppNo) ||
@@ -1259,7 +1266,6 @@ export default function GosuslugiVksView() {
       // Ignore localStorage quota/parse issues
     }
     handleLoadFromMasterList(initialComp, 'all', true);
-    refreshMasterListSummary();
     fetch('/api/gosuslugi/mail-sync')
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
@@ -1559,10 +1565,14 @@ export default function GosuslugiVksView() {
       '937332': '8284083499',
       '941737': '8269035605',
     };
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
     const checkBridge = async () => {
       for (const url of BRIDGE_URLS) {
         try {
-          const res = await fetch(`${url}/health`, { method: 'GET' });
+          const res = await fetch(`${url}/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(900),
+          });
           if (res.ok) {
             const data: BridgeStatus = await res.json();
             if (isMounted) {
@@ -1801,6 +1811,9 @@ export default function GosuslugiVksView() {
                 );
               }
             }
+            if (isMounted) {
+              pollTimer = setTimeout(checkBridge, 1500);
+            }
             return;
           }
         } catch {
@@ -1808,15 +1821,19 @@ export default function GosuslugiVksView() {
         }
       }
       if (isMounted) {
-        setBridgeStatus((prev) => ({ ...prev, status: 'offline', running: false }));
+        setBridgeStatus((prev) =>
+          prev.status === 'offline' && !prev.running
+            ? prev
+            : { ...prev, status: 'offline', running: false }
+        );
+        pollTimer = setTimeout(checkBridge, 4000);
       }
     };
 
     checkBridge();
-    const interval = setInterval(checkBridge, 1500);
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, []);
 
@@ -1910,7 +1927,7 @@ export default function GosuslugiVksView() {
         const workerPeriodStart = resolveEffectivePeriodStart(periodStart, periodEnd, contractStartRu);
         const workerPeriodEnd = resolveEffectivePeriodEnd(workerPeriodStart, periodEnd, exitDateRu);
         const slices = computeQuarterMonthSlices(workerPeriodStart, workerPeriodEnd);
-        const monthlyBase = formatSalaryWithKopecks(raw['Resmi Maaş'] || '217400.00');
+        const monthlyBase = formatSalaryWithKopecks('217400.00');
         const m1 = slices[0]?.active ? monthlyBase : '';
         const m2 = slices[1]?.active ? monthlyBase : '';
         const m3 = slices[2]?.active ? monthlyBase : '';
@@ -1996,11 +2013,12 @@ export default function GosuslugiVksView() {
   ) => {
     setIsLoadingMaster(true);
     setActiveComputerFilter(computerFilter);
+    setTablePage(1);
     try {
-      const freshSubs = await refreshSavedSubmissionsFromDb();
-      const res = await fetch(
-        `/api/gosuslugi/master-list?computer=${computerFilter}&status=${statusFilter}`
-      );
+      const [freshSubs, res] = await Promise.all([
+        refreshSavedSubmissionsFromDb(),
+        fetch(`/api/gosuslugi/master-list?computer=${computerFilter}&status=${statusFilter}`),
+      ]);
       const json = await res.json();
       if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
         if (!silent) {
@@ -4039,75 +4057,121 @@ export default function GosuslugiVksView() {
   const isPaused = Boolean(bridgeStatus.paused && isRunning);
   const isWaitingManual = Boolean((bridgeStatus.waiting_for_manual || bridgeStatus.paused) && isRunning);
 
-  // Validation & Queue Statistics
-  const validWorkers = workers.filter(
-    (w) =>
-      !isWorkerAlreadySentToGosuslugi(w) &&
-      !isWorkerMvdNotFound(w) &&
-      (validationMap[w.id]?.isValid ?? true)
-  );
-  const invalidWorkers = workers.filter(
-    (w) => !isWorkerAlreadySentToGosuslugi(w) && !validationMap[w.id]?.isValid
-  );
-  const selectedValidCount = workers.filter(
-    (w) =>
-      w.selected &&
-      !isWorkerAlreadySentToGosuslugi(w) &&
-      !isWorkerMvdNotFound(w) &&
-      (validationMap[w.id]?.isValid ?? true)
-  ).length;
-  const validCount = selectedValidCount;
-  const invalidCount = invalidWorkers.length;
-  const completedCount =
-    workers.filter((w) => w.status === 'success').length || bridgeStatus.success;
-  const receiptPdfCount =
-    workers.filter(
-      (w) => Boolean(w.pdfFilename && !w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
-    ).length ||
-    masterSummary?.totalPdf ||
-    0;
-  const statusPdfCount =
-    workers.filter(
-      (w) =>
-        Boolean(w.statusPdfFilename) ||
-        Boolean(w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
-    ).length ||
-    masterSummary?.totalStatusPdf ||
-    0;
-  const mvdNotFoundCount = workers.filter((w) => isWorkerMvdNotFound(w)).length;
-  const errorCount =
-    workers.filter((w) => w.status === 'error' && !isWorkerMvdNotFound(w)).length ||
-    bridgeStatus.errors;
+  // Reset table pagination when filter or search changes
+  useEffect(() => {
+    setTablePage(1);
+  }, [queueFilter, searchQuery, activeComputerFilter]);
+
+  // Validation & Queue Statistics (single-pass memoized over 3,088 rows)
+  const {
+    validWorkers,
+    invalidWorkers,
+    selectedValidCount,
+    validCount,
+    invalidCount,
+    completedCount,
+    receiptPdfCount,
+    statusPdfCount,
+    mvdNotFoundCount,
+    errorCount,
+  } = useMemo(() => {
+    const validArr: GosuslugiVksWorkerRecord[] = [];
+    const invalidArr: GosuslugiVksWorkerRecord[] = [];
+    let selectedValid = 0;
+    let completed = 0;
+    let receiptPdf = 0;
+    let statusPdf = 0;
+    let mvdNotFound = 0;
+    let errCnt = 0;
+
+    for (const w of workers) {
+      const alreadySent = isWorkerAlreadySentToGosuslugi(w);
+      const mvdMissing = isWorkerMvdNotFound(w);
+      const isRowValid = validationMap[w.id]?.isValid ?? true;
+
+      if (!alreadySent && !mvdMissing && isRowValid) {
+        validArr.push(w);
+        if (w.selected) selectedValid++;
+      }
+      if (!alreadySent && !isRowValid) {
+        invalidArr.push(w);
+      }
+      if (w.status === 'success') completed++;
+      if (w.pdfFilename && !w.pdfFilename.toUpperCase().includes('_STATUS_A4')) {
+        receiptPdf++;
+      }
+      if (
+        w.statusPdfFilename ||
+        (w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'))
+      ) {
+        statusPdf++;
+      }
+      if (mvdMissing) {
+        mvdNotFound++;
+      } else if (w.status === 'error') {
+        errCnt++;
+      }
+    }
+
+    return {
+      validWorkers: validArr,
+      invalidWorkers: invalidArr,
+      selectedValidCount: selectedValid,
+      validCount: selectedValid,
+      invalidCount: invalidArr.length,
+      completedCount: completed || bridgeStatus.success,
+      receiptPdfCount: Math.max(receiptPdf, masterSummary?.totalPdf || 0),
+      statusPdfCount: Math.max(statusPdf, masterSummary?.totalStatusPdf || 0),
+      mvdNotFoundCount: mvdNotFound,
+      errorCount: errCnt || bridgeStatus.errors,
+    };
+  }, [
+    workers,
+    validationMap,
+    bridgeStatus.success,
+    bridgeStatus.errors,
+    masterSummary?.totalPdf,
+    masterSummary?.totalStatusPdf,
+  ]);
 
   // Filtered rows by tab ('all' | 'ready' | 'invalid' | 'sent' | 'has_status_pdf' | 'mvd_not_found' | 'error') + search query
-  const filteredWorkers = workers.filter((w) => {
-    const isRowValid = validationMap[w.id]?.isValid ?? true;
-    const isSentRow = w.status === 'success' || isWorkerAlreadySentToGosuslugi(w);
-    const hasStatusPdfRow =
-      Boolean(w.statusPdfFilename) ||
-      Boolean(w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'));
-    const isMvdNotFoundRow = isWorkerMvdNotFound(w);
-    if (queueFilter === 'ready' && (isSentRow || isMvdNotFoundRow || !isRowValid || !w.selected))
-      return false;
-    if (queueFilter === 'invalid' && (isSentRow || isRowValid)) return false;
-    if (queueFilter === 'sent' && !isSentRow) return false;
-    if (queueFilter === 'has_status_pdf' && !hasStatusPdfRow) return false;
-    if (queueFilter === 'mvd_not_found' && !isMvdNotFoundRow) return false;
-    if (queueFilter === 'error' && (w.status !== 'error' || isMvdNotFoundRow)) return false;
+  const filteredWorkers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return workers.filter((w) => {
+      const isRowValid = validationMap[w.id]?.isValid ?? true;
+      const isSentRow = w.status === 'success' || isWorkerAlreadySentToGosuslugi(w);
+      const hasStatusPdfRow =
+        Boolean(w.statusPdfFilename) ||
+        Boolean(w.pdfFilename && w.pdfFilename.toUpperCase().includes('_STATUS_A4'));
+      const isMvdNotFoundRow = isWorkerMvdNotFound(w);
+      if (queueFilter === 'ready' && (isSentRow || isMvdNotFoundRow || !isRowValid || !w.selected))
+        return false;
+      if (queueFilter === 'invalid' && (isSentRow || isRowValid)) return false;
+      if (queueFilter === 'sent' && !isSentRow) return false;
+      if (queueFilter === 'has_status_pdf' && !hasStatusPdfRow) return false;
+      if (queueFilter === 'mvd_not_found' && !isMvdNotFoundRow) return false;
+      if (queueFilter === 'error' && (w.status !== 'error' || isMvdNotFoundRow)) return false;
 
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      w.lastName.toLowerCase().includes(q) ||
-      w.firstName.toLowerCase().includes(q) ||
-      w.code.toLowerCase().includes(q) ||
-      w.sicil.toLowerCase().includes(q) ||
-      w.passportNumber.toLowerCase().includes(q) ||
-      w.inn.toLowerCase().includes(q) ||
-      w.rnrNumber.toLowerCase().includes(q) ||
-      (w.applicationNo && w.applicationNo.toLowerCase().includes(q))
-    );
-  });
+      if (!q) return true;
+      return (
+        w.lastName.toLowerCase().includes(q) ||
+        w.firstName.toLowerCase().includes(q) ||
+        w.code.toLowerCase().includes(q) ||
+        w.sicil.toLowerCase().includes(q) ||
+        w.passportNumber.toLowerCase().includes(q) ||
+        w.inn.toLowerCase().includes(q) ||
+        w.rnrNumber.toLowerCase().includes(q) ||
+        Boolean(w.applicationNo && w.applicationNo.toLowerCase().includes(q))
+      );
+    });
+  }, [workers, validationMap, queueFilter, searchQuery]);
+
+  const totalTablePages = Math.max(1, Math.ceil(filteredWorkers.length / tablePageSize));
+  const safeTablePage = Math.min(tablePage, totalTablePages);
+  const paginatedWorkers = useMemo(() => {
+    const startIdx = (safeTablePage - 1) * tablePageSize;
+    return filteredWorkers.slice(startIdx, startIdx + tablePageSize);
+  }, [filteredWorkers, safeTablePage, tablePageSize]);
 
   // Find active row index for step banner
   const activeWorkerObj = workers.find((w) => {
@@ -4411,13 +4475,13 @@ export default function GosuslugiVksView() {
             <button
               onClick={triggerExcelFileSelect}
               disabled={isUploadingExcel}
-              className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-60"
+              className="h-8 px-3 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-60"
               title="Yeni VKS listesi veya düzeltilmiş şablon Excel dosyasını yükle"
             >
               {isUploadingExcel ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" />
               ) : (
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
               )}
               <span>
                 {isUploadingExcel
@@ -4609,7 +4673,7 @@ export default function GosuslugiVksView() {
             <div className="flex items-end">
               <button
                 onClick={handleApplyGlobalParamsToRows}
-                className="w-full h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer transition"
+                className="w-full h-8 px-3 rounded-lg border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-bold text-xs shadow-2xs cursor-pointer transition"
               >
                 {lang === 'ru' ? 'Применить ко всем строкам' : 'Tüm Satırlara Uygula'}
               </button>
@@ -4694,9 +4758,9 @@ export default function GosuslugiVksView() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleManualContinue}
-                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+                className="h-9 px-4 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100 hover:bg-emerald-200/85 dark:bg-emerald-500/25 dark:hover:bg-emerald-500/35 active:scale-95 text-emerald-950 dark:text-emerald-100 font-extrabold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
               >
-                <Play className="w-3.5 h-3.5 fill-white" />
+                <Play className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 fill-emerald-600/30" />
                 <span>
                   {lang === 'ru'
                     ? 'Продолжить (Resume)'
@@ -4706,12 +4770,12 @@ export default function GosuslugiVksView() {
               <button
                 onClick={handleStopRobot}
                 disabled={isStoppingRobot}
-                className="h-9 px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition disabled:opacity-70"
+                className="h-9 px-3.5 rounded-xl border border-rose-300 dark:border-rose-500/40 bg-rose-100 hover:bg-rose-200/85 dark:bg-rose-500/25 dark:hover:bg-rose-500/35 active:scale-95 text-rose-950 dark:text-rose-100 font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-70"
               >
                 {isStoppingRobot ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-700 dark:text-rose-300" />
                 ) : (
-                  <Square className="w-3.5 h-3.5 fill-white" />
+                  <Square className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300 fill-rose-600/30" />
                 )}
                 <span>
                   {isStoppingRobot
@@ -4996,13 +5060,13 @@ export default function GosuslugiVksView() {
           <button
             onClick={triggerExcelFileSelect}
             disabled={isUploadingExcel}
-            className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-60"
+            className="h-9 px-3.5 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-60"
             title="Düzeltilmiş Excel dosyasını yükleyerek verileri günceller ve («Услуга оказана» hariç) gönderime hazır kuyruğa alır"
           >
             {isUploadingExcel ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700 dark:text-emerald-300" />
             ) : (
-              <Upload className="w-3.5 h-3.5" />
+              <Upload className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
             )}
             <span>
               {isUploadingExcel
@@ -5078,10 +5142,10 @@ export default function GosuslugiVksView() {
               <button
                 onClick={handleTogglePauseRobot}
                 disabled={isTogglingPause || isStoppingRobot}
-                className={`h-9 px-3.5 rounded-xl font-semibold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition active:scale-95 disabled:opacity-60 ${
+                className={`h-9 px-3.5 rounded-xl font-semibold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition active:scale-95 disabled:opacity-60 ${
                   isPaused || isWaitingManual
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-400/50 animate-pulse'
-                    : 'bg-amber-500 hover:bg-amber-600 text-white'
+                    ? 'border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100 hover:bg-emerald-200/85 dark:bg-emerald-500/25 dark:hover:bg-emerald-500/35 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-400/40 animate-pulse'
+                    : 'border border-amber-300 dark:border-amber-500/40 bg-amber-100 hover:bg-amber-200/85 dark:bg-amber-500/25 dark:hover:bg-amber-500/35 text-amber-950 dark:text-amber-100'
                 }`}
                 title={
                   isPaused || isWaitingManual
@@ -5096,9 +5160,9 @@ export default function GosuslugiVksView() {
                 {isTogglingPause ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : isPaused || isWaitingManual ? (
-                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <Play className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 fill-emerald-600/30" />
                 ) : (
-                  <Pause className="w-3.5 h-3.5 fill-white" />
+                  <Pause className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300 fill-amber-600/30" />
                 )}
                 <span>
                   {isPaused || isWaitingManual
@@ -5114,16 +5178,16 @@ export default function GosuslugiVksView() {
               <button
                 onClick={handleStopRobot}
                 disabled={isStoppingRobot}
-                className={`h-9 px-4 rounded-xl text-white font-semibold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer transition active:scale-95 ${
+                className={`h-9 px-4 rounded-xl border border-rose-300 dark:border-rose-500/40 text-rose-950 dark:text-rose-100 font-semibold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition active:scale-95 ${
                   isStoppingRobot
-                    ? 'bg-rose-800 ring-2 ring-rose-400 cursor-wait'
-                    : 'bg-rose-600 hover:bg-rose-500'
+                    ? 'bg-rose-200 dark:bg-rose-500/35 ring-2 ring-rose-400/40 cursor-wait'
+                    : 'bg-rose-100 hover:bg-rose-200/85 dark:bg-rose-500/25 dark:hover:bg-rose-500/35'
                 }`}
               >
                 {isStoppingRobot ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-700 dark:text-rose-300" />
                 ) : (
-                  <Square className="w-3.5 h-3.5 fill-white" />
+                  <Square className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300 fill-rose-600/30" />
                 )}
                 <span>
                   {isStoppingRobot
@@ -5154,11 +5218,11 @@ export default function GosuslugiVksView() {
               </button>
 
               {/* 2. Unified Send Button + Mode Selector (Default = Без PDF / PDF'siz) */}
-              <div className="inline-flex items-center h-9 rounded-xl overflow-hidden shadow-2xs border border-emerald-600/60 dark:border-emerald-500/50 bg-emerald-600">
+              <div className="inline-flex items-center h-9 rounded-xl overflow-hidden shadow-2xs border border-emerald-300 dark:border-emerald-500/40 bg-emerald-50/90 dark:bg-emerald-500/15">
                 <button
                   onClick={() => handleStartRobot(0, undefined, sendPdfMode === 'no_pdf')}
                   disabled={isStartingRobot || selectedValidCount === 0}
-                  className="h-full px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                  className="h-full px-3.5 bg-emerald-100/80 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-45 transition"
                   title={
                     sendPdfMode === 'no_pdf'
                       ? 'Seçili kayıtları PDF indirmeden hızlı gönder'
@@ -5166,9 +5230,9 @@ export default function GosuslugiVksView() {
                   }
                 >
                   {sendPdfMode === 'no_pdf' ? (
-                    <Zap className="w-3.5 h-3.5 fill-white" />
+                    <Zap className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 fill-emerald-600/25" />
                   ) : (
-                    <Play className="w-3.5 h-3.5 fill-white" />
+                    <Play className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 fill-emerald-600/25" />
                   )}
                   <span>
                     {lang === 'ru'
@@ -5180,19 +5244,19 @@ export default function GosuslugiVksView() {
                   value={sendPdfMode}
                   onChange={(e) => setSendPdfMode(e.target.value as 'no_pdf' | 'with_pdf')}
                   aria-label="Send PDF mode"
-                  className="h-full px-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-[11px] border-l border-emerald-500/50 focus:outline-none cursor-pointer"
+                  className="h-full px-2.5 bg-emerald-200/60 hover:bg-emerald-200/90 dark:bg-emerald-500/30 dark:hover:bg-emerald-500/40 text-emerald-950 dark:text-emerald-100 font-semibold text-[11px] border-l border-emerald-300 dark:border-emerald-500/40 focus:outline-none cursor-pointer"
                 >
-                  <option value="no_pdf" className="bg-slate-900 text-white">
+                  <option value="no_pdf" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                     {lang === 'ru' ? '⚡ Без PDF' : "⚡ PDF'siz"}
                   </option>
-                  <option value="with_pdf" className="bg-slate-900 text-white">
+                  <option value="with_pdf" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                     {lang === 'ru' ? '📄 С PDF' : "📄 PDF'li"}
                   </option>
                 </select>
               </div>
 
               {/* 3. Unified Status Check Button + Mode Selector (Default = Без PDF / PDF'siz) */}
-              <div className="inline-flex items-center h-9 rounded-xl overflow-hidden shadow-2xs border border-indigo-500/50 bg-indigo-600">
+              <div className="inline-flex items-center h-9 rounded-xl overflow-hidden shadow-2xs border border-indigo-300 dark:border-indigo-400/40 bg-indigo-50/90 dark:bg-indigo-500/15">
                 <button
                   onClick={() => {
                     if (statusPdfMode === 'single') {
@@ -5202,23 +5266,23 @@ export default function GosuslugiVksView() {
                     }
                   }}
                   disabled={isCheckingStatuses}
-                  className="h-full px-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+                  className="h-full px-3.5 bg-indigo-100/80 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-45 transition"
                   title={
                     statusPdfMode === 'no_pdf'
                       ? 'PDF indirmeden Gosuslugi JSON üzerinden statüleri birkaç saniyede hızlıca sorgula'
                       : statusPdfMode === 'with_pdf'
-                      ? 'Gosuslugi durumlarını sorgula ve PDF makbuzlarını indir'
-                      : 'Başvuru numaralarını Gosuslugi üzerinde tek tek aratarak statü kontrol et'
+                      ? 'Gosuslugi durumlarını sorgula ve eksik başvuru + statü PDF dosyalarını indir'
+                      : 'Başvuru numaralarını Gosuslugi üzerinde tek tek aratarak statü kontrol et ve A4 ekran görüntüsü al'
                   }
                 >
                   {isCheckingStatuses ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" />
                   ) : statusPdfMode === 'no_pdf' ? (
-                    <Zap className="w-3.5 h-3.5 fill-white" />
+                    <Zap className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 fill-indigo-600/25" />
                   ) : statusPdfMode === 'single' ? (
-                    <Search className="w-3.5 h-3.5" />
+                    <Search className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
                   ) : (
-                    <RefreshCw className="w-3.5 h-3.5" />
+                    <RefreshCw className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
                   )}
                   <span>{lang === 'ru' ? '3. Статус' : '3. Statü'}</span>
                 </button>
@@ -5228,15 +5292,15 @@ export default function GosuslugiVksView() {
                     setStatusPdfMode(e.target.value as 'no_pdf' | 'with_pdf' | 'single')
                   }
                   aria-label="Status PDF mode"
-                  className="h-full px-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold text-[11px] border-l border-indigo-400/40 focus:outline-none cursor-pointer"
+                  className="h-full px-2.5 bg-indigo-200/60 hover:bg-indigo-200/90 dark:bg-indigo-500/30 dark:hover:bg-indigo-500/40 text-indigo-950 dark:text-indigo-100 font-semibold text-[11px] border-l border-indigo-300 dark:border-indigo-400/40 focus:outline-none cursor-pointer"
                 >
-                  <option value="no_pdf" className="bg-slate-900 text-white">
+                  <option value="no_pdf" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                     {lang === 'ru' ? '⚡ Без PDF' : "⚡ PDF'siz"}
                   </option>
-                  <option value="with_pdf" className="bg-slate-900 text-white">
+                  <option value="with_pdf" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                     {lang === 'ru' ? '📄 С PDF' : "📄 PDF'li"}
                   </option>
-                  <option value="single" className="bg-slate-900 text-white">
+                  <option value="single" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                     {lang === 'ru' ? '🔍 Поштучно' : '🔍 Tek Tek'}
                   </option>
                 </select>
@@ -5292,7 +5356,7 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('ready')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
                   queueFilter === 'ready'
-                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                    ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs font-semibold'
                     : 'text-indigo-800 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
                 }`}
               >
@@ -5305,7 +5369,7 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('sent')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
                   queueFilter === 'sent'
-                    ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
+                    ? 'bg-emerald-100/95 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-100 shadow-2xs font-semibold'
                     : 'text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
                 }`}
               >
@@ -5318,7 +5382,7 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('has_status_pdf')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
                   queueFilter === 'has_status_pdf'
-                    ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                    ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs font-semibold'
                     : statusPdfCount > 0
                     ? 'text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100'
                     : 'text-slate-500 hover:text-slate-700'
@@ -5336,7 +5400,7 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('mvd_not_found')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
                   queueFilter === 'mvd_not_found'
-                    ? 'bg-purple-600 text-white shadow-2xs font-semibold'
+                    ? 'bg-purple-100/95 dark:bg-purple-500/25 border border-purple-300 dark:border-purple-400/40 text-purple-950 dark:text-purple-100 shadow-2xs font-semibold'
                     : mvdNotFoundCount > 0
                     ? 'text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100'
                     : 'text-slate-500 hover:text-slate-700'
@@ -5354,7 +5418,7 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('error')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
                   queueFilter === 'error'
-                    ? 'bg-rose-600 text-white shadow-2xs font-semibold'
+                    ? 'bg-rose-100/95 dark:bg-rose-500/25 border border-rose-300 dark:border-rose-500/40 text-rose-950 dark:text-rose-100 shadow-2xs font-semibold'
                     : errorCount > 0
                     ? 'text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100'
                     : 'text-slate-500 hover:text-slate-700'
@@ -5369,7 +5433,7 @@ export default function GosuslugiVksView() {
                 onClick={() => setQueueFilter('invalid')}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition inline-flex items-center gap-1 whitespace-nowrap ${
                   queueFilter === 'invalid'
-                    ? 'bg-amber-600 text-white shadow-2xs font-semibold'
+                    ? 'bg-amber-100/95 dark:bg-amber-500/25 border border-amber-300 dark:border-amber-500/40 text-amber-950 dark:text-amber-100 shadow-2xs font-semibold'
                     : invalidCount > 0
                     ? 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
                     : 'text-slate-500 hover:text-slate-700'
@@ -5384,7 +5448,25 @@ export default function GosuslugiVksView() {
           </div>
         )}
 
-        {workers.length === 0 ? (
+        {workers.length === 0 && (isLoadingMaster || isLoadingDb || isUploadingExcel) ? (
+          <div className="p-12 sm:p-16 text-center flex flex-col items-center justify-center space-y-3.5">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs">
+              <Loader2 className="w-7 h-7 animate-spin" />
+            </div>
+            <div className="max-w-md space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                {lang === 'ru'
+                  ? 'Загрузка списка уведомлений ВКС...'
+                  : 'VKS Bildirim Listesi Yükleniyor...'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                {lang === 'ru'
+                  ? 'Подгружаем центральную очередь и актуальные статусы заявлений Госуслуг...'
+                  : 'Merkezi VKS kuyruğu ve güncel Gosuslugi başvuru durumları hazırlanıyor, lütfen bekleyin...'}
+              </p>
+            </div>
+          </div>
+        ) : workers.length === 0 ? (
           <div className="p-10 sm:p-12 text-center flex flex-col items-center justify-center space-y-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/60 border border-emerald-200/70 dark:border-emerald-800/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs">
               <FileSpreadsheet className="w-7 h-7" />
@@ -5406,9 +5488,9 @@ export default function GosuslugiVksView() {
               <button
                 onClick={triggerExcelFileSelect}
                 disabled={isUploadingExcel}
-                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-xs transition disabled:opacity-60"
+                className="h-9 px-4 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-2xs transition disabled:opacity-60"
               >
-                <Upload className="w-4 h-4" />
+                <Upload className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
                 <span>
                   {lang === 'ru'
                     ? 'Загрузить Excel (GosUsluga_ ЗП.xlsx)'
@@ -5441,103 +5523,109 @@ export default function GosuslugiVksView() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto max-h-[540px]">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900/95 border-b border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-200 font-semibold uppercase text-[11px] tracking-wider whitespace-nowrap">
-                <tr>
-                  <th className="py-2.5 px-2.5 w-9 text-center">
-                    <input
-                      type="checkbox"
-                      checked={
-                        workers.some(
-                          (w) =>
-                            !isWorkerAlreadySentToGosuslugi(w) &&
-                            !isWorkerMvdNotFound(w) &&
-                            (validationMap[w.id]?.isValid ?? true)
-                        ) &&
-                        workers
-                          .filter(
-                            (w) =>
-                              !isWorkerAlreadySentToGosuslugi(w) &&
-                              !isWorkerMvdNotFound(w) &&
-                              (validationMap[w.id]?.isValid ?? true)
-                          )
-                          .every((w) => w.selected)
-                      }
-                      onChange={handleToggleSelectAll}
-                      className="rounded border-slate-300 dark:border-slate-600 accent-emerald-600 cursor-pointer"
-                      title={
-                        lang === 'ru'
-                          ? 'Выбрать все готовые к отправке строки (без ошибок и пропусков)'
-                          : 'Eksik verisi olmayan gönderime hazır tüm satırları seç/kaldır'
-                      }
-                    />
-                  </th>
-                  <th className="py-2.5 px-2 w-9 text-center font-semibold">№</th>
-                  <th className="py-2.5 px-2.5 min-w-[205px]">Статус ГУ / № Заявления</th>
-                  <th className="py-2.5 px-2.5">Код / Sicil</th>
-                  <th className="py-2.5 px-2.5 min-w-[210px]">ФИО (Кириллица)</th>
-                  <th className="py-2.5 px-2.5 min-w-[125px]">Гражданство / Д.Р.</th>
-                  <th className="py-2.5 px-2.5 min-w-[175px]">Паспорт (Серия № / Выдан)</th>
-                  <th className="py-2.5 px-2.5">ИНН</th>
-                  <th className="py-2.5 px-2.5 min-w-[165px]">Разрешение ВКС (РНР / Бланк)</th>
-                  <th className="py-2.5 px-3 min-w-[185px]">Договор (Закл. / Начало / Конец)</th>
-                  <th className="py-2.5 px-2.5 min-w-[155px]">Период ЗП / Индекс</th>
-                  <th className="py-2.5 px-2.5 min-w-[215px]">Выплаты (1–3 мес. / Всего ₽)</th>
-                  <th className="py-2.5 px-2.5 text-right">Действие</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/90 dark:divide-slate-800/80 text-[12px] font-normal text-slate-900 dark:text-slate-100">
-                {filteredWorkers.map((w, idx) => {
-                  const codeKey = w.code || w.sicil;
-                  const rowVal = validationMap[w.id] || {
-                    isValid: true,
-                    issues: [],
-                    fieldErrors: {},
-                  };
-                  const isRowValid = rowVal.isValid;
-                  const fErr = rowVal.fieldErrors;
-
-                  const isProcessing =
-                    w.status === 'processing' ||
-                    (isRunning &&
-                      ((bridgeStatus.active_worker_code &&
-                        codeKey === bridgeStatus.active_worker_code) ||
-                        (bridgeStatus.active_worker_name &&
-                          `${w.lastName} ${w.firstName}`
-                            .toLowerCase()
-                            .includes(bridgeStatus.active_worker_name.toLowerCase()))));
-
-                  const isEditing = editingRowId === w.id;
-
-                  return (
-                    <tr
-                      key={w.id}
-                      className={`transition-colors align-top ${
-                        isProcessing
-                          ? 'bg-teal-50/90 dark:bg-teal-950/50 border-l-4 border-l-emerald-500 font-semibold'
-                          : !isRowValid
-                          ? 'bg-rose-50/60 dark:bg-rose-950/25 border-l-4 border-l-rose-500'
-                          : w.status === 'success' || isWorkerAlreadySentToGosuslugi(w)
-                          ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
-                          : isWorkerMvdNotFound(w)
-                          ? 'bg-purple-50/60 dark:bg-purple-950/25 border-l-4 border-l-purple-500'
-                          : w.status === 'error'
-                          ? 'bg-rose-50/50 dark:bg-rose-950/20'
-                          : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={w.selected}
-                          onChange={() => handleToggleWorker(w.id)}
-                          className="rounded border-slate-300 dark:border-slate-600 accent-emerald-600 cursor-pointer"
-                        />
+          <div>
+            {(isLoadingMaster || isLoadingDb || isUploadingExcel) && (
+              <div className="px-4 py-2 bg-emerald-50/80 dark:bg-emerald-950/40 border-b border-emerald-200/70 dark:border-emerald-800/50 flex items-center gap-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                <span>
+                  {lang === 'ru'
+                    ? 'Обновление списка уведомлений ВКС...'
+                    : 'VKS bildirim listesi güncelleniyor...'}
+                </span>
+              </div>
+            )}
+            <div className="overflow-x-auto max-h-[540px]">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900/95 border-b border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-200 font-semibold uppercase text-[11px] tracking-wider whitespace-nowrap">
+                  <tr>
+                    <th className="py-2.5 px-2.5 w-9 text-center">
+                      <input
+                        type="checkbox"
+                        checked={validWorkers.length > 0 && selectedValidCount === validWorkers.length}
+                        onChange={handleToggleSelectAll}
+                        className="rounded border-slate-300 dark:border-slate-600 accent-emerald-600 cursor-pointer"
+                        title={
+                          lang === 'ru'
+                            ? 'Выбрать все готовые к отправке строки (без ошибок и пропусков)'
+                            : 'Eksik verisi olmayan gönderime hazır tüm satırları seç/kaldır'
+                        }
+                      />
+                    </th>
+                    <th className="py-2.5 px-2 w-9 text-center font-semibold">№</th>
+                    <th className="py-2.5 px-2.5 min-w-[205px]">Статус ГУ / № Заявления</th>
+                    <th className="py-2.5 px-2.5">Код / Sicil</th>
+                    <th className="py-2.5 px-2.5 min-w-[210px]">ФИО (Кириллица)</th>
+                    <th className="py-2.5 px-2.5 min-w-[125px]">Гражданство / Д.Р.</th>
+                    <th className="py-2.5 px-2.5 min-w-[175px]">Паспорт (Серия № / Выдан)</th>
+                    <th className="py-2.5 px-2.5">ИНН</th>
+                    <th className="py-2.5 px-2.5 min-w-[165px]">Разрешение ВКС (РНР / Бланк)</th>
+                    <th className="py-2.5 px-3 min-w-[185px]">Договор (Закл. / Начало / Конец)</th>
+                    <th className="py-2.5 px-2.5 min-w-[155px]">Период ЗП / Индекс</th>
+                    <th className="py-2.5 px-2.5 min-w-[215px]">Выплаты (1–3 мес. / Всего ₽)</th>
+                    <th className="py-2.5 px-2.5 text-right">Действие</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/90 dark:divide-slate-800/80 text-[12px] font-normal text-slate-900 dark:text-slate-100">
+                  {paginatedWorkers.length === 0 ? (
+                    <tr>
+                      <td colSpan={13} className="py-10 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                        {lang === 'ru'
+                          ? 'По выбранному фильтру или поисковому запросу записей не найдено.'
+                          : 'Seçili filtre veya arama kriterine uygun VKS kaydı bulunamadı.'}
                       </td>
-                      <td className="py-2.5 px-2 text-center text-slate-600 dark:text-slate-400 font-normal whitespace-nowrap">
-                        {idx + 1}
-                      </td>
+                    </tr>
+                  ) : (
+                    paginatedWorkers.map((w, idx) => {
+                      const globalRowIndex = (safeTablePage - 1) * tablePageSize + idx + 1;
+                      const codeKey = w.code || w.sicil;
+                      const rowVal = validationMap[w.id] || {
+                        isValid: true,
+                        issues: [],
+                        fieldErrors: {},
+                      };
+                      const isRowValid = rowVal.isValid;
+                      const fErr = rowVal.fieldErrors;
+
+                      const isProcessing =
+                        w.status === 'processing' ||
+                        (isRunning &&
+                          ((bridgeStatus.active_worker_code &&
+                            codeKey === bridgeStatus.active_worker_code) ||
+                            (bridgeStatus.active_worker_name &&
+                              `${w.lastName} ${w.firstName}`
+                                .toLowerCase()
+                                .includes(bridgeStatus.active_worker_name.toLowerCase()))));
+
+                      const isEditing = editingRowId === w.id;
+
+                      return (
+                        <tr
+                          key={w.id}
+                          className={`transition-colors align-top ${
+                            isProcessing
+                              ? 'bg-teal-50/90 dark:bg-teal-950/50 border-l-4 border-l-emerald-500 font-semibold'
+                              : !isRowValid
+                              ? 'bg-rose-50/60 dark:bg-rose-950/25 border-l-4 border-l-rose-500'
+                              : w.status === 'success' || isWorkerAlreadySentToGosuslugi(w)
+                              ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
+                              : isWorkerMvdNotFound(w)
+                              ? 'bg-purple-50/60 dark:bg-purple-950/25 border-l-4 border-l-purple-500'
+                              : w.status === 'error'
+                              ? 'bg-rose-50/50 dark:bg-rose-950/20'
+                              : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/40'
+                          }`}
+                        >
+                          <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={w.selected}
+                              onChange={() => handleToggleWorker(w.id)}
+                              className="rounded border-slate-300 dark:border-slate-600 accent-emerald-600 cursor-pointer"
+                            />
+                          </td>
+                          <td className="py-2.5 px-2 text-center text-slate-600 dark:text-slate-400 font-normal whitespace-nowrap">
+                            {globalRowIndex}
+                          </td>
 
                       {/* Status & Application Number Column (Max 3 lines) */}
                       <td
@@ -6412,9 +6500,85 @@ export default function GosuslugiVksView() {
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
+                })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredWorkers.length > 0 && (
+              <div className="px-4 py-2.5 bg-slate-50/90 dark:bg-slate-900/80 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-medium">
+                    {lang === 'ru'
+                      ? `Показано ${(safeTablePage - 1) * tablePageSize + 1}–${Math.min(
+                          safeTablePage * tablePageSize,
+                          filteredWorkers.length
+                        )} из ${filteredWorkers.length}`
+                      : `${(safeTablePage - 1) * tablePageSize + 1}–${Math.min(
+                          safeTablePage * tablePageSize,
+                          filteredWorkers.length
+                        )} / ${filteredWorkers.length.toLocaleString('tr-TR')} kayıt gösteriliyor`}
+                  </span>
+                  <label className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                    <span>{lang === 'ru' ? 'На странице:' : 'Sayfa boyutu:'}</span>
+                    <select
+                      value={tablePageSize}
+                      onChange={(e) => {
+                        setTablePageSize(Number(e.target.value));
+                        setTablePage(1);
+                      }}
+                      className="h-7 px-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium cursor-pointer"
+                    >
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={250}>250</option>
+                      <option value={500}>500</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTablePage(1)}
+                    disabled={safeTablePage <= 1}
+                    className="h-7 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium cursor-pointer transition"
+                  >
+                    {lang === 'ru' ? '« Первая' : '« İlk'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                    disabled={safeTablePage <= 1}
+                    className="h-7 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium cursor-pointer transition"
+                  >
+                    {lang === 'ru' ? '‹ Назад' : '‹ Önceki'}
+                  </button>
+                  <span className="px-2.5 font-semibold text-slate-700 dark:text-slate-200">
+                    {lang === 'ru'
+                      ? `Стр. ${safeTablePage} / ${totalTablePages}`
+                      : `Sayfa ${safeTablePage} / ${totalTablePages}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTablePage((p) => Math.min(totalTablePages, p + 1))}
+                    disabled={safeTablePage >= totalTablePages}
+                    className="h-7 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium cursor-pointer transition"
+                  >
+                    {lang === 'ru' ? 'Далее ›' : 'Sonraki ›'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTablePage(totalTablePages)}
+                    disabled={safeTablePage >= totalTablePages}
+                    className="h-7 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium cursor-pointer transition"
+                  >
+                    {lang === 'ru' ? 'Последняя »' : 'Son »'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -6451,9 +6615,9 @@ export default function GosuslugiVksView() {
               <a
                 href="/Pondera_Gosuslugi_Agent.zip"
                 download="Pondera_Gosuslugi_Agent.zip"
-                className="h-8 px-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] inline-flex items-center gap-1.5 shadow-2xs transition"
+                className="h-8 px-3.5 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-100/90 hover:bg-amber-200/85 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-950 dark:text-amber-100 font-bold text-[11px] inline-flex items-center gap-1.5 shadow-2xs transition no-underline"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300" />
                 <span>
                   {lang === 'ru'
                     ? 'Скачать Агент для ПК (.zip)'
@@ -6653,7 +6817,7 @@ export default function GosuslugiVksView() {
                   type="button"
                   onClick={handleOpenChrome}
                   disabled={isLaunchingChrome}
-                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-xs transition cursor-pointer disabled:opacity-50"
+                  className="flex-1 py-1.5 px-2.5 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-bold text-[11px] shadow-2xs transition cursor-pointer disabled:opacity-50"
                 >
                   {lang === 'ru' ? '1. Открыть Chrome' : '1. Chrome Aç (9222)'}
                 </button>
@@ -6972,12 +7136,12 @@ export default function GosuslugiVksView() {
                   <button
                     onClick={() => handleSyncMailRu(false)}
                     disabled={isSyncingMailRu}
-                    className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition shadow-xs"
+                    className="h-9 px-4 rounded-xl border border-sky-300 dark:border-sky-500/40 bg-sky-100/85 hover:bg-sky-200/80 dark:bg-sky-500/20 dark:hover:bg-sky-500/30 text-sky-950 dark:text-sky-100 font-bold text-xs inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition shadow-2xs"
                   >
                     {isSyncingMailRu ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin text-sky-700 dark:text-sky-300" />
                     ) : (
-                      <RefreshCw className="w-4 h-4" />
+                      <RefreshCw className="w-4 h-4 text-sky-700 dark:text-sky-300" />
                     )}
                     <span>
                       {lang === 'ru'
@@ -7280,9 +7444,9 @@ export default function GosuslugiVksView() {
                   type="button"
                   onClick={handleStartSingleStatusSearch}
                   disabled={isCheckingStatuses}
-                  className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 transition"
+                  className="h-9 px-4 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50 transition"
                 >
-                  <Search className="w-3.5 h-3.5" />
+                  <Search className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
                   <span>
                     {lang === 'ru'
                       ? 'Начать поштучный поиск'

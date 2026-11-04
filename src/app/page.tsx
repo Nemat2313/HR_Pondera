@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import OverviewView from '@/components/dashboard/OverviewView';
@@ -9,22 +10,68 @@ import LoginModal from '@/components/auth/LoginModal';
 import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
-const PersonnelListView = dynamic(() => import('@/components/personnel/PersonnelListView'));
-const SitesView = dynamic(() => import('@/components/sites/SitesView'));
-const DemographicsView = dynamic(() => import('@/components/demographics/DemographicsView'));
-const ManagementReportsView = dynamic(() => import('@/components/reports/ManagementReportsView'));
-const DatabaseManagementView = dynamic(() => import('@/components/database/DatabaseManagementView'));
-const UserManagementView = dynamic(() => import('@/components/admin/UserManagementView'));
-const ComplianceAnalyticsView = dynamic(() => import('@/components/compliance/ComplianceAnalyticsView'));
-const GosuslugiVksView = dynamic(() => import('@/components/gosuslugi/GosuslugiVksView'));
-const GosuslugiAnalyticsView = dynamic(() => import('@/components/gosuslugi/GosuslugiAnalyticsView'));
-const PoweriseInnovationView = dynamic(() => import('@/components/powerise/PoweriseInnovationView'));
-const OfficialVsRealView = dynamic(() => import('@/components/workforce/OfficialVsRealView'));
-const QuotaTrackingView = dynamic(() => import('@/components/quotas/QuotaTrackingView'));
-const InvitationsTrackingView = dynamic(() => import('@/components/invitations/InvitationsTrackingView'));
-const TravelTicketsAdminView = dynamic(() => import('@/components/powerise/TravelTicketsAdminView'));
-const CampManagementView = dynamic(() => import('@/components/powerise/CampManagementView'));
-const SettingsView = dynamic(() => import('@/components/settings/SettingsView'));
+function ModuleLoadingFallback({ label = 'Sayfa yükleniyor...' }: { label?: string }) {
+  return (
+    <div className="p-6 flex flex-col items-center justify-center min-h-[62vh] gap-3">
+      <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/70 flex items-center justify-center shadow-2xs">
+        <Loader2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-spin" />
+      </div>
+      <div className="text-center space-y-0.5">
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Veriler ve modül bileşenleri hazırlanıyor...</p>
+      </div>
+    </div>
+  );
+}
+
+const PersonnelListView = dynamic(() => import('@/components/personnel/PersonnelListView'), {
+  loading: () => <ModuleLoadingFallback label="Personel Listesi yükleniyor..." />,
+});
+const SitesView = dynamic(() => import('@/components/sites/SitesView'), {
+  loading: () => <ModuleLoadingFallback label="Şantiye & Proje görünümü yükleniyor..." />,
+});
+const DemographicsView = dynamic(() => import('@/components/demographics/DemographicsView'), {
+  loading: () => <ModuleLoadingFallback label="Demografi & İstatistik yükleniyor..." />,
+});
+const ManagementReportsView = dynamic(() => import('@/components/reports/ManagementReportsView'), {
+  loading: () => <ModuleLoadingFallback label="Yönetim & Turnover raporu yükleniyor..." />,
+});
+const DatabaseManagementView = dynamic(() => import('@/components/database/DatabaseManagementView'), {
+  loading: () => <ModuleLoadingFallback />,
+});
+const UserManagementView = dynamic(() => import('@/components/admin/UserManagementView'), {
+  loading: () => <ModuleLoadingFallback />,
+});
+const ComplianceAnalyticsView = dynamic(() => import('@/components/compliance/ComplianceAnalyticsView'), {
+  loading: () => <ModuleLoadingFallback label="Evrak & Süre Analitiği yükleniyor..." />,
+});
+const GosuslugiVksView = dynamic(() => import('@/components/gosuslugi/GosuslugiVksView'), {
+  loading: () => <ModuleLoadingFallback label="Gosuslugi VKS Bildirim Listesi yükleniyor..." />,
+});
+const GosuslugiAnalyticsView = dynamic(() => import('@/components/gosuslugi/GosuslugiAnalyticsView'), {
+  loading: () => <ModuleLoadingFallback label="VKS İstatistik & Analiz yükleniyor..." />,
+});
+const PoweriseInnovationView = dynamic(() => import('@/components/powerise/PoweriseInnovationView'), {
+  loading: () => <ModuleLoadingFallback />,
+});
+const OfficialVsRealView = dynamic(() => import('@/components/workforce/OfficialVsRealView'), {
+  loading: () => <ModuleLoadingFallback label="1C ZUP & eBA Karşılaştırma yükleniyor..." />,
+});
+const QuotaTrackingView = dynamic(() => import('@/components/quotas/QuotaTrackingView'), {
+  loading: () => <ModuleLoadingFallback />,
+});
+const InvitationsTrackingView = dynamic(() => import('@/components/invitations/InvitationsTrackingView'), {
+  loading: () => <ModuleLoadingFallback />,
+});
+const TravelTicketsAdminView = dynamic(() => import('@/components/powerise/TravelTicketsAdminView'), {
+  loading: () => <ModuleLoadingFallback />,
+});
+const CampManagementView = dynamic(() => import('@/components/powerise/CampManagementView'), {
+  loading: () => <ModuleLoadingFallback />,
+});
+const SettingsView = dynamic(() => import('@/components/settings/SettingsView'), {
+  loading: () => <ModuleLoadingFallback label="Ayarlar & Yönetim yükleniyor..." />,
+});
 const ExcelUploadModal = dynamic(() => import('@/components/modals/ExcelUploadModal'));
 
 export default function Home() {
@@ -114,6 +161,16 @@ export default function Home() {
       setIsLoginModalOpen(false);
     }
   }, [user]);
+
+  // Preload heavy VKS & Personnel bundles on idle so sidebar tab switches feel instantaneous
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      import('@/components/gosuslugi/GosuslugiVksView').catch(() => {});
+      import('@/components/gosuslugi/GosuslugiAnalyticsView').catch(() => {});
+      import('@/components/personnel/PersonnelListView').catch(() => {});
+    }, 650);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Global search submit -> switches to Personnel List with search
   const handleSearchSubmit = (query: string) => {

@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import { getDb } from '@/lib/db';
 import { getMoscowTimeParts } from '@/lib/telegramNotifier';
-import { classifyWorkPermitFromRow } from '@/lib/workPermits';
+import { WORK_PERMIT_CASE_SQL } from '@/lib/workPermits';
+import {
+  getStatusPdfMaps,
+  getCachedAnalyticsResponse,
+  setCachedAnalyticsResponse,
+} from '@/lib/gosuslugiPdfCache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -217,6 +220,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const scopeType = (searchParams.get('scopeType') || 'all').trim();
     const scopeValue = (searchParams.get('scopeValue') || 'all').trim();
+    const forceFresh = searchParams.get('fresh') === '1';
+    const respCacheKey = `${scopeType}:${scopeValue}`;
+
+    if (!forceFresh) {
+      const cachedPayload = getCachedAnalyticsResponse(respCacheKey);
+      if (cachedPayload) {
+        return NextResponse.json(cachedPayload);
+      }
+    }
+
     const hasRlsFilter =
       (scopeType === 'region' || scopeType === 'project') &&
       Boolean(scopeValue) &&
@@ -225,8 +238,11 @@ export async function GET(request: Request) {
     const db = getDb();
     const msk = getMoscowTimeParts();
 
-    // Ensure submissions, archive, and history tables exist
-    db.exec(`
+    const gHeal = globalThis as unknown as { __ponderaAnalyticsDbHealed?: boolean };
+    if (!gHeal.__ponderaAnalyticsDbHealed) {
+      gHeal.__ponderaAnalyticsDbHealed = true;
+      // Ensure submissions, archive, and history tables exist
+      db.exec(`
       CREATE TABLE IF NOT EXISTS gosuslugi_submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sicil_no TEXT NOT NULL,
@@ -407,8 +423,10 @@ export async function GET(request: Request) {
           );
       `);
     } catch {}
+    }
 
-    // 1. Load & cache active VKS personnel from personnel table so 15MB of all_data_json is not re-parsed on every poll
+    // 1. Load & cache active VKS personnel from personnel table using SQLite C-engine json_extract
+    // (avoids reading & JSON.parsing ~50MB of all_data_json across 32,725 rows in V8)
     const pVersionRow = db
       .prepare('SELECT COUNT(*) as cnt, COALESCE(MAX(id), 0) as maxId FROM personnel')
       .get() as { cnt: number; maxId: number };
@@ -443,8 +461,16 @@ export async function GET(request: Request) {
         .prepare(
           `SELECT
             sicil_no, ad_soyad, tam_adi_kiril, uyruk, region, proje_adi, departman, gorevi,
-            guncel_durum, genel_durum, pasaport_no, all_data_json
-          FROM personnel`
+            guncel_durum, genel_durum, pasaport_no,
+            (${WORK_PERMIT_CASE_SQL}) AS permit_cat,
+            COALESCE(
+              NULLIF(TRIM(json_extract(all_data_json, '$."Çalışma Kart No"')), ''),
+              NULLIF(TRIM(json_extract(all_data_json, '$."VKS RNR No"')), ''),
+              NULLIF(TRIM(json_extract(all_data_json, '$."RNR No"')), ''),
+              ''
+            ) AS rnr_no
+          FROM personnel
+          WHERE sicil_no IS NOT NULL AND sicil_no != ''`
         )
         .all() as any[];
 
@@ -468,13 +494,7 @@ export async function GET(request: Request) {
       for (const p of personnelRows) {
         const sicil = String(p.sicil_no || '').trim();
         if (!sicil) continue;
-        let rawJson: any = {};
-        if (p.all_data_json) {
-          try {
-            rawJson = JSON.parse(p.all_data_json);
-          } catch {}
-        }
-        const isVks = classifyWorkPermitFromRow(p.uyruk, rawJson) === 'VKS';
+        const isVks = p.permit_cat === 'VKS';
         const guncelLower = String(p.guncel_durum || '').trim().toLowerCase();
         const isActive = ACTIVE_STATUS_SET.has(guncelLower);
         const isVksActive = isVks && isActive;
@@ -496,9 +516,7 @@ export async function GET(request: Request) {
           gorevi: String(p.gorevi || '').trim(),
           guncel_durum: String(p.guncel_durum || '').trim(),
           pasaport_no: String(p.pasaport_no || '').trim(),
-          rnr_no: String(
-            rawJson['Çalışma Kart No'] || rawJson['VKS RNR No'] || rawJson['RNR No'] || ''
-          ).trim(),
+          rnr_no: String(p.rnr_no || '').trim(),
           isVksActive,
         };
       }
@@ -691,21 +709,7 @@ export async function GET(request: Request) {
       )
       .all() as any[];
 
-    const statusPdfByAppNo = new Map<string, string>();
-    const statusPdfBySicil = new Map<string, string>();
-    try {
-      const pdfDir = path.join(process.cwd(), 'data', 'gosuslugi_pdfs');
-      if (fs.existsSync(pdfDir)) {
-        const files = fs.readdirSync(pdfDir);
-        for (const f of files) {
-          if (!f.toUpperCase().includes('_STATUS_A4.PDF')) continue;
-          const mApp = f.match(/([789]\d{9})/);
-          if (mApp) statusPdfByAppNo.set(mApp[1], f);
-          const mSic = f.match(/^(\d{4,8})_/);
-          if (mSic) statusPdfBySicil.set(mSic[1], f);
-        }
-      }
-    } catch {}
+    const { statusPdfByAppNo, statusPdfBySicil, receiptPdfByAppNo, receiptPdfBySicil } = getStatusPdfMaps();
 
     const seenSubSicils = new Set<string>();
     const rawSubs: any[] = [];
@@ -862,7 +866,16 @@ export async function GET(request: Request) {
       };
       const rawPdf = String(r.pdf_filename || '').trim();
       const pdf =
-        !rawPdf.toUpperCase().includes('_STATUS_A4') && doesPdfMatchApp(rawPdf, appNo) ? rawPdf : '';
+        [
+          !rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '',
+          appNo ? receiptPdfByAppNo.get(appNo) || '' : '',
+          sicil ? receiptPdfBySicil.get(sicil) || '' : '',
+        ].find(
+          (cand) =>
+            Boolean(cand) &&
+            !cand.toUpperCase().includes('_STATUS_A4') &&
+            doesPdfMatchApp(cand, appNo)
+        ) || '';
       const statusPdf =
         [
           String(r.status_pdf_filename || '').trim(),
@@ -1427,7 +1440,7 @@ export async function GET(request: Request) {
         : 0;
     const successRatePct = totalRecords > 0 ? Math.round((totalSent / totalRecords) * 100) : 0;
 
-    return NextResponse.json({
+    const responsePayload = {
       success: true,
       moscowTime: `${msk.dateDisplay} ${msk.timeDisplay}`,
       summary: {
@@ -1460,7 +1473,10 @@ export async function GET(request: Request) {
       hourlyTimeline,
       submissions: enrichedSubmissions,
       masterList3088,
-    });
+    };
+
+    setCachedAnalyticsResponse(respCacheKey, responsePayload, 4000);
+    return NextResponse.json(responsePayload);
   } catch (err: any) {
     return NextResponse.json(
       {

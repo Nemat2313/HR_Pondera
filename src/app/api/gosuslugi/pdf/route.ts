@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
+import { invalidateStatusPdfCache } from '@/lib/gosuslugiPdfCache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
         if (curSub?.application_no) {
           appNo = String(curSub.application_no).trim();
         }
-      } catch {}
+      } catch { }
     }
 
     const storageDir = getPdfStorageDir();
@@ -93,7 +94,7 @@ export async function GET(request: Request) {
         if (candSc && doesFileMatchAppNo(candSc, appNo) && fs.existsSync(path.join(storageDir, candSc))) {
           targetFile = candSc;
         }
-      } catch {}
+      } catch { }
     }
 
     if (wantScreenshot && (!targetFile || !fs.existsSync(path.join(storageDir, targetFile))) && (appNo || sicilNo)) {
@@ -254,7 +255,7 @@ export async function GET(request: Request) {
             'Cache-Control': 'no-store',
           },
         });
-      } catch {}
+      } catch { }
     }
 
     if (!targetFile) {
@@ -323,7 +324,10 @@ export async function POST(request: Request) {
       const db = getDb();
       try {
         db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN status_pdf_filename TEXT DEFAULT '';`);
-      } catch {}
+      } catch { }
+      try {
+        db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN updated_at TEXT DEFAULT '';`);
+      } catch { }
       const nowStr = getMoscowNowIso();
       const isFinalOrAdvancedStatus = ['Услуга оказана', 'Услуга отказана', 'Промежуточные результаты по заявлению'].includes(incomingStatus);
 
@@ -337,7 +341,7 @@ export async function POST(request: Request) {
             .prepare('SELECT id FROM gosuslugi_submissions WHERE application_no = ? LIMIT 1')
             .get(applicationNo);
           if (archRow && !activeRow) isArchivedOrSupersededApp = true;
-        } catch {}
+        } catch { }
       }
       if (sicilNo && applicationNo && /^\d+$/.test(applicationNo)) {
         try {
@@ -348,13 +352,13 @@ export async function POST(request: Request) {
           if (activeApp && /^\d+$/.test(activeApp) && Number(activeApp) > Number(applicationNo)) {
             isArchivedOrSupersededApp = true;
           }
-        } catch {}
+        } catch { }
       }
 
       if (isArchivedOrSupersededApp) {
         try {
           if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-        } catch {}
+        } catch { }
         return NextResponse.json({
           success: true,
           skipped: true,
@@ -377,15 +381,16 @@ export async function POST(request: Request) {
             ) {
               try {
                 fs.unlinkSync(path.join(storageDir, ef));
-              } catch {}
+              } catch { }
             }
           }
-        } catch {}
+        } catch { }
       }
 
       if (!isArchivedOrSupersededApp) {
+        let updatedRows = 0;
         if (applicationNo) {
-          db.prepare(
+          const r1 = db.prepare(
             `UPDATE gosuslugi_submissions
              SET pdf_filename = CASE
                    WHEN ? = 1 THEN CASE WHEN pdf_filename LIKE '%_STATUS_A4%' THEN '' ELSE COALESCE(pdf_filename, '') END
@@ -416,9 +421,10 @@ export async function POST(request: Request) {
             nowStr,
             applicationNo
           );
+          updatedRows += Number(r1?.changes || 0);
         }
         if (sicilNo) {
-          db.prepare(
+          const r2 = db.prepare(
             `UPDATE gosuslugi_submissions
              SET pdf_filename = CASE
                    WHEN ? = 1 THEN CASE WHEN pdf_filename LIKE '%_STATUS_A4%' THEN '' ELSE COALESCE(pdf_filename, '') END
@@ -454,11 +460,46 @@ export async function POST(request: Request) {
             applicationNo,
             applicationNo
           );
+          updatedRows += Number(r2?.changes || 0);
+        }
+        if (updatedRows === 0 && sicilNo && applicationNo) {
+          try {
+            db.prepare(
+              `INSERT INTO gosuslugi_submissions (
+                 sicil_no, worker_name, citizenship, notification_type, period_code,
+                 application_no, gosuslugi_status, status_detail, pdf_filename, status_pdf_filename,
+                 submitted_at, checked_at, updated_at
+               ) VALUES (?, '', '', 'vks_salary', '2026-3', ?, ?, '', ?, ?, ?, ?, ?)
+               ON CONFLICT(sicil_no, notification_type, period_code) DO UPDATE SET
+                 pdf_filename = CASE
+                   WHEN excluded.pdf_filename != '' AND (gosuslugi_submissions.application_no = '' OR gosuslugi_submissions.application_no = excluded.application_no)
+                   THEN excluded.pdf_filename
+                   ELSE gosuslugi_submissions.pdf_filename
+                 END,
+                 status_pdf_filename = CASE
+                   WHEN excluded.status_pdf_filename != '' AND (gosuslugi_submissions.application_no = '' OR gosuslugi_submissions.application_no = excluded.application_no)
+                   THEN excluded.status_pdf_filename
+                   ELSE gosuslugi_submissions.status_pdf_filename
+                 END,
+                 updated_at = excluded.updated_at`
+            ).run(
+              sicilNo,
+              applicationNo,
+              incomingStatus || 'Заявление зарегистрировано',
+              isScreenshot ? '' : safeFilename,
+              isScreenshot ? safeFilename : '',
+              nowStr,
+              isFinalOrAdvancedStatus ? nowStr : '',
+              nowStr
+            );
+          } catch { }
         }
       }
     } catch {
       // Non-fatal DB update error
     }
+
+    invalidateStatusPdfCache();
 
     return NextResponse.json({
       success: true,

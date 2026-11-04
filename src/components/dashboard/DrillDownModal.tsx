@@ -179,10 +179,10 @@ export default function DrillDownModal({
                 onClose();
                 onNavigateToPersonnel(filterType, filterValue);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-indigo-950 dark:text-indigo-100 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 border border-indigo-300 dark:border-indigo-400/40 rounded-xl transition-colors shadow-2xs cursor-pointer"
             >
               <span>{lang === 'ru' ? 'Открыть подробный список' : 'Detaylı Listede Aç'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <ArrowRight className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
             </button>
             <button
               onClick={onClose}

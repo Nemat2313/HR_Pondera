@@ -385,10 +385,10 @@ export default function SettingsView({
           <button
             type="button"
             onClick={() => setActiveSubTab('users_rls')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeSubTab === 'users_rls'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
@@ -398,10 +398,10 @@ export default function SettingsView({
           <button
             type="button"
             onClick={() => setActiveSubTab('database_excel')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeSubTab === 'database_excel'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
@@ -411,10 +411,10 @@ export default function SettingsView({
           <button
             type="button"
             onClick={() => setActiveSubTab('mail_notifications')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeSubTab === 'mail_notifications'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
             }`}
           >
             <Mail className="w-3.5 h-3.5" />
@@ -504,12 +504,12 @@ export default function SettingsView({
                   type="button"
                   disabled={sendingReportId === 'test_connection'}
                   onClick={() => handleTriggerReportEmail('test_connection')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs cursor-pointer transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-semibold text-xs cursor-pointer transition-all shadow-2xs"
                 >
                   {sendingReportId === 'test_connection' ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-700 dark:text-emerald-300" />
                   ) : (
-                    <Send className="w-3.5 h-3.5" />
+                    <Send className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
                   )}
                   <span>Test Maili Gönder</span>
                 </button>
@@ -517,9 +517,9 @@ export default function SettingsView({
                 <button
                   type="submit"
                   disabled={!isAdmin || savingSmtp}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs cursor-pointer transition-all"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 disabled:opacity-50 text-indigo-950 dark:text-indigo-100 font-semibold text-xs cursor-pointer transition-all shadow-2xs"
                 >
-                  {savingSmtp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {savingSmtp ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" /> : <Save className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />}
                   <span>Bağlantı Ayarlarını Kaydet</span>
                 </button>
               </div>
@@ -681,9 +681,9 @@ export default function SettingsView({
                 type="button"
                 disabled={!isAdmin || savingRules}
                 onClick={handleSaveRules}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs cursor-pointer transition-all shadow-xs"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 disabled:opacity-50 text-indigo-950 dark:text-indigo-100 font-semibold text-xs cursor-pointer transition-all shadow-2xs"
               >
-                {savingRules ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {savingRules ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" /> : <Save className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />}
                 <span>Tüm Rapor Kurallarını Kaydet</span>
               </button>
             </div>
@@ -728,12 +728,12 @@ export default function SettingsView({
                         type="button"
                         disabled={sendingReportId === rule.id}
                         onClick={() => handleTriggerReportEmail(rule.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] shrink-0 cursor-pointer transition-all"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-semibold text-[11px] shrink-0 cursor-pointer transition-all shadow-2xs"
                       >
                         {sendingReportId === rule.id ? (
-                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          <RefreshCw className="w-3 h-3 animate-spin text-emerald-700 dark:text-emerald-300" />
                         ) : (
-                          <Send className="w-3 h-3" />
+                          <Send className="w-3 h-3 text-emerald-700 dark:text-emerald-300" />
                         )}
                         <span>Şimdi Gönder</span>
                       </button>
@@ -828,9 +828,9 @@ export default function SettingsView({
                           <button
                             type="button"
                             onClick={() => addRecipient(rule.id, 'toEmails', newToInput[rule.id] || '')}
-                            className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                           >
-                            <Plus className="w-3 h-3" /> Ekle
+                            <Plus className="w-3 h-3 text-indigo-700 dark:text-indigo-300" /> Ekle
                           </button>
                         </div>
                       )}
@@ -878,7 +878,7 @@ export default function SettingsView({
                           <button
                             type="button"
                             onClick={() => addRecipient(rule.id, 'ccEmails', newCcInput[rule.id] || '')}
-                            className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Plus className="w-3 h-3" /> CC Ekle
                           </button>
@@ -911,9 +911,9 @@ export default function SettingsView({
                 <button
                   type="button"
                   onClick={handleCopyCorporateEmail}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs cursor-pointer transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs cursor-pointer transition-all shadow-2xs"
                 >
-                  {copiedMailText ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedMailText ? <Check className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" /> : <Copy className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />}
                   <span>{copiedMailText ? 'Panoya Kopyalandı!' : 'Mail Metnini Kopyala'}</span>
                 </button>
                 <button

@@ -267,13 +267,16 @@ export default function GosuslugiAnalyticsView() {
   const [masterVisibleCount, setMasterVisibleCount] = useState<number>(150);
   const [expandedHistorySicil, setExpandedHistorySicil] = useState<string | null>(null);
 
-  const fetchAnalytics = useCallback(async (isSilent = false) => {
+  const fetchAnalytics = useCallback(async (isSilent = false, forceFresh = false) => {
     if (!isSilent) setRefreshing(true);
     try {
       const params = new URLSearchParams();
       if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
         params.set('scopeType', user.scope_type);
         params.set('scopeValue', user.scope_value);
+      }
+      if (forceFresh) {
+        params.set('fresh', '1');
       }
       const qs = params.toString();
       const res = await fetch(`/api/gosuslugi/analytics${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
@@ -1207,21 +1210,21 @@ export default function GosuslugiAnalyticsView() {
             </button>
 
             <button
-              onClick={() => fetchAnalytics(false)}
+              onClick={() => fetchAnalytics(false, true)}
               disabled={refreshing}
               className="px-3 py-1.5 rounded-xl text-xs font-normal bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              Yenile
+              {refreshing ? 'Yenileniyor...' : 'Yenile'}
             </button>
 
             {user?.role !== 'viewer' && (
               <button
                 onClick={handleTriggerTelegramNow}
                 disabled={sendingTelegram}
-                className="px-3 py-1.5 rounded-xl text-xs font-normal bg-sky-600 hover:bg-sky-500 text-white border border-sky-600 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-100/85 hover:bg-sky-200/80 dark:bg-sky-500/20 dark:hover:bg-sky-500/30 text-sky-950 dark:text-sky-100 border border-sky-300 dark:border-sky-500/40 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
               >
-                <Send className="w-3.5 h-3.5 text-white" />
+                <Send className="w-3.5 h-3.5 text-sky-700 dark:text-sky-300" />
                 {sendingTelegram ? 'Gönderiliyor...' : 'Telegram Raporu'}
               </button>
             )}
@@ -1947,9 +1950,9 @@ export default function GosuslugiAnalyticsView() {
                   <button
                     onClick={() => exportMasterListToExcel()}
                     disabled={filteredMaster3088.length === 0}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    <Download className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
                     Excel İndir ({filteredMaster3088.length})
                   </button>
                 </div>
@@ -2099,9 +2102,9 @@ export default function GosuslugiAnalyticsView() {
                           )
                         }
                         disabled={reopeningRefused !== null}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-amber-300 dark:border-amber-500/40 bg-amber-100/90 hover:bg-amber-200/85 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-950 dark:text-amber-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
                       >
-                        <RefreshCw className="w-3.5 h-3.5" />
+                        <RefreshCw className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300" />
                         20.10 Bekleyenleri Tekrar Gönderime Aç ({staleRegisteredGroups.byOct20.length})
                       </button>
                     )}
@@ -2115,9 +2118,9 @@ export default function GosuslugiAnalyticsView() {
                           )
                         }
                         disabled={reopeningRefused !== null}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
                       >
-                        <RefreshCw className="w-3.5 h-3.5" />
+                        <RefreshCw className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
                         23.10 ve Öncesini Tekrar Gönderime Aç ({staleRegisteredGroups.byOct23.length})
                       </button>
                     )}
@@ -2141,9 +2144,9 @@ export default function GosuslugiAnalyticsView() {
                             );
                           }}
                           disabled={reopeningRefused !== null}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-teal-700 hover:bg-teal-600 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-teal-300 dark:border-teal-500/40 bg-teal-100/85 hover:bg-teal-200/80 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-950 dark:text-teal-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
                         >
-                          <RefreshCw className="w-3.5 h-3.5" />
+                          <RefreshCw className="w-3.5 h-3.5 text-teal-700 dark:text-teal-300" />
                           Listelenen Bekleyenleri Tekrar Gönderime Aç (
                           {
                             filteredMaster3088.filter(
@@ -2623,9 +2626,9 @@ export default function GosuslugiAnalyticsView() {
                   <a
                     href="/api/gosuslugi/master-list/export-errors?mode=refused&computer=all"
                     download
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1.5 no-underline"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-orange-300 dark:border-orange-500/40 bg-orange-100/90 hover:bg-orange-200/85 dark:bg-orange-500/20 dark:hover:bg-orange-500/30 text-orange-950 dark:text-orange-100 flex items-center gap-1.5 no-underline shadow-2xs"
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    <Download className="w-3.5 h-3.5 text-orange-700 dark:text-orange-300" />
                     Renkli VKS Şablon İndir ({s.totalRefusedMvd ?? 0})
                   </a>
                 </div>
@@ -2714,9 +2717,9 @@ export default function GosuslugiAnalyticsView() {
                             <a
                               href={`/api/gosuslugi/master-list/export-errors?mode=refused&refusalCategory=${encodeURIComponent(cat.id)}&computer=all`}
                               download
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white flex items-center gap-1 no-underline"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-orange-300 dark:border-orange-500/40 bg-orange-100/90 hover:bg-orange-200/85 dark:bg-orange-500/20 dark:hover:bg-orange-500/30 text-orange-950 dark:text-orange-100 flex items-center gap-1 no-underline shadow-2xs"
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download className="w-3.5 h-3.5 text-orange-700 dark:text-orange-300" />
                               Şablon İndir
                             </a>
 
@@ -2729,10 +2732,10 @@ export default function GosuslugiAnalyticsView() {
                                   )
                                 }
                                 disabled={reopeningRefused !== null}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
                               >
                                 <RefreshCw
-                                  className={`w-3.5 h-3.5 ${
+                                  className={`w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 ${
                                     reopeningRefused === cat.titleTr ? 'animate-spin' : ''
                                   }`}
                                 />
@@ -2836,18 +2839,18 @@ export default function GosuslugiAnalyticsView() {
                     href={dataErrorTemplateExportUrl}
                     download
                     title="Gosuslugi portal ve timeout hatalarını hariç tutarak SADECE bizim eksik/hatalı girdiğimiz (ИНН, РНР, Blank, Sözleşme Tarihi) kayıtları açıklamalı ve renkli şablon olarak indir"
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 no-underline shadow-xs"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-amber-300 dark:border-amber-500/40 bg-amber-100/90 hover:bg-amber-200/85 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-950 dark:text-amber-100 flex items-center gap-1.5 no-underline shadow-2xs"
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    <Download className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300" />
                     Sadece Veri Hatalı Şablon İndir (ИНН / РНР / Tarih)
                   </a>
 
                   <a
                     href={errorTemplateExportUrl}
                     download
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 no-underline shadow-xs"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-rose-300 dark:border-rose-500/40 bg-rose-100/85 hover:bg-rose-200/80 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 text-rose-950 dark:text-rose-100 flex items-center gap-1.5 no-underline shadow-2xs"
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    <Download className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300" />
                     Tüm Ошибка Şablon İndir ({allErrorItems.length})
                   </a>
 
@@ -2860,10 +2863,10 @@ export default function GosuslugiAnalyticsView() {
                         )
                       }
                       disabled={reopeningError !== null}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
                     >
                       <RefreshCw
-                        className={`w-3.5 h-3.5 ${reopeningError !== null ? 'animate-spin' : ''}`}
+                        className={`w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 ${reopeningError !== null ? 'animate-spin' : ''}`}
                       />
                       Tümünü Tekrar Gönderime Aç ({allErrorItems.length})
                     </button>
@@ -2933,9 +2936,9 @@ export default function GosuslugiAnalyticsView() {
                             <a
                               href={`/api/gosuslugi/master-list/export-errors?mode=only_oshibka&errorCategory=${encodeURIComponent(cat.id)}&computer=all`}
                               download
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1 no-underline shadow-xs"
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-rose-300 dark:border-rose-500/40 bg-rose-100/85 hover:bg-rose-200/80 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 text-rose-950 dark:text-rose-100 flex items-center gap-1 no-underline shadow-2xs"
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300" />
                               Şablon İndir
                             </a>
 
@@ -2948,10 +2951,10 @@ export default function GosuslugiAnalyticsView() {
                                   )
                                 }
                                 disabled={reopeningError !== null}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
                               >
                                 <RefreshCw
-                                  className={`w-3.5 h-3.5 ${
+                                  className={`w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 ${
                                     reopeningError === cat.titleTr ? 'animate-spin' : ''
                                   }`}
                                 />

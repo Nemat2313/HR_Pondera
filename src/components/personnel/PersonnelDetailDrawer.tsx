@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { PersonnelRecord } from '@/types';
 import { useLanguage } from '@/context/LanguageContext';
+import { isOfficialSalaryColumn, stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
 
 interface PersonnelDetailDrawerProps {
   personnel: PersonnelRecord | null;
@@ -34,7 +35,7 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
 
   if (!personnel) return null;
 
-  const raw = personnel.raw || {};
+  const raw = stripOfficialSalaryFromRaw(personnel.raw || {});
 
   const tabs = [
     { id: 'core', label: lang === 'ru' ? 'Основное и должность' : 'Temel & Görev', icon: User },
@@ -231,8 +232,8 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
                 {renderField('Çıkış Sebebi', personnel.cikis_sebebi)}
                 {renderField('İş Sözleşmesi Numarası', raw['İş Sözleşmesi Numarası'])}
                 {renderField('İş Sözleşmesi İmza Tarihi', raw['İş Sözleşmesi İmza Tarihi'])}
-                {renderField('Resmi Maaş', raw['Resmi Maaş'])}
-                {renderField('Resmi Maaş Yazılı', raw['Resmi Maaş Yazılı'])}
+                {renderField('Resmi Maaş', '')}
+                {renderField('Resmi Maaş Yazılı', '')}
                 {renderField('Resmi Çıkış Tarihi', raw['Resmi Çıkış Tarihi'])}
                 {renderField('Resmi Çıkış Sebebi', raw['Resmi Çıkış Sebebi'])}
                 {renderField('İzine Gidiş Tarihi', raw['İzine Gidiş Tarihi'])}
@@ -306,14 +307,17 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
               </div>
 
               <div className="space-y-2">
-                {rawEntries.map(([k, v], idx) => (
-                  <div key={idx} className="p-2.5 bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 rounded-xl flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-600 dark:text-slate-400 max-w-[50%] truncate">{translateCol(k)}</span>
-                    <span className="font-bold text-slate-900 dark:text-white max-w-[48%] truncate text-right">
-                      {v !== null && v !== undefined && String(v).trim() !== '' ? translateVal(String(v)) : '-'}
-                    </span>
-                  </div>
-                ))}
+                {rawEntries.map(([k, v], idx) => {
+                  const safeVal = isOfficialSalaryColumn(k) ? '' : v;
+                  return (
+                    <div key={idx} className="p-2.5 bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 rounded-xl flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-600 dark:text-slate-400 max-w-[50%] truncate">{translateCol(k)}</span>
+                      <span className="font-bold text-slate-900 dark:text-white max-w-[48%] truncate text-right">
+                        {safeVal !== null && safeVal !== undefined && String(safeVal).trim() !== '' ? translateVal(String(safeVal)) : '-'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -541,9 +541,9 @@ export default function DatabaseManagementView({
 
           <button
             onClick={onOpenUpload}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-xl shadow-2xs transition-colors cursor-pointer"
           >
-            <UploadCloud className="w-4 h-4" />
+            <UploadCloud className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
             <span>{lang === 'ru' ? 'Загрузить новый Excel' : 'Yeni Excel Yükle'}</span>
           </button>
         </div>
@@ -629,7 +629,7 @@ export default function DatabaseManagementView({
           onClick={() => setMode('explorer')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
             mode === 'explorer'
-              ? 'bg-emerald-600 text-white shadow-xs'
+              ? 'bg-emerald-100/90 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-100 shadow-2xs'
               : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
           }`}
         >
@@ -646,7 +646,7 @@ export default function DatabaseManagementView({
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
             mode === 'sql'
-              ? 'bg-indigo-600 text-white shadow-xs'
+              ? 'bg-indigo-100/90 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
               : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
           }`}
         >
@@ -661,7 +661,7 @@ export default function DatabaseManagementView({
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
             mode === 'backups'
-              ? 'bg-teal-600 text-white shadow-xs'
+              ? 'bg-teal-100/90 dark:bg-teal-500/25 border border-teal-300 dark:border-teal-500/40 text-teal-950 dark:text-teal-100 shadow-2xs'
               : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
           }`}
         >
@@ -789,7 +789,7 @@ export default function DatabaseManagementView({
                   )}
                   <button
                     type="submit"
-                    className="absolute right-1.5 px-2 py-0.5 text-[11px] font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 cursor-pointer"
+                    className="absolute right-1.5 px-2 py-0.5 text-[11px] font-semibold border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-lg cursor-pointer transition-colors"
                   >
                     {lang === 'ru' ? 'Найти' : 'Ara'}
                   </button>
@@ -1021,9 +1021,9 @@ export default function DatabaseManagementView({
                 <button
                   onClick={() => handleRunSql()}
                   disabled={runningSql}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 rounded-xl shadow-2xs cursor-pointer disabled:opacity-50 transition-colors"
                 >
-                  <Play className="w-3.5 h-3.5" />
+                  <Play className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
                   <span>{runningSql ? 'Çalıştırılıyor...' : lang === 'ru' ? 'Выполнить SQL' : 'Sorguyu Çalıştır'}</span>
                 </button>
               </div>
@@ -1098,9 +1098,9 @@ export default function DatabaseManagementView({
                 <button
                   onClick={handleCreatePreBackup}
                   disabled={backupActionBusy !== null}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-teal-300 dark:border-teal-500/40 bg-teal-100/85 hover:bg-teal-200/80 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-950 dark:text-teal-100 rounded-xl shadow-2xs cursor-pointer disabled:opacity-50 transition-colors"
                 >
-                  <Save className="w-3.5 h-3.5" />
+                  <Save className="w-3.5 h-3.5 text-teal-700 dark:text-teal-300" />
                   <span>
                     {backupActionBusy === 'create'
                       ? lang === 'ru'
@@ -1233,9 +1233,9 @@ export default function DatabaseManagementView({
                               <button
                                 onClick={() => handleRestorePreBackup(b.id, `${b.createdAt} - ${label}`)}
                                 disabled={backupActionBusy !== null}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold border border-teal-300 dark:border-teal-500/40 bg-teal-100/85 hover:bg-teal-200/80 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-950 dark:text-teal-100 rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
                               >
-                                <RefreshCw className={`w-3.5 h-3.5 ${isRestoringThis ? 'animate-spin' : ''}`} />
+                                <RefreshCw className={`w-3.5 h-3.5 text-teal-700 dark:text-teal-300 ${isRestoringThis ? 'animate-spin' : ''}`} />
                                 <span>
                                   {isRestoringThis
                                     ? lang === 'ru'
@@ -1394,9 +1394,9 @@ export default function DatabaseManagementView({
                     type="button"
                     onClick={handleSaveRow}
                     disabled={savingRow}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-xl shadow-2xs cursor-pointer disabled:opacity-50 transition-colors"
                   >
-                    <Save className="w-3.5 h-3.5" />
+                    <Save className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
                     <span>{savingRow ? 'Kaydediliyor...' : lang === 'ru' ? 'Сохранить в БД' : 'Değişiklikleri Kaydet'}</span>
                   </button>
                 )}

@@ -1051,12 +1051,12 @@ export default function GosuslugiDismissalPanel({
             <button
               onClick={() => handleLoadFromDatabase()}
               disabled={isLoadingDb}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-xs transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-300 dark:border-rose-500/40 bg-rose-100/85 hover:bg-rose-200/80 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 text-rose-950 dark:text-rose-100 text-xs font-bold shadow-2xs transition-all cursor-pointer disabled:opacity-50"
             >
               {isLoadingDb ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-700 dark:text-rose-300" />
               ) : (
-                <Database className="w-3.5 h-3.5" />
+                <Database className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300" />
               )}
               <span>
                 {lang === 'ru' ? 'Загрузить уволенных из БД' : "DB'den İşten Çıkanları Yükle"}
@@ -1809,9 +1809,9 @@ export default function GosuslugiDismissalPanel({
                               <div className="flex items-end">
                                 <button
                                   onClick={() => setEditingRowId(null)}
-                                  className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer flex items-center justify-center gap-1"
+                                  className="w-full py-1.5 px-3 rounded-lg border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-bold cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
                                 >
-                                  <Check className="w-3.5 h-3.5" />
+                                  <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
                                   <span>{lang === 'ru' ? 'Готово' : 'Tamam'}</span>
                                 </button>
                               </div>

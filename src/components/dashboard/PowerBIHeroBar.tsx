@@ -138,8 +138,8 @@ export default function PowerBIHeroBar({
               </span>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              {lang === 'ru' 
-                ? 'Динамическая аналитическая панель персонала и объектов' 
+              {lang === 'ru'
+                ? 'Динамическая аналитическая панель персонала и объектов'
                 : 'Power BI Raporu İlhamlı Dinamik Saha & İK Analitik Paneli'}
             </p>
           </div>
@@ -150,31 +150,28 @@ export default function PowerBIHeroBar({
           <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/90 rounded-xl border border-slate-200 dark:border-slate-700/80 overflow-x-auto max-w-full">
             <button
               onClick={() => setFirmFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
-                firmFilter === 'all'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${firmFilter === 'all'
+                ? 'bg-emerald-100/95 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-100 shadow-2xs'
+                : 'text-slate-700 dark:text-slate-300 border border-transparent hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                }`}
             >
               {lang === 'ru' ? 'Все компании' : 'Tüm Kadro'} ({totalCount.toLocaleString('tr-TR')})
             </button>
             <button
               onClick={() => setFirmFilter('main')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
-                firmFilter === 'main'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${firmFilter === 'main'
+                ? 'bg-emerald-100/95 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-100 shadow-2xs'
+                : 'text-slate-700 dark:text-slate-300 border border-transparent hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                }`}
             >
               {lang === 'ru' ? '1. Штат Pondera' : '1. Pondera Ana Kadro'} ({mainFirmCount.toLocaleString('tr-TR')})
             </button>
             <button
               onClick={() => setFirmFilter('subcon')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
-                firmFilter === 'subcon'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${firmFilter === 'subcon'
+                ? 'bg-emerald-100/95 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-100 shadow-2xs'
+                : 'text-slate-700 dark:text-slate-300 border border-transparent hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                }`}
             >
               {lang === 'ru' ? '2. Субподрядчики' : '2. Taşeronlar'} ({subconCount.toLocaleString('tr-TR')})
             </button>

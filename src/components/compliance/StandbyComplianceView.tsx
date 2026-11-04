@@ -209,9 +209,9 @@ export default function StandbyComplianceView({ onNavigateToPersonnel }: Standby
           <div className="flex items-center gap-2.5 self-start md:self-auto shrink-0">
             <button
               onClick={handleExportExcel}
-              className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
             >
-              <Download className="w-4 h-4" />
+              <Download className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
               <span>{lang === 'ru' ? 'Выгрузить список в Excel' : 'Bekleyenleri Excel İndir'}</span>
             </button>
             <button

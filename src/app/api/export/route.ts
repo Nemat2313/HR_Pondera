@@ -7,6 +7,7 @@ import {
   buildNormalizedDateSql,
   getDatasetReferenceDates,
 } from '@/lib/workPermits';
+import { isOfficialSalaryColumn, stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
 import * as XLSX from 'xlsx';
 
 export const runtime = 'nodejs';
@@ -373,7 +374,9 @@ export async function GET(request: Request) {
       let parsedJson: Record<string, any> = {};
       if (r.all_data_json) {
         try {
-          parsedJson = typeof r.all_data_json === 'string' ? JSON.parse(r.all_data_json) : r.all_data_json;
+          const rawObj =
+            typeof r.all_data_json === 'string' ? JSON.parse(r.all_data_json) : r.all_data_json;
+          parsedJson = stripOfficialSalaryFromRaw(rawObj);
         } catch {
           parsedJson = {};
         }
@@ -384,6 +387,10 @@ export async function GET(request: Request) {
       if (requestedCols.length > 0) {
         for (const colKey of requestedCols) {
           const { val, header } = resolveCellValue(r, parsedJson, colKey);
+          if (isOfficialSalaryColumn(colKey) || isOfficialSalaryColumn(header)) {
+            rowObj[header] = '-';
+            continue;
+          }
           rowObj[header] = isDateField(colKey, header)
             ? formatDateVal(val)
             : val !== undefined && val !== null && String(val).trim() !== ''
@@ -394,6 +401,10 @@ export async function GET(request: Request) {
         // Standard full columns
         for (const [colKey, headerName] of Object.entries(COLUMN_HEADER_MAP)) {
           const { val } = resolveCellValue(r, parsedJson, colKey);
+          if (isOfficialSalaryColumn(colKey) || isOfficialSalaryColumn(headerName)) {
+            rowObj[headerName] = '-';
+            continue;
+          }
           rowObj[headerName] = isDateField(colKey, headerName)
             ? formatDateVal(val)
             : val !== undefined && val !== null && String(val).trim() !== ''

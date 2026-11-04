@@ -703,6 +703,18 @@ export default function PersonnelListView({
     const n = col.name;
     const s = toSnakeCase(n);
 
+    // Company salary privacy policy: official salary columns are always shown empty ('-')
+    if (
+      k === 'resmi_maas' ||
+      k === 'resmi_maas_yazili' ||
+      s === 'resmi_maas' ||
+      s === 'resmi_maas_yazili' ||
+      n === 'Resmi Maaş' ||
+      n === 'Resmi Maaş Yazılı'
+    ) {
+      return '-';
+    }
+
     let rawVal: any = undefined;
 
     // 1. Direct item property
@@ -843,16 +855,16 @@ export default function PersonnelListView({
           <button
             onClick={handleExportExcel}
             disabled={isExporting}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-75 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 disabled:opacity-65 text-emerald-950 dark:text-emerald-100 rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
           >
             {isExporting ? (
               <>
-                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-emerald-700 dark:border-emerald-300 border-t-transparent rounded-full animate-spin" />
                 <span>{t('table_preparing_excel')}</span>
               </>
             ) : (
               <>
-                <Download className="w-4 h-4" />
+                <Download className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
                 <span>{t('table_download_excel')}</span>
               </>
             )}

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import { getDb } from '@/lib/db';
 import { createPreActionBackup } from '@/lib/backup';
+import { getStatusPdfMaps, invalidateGosuslugiAnalyticsCache } from '@/lib/gosuslugiPdfCache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -135,57 +134,61 @@ function sanitizeVksWorkerFields(w: Record<string, any>): {
 let __masterListAutoHealed = false;
 
 function ensureTables(db: any) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS gosuslugi_vks_master_list (
-      row_key TEXT PRIMARY KEY,
-      sicil_no TEXT NOT NULL,
-      row_order INTEGER NOT NULL DEFAULT 0,
-      assigned_computer INTEGER NOT NULL DEFAULT 1,
-      worker_json TEXT NOT NULL,
-      source_tag TEXT DEFAULT 'master_excel',
-      updated_at TEXT DEFAULT ''
-    );
-    CREATE INDEX IF NOT EXISTS idx_vks_master_sicil ON gosuslugi_vks_master_list(sicil_no);
-    CREATE INDEX IF NOT EXISTS idx_vks_master_order ON gosuslugi_vks_master_list(row_order);
-    CREATE INDEX IF NOT EXISTS idx_vks_master_comp ON gosuslugi_vks_master_list(assigned_computer);
+  const gState = globalThis as unknown as { __ponderaMasterTablesEnsured?: boolean };
+  if (!gState.__ponderaMasterTablesEnsured) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS gosuslugi_vks_master_list (
+        row_key TEXT PRIMARY KEY,
+        sicil_no TEXT NOT NULL,
+        row_order INTEGER NOT NULL DEFAULT 0,
+        assigned_computer INTEGER NOT NULL DEFAULT 1,
+        worker_json TEXT NOT NULL,
+        source_tag TEXT DEFAULT 'master_excel',
+        updated_at TEXT DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_vks_master_sicil ON gosuslugi_vks_master_list(sicil_no);
+      CREATE INDEX IF NOT EXISTS idx_vks_master_order ON gosuslugi_vks_master_list(row_order);
+      CREATE INDEX IF NOT EXISTS idx_vks_master_comp ON gosuslugi_vks_master_list(assigned_computer);
 
-    CREATE TABLE IF NOT EXISTS gosuslugi_submissions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sicil_no TEXT NOT NULL,
-      worker_name TEXT,
-      citizenship TEXT,
-      notification_type TEXT NOT NULL DEFAULT 'vks_salary',
-      period_code TEXT DEFAULT '',
-      application_no TEXT NOT NULL DEFAULT '',
-      gosuslugi_status TEXT NOT NULL DEFAULT 'Отправлено',
-      status_detail TEXT DEFAULT '',
-      pdf_filename TEXT DEFAULT '',
-      submitted_at TEXT NOT NULL,
-      checked_at TEXT DEFAULT '',
-      updated_at TEXT DEFAULT '',
-      UNIQUE(sicil_no, notification_type, period_code)
-    );
+      CREATE TABLE IF NOT EXISTS gosuslugi_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sicil_no TEXT NOT NULL,
+        worker_name TEXT,
+        citizenship TEXT,
+        notification_type TEXT NOT NULL DEFAULT 'vks_salary',
+        period_code TEXT DEFAULT '',
+        application_no TEXT NOT NULL DEFAULT '',
+        gosuslugi_status TEXT NOT NULL DEFAULT 'Отправлено',
+        status_detail TEXT DEFAULT '',
+        pdf_filename TEXT DEFAULT '',
+        submitted_at TEXT NOT NULL,
+        checked_at TEXT DEFAULT '',
+        updated_at TEXT DEFAULT '',
+        UNIQUE(sicil_no, notification_type, period_code)
+      );
 
-    CREATE TABLE IF NOT EXISTS gosuslugi_refused_archive (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sicil_no TEXT NOT NULL,
-      worker_name TEXT,
-      citizenship TEXT,
-      notification_type TEXT NOT NULL DEFAULT 'vks_salary',
-      period_code TEXT DEFAULT '',
-      application_no TEXT NOT NULL DEFAULT '',
-      gosuslugi_status TEXT NOT NULL DEFAULT 'Услуга отказана',
-      status_detail TEXT DEFAULT '',
-      pdf_filename TEXT DEFAULT '',
-      submitted_at TEXT DEFAULT '',
-      archived_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_refused_arch_appno ON gosuslugi_refused_archive(application_no);
-    CREATE INDEX IF NOT EXISTS idx_refused_arch_sicil ON gosuslugi_refused_archive(sicil_no);
-  `);
-  try {
-    db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN status_pdf_filename TEXT DEFAULT '';`);
-  } catch {}
+      CREATE TABLE IF NOT EXISTS gosuslugi_refused_archive (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sicil_no TEXT NOT NULL,
+        worker_name TEXT,
+        citizenship TEXT,
+        notification_type TEXT NOT NULL DEFAULT 'vks_salary',
+        period_code TEXT DEFAULT '',
+        application_no TEXT NOT NULL DEFAULT '',
+        gosuslugi_status TEXT NOT NULL DEFAULT 'Услуга отказана',
+        status_detail TEXT DEFAULT '',
+        pdf_filename TEXT DEFAULT '',
+        submitted_at TEXT DEFAULT '',
+        archived_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_refused_arch_appno ON gosuslugi_refused_archive(application_no);
+      CREATE INDEX IF NOT EXISTS idx_refused_arch_sicil ON gosuslugi_refused_archive(sicil_no);
+    `);
+    try {
+      db.exec(`ALTER TABLE gosuslugi_submissions ADD COLUMN status_pdf_filename TEXT DEFAULT '';`);
+    } catch {}
+    gState.__ponderaMasterTablesEnsured = true;
+  }
 
   if (!__masterListAutoHealed) {
     __masterListAutoHealed = true;
@@ -365,21 +368,7 @@ export async function GET(request: Request) {
       )
       .all() as Array<any>;
 
-    const statusPdfByAppNo = new Map<string, string>();
-    const statusPdfBySicil = new Map<string, string>();
-    try {
-      const pdfDir = path.join(process.cwd(), 'data', 'gosuslugi_pdfs');
-      if (fs.existsSync(pdfDir)) {
-        const files = fs.readdirSync(pdfDir);
-        for (const f of files) {
-          if (!f.toUpperCase().includes('_STATUS_A4.PDF')) continue;
-          const mApp = f.match(/([789]\d{9})/);
-          if (mApp) statusPdfByAppNo.set(mApp[1], f);
-          const mSic = f.match(/^(\d{4,8})_/);
-          if (mSic) statusPdfBySicil.set(mSic[1], f);
-        }
-      }
-    } catch {}
+    const { statusPdfByAppNo, statusPdfBySicil, receiptPdfByAppNo, receiptPdfBySicil } = getStatusPdfMaps();
 
     const subBySicil = new Map<string, any>();
     for (const s of subRows) {
@@ -440,9 +429,16 @@ export async function GET(request: Request) {
       const appNoVal = String(sub?.application_no || '').trim();
       const rawPdfVal = String(sub?.pdf_filename || '').trim();
       const cleanReceiptPdf =
-        !rawPdfVal.toUpperCase().includes('_STATUS_A4') && doesPdfMatchApp(rawPdfVal, appNoVal)
-          ? rawPdfVal
-          : '';
+        [
+          !rawPdfVal.toUpperCase().includes('_STATUS_A4') ? rawPdfVal : '',
+          appNoVal ? receiptPdfByAppNo.get(appNoVal) || '' : '',
+          m.sicil_no ? receiptPdfBySicil.get(m.sicil_no) || '' : '',
+        ].find(
+          (cand) =>
+            Boolean(cand) &&
+            !cand.toUpperCase().includes('_STATUS_A4') &&
+            doesPdfMatchApp(cand, appNoVal)
+        ) || '';
       const cleanStatusPdf =
         [
           String(sub?.status_pdf_filename || '').trim(),
@@ -596,6 +592,7 @@ export async function POST(request: Request) {
 
     const db = getDb();
     ensureTables(db);
+    invalidateGosuslugiAnalyticsCache();
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     const existingRows = db
@@ -1007,6 +1004,7 @@ export async function PATCH(request: Request) {
 
     const db = getDb();
     ensureTables(db);
+    invalidateGosuslugiAnalyticsCache();
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     if (action === 'split_4_computers') {

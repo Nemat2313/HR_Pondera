@@ -25,7 +25,7 @@ if sys.platform == "win32" and sys.stdout and hasattr(sys.stdout, "reconfigure")
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.8.6"
+BRIDGE_VERSION = "2.8.7"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
@@ -221,7 +221,7 @@ def scan_downloads_pdfs():
     raw_found = []
     for pdf_path in downloads_dir.glob("*.pdf"):
         stem = pdf_path.stem
-        if stem.startswith("tmp_"):
+        if stem.startswith("tmp_") or "_status_a4" in stem.lower():
             continue
         parts = stem.split("_")
         if len(parts) >= 4 and parts[0].isdigit() and app_no_re.match(parts[1]) and period_re.match(parts[-1]):
@@ -306,6 +306,7 @@ def upload_pdf_to_central_server_async(entry: dict):
                     "pdf_base64": b64_str,
                     "application_no": str(entry.get("application_no") or "").strip(),
                     "sicil_no": str(entry.get("sicil_no") or entry.get("sicil") or "").strip(),
+                    "is_screenshot": "_status_a4" in lp.name.lower(),
                 }).encode("utf-8")
                 ctx = ssl.create_default_context()
                 ctx.check_hostname = False
@@ -316,7 +317,7 @@ def upload_pdf_to_central_server_async(entry: dict):
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
-                with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
                     if resp.status == 200:
                         UPLOADED_PDFS_SET.add(fn)
                         print(f"[RPA BRIDGE] Uploaded PDF to central server: {lp.name}")
@@ -1084,6 +1085,8 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             discovered = scan_downloads_pdfs()
             for d in discovered:
                 RPAState.upsert_submission(d)
+                upload_pdf_to_central_server_async(d)
+            sync_all_local_submissions_to_central_async()
             RPAState.add_log(f"Просканирована папка Загрузки: найдено {len(discovered)} PDF-квитанций Госуслуг.")
             self.send_response(200)
             self._send_cors_headers()
@@ -1385,6 +1388,10 @@ def sync_all_local_submissions_to_central_async():
                         "application_no": app_cand,
                         "sicil_no": sicil_cand if sicil_cand != app_cand else "",
                     })
+            for rec_pdf in scan_downloads_pdfs():
+                fn_rec = str(rec_pdf.get("pdf_filename") or "").strip()
+                if fn_rec and fn_rec not in UPLOADED_PDFS_SET:
+                    upload_pdf_to_central_server_async(rec_pdf)
         except Exception:
             pass
         try:

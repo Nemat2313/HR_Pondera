@@ -187,7 +187,7 @@ def scan_downloads_for_applications() -> List[Dict[str, Any]]:
 
     for pdf_path in downloads_dir.glob("*.pdf"):
         stem = pdf_path.stem
-        if stem.startswith("tmp_"):
+        if stem.startswith("tmp_") or "_status_a4" in stem.lower():
             continue
         parts = stem.split("_")
         # Format A: 933532_8255536023_АБДУЛ РАШИД_2026-3.pdf
@@ -1260,7 +1260,10 @@ def download_missing_pdf_for_order(
     target_filepath = downloads_dir / target_filename
 
     # Check if already downloaded in ~/Downloads -> ensure renamed & uploaded to backend
+    # IMPORTANT: Explicitly skip _STATUS_A4.pdf screenshot files so they are NEVER mistaken for or renamed over receipt PDFs!
     for p in downloads_dir.glob("*.pdf"):
+        if "_status_a4" in p.name.lower():
+            continue
         if clean_no in p.name and not p.name.startswith("tmp_"):
             try:
                 if p.resolve() != target_filepath.resolve():
@@ -1645,7 +1648,7 @@ def upload_pdf_to_central_server(
                     headers={"Content-Type": "application/json; charset=utf-8"},
                     method="POST",
                 )
-                with urllib.request.urlopen(req, timeout=10.0, context=ctx if api_url.startswith("https") else None) as _:
+                with urllib.request.urlopen(req, timeout=25.0, context=ctx if api_url.startswith("https") else None) as _:
                     logger.info(f"  -> Uploaded {'A4 Status Screenshot' if is_screenshot else 'PDF'} to central server: {pdf_path.name}")
                     break
             except Exception:
@@ -2045,7 +2048,7 @@ def capture_a4_cropped_status_screenshot(
 
         # Clean up any older _STATUS_A4.pdf / .jpg files for this same sicil that belong to an older application_no
         if clean_sicil:
-            for folder in (out_dir, downloads_dir):
+            for folder in (screenshots_dir, downloads_dir):
                 try:
                     for old_f in folder.glob(f"{clean_sicil}_*_STATUS_A4.*"):
                         if old_f.name != pdf_filename and old_f.name != jpg_filename and clean_no not in old_f.name:
@@ -3028,6 +3031,11 @@ def main():
                 sicil = str(rec.get("sicil") or rec.get("sicil_no") or "").strip()
                 worker_name = str(rec.get("worker_name") or "").strip()
                 pdf_file = str(rec.get("pdf_filename") or "").strip()
+                status_pdf_file = str(rec.get("status_pdf_filename") or rec.get("statusPdfFilename") or "").strip()
+                if "_status_a4" in pdf_file.lower():
+                    if not status_pdf_file:
+                        status_pdf_file = pdf_file
+                    pdf_file = ""
                 cur_status = str(rec.get("gosuslugi_status") or "").strip()
                 submitted_at = str(rec.get("submitted_at") or "").strip()
                 needs_status_refresh = (
@@ -3039,6 +3047,7 @@ def main():
                 if app_no and is_superseded_or_archived_order(app_no, cur_status, submitted_at):
                     app_no = ""
                     pdf_file = ""
+                    status_pdf_file = ""
 
                 # Strictly require latest `application_no` — NEVER search by worker FIO name!
                 if not app_no:
@@ -3072,15 +3081,17 @@ def main():
                             f"  -> Matched № {app_no} in bulk feed: {matched_order['gosuslugi_status']}"
                         )
 
-                # 2) Run targeted search by application_no for any pending application (`needs_status_refresh`)
-                #    not found in the initial bulk feed, or when `matched_order` is missing `feed_id` for PDF download!
+                # 2) Run targeted search by application_no for any pending application (`needs_status_refresh`),
+                #    any application missing its receipt PDF (`not pdf_file`), or when `matched_order` lacks `feed_id` for PDF download!
                 needs_feed_id_for_pdf = bool(matched_order and not matched_order.get("feed_id") and not pdf_file)
-                if needs_feed_id_for_pdf or (not matched_order and (needs_status_refresh or not is_large_batch)):
+                searched_live_on_orders = False
+                if needs_feed_id_for_pdf or (not matched_order and (needs_status_refresh or not pdf_file or not is_large_batch)):
                     logger.info(
                         f"Checking Gosuslugi Status for: {worker_name or 'Заявление'} "
                         f"(Код: {sicil or '—'}, № Заявления: {app_no}) — поштучный поиск по № Заявления на lk.gosuslugi.ru/orders..."
                     )
                     candidate = query_single_order_by_no(page, app_no, force_live_search=True)
+                    searched_live_on_orders = True
                     if candidate:
                         if not is_acceptable_order_for_exact_app_no(candidate, worker_name) or is_superseded_or_archived_order(
                             app_no, candidate.get("gosuslugi_status", ""), submitted_at
@@ -3117,6 +3128,22 @@ def main():
                     ):
                         new_st_val = cur_status
 
+                    # If we just searched this order live on lk.gosuslugi.ru/orders and _STATUS_A4.pdf is still missing, capture it right here too
+                    if searched_live_on_orders and not has_existing_status_screenshot_for_app(final_app_no, rec):
+                        try:
+                            cap_sc = capture_a4_cropped_status_screenshot(
+                                page=page,
+                                app_no=final_app_no,
+                                sicil=sicil,
+                                worker_name=worker_name or matched_order.get("citizen_name") or "",
+                                period_code=str(rec.get("period_code") or "2026-3"),
+                                gosuslugi_status=new_st_val,
+                            )
+                            if cap_sc:
+                                status_pdf_file = cap_sc
+                        except Exception:
+                            pass
+
                     # Automatically download, rename, and upload the receipt PDF to backend if missing
                     if not pdf_file or not is_large_batch:
                         dl_pdf = download_missing_pdf_for_order(
@@ -3148,6 +3175,7 @@ def main():
                         "worker_name": worker_name or matched_order.get("citizen_name") or "",
                         "application_no": final_app_no,
                         "pdf_filename": pdf_file,
+                        "status_pdf_filename": status_pdf_file,
                         "gosuslugi_status": new_st_val,
                         "status_detail": matched_order.get("status_detail", ""),
                         "checked_at": effective_checked_at,

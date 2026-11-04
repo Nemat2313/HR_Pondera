@@ -75,8 +75,10 @@ function ensureUsersTable(db: any) {
         gosuslugi_status TEXT NOT NULL DEFAULT 'Отправлено',
         status_detail TEXT DEFAULT '',
         pdf_filename TEXT DEFAULT '',
+        status_pdf_filename TEXT DEFAULT '',
         submitted_at TEXT NOT NULL,
         checked_at TEXT DEFAULT '',
+        updated_at TEXT DEFAULT '',
         UNIQUE(sicil_no, notification_type, period_code)
       );
 

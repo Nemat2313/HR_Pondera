@@ -5,6 +5,7 @@ import {
   enqueueTelegramOutbox,
   getMoscowTimeParts,
 } from '@/lib/telegramNotifier';
+import { getStatusPdfMaps, invalidateGosuslugiAnalyticsCache } from '@/lib/gosuslugiPdfCache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -250,6 +251,9 @@ function healSubmissionTimestamps(db: any) {
 }
 
 function ensureTable(db: any) {
+  const gState = globalThis as unknown as { __ponderaSubmissionsEnsured?: boolean };
+  if (gState.__ponderaSubmissionsEnsured) return;
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS gosuslugi_submissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -413,6 +417,7 @@ function ensureTable(db: any) {
   `);
   healSubmissionTimestamps(db);
   reconcileAudit2810(db);
+  gState.__ponderaSubmissionsEnsured = true;
 }
 
 export async function GET(request: Request) {
@@ -446,22 +451,41 @@ export async function GET(request: Request) {
       .prepare(`SELECT * FROM gosuslugi_submissions ${whereClause} ORDER BY submitted_at DESC, id DESC`)
       .all(...params) as any[];
 
+    const { statusPdfByAppNo, statusPdfBySicil, receiptPdfByAppNo, receiptPdfBySicil } = getStatusPdfMaps();
+    const doesPdfMatchApp = (fn: string, targetApp: string) => {
+      if (!fn) return false;
+      if (!targetApp) return true;
+      if (fn.includes(targetApp)) return true;
+      const m = fn.match(/([789]\d{9})/);
+      if (m && m[1] !== targetApp) return false;
+      return true;
+    };
+
     for (const r of rows) {
+      const sic = String(r.sicil_no || '').trim();
       const appNo = String(r.application_no || '').trim();
       const rawPdf = String(r.pdf_filename || '').trim();
       const rawStPdf = String(r.status_pdf_filename || '').trim();
-      if (appNo && rawPdf) {
-        const m = rawPdf.match(/([789]\d{9})/);
-        if (m && m[1] !== appNo) {
-          r.pdf_filename = '';
-        }
-      }
-      if (appNo && rawStPdf) {
-        const m = rawStPdf.match(/([789]\d{9})/);
-        if (m && m[1] !== appNo) {
-          r.status_pdf_filename = '';
-        }
-      }
+
+      r.pdf_filename =
+        [
+          !rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '',
+          appNo ? receiptPdfByAppNo.get(appNo) || '' : '',
+          sic ? receiptPdfBySicil.get(sic) || '' : '',
+        ].find(
+          (cand) =>
+            Boolean(cand) &&
+            !cand.toUpperCase().includes('_STATUS_A4') &&
+            doesPdfMatchApp(cand, appNo)
+        ) || '';
+
+      r.status_pdf_filename =
+        [
+          rawStPdf,
+          appNo ? statusPdfByAppNo.get(appNo) || '' : '',
+          sic ? statusPdfBySicil.get(sic) || '' : '',
+          rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '',
+        ].find((cand) => Boolean(cand) && doesPdfMatchApp(cand, appNo)) || '';
     }
 
     const archivedRows = db
@@ -498,6 +522,7 @@ export async function POST(request: Request) {
 
     const db = getDb();
     ensureTable(db);
+    invalidateGosuslugiAnalyticsCache();
 
     const nowStr = getMoscowNowIso();
 
@@ -524,7 +549,7 @@ export async function POST(request: Request) {
 
     const getExistingBySicilStmt = db.prepare(`
       SELECT id, sicil_no, worker_name, citizenship, notification_type, period_code,
-             application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at, checked_at
+             application_no, gosuslugi_status, status_detail, pdf_filename, status_pdf_filename, submitted_at, checked_at
       FROM gosuslugi_submissions
       WHERE sicil_no = ? AND notification_type = ? AND period_code = ?
       LIMIT 1
@@ -775,6 +800,7 @@ export async function POST(request: Request) {
                 gosuslugi_status: string;
                 status_detail: string;
                 pdf_filename: string;
+                status_pdf_filename: string;
                 submitted_at: string;
                 checked_at: string;
               }
@@ -889,8 +915,55 @@ export async function POST(request: Request) {
           (forceCorrection && (!isIntermediateIncoming || exStatus !== 'Услуга оказана' || isExistingFalseOkazana));
 
         // 2b. Once a worker's notification has genuinely reached 'Услуга оказана', do not let another computer's cached/intermediate status downgrade it,
-        // EXCEPT when correcting the exact same application_no with an official Gosuslugi portal error/refusal or fixing a mismatched status_detail
+        // EXCEPT when correcting the exact same application_no with an official Gosuslugi portal error/refusal or fixing a mismatched status_detail.
+        // However, STILL save any newly downloaded pdf_filename or status_pdf_filename for the same application_no!
         if (exStatus === 'Услуга оказана' && normalizedStatus !== 'Услуга оказана' && !isSameAppOfficialCorrection) {
+          const candReceipt =
+            pdfFilename && !pdfFilename.toUpperCase().includes('_STATUS_A4') ? pdfFilename : '';
+          const candStatus = String(
+            item.status_pdf_filename ||
+              item.statusPdfFilename ||
+              (pdfFilename.toUpperCase().includes('_STATUS_A4') ? pdfFilename : '')
+          ).trim();
+          const receiptMatch = candReceipt.match(/([789]\d{9})/);
+          const statusMatch = candStatus.match(/([789]\d{9})/);
+          const validReceiptForOkazana =
+            candReceipt && (!exAppNo || !receiptMatch || receiptMatch[1] === exAppNo)
+              ? candReceipt
+              : '';
+          const validStatusForOkazana =
+            candStatus && (!exAppNo || !statusMatch || statusMatch[1] === exAppNo)
+              ? candStatus
+              : '';
+          if (
+            (validReceiptForOkazana && (!existingRow.pdf_filename || existingRow.pdf_filename.toUpperCase().includes('_STATUS_A4'))) ||
+            (validStatusForOkazana && !existingRow.status_pdf_filename)
+          ) {
+            try {
+              db.prepare(
+                `UPDATE gosuslugi_submissions
+                 SET pdf_filename = CASE
+                       WHEN ? != '' THEN ?
+                       WHEN pdf_filename LIKE '%_STATUS_A4%' THEN ''
+                       ELSE pdf_filename
+                     END,
+                     status_pdf_filename = CASE
+                       WHEN ? != '' THEN ?
+                       ELSE COALESCE(status_pdf_filename, '')
+                     END,
+                     updated_at = ?
+                 WHERE id = ?`
+              ).run(
+                validReceiptForOkazana,
+                validReceiptForOkazana,
+                validStatusForOkazana,
+                validStatusForOkazana,
+                nowStr,
+                existingRow.id
+              );
+              upserted++;
+            } catch {}
+          }
           continue;
         }
 
@@ -1095,6 +1168,10 @@ export async function POST(request: Request) {
         }
       }
 
+      const cleanReceiptPdfForStmt = pdfFilename.toUpperCase().includes('_STATUS_A4')
+        ? ''
+        : pdfFilename;
+
       stmt.run(
         sicil,
         workerName,
@@ -1104,7 +1181,7 @@ export async function POST(request: Request) {
         appNo,
         normalizedStatus,
         statusDetail,
-        pdfFilename,
+        cleanReceiptPdfForStmt,
         submittedAt,
         checkedAt,
         nowStr
@@ -1212,6 +1289,8 @@ export async function PATCH(request: Request) {
 
     const db = getDb();
     ensureTable(db);
+    invalidateGosuslugiAnalyticsCache();
+    invalidateGosuslugiAnalyticsCache();
 
     const nowStr = getMoscowNowIso();
 
@@ -1312,6 +1391,7 @@ export async function DELETE(request: Request) {
 
     const db = getDb();
     ensureTable(db);
+    invalidateGosuslugiAnalyticsCache();
     const nowStr = getMoscowNowIso();
 
     let deleted = 0;

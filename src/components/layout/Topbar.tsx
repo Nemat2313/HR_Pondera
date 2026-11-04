@@ -148,7 +148,7 @@ export default function Topbar({
             onClick={() => onSearchSubmit(searchQuery)}
             title={t('btn_find')}
             aria-label={t('btn_find')}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/90 hover:bg-emerald-200/85 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200 rounded-lg transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
           >
             <Search className="w-3.5 h-3.5" />
           </button>
@@ -172,10 +172,10 @@ export default function Topbar({
           <button
             type="button"
             onClick={() => setLang('tr')}
-            className={`px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               lang === 'tr'
-                ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'text-slate-800 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+                ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 border border-emerald-300/90 dark:border-emerald-500/40 shadow-2xs'
+                : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
             }`}
             title="Türkçe"
           >
@@ -184,10 +184,10 @@ export default function Topbar({
           <button
             type="button"
             onClick={() => setLang('ru')}
-            className={`px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               lang === 'ru'
-                ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'text-slate-800 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+                ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 border border-emerald-300/90 dark:border-emerald-500/40 shadow-2xs'
+                : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
             }`}
             title="Русский"
           >
@@ -278,10 +278,10 @@ export default function Topbar({
         {user?.role !== 'viewer' && (
           <button
             onClick={onOpenUpload}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-medium shadow-2xs transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
             title={t('btn_upload_excel')}
           >
-            <UploadCloud className="w-4 h-4" />
+            <UploadCloud className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
             <span className="hidden md:inline">{t('btn_upload_excel')}</span>
           </button>
         )}

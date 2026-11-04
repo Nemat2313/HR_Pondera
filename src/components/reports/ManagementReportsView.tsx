@@ -457,9 +457,9 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleExportReportSummary}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-colors shadow-2xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-950 dark:text-emerald-100 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 border border-emerald-300 dark:border-emerald-500/40 rounded-xl transition-colors shadow-2xs cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
             <span>{lang === 'ru' ? 'Сводный отчет (.xlsx)' : 'Rapor Özetini İndir (.xlsx)'}</span>
           </button>
 
