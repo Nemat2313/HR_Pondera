@@ -1282,6 +1282,45 @@ def download_missing_pdf_for_order(
                 upload_pdf_to_central_server(p, clean_no, clean_sicil)
                 return p.name
 
+    # Tier 1: Fast direct download via Gosuslugi Storage API (works without feed_id or DOM clicks)
+    try:
+        cur_url = (page.url or "").lower()
+        if "gosuslugi.ru" in cur_url and clean_no.isdigit():
+            b64_pdf = page.evaluate(
+                """async (appNo) => {
+                    for (const ver of ["2", "1", "0"]) {
+                        try {
+                            const url = `https://www.gosuslugi.ru/api/storage/v1/files/${appNo}/${ver}/download?mnemonic=req_preview.pdf&zipWithSign=false`;
+                            const resp = await fetch(url, { credentials: "include" });
+                            if (!resp.ok) continue;
+                            const buf = await resp.arrayBuffer();
+                            if (!buf || buf.byteLength < 1000) continue;
+                            const bytes = new Uint8Array(buf);
+                            if (bytes[0] !== 0x25 || bytes[1] !== 0x50 || bytes[2] !== 0x44 || bytes[3] !== 0x46) continue;
+                            let binary = "";
+                            const chunk = 0x8000;
+                            for (let i = 0; i < bytes.length; i += chunk) {
+                                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+                            }
+                            return btoa(binary);
+                        } catch (e) {}
+                    }
+                    return "";
+                }""",
+                clean_no,
+            )
+            if b64_pdf and isinstance(b64_pdf, str):
+                import base64
+                raw_pdf_bytes = base64.b64decode(b64_pdf)
+                if len(raw_pdf_bytes) >= 1000 and raw_pdf_bytes[:4] == b"%PDF":
+                    target_filepath.write_bytes(raw_pdf_bytes)
+                    cached_st = (INTERCEPTED_FEED_ORDERS.get(clean_no) or {}).get("gosuslugi_status", "")
+                    logger.info(f"  -> Direct API downloaded missing PDF: {target_filename}")
+                    upload_pdf_to_central_server(target_filepath, clean_no, clean_sicil, gosuslugi_status=cached_st)
+                    return target_filename
+    except Exception:
+        pass
+
     if not feed_id:
         return ""
 
@@ -2488,7 +2527,44 @@ def run_fast_json_status_sync_on_page(
 
             matched_order: Optional[Dict[str, Any]] = None
 
-            if app_no in bulk_orders and not (allow_single_search and capture_screenshots):
+            # Fast path: if 'Услуга оказана' already has its Status A4 PDF and only misses its Receipt PDF,
+            # try direct Storage API download first without typing into the search bar!
+            if (
+                allow_single_search
+                and capture_screenshots
+                and prev_status == "Услуга оказана"
+                and already_has_sc
+                and needs_receipt_pdf
+            ):
+                fast_dl = download_missing_pdf_for_order(
+                    page=page,
+                    feed_id="",
+                    app_no=app_no,
+                    sicil=sicil,
+                    worker_name=worker_name,
+                    period_code=str(rec.get("period_code") or "2026-3"),
+                )
+                if fast_dl:
+                    prev_st_pdf_fast = str(rec.get("status_pdf_filename") or rec.get("statusPdfFilename") or "").strip()
+                    updated_records.append({
+                        **rec,
+                        "sicil": sicil,
+                        "sicil_no": sicil,
+                        "worker_name": worker_name,
+                        "application_no": app_no,
+                        "pdf_filename": fast_dl,
+                        "status_pdf_filename": prev_st_pdf_fast,
+                        "gosuslugi_status": prev_status,
+                        "checked_at": now_str,
+                    })
+                    continue
+
+            must_live_search_for_sc = (
+                allow_single_search
+                and capture_screenshots
+                and (not already_has_sc or prev_status != "Услуга оказана")
+            )
+            if app_no in bulk_orders and not must_live_search_for_sc:
                 candidate = bulk_orders[app_no]
                 if is_acceptable_order_for_exact_app_no(candidate, worker_name) and not is_superseded_or_archived_order(
                     app_no, candidate.get("gosuslugi_status", ""), submitted_at
@@ -2578,7 +2654,7 @@ def run_fast_json_status_sync_on_page(
                     if captured_sc_file:
                         screenshots_captured_count += 1
                         prev_status_pdf = captured_sc_file
-                if not prev_pdf and matched_order.get("feed_id"):
+                if not prev_pdf:
                     dl_receipt_file = download_missing_pdf_for_order(
                         page=page,
                         feed_id=str(matched_order.get("feed_id") or ""),
@@ -3101,8 +3177,22 @@ def main():
                             f"  -> Matched № {app_no} in bulk feed: {matched_order['gosuslugi_status']}"
                         )
 
+                # Fast direct Storage API check before doing a slow single search just to obtain feed_id
+                if not pdf_file and (matched_order or not needs_status_refresh):
+                    fast_pdf = download_missing_pdf_for_order(
+                        page=page,
+                        feed_id="",
+                        app_no=app_no,
+                        sicil=sicil,
+                        worker_name=worker_name,
+                        period_code=str(rec.get("period_code") or "2026-3"),
+                    )
+                    if fast_pdf:
+                        pdf_file = fast_pdf
+                        pdfs_downloaded_count += 1
+
                 # 2) Run targeted search by application_no for any pending application (`needs_status_refresh`),
-                #    any application missing its receipt PDF (`not pdf_file`), or when `matched_order` lacks `feed_id` for PDF download!
+                #    any application still missing its receipt PDF (`not pdf_file`), or when `matched_order` lacks `feed_id` for PDF download!
                 needs_feed_id_for_pdf = bool(matched_order and not matched_order.get("feed_id") and not pdf_file)
                 searched_live_on_orders = False
                 if needs_feed_id_for_pdf or (not matched_order and (needs_status_refresh or not pdf_file or not is_large_batch)):
