@@ -45,6 +45,7 @@ field_analysis.json
 scripts/gosuslugi_rpa/active_vks_queue.json
 scripts/gosuslugi_rpa/active_vks_config.json
 scripts/gosuslugi_rpa/gosuslugi_applications.json
+scripts/gosuslugi_rpa/uploaded_pdfs_cache.json
 scripts/gosuslugi_rpa/*.png
 
 # OS & Editor

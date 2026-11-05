@@ -9,6 +9,7 @@ and Gosuslugi Application Number (№ Заявления) + Status synchronizati
 import sys
 import os
 import json
+import queue
 import socket
 import threading
 import subprocess
@@ -25,12 +26,13 @@ if sys.platform == "win32" and sys.stdout and hasattr(sys.stdout, "reconfigure")
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.8.7"
+BRIDGE_VERSION = "2.8.9"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
 APPLICATIONS_LEDGER = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
 ARCHIVED_APPS_FILE = os.path.join(CURRENT_DIR, "archived_app_nos.json")
+UPLOADED_PDFS_CACHE_FILE = os.path.join(CURRENT_DIR, "uploaded_pdfs_cache.json")
 CENTRAL_ARCHIVED_APP_NOS = {
     "8344026563",
     "8317199145",
@@ -263,7 +265,31 @@ def scan_downloads_pdfs():
     return list(by_key.values())
 
 
-UPLOADED_PDFS_SET = set()
+def _load_uploaded_pdfs_cache() -> set:
+    if os.path.exists(UPLOADED_PDFS_CACHE_FILE):
+        try:
+            with open(UPLOADED_PDFS_CACHE_FILE, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+                if isinstance(raw, list):
+                    return {str(x).strip() for x in raw if str(x).strip()}
+        except Exception:
+            pass
+    return set()
+
+
+def _save_uploaded_pdfs_cache(items: set):
+    try:
+        with open(UPLOADED_PDFS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted(items), f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+UPLOADED_PDFS_SET = _load_uploaded_pdfs_cache()
+PENDING_PDF_UPLOADS = set()
+PDF_UPLOAD_LOCK = threading.Lock()
+PDF_UPLOAD_QUEUE = queue.Queue()
+PDF_UPLOAD_WORKERS_STARTED = False
 
 
 def find_local_pdf_path(pdf_filename: str):
@@ -282,49 +308,116 @@ def find_local_pdf_path(pdf_filename: str):
     return None
 
 
+def _ensure_pdf_upload_workers():
+    global PDF_UPLOAD_WORKERS_STARTED
+    with PDF_UPLOAD_LOCK:
+        if PDF_UPLOAD_WORKERS_STARTED:
+            return
+        PDF_UPLOAD_WORKERS_STARTED = True
+
+    def _pdf_upload_worker():
+        import base64
+        import urllib.request
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        while True:
+            item = PDF_UPLOAD_QUEUE.get()
+            if item is None:
+                break
+            lp, fn, app_no, sicil_no = item
+            try:
+                if fn not in UPLOADED_PDFS_SET and lp.exists():
+                    raw_bytes = lp.read_bytes()
+                    if raw_bytes and len(raw_bytes) <= 15 * 1024 * 1024:
+                        b64_str = base64.b64encode(raw_bytes).decode("ascii")
+                        payload = json.dumps({
+                            "filename": lp.name,
+                            "pdf_base64": b64_str,
+                            "application_no": app_no,
+                            "sicil_no": sicil_no,
+                            "is_screenshot": "_status_a4" in lp.name.lower(),
+                        }).encode("utf-8")
+                        req = urllib.request.Request(
+                            "https://hr.pondera.network/api/gosuslugi/pdf",
+                            data=payload,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
+                            if resp.status == 200:
+                                with PDF_UPLOAD_LOCK:
+                                    UPLOADED_PDFS_SET.add(fn)
+                                    UPLOADED_PDFS_SET.add(lp.name)
+                                    _save_uploaded_pdfs_cache(UPLOADED_PDFS_SET)
+            except Exception:
+                pass
+            finally:
+                with PDF_UPLOAD_LOCK:
+                    PENDING_PDF_UPLOADS.discard(fn)
+                    PENDING_PDF_UPLOADS.discard(lp.name)
+                PDF_UPLOAD_QUEUE.task_done()
+
+    for _ in range(2):
+        threading.Thread(target=_pdf_upload_worker, daemon=True).start()
+
+
+def fetch_central_existing_pdfs():
+    """Fetches already-indexed PDF filenames from central server so startup sync never re-uploads existing PDFs."""
+    import urllib.request
+    import ssl
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(
+            "https://hr.pondera.network/api/gosuslugi/submissions",
+            headers={"User-Agent": f"Pondera-RPA-Agent/{BRIDGE_VERSION}"},
+        )
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                rows = data.get("records") or data.get("submissions") or []
+                added = False
+                with PDF_UPLOAD_LOCK:
+                    for r in rows:
+                        if not isinstance(r, dict):
+                            continue
+                        for k in ("pdf_filename", "status_pdf_filename"):
+                            val = os.path.basename(str(r.get(k) or "").strip())
+                            if val and val not in UPLOADED_PDFS_SET:
+                                UPLOADED_PDFS_SET.add(val)
+                                added = True
+                    if added:
+                        _save_uploaded_pdfs_cache(UPLOADED_PDFS_SET)
+    except Exception:
+        pass
+
+
 def upload_pdf_to_central_server_async(entry: dict):
-    """Uploads a local Gosuslugi PDF receipt or Status A4 PDF to https://hr.pondera.network/api/gosuslugi/pdf in a background thread."""
+    """Queues a local Gosuslugi PDF receipt or Status A4 PDF for silent background upload to https://hr.pondera.network/api/gosuslugi/pdf."""
+    if not entry or not isinstance(entry, dict):
+        return
+    _ensure_pdf_upload_workers()
+    app_no = str(entry.get("application_no") or "").strip()
+    sicil_no = str(entry.get("sicil_no") or entry.get("sicil") or "").strip()
     for field_name in ("pdf_filename", "status_pdf_filename"):
-        pdf_filename = str(entry.get(field_name) or "").strip()
-        if not pdf_filename or pdf_filename in UPLOADED_PDFS_SET:
+        pdf_filename = os.path.basename(str(entry.get(field_name) or "").strip())
+        if not pdf_filename:
             continue
+        with PDF_UPLOAD_LOCK:
+            if pdf_filename in UPLOADED_PDFS_SET or pdf_filename in PENDING_PDF_UPLOADS:
+                continue
         local_path = find_local_pdf_path(pdf_filename)
         if not local_path:
             continue
-
-        def _worker(lp=local_path, fn=pdf_filename):
-            import base64
-            import urllib.request
-            import ssl
-            try:
-                raw_bytes = lp.read_bytes()
-                if not raw_bytes or len(raw_bytes) > 15 * 1024 * 1024:
-                    return
-                b64_str = base64.b64encode(raw_bytes).decode("ascii")
-                payload = json.dumps({
-                    "filename": lp.name,
-                    "pdf_base64": b64_str,
-                    "application_no": str(entry.get("application_no") or "").strip(),
-                    "sicil_no": str(entry.get("sicil_no") or entry.get("sicil") or "").strip(),
-                    "is_screenshot": "_status_a4" in lp.name.lower(),
-                }).encode("utf-8")
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
-                req = urllib.request.Request(
-                    "https://hr.pondera.network/api/gosuslugi/pdf",
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
-                    if resp.status == 200:
-                        UPLOADED_PDFS_SET.add(fn)
-                        print(f"[RPA BRIDGE] Uploaded PDF to central server: {lp.name}")
-            except Exception:
-                pass
-
-        threading.Thread(target=_worker, daemon=True).start()
+        with PDF_UPLOAD_LOCK:
+            if local_path.name in UPLOADED_PDFS_SET or local_path.name in PENDING_PDF_UPLOADS:
+                continue
+            PENDING_PDF_UPLOADS.add(pdf_filename)
+            PENDING_PDF_UPLOADS.add(local_path.name)
+        PDF_UPLOAD_QUEUE.put((local_path, pdf_filename, app_no, sicil_no))
 
 
 def sync_submission_to_central_server_async(entry: dict):
@@ -396,10 +489,6 @@ class RPAState:
                 ex_app = str(existing.get("application_no") or "").strip()
                 ex_sicil = str(existing.get("sicil") or existing.get("sicil_no") or "").strip()
                 if ex_app == app_no and ex_sicil and sicil and ex_sicil != sicil:
-                    print(
-                        f"[RPA BRIDGE] Rejected duplicate application_no {app_no} for Sicil {sicil}: "
-                        f"already linked to Sicil {ex_sicil} ({existing.get('worker_name')})"
-                    )
                     return
 
         updated = False
@@ -748,8 +837,8 @@ def auto_update_scripts_from_server():
                                 updated_files.append(base_name)
                     if updated_files:
                         print(f"[RPA BRIDGE] Авто-обновление с сервера hr.pondera.network: обновлены {', '.join(updated_files)}")
-    except Exception as e:
-        print(f"[RPA BRIDGE] Проверка обновлений: {e}")
+    except Exception:
+        pass
 
 
 def run_robot_worker(
@@ -761,6 +850,15 @@ def run_robot_worker(
     search_scope: str = "pending_only",
     capture_screenshots: bool = False,
 ):
+    for sig_f in (PAUSE_SIGNAL_FILE, MANUAL_CONTINUE_SIGNAL):
+        if os.path.exists(sig_f):
+            try:
+                os.remove(sig_f)
+            except Exception:
+                pass
+    RPAState.is_paused = False
+    RPAState.waiting_for_manual = False
+    RPAState.manual_message = None
     RPAState.is_running = True
     RPAState.mode = mode
     auto_update_scripts_from_server()
@@ -982,6 +1080,14 @@ ALLOWED_ORIGINS = {
 }
 
 
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # Suppress client-aborted socket tracebacks (WinError 10053 / 10054 / BrokenPipeError)
+        pass
+
+
 class RPABridgeHandler(BaseHTTPRequestHandler):
     def _send_cors_headers(self):
         origin = (self.headers.get("Origin") or "").strip().rstrip("/")
@@ -993,10 +1099,25 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Private-Network", "true")
 
+    def _send_json(self, status_code: int, payload_obj: dict, ensure_ascii: bool = False):
+        try:
+            raw = json.dumps(payload_obj, ensure_ascii=ensure_ascii).encode("utf-8")
+            self.send_response(status_code)
+            self._send_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            pass
+
     def do_OPTIONS(self):
-        self.send_response(200)
-        self._send_cors_headers()
-        self.end_headers()
+        try:
+            self.send_response(200)
+            self._send_cors_headers()
+            self.end_headers()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            pass
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -1030,11 +1151,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 "submissions": RPAState.submissions,
                 "logs": RPAState.logs[-60:],
             }
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+            self._send_json(200, data, ensure_ascii=False)
         elif parsed.path == "/pdf-base64":
             import base64
             from urllib.parse import parse_qs
@@ -1044,25 +1161,20 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             if local_p:
                 raw_bytes = local_p.read_bytes()
                 b64_str = base64.b64encode(raw_bytes).decode("ascii")
-                self.send_response(200)
-                self._send_cors_headers()
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({
+                self._send_json(200, {
                     "success": True,
                     "filename": local_p.name,
                     "pdf_base64": b64_str,
-                }).encode("utf-8"))
+                }, ensure_ascii=True)
             else:
+                self._send_json(404, {"success": False, "message": "PDF not found locally"}, ensure_ascii=True)
+        else:
+            try:
                 self.send_response(404)
                 self._send_cors_headers()
-                self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": "PDF not found locally"}).encode("utf-8"))
-        else:
-            self.send_response(404)
-            self._send_cors_headers()
-            self.end_headers()
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+                pass
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -1075,11 +1187,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/open-chrome":
             ok = launch_chrome_debug()
-            self.send_response(200 if ok else 500)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": ok}).encode("utf-8"))
+            self._send_json(200 if ok else 500, {"success": ok}, ensure_ascii=True)
 
         elif parsed.path == "/scan-pdfs":
             discovered = scan_downloads_pdfs()
@@ -1088,11 +1196,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                 upload_pdf_to_central_server_async(d)
             sync_all_local_submissions_to_central_async()
             RPAState.add_log(f"Просканирована папка Загрузки: найдено {len(discovered)} PDF-квитанций Госуслуг.")
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "discovered": discovered, "submissions": RPAState.submissions}, ensure_ascii=False).encode("utf-8"))
+            self._send_json(200, {"success": True, "discovered": discovered, "submissions": RPAState.submissions}, ensure_ascii=False)
 
         elif parsed.path == "/pause":
             try:
@@ -1105,11 +1209,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 RPAState.add_log(f"Ошибка постановки на паузу: {e}")
 
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "paused": True}).encode("utf-8"))
+            self._send_json(200, {"success": True, "paused": True}, ensure_ascii=True)
 
         elif parsed.path in ("/resume", "/manual-continue"):
             try:
@@ -1129,19 +1229,11 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 RPAState.add_log(f"Ошибка сигнала продолжения: {e}")
 
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "paused": False}).encode("utf-8"))
+            self._send_json(200, {"success": True, "paused": False}, ensure_ascii=True)
 
         elif parsed.path == "/start":
             if RPAState.is_running:
-                self.send_response(400)
-                self._send_cors_headers()
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Already running"}).encode("utf-8"))
+                self._send_json(400, {"error": "Already running"}, ensure_ascii=True)
                 return
 
             RPAState.reset_stats()
@@ -1234,17 +1326,11 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             RPAState.thread = t
             t.start()
 
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "message": "Robot started"}).encode("utf-8"))
+            self._send_json(200, {"success": True, "message": "Robot started"}, ensure_ascii=True)
 
         elif parsed.path == "/purge-sicils":
-            content_len = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(content_len).decode("utf-8")) if content_len > 0 else {}
-            raw_sicils = body.get("sicils") if isinstance(body, dict) else []
-            raw_apps = body.get("app_nos") if isinstance(body, dict) else []
+            raw_sicils = payload.get("sicils") if isinstance(payload, dict) else []
+            raw_apps = payload.get("app_nos") if isinstance(payload, dict) else []
             target_sicils = {str(s or "").strip() for s in (raw_sicils or []) if str(s or "").strip()}
             target_apps = {str(a or "").strip() for a in (raw_apps or []) if str(a or "").strip()}
             if target_apps:
@@ -1292,13 +1378,7 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                     save_applications_ledger(RPAState.submissions)
             save_archived_app_nos()
 
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(
-                json.dumps({"success": True, "purged": purged_cnt}).encode("utf-8")
-            )
+            self._send_json(200, {"success": True, "purged": purged_cnt}, ensure_ascii=True)
 
         elif parsed.path == "/stop":
             proc_to_kill = RPAState.process
@@ -1330,27 +1410,27 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
                     pass
             kill_orphan_robot_processes()
             RPAState.add_log("Робот принудительно остановлен пользователем.")
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "message": "Stopped"}).encode("utf-8"))
+            self._send_json(200, {"success": True, "message": "Stopped"}, ensure_ascii=True)
 
         else:
-            self.send_response(404)
-            self._send_cors_headers()
-            self.end_headers()
+            try:
+                self.send_response(404)
+                self._send_cors_headers()
+                self.end_headers()
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+                pass
 
     def log_message(self, format, *args):
         pass
 
 
 def sync_all_local_submissions_to_central_async():
-    """Pushes all local non-error submissions from RPAState.submissions to https://hr.pondera.network/api/gosuslugi/submissions and uploads any local Status A4 PDFs."""
+    """Pushes all local non-error submissions from RPAState.submissions to https://hr.pondera.network/api/gosuslugi/submissions and silently uploads any missing local PDFs."""
     def _worker():
         import urllib.request
         import ssl
         import re
+        fetch_central_existing_pdfs()
         try:
             active_app_by_sicil = {}
             for sub_it in (RPAState.submissions or []):
@@ -1512,38 +1592,11 @@ def sync_vks_queue_to_central_master_list_async(records: list):
 
 def start_auto_30min_gosuslugi_status_sync_thread():
     """
-    Runs a fast JSON-only Gosuslugi status sync (up to 1,200 Zayavkas, no PDF download)
-    every 30 minutes across all computers.
-    - When a VKS robot is actively running (`RPAState.is_running == True`), `gosuslugi_vks_robot.py`
-      executes the fast JSON status sync strictly between workers (right after the active Zayavka finishes),
-      so no in-progress application is ever interrupted.
-    - When the robot is idle (`not RPAState.is_running`) and Chrome Debug Port 9222 is open,
-      this background thread triggers `check_status_fast` every 30 minutes.
+    Disabled when idle so the bridge never hijacks Chrome while the user opens Chrome
+    or logs into Gosuslugi. Status checks run only when explicitly started from the UI
+    or between workers during an active VKS submission run.
     """
-    def _worker():
-        time.sleep(90)  # Initial grace period after bridge startup
-        while True:
-            try:
-                now_ts = time.time()
-                if (
-                    not RPAState.is_running
-                    and is_port_open(CHROME_CDP_PORT)
-                    and (now_ts - RPAState.last_json_status_sync_ts >= 1800)
-                ):
-                    RPAState.last_json_status_sync_ts = now_ts
-                    RPAState.reset_stats()
-                    t = threading.Thread(
-                        target=run_robot_worker,
-                        args=("check_status_fast", 0, "Sheet1", "", ""),
-                        daemon=True,
-                    )
-                    RPAState.thread = t
-                    t.start()
-            except Exception:
-                pass
-            time.sleep(60)
-
-    threading.Thread(target=_worker, daemon=True).start()
+    return
 
 
 def main():
@@ -1567,7 +1620,7 @@ def main():
     # Start background 30-min fast JSON Gosuslugi status sync (1,200 Zayavkas, no PDF download)
     start_auto_30min_gosuslugi_status_sync_thread()
 
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
+    server = QuietThreadingHTTPServer(("127.0.0.1", PORT), RPABridgeHandler)
     print("=====================================================")
     print(f"  Pondera HR RPA Bridge Server v{BRIDGE_VERSION} running on http://127.0.0.1:{PORT}")
     print(f"  Chrome Debugging Port: {CHROME_CDP_PORT}")

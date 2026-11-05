@@ -52,8 +52,9 @@ except ImportError:
 
 def is_gosuslugi_logged_out(page: Page) -> bool:
     """
-    Detects whether Gosuslugi session has logged out or is showing the ESIA login form,
-    even when the URL bar still shows https://lk.gosuslugi.ru/orders or https://www.gosuslugi.ru/...
+    Detects whether Gosuslugi session has genuinely logged out or redirected to ESIA login.
+    Avoids false positives on authenticated lk.gosuslugi.ru/orders or lk.gosuslugi.ru/order/<id> pages
+    when an application is not found or when the search bar is not rendered on an order detail page.
     """
     try:
         cur_url = (page.url or "").lower()
@@ -69,21 +70,26 @@ def is_gosuslugi_logged_out(page: Page) -> bool:
                 const pwdInputs = Array.from(document.querySelectorAll("input[type='password'], input#password, input#login"));
                 if (pwdInputs.some(isVis)) return true;
 
-                const bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
-                const hasLoginMarkers = (
-                    bodyText.includes('Другой пользователь') ||
-                    bodyText.includes('Войти другим способом') ||
-                    bodyText.includes('Не удаётся войти') ||
-                    bodyText.includes('Телефон / Эл. почта / СНИЛС') ||
-                    (bodyText.includes('Пароль') && bodyText.includes('Восстановить') && bodyText.includes('Войти'))
+                // Never treat an authenticated order detail or orders feed page as logged-out
+                // if authenticated LK elements (feed items, order header, history button, or search input) exist
+                const hasAuthLkUi = Boolean(
+                    document.querySelector(
+                        "input.search-input, lib-search input, epgu-search input, div.feed-item, a[href*='/order/'], app-order-details, epgu-order-details"
+                    )
                 );
-                if (hasLoginMarkers) {
-                    const searchInp = document.querySelector(
-                        "input.search-input, lib-search input, epgu-search input, input[placeholder*='Поиск'], input[placeholder*='Номер']"
-                    );
-                    if (!isVis(searchInp)) return true;
+                if (hasAuthLkUi) return false;
+
+                const bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
+                if (bodyText.includes('Заявления и уведомления') || bodyText.includes('Показать историю') || bodyText.includes('Заявлений не найдено')) {
+                    return false;
                 }
-                return false;
+
+                const hasStrictLoginForm = (
+                    bodyText.includes('Телефон / Эл. почта / СНИЛС') ||
+                    (bodyText.includes('Пароль') && bodyText.includes('Восстановить') && bodyText.includes('Войти')) ||
+                    (bodyText.includes('Вход в Госуслуги') && bodyText.includes('Войти'))
+                );
+                return Boolean(hasStrictLoginForm);
             }"""
         )
         return bool(is_login_dom)
@@ -2455,15 +2461,16 @@ def run_fast_json_status_sync_on_page(
                 continue
 
             already_has_sc = has_existing_status_screenshot_for_app(app_no, rec)
+            needs_receipt_pdf = (not prev_pdf_file) or ("_status_a4" in prev_pdf_file.lower())
 
-            # User rule: During one-by-one status check + screenshot capture:
-            # - If 'Услуга оказана' ALREADY has an A4 screenshot taken previously, NEVER re-check or re-capture it!
-            # - For all OTHER statuses (e.g. 'Заявление зарегистрировано', 'Отправлено', 'Отправлено в ведомство',
-            #   'Промежуточные результаты по заявлению', 'Услуга отказана', etc.), ALWAYS re-check and re-capture (overwrite)!
+            # User rule: During one-by-one status check + PDF/screenshot capture:
+            # - When capture_screenshots (PDF'li) is enabled, process any record missing EITHER its Status A4 PDF OR its Receipt PDF!
+            # - If 'Услуга оказана' ALREADY has BOTH its A4 screenshot AND its Receipt PDF, skip it!
             if allow_single_search and prev_status == "Услуга оказана":
-                if not capture_screenshots or already_has_sc or search_scope == "pending_only":
-                    if capture_screenshots and already_has_sc:
-                        skipped_already_okazana_sc_count += 1
+                if not capture_screenshots:
+                    continue
+                if already_has_sc and not needs_receipt_pdf:
+                    skipped_already_okazana_sc_count += 1
                     continue
 
             is_intermediate_prev = (
@@ -2474,7 +2481,7 @@ def run_fast_json_status_sync_on_page(
 
             if allow_single_search and search_scope == "pending_only":
                 if capture_screenshots:
-                    if not is_non_okazana_with_app_no:
+                    if not (is_non_okazana_with_app_no or needs_receipt_pdf or not already_has_sc):
                         continue
                 elif not is_intermediate_prev:
                     continue
@@ -2501,7 +2508,7 @@ def run_fast_json_status_sync_on_page(
             ) and (
                 search_scope == "all_from_start"
                 or is_intermediate_prev
-                or (capture_screenshots and is_non_okazana_with_app_no)
+                or (capture_screenshots and (is_non_okazana_with_app_no or needs_receipt_pdf or not already_has_sc))
             )
 
             if should_run_single_query:
@@ -2557,18 +2564,31 @@ def run_fast_json_status_sync_on_page(
                     prev_status_pdf = prev_pdf
                 prev_pdf = ""
             captured_sc_file = ""
+            dl_receipt_file = ""
             if allow_single_search and capture_screenshots:
-                captured_sc_file = capture_a4_cropped_status_screenshot(
-                    page=page,
-                    app_no=final_app_no,
-                    sicil=sicil,
-                    worker_name=worker_name or matched_order.get("citizen_name") or "",
-                    period_code=str(rec.get("period_code") or "2026-3"),
-                    gosuslugi_status=new_status,
-                )
-                if captured_sc_file:
-                    screenshots_captured_count += 1
-                    prev_status_pdf = captured_sc_file
+                if not already_has_sc or prev_status != "Услуга оказана":
+                    captured_sc_file = capture_a4_cropped_status_screenshot(
+                        page=page,
+                        app_no=final_app_no,
+                        sicil=sicil,
+                        worker_name=worker_name or matched_order.get("citizen_name") or "",
+                        period_code=str(rec.get("period_code") or "2026-3"),
+                        gosuslugi_status=new_status,
+                    )
+                    if captured_sc_file:
+                        screenshots_captured_count += 1
+                        prev_status_pdf = captured_sc_file
+                if not prev_pdf and matched_order.get("feed_id"):
+                    dl_receipt_file = download_missing_pdf_for_order(
+                        page=page,
+                        feed_id=str(matched_order.get("feed_id") or ""),
+                        app_no=final_app_no,
+                        sicil=sicil,
+                        worker_name=worker_name or matched_order.get("citizen_name") or "",
+                        period_code=str(rec.get("period_code") or "2026-3"),
+                    )
+                    if dl_receipt_file:
+                        prev_pdf = dl_receipt_file
 
             gosuslugi_event_dt = parse_gosuslugi_datetime(
                 str(matched_order.get("order_date") or ""),
@@ -2580,7 +2600,7 @@ def run_fast_json_status_sync_on_page(
                 else now_str
             )
 
-            if prev_status == new_status and raw_app_no == final_app_no and not captured_sc_file:
+            if prev_status == new_status and raw_app_no == final_app_no and not captured_sc_file and not dl_receipt_file:
                 if is_intermediate_prev or (allow_single_search and search_scope == "all_from_start"):
                     verified_same_pending_count += 1
                     logger.info(
