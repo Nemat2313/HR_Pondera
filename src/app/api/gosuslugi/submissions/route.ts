@@ -98,6 +98,14 @@ function reconcileAudit2810(db: any) {
 
     db.prepare(`
       UPDATE gosuslugi_submissions
+      SET gosuslugi_status = 'Ошибка отправки заявления в ведомство',
+          status_detail = 'Ошибка при обработке заявления: Внутренняя ошибка сервиса. Повторите позднее',
+          checked_at = '2026-10-30 10:17:00'
+      WHERE sicil_no = '941177' AND application_no = '8352613863' AND gosuslugi_status = 'Отправлено в ведомство'
+    `).run();
+
+    db.prepare(`
+      UPDATE gosuslugi_submissions
       SET gosuslugi_status = 'Заявление зарегистрировано',
           status_detail = 'Заявление принято ведомством',
           checked_at = '2026-10-24 11:43:00'
@@ -697,7 +705,11 @@ export async function POST(request: Request) {
           ELSE COALESCE(NULLIF(excluded.gosuslugi_status, ''), gosuslugi_submissions.gosuslugi_status)
         END,
         status_detail = CASE
-          WHEN gosuslugi_submissions.gosuslugi_status = 'Услуга оказана'
+          WHEN (
+              gosuslugi_submissions.gosuslugi_status IN ('Услуга оказана', 'Услуга отказана')
+              OR gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка отправки заявления%'
+              OR gosuslugi_submissions.gosuslugi_status LIKE 'Ошибка получения заявления%'
+            )
             AND excluded.gosuslugi_status != 'Услуга оказана'
             AND excluded.gosuslugi_status != 'Услуга отказана'
             AND excluded.gosuslugi_status NOT LIKE 'Ошибка отправки заявления%'

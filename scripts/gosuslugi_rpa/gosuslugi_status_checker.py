@@ -520,6 +520,12 @@ def parse_feed_item(raw_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     data_obj = raw_item.get("data") or {}
     ext_id = str(raw_item.get("extId") or data_obj.get("orderId") or "").strip()
     if not ext_id or not ext_id.isdigit():
+        # Gosuslugi 'Ошибка отправки заявления в ведомство' feed items sometimes omit top-level extId
+        # and embed '№ <10 digits>' inside subTitle / title / description / data JSON instead.
+        m_ext = re.search(r"(?:№\s*|orderId[\"']?\s*:\s*[\"']?)([789]\d{9})\b", json.dumps(raw_item, ensure_ascii=False))
+        if m_ext:
+            ext_id = m_ext.group(1)
+    if not ext_id or not ext_id.isdigit():
         return None
 
     raw_title = str(raw_item.get("title") or "").strip()
@@ -1027,6 +1033,9 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
                             return query_single_order_by_no(page, clean_no, force_live_search=force_live_search)
                     q_items = q_entry.get("items") or []
                     if len(q_items) == 0:
+                        dom_fallback = extract_orders_from_dom(page)
+                        if clean_no in dom_fallback:
+                            return dom_fallback[clean_no]
                         return None
                     break
 

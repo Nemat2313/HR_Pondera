@@ -206,6 +206,16 @@ function ensureTables(db: any) {
           AND (gosuslugi_status LIKE 'Ошибка%' OR gosuslugi_status LIKE 'ошибка%')
       `);
       db.exec('BEGIN');
+      db.prepare(
+        `DELETE FROM gosuslugi_submissions WHERE sicil_no = '942737' AND application_no = '8353672429'`
+      ).run();
+      db.prepare(`
+        UPDATE gosuslugi_submissions
+        SET gosuslugi_status = 'Ошибка отправки заявления в ведомство',
+            status_detail = 'Ошибка при обработке заявления: Внутренняя ошибка сервиса. Повторите позднее',
+            checked_at = '2026-10-30 10:17:00'
+        WHERE sicil_no = '941177' AND application_no = '8352613863' AND gosuslugi_status = 'Отправлено в ведомство'
+      `).run();
       for (const r of rows) {
         try {
           const parsed = JSON.parse(r.worker_json || '{}');
