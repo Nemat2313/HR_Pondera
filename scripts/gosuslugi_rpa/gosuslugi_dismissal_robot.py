@@ -110,11 +110,28 @@ class GosuslugiDismissalBot:
             body_text = self.page.locator("body").inner_text(timeout=1200)
             if (
                 ("Телефон / Эл. почта / СНИЛС" in body_text and "Войти" in body_text)
-                or "Другой пользователь" in body_text
-                or "Войти другим способом" in body_text
+                or ("Другой пользователь" in body_text and "Пароль" in body_text)
                 or "Не удаётся войти" in body_text
                 or ("Пароль" in body_text and "Восстановить" in body_text and "Войти" in body_text)
             ):
+                return True
+        except Exception:
+            pass
+        return False
+
+    def is_service_unavailable_ip_block(self) -> bool:
+        try:
+            cur_url = (self.page.url or "").lower()
+            if "gosuslugi.ru" not in cur_url:
+                return False
+            body_text = self.page.locator("body").inner_text(timeout=1200)
+            if "Сервис МВД не отвечает" in body_text:
+                return False
+            if "Сервис недоступен" in body_text and (
+                "Служба поддержки знает о проблеме" in body_text or "Попробуйте зайти позже" in body_text
+            ):
+                return True
+            if "Доступ ограничен" in body_text or "Подозрительная активность" in body_text:
                 return True
         except Exception:
             pass
@@ -124,8 +141,12 @@ class GosuslugiDismissalBot:
         paused_once = False
         while True:
             logged_out = self.is_on_login_page()
+            service_unavail = False
+            if not logged_out and self.is_service_unavailable_ip_block():
+                self.page.wait_for_timeout(1500)
+                service_unavail = self.is_service_unavailable_ip_block()
             manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
-            if not logged_out and not manual_paused:
+            if not logged_out and not service_unavail and not manual_paused:
                 break
             paused_once = True
             if os.path.exists(MANUAL_CONTINUE_SIGNAL):
@@ -133,7 +154,17 @@ class GosuslugiDismissalBot:
                     os.remove(MANUAL_CONTINUE_SIGNAL)
                 except Exception:
                     pass
-            if logged_out:
+            if service_unavail:
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_ip_block")
+                except Exception:
+                    pass
+                logger.warning(
+                    "PAUSED_FOR_IP_BLOCK: Gosuslugi «Сервис недоступен» uyarısı verdi (IP kısıtlaması). "
+                    "Telefon Wi-Fi Hotspot / farklı bir IP'ye geçip «Devam Et (Resume)» butonuna basın."
+                )
+            elif logged_out:
                 try:
                     with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
                         pf.write("paused_for_login")
@@ -160,6 +191,23 @@ class GosuslugiDismissalBot:
                         pass
                     break
                 self.page.wait_for_timeout(1000)
+            if service_unavail:
+                try:
+                    self.page.reload(wait_until="domcontentloaded", timeout=30000)
+                    self.page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+                if self.is_service_unavailable_ip_block():
+                    logger.warning(
+                        "PAUSED_FOR_IP_BLOCK: Gosuslugi hâlâ «Сервис недоступен» gösteriyor! "
+                        "Farklı bir IP / telefon Wi-Fi Hotspot bağlantısına geçip tekrar «Devam Et (Resume)» butonuna basın."
+                    )
+                    try:
+                        with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                            pf.write("paused_for_ip_block")
+                    except Exception:
+                        pass
+                    continue
             if self.is_on_login_page():
                 logger.warning(
                     "PAUSED_FOR_LOGIN: Вход в Госуслуги ещё не выполнен! Сначала войдите в Госуслуги в Chrome, затем нажмите «Продолжить (Devam Et)»."

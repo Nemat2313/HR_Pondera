@@ -26,7 +26,7 @@ if sys.platform == "win32" and sys.stdout and hasattr(sys.stdout, "reconfigure")
 
 PORT = 8088
 CHROME_CDP_PORT = 9222
-BRIDGE_VERSION = "2.8.10"
+BRIDGE_VERSION = "2.8.11"
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MANUAL_CONTINUE_SIGNAL = os.path.join(CURRENT_DIR, "manual_continue.signal")
 PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
@@ -41,6 +41,7 @@ CENTRAL_ARCHIVED_APP_NOS = {
     "8348149175",
     "8344008846",
     "8317411742",
+    "8353672429",
 }
 
 
@@ -940,6 +941,26 @@ def run_robot_worker(
                         except Exception:
                             pass
 
+                if "APPLICATION_DRAFT_CLEARED:" in clean_line:
+                    try:
+                        raw_json = clean_line.split("APPLICATION_DRAFT_CLEARED:", 1)[1].strip()
+                        draft_info = json.loads(raw_json)
+                        d_sicil = str(draft_info.get("sicil") or "").strip()
+                        d_app = str(draft_info.get("application_no") or "").strip()
+                        if d_app:
+                            CENTRAL_ARCHIVED_APP_NOS.add(d_app)
+                            save_archived_app_nos()
+                            RPAState.submissions = [
+                                s for s in RPAState.submissions
+                                if not (
+                                    str(s.get("application_no") or "").strip() == d_app
+                                    and (not d_sicil or str(s.get("sicil") or s.get("sicil_no") or "").strip() == d_sicil)
+                                )
+                            ]
+                            save_applications_ledger(RPAState.submissions)
+                    except Exception:
+                        pass
+
                 if "FAST_JSON_STATUS_SYNC:" in clean_line:
                     RPAState.last_json_status_sync_ts = time.time()
                     RPAState.submissions = load_saved_applications()
@@ -1001,8 +1022,12 @@ def run_robot_worker(
                             RPAState.errors += 1
                             RPAState.processed += 1
 
-                # Detect Human-in-the-Loop Manual Intervention Pause & Gosuslugi Logout Pause
-                if "PAUSED_FOR_LOGIN:" in clean_line:
+                # Detect Human-in-the-Loop Manual Intervention Pause, IP Block Pause & Gosuslugi Logout Pause
+                if "PAUSED_FOR_IP_BLOCK:" in clean_line:
+                    RPAState.is_paused = True
+                    RPAState.waiting_for_manual = True
+                    RPAState.manual_message = clean_line.split("PAUSED_FOR_IP_BLOCK:", 1)[1].strip()
+                elif "PAUSED_FOR_LOGIN:" in clean_line:
                     RPAState.is_paused = True
                     RPAState.waiting_for_manual = True
                     RPAState.manual_message = clean_line.split("PAUSED_FOR_LOGIN:", 1)[1].strip()

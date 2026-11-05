@@ -53,6 +53,8 @@ const BLOCKED_MISMATCHED_APP_BY_SICIL: Record<string, string> = {
   '933532': '8284206508',
   '937332': '8284083499',
   '941737': '8269035605',
+  // Unsent Gosuslugi draft ('Черновик' -> 'Заявления не найдены') — clear so worker returns to Hazır queue
+  '942737': '8353672429',
 };
 
 let __audit2810Reconciled = false;
@@ -774,6 +776,27 @@ export async function POST(request: Request) {
       }
 
       const adminForceOverride = Boolean(item.admin_force_override || item.adminForceOverride);
+
+      // Explicit purge for confirmed unsent Gosuslugi drafts ('Заявления не найдены' on /orders with no PDF):
+      // Removes the ghost draft application_no so the worker returns cleanly to Hazır (pending) and is never searched in vain.
+      if ((item.clear_unsent_draft || item.clearUnsentDraft) && sicil && appNo) {
+        const delDraftRes = db
+          .prepare(
+            `DELETE FROM gosuslugi_submissions
+             WHERE sicil_no = ?
+               AND application_no = ?
+               AND COALESCE(pdf_filename, '') = ''
+               AND gosuslugi_status IN ('Отправлено (PDF не скачан)', 'Отправлено', 'В обработке', '')`
+          )
+          .run(sicil, appNo);
+        if (delDraftRes.changes > 0) {
+          db.prepare(
+            `DELETE FROM gosuslugi_submission_history WHERE sicil_no = ? AND application_no = ?`
+          ).run(sicil, appNo);
+          upserted += delDraftRes.changes;
+        }
+        continue;
+      }
 
       const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
       const periodCode = String(item.period_code || item.periodCode || '2026-3').trim() || '2026-3';

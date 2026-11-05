@@ -380,17 +380,58 @@ class GosuslugiVksBot:
             pass
         return False
 
+    def is_service_unavailable_ip_block(self) -> bool:
+        """
+        Detects Gosuslugi's IP block / portal restriction screen ('Сервис недоступен — Служба поддержки знает о проблеме
+        и устраняет её. Попробуйте зайти позже' or 'Доступ ограничен'), excluding MVD's 'Сервис МВД не отвечает'.
+        """
+        try:
+            cur_url = (self.page.url or "").lower()
+            if "gosuslugi.ru" not in cur_url:
+                return False
+            return bool(
+                self.page.evaluate(
+                    """() => {
+                        const bodyText = ((document.body && document.body.innerText) || '').replace(/\\s+/g, ' ');
+                        if (!bodyText || bodyText.includes('Сервис МВД не отвечает')) return false;
+                        if (
+                            bodyText.includes('Сервис недоступен') &&
+                            (
+                                bodyText.includes('Служба поддержки знает о проблеме') ||
+                                bodyText.includes('Попробуйте зайти позже')
+                            )
+                        ) {
+                            return true;
+                        }
+                        if (
+                            bodyText.includes('Доступ ограничен') ||
+                            bodyText.includes('Подозрительная активность') ||
+                            bodyText.includes('Слишком много запросов')
+                        ) {
+                            return true;
+                        }
+                        return false;
+                    }"""
+                )
+            )
+        except Exception:
+            return False
+
     def wait_if_logged_out(self) -> bool:
         """
-        Checks if the user clicked Pause (rpa_pause.signal) OR if Gosuslugi session logged out.
-        When Gosuslugi logs out, puts the robot into PAUSE mode and waits until the user
-        logs back into Gosuslugi AND clicks Resume ('Продолжить' / 'Devam Et').
-        Returns True if a logout or pause was detected and recovered.
+        Checks if the user clicked Pause (rpa_pause.signal), if Gosuslugi session logged out,
+        OR if Gosuslugi displayed 'Сервис недоступен' (IP block).
+        Puts the robot into PAUSE mode and waits until the user switches IP / logs in AND clicks Resume ('Продолжить' / 'Devam Et').
+        Returns True if a logout, IP block, or pause was detected and recovered.
         """
         paused_once = False
         probed_form_url = False
         while True:
             logged_out = self.is_on_login_page()
+            service_unavail = False
+            if not logged_out and self.is_service_unavailable_ip_block():
+                self.page.wait_for_timeout(1500)
+                service_unavail = self.is_service_unavailable_ip_block()
             manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
 
             # Before pausing for login on an old/stale tab, probe navigating to 600585/1/form once
@@ -404,8 +445,10 @@ class GosuslugiVksBot:
                 except Exception:
                     pass
                 logged_out = self.is_on_login_page()
+                if not logged_out:
+                    service_unavail = self.is_service_unavailable_ip_block()
 
-            if not logged_out and not manual_paused:
+            if not logged_out and not service_unavail and not manual_paused:
                 break
 
             paused_once = True
@@ -415,7 +458,21 @@ class GosuslugiVksBot:
                 except Exception:
                     pass
 
-            if logged_out:
+            if service_unavail:
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_ip_block")
+                except Exception:
+                    pass
+                logger.warning(
+                    "PAUSED_FOR_IP_BLOCK: Gosuslugi «Сервис недоступен» uyarısı verdi (IP kısıtlaması). "
+                    "Telefon Wi-Fi Hotspot / farklı bir IP'ye geçip «Devam Et (Resume)» butonuna basın."
+                )
+                try:
+                    self.page.bring_to_front()
+                except Exception:
+                    pass
+            elif logged_out:
                 try:
                     with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
                         pf.write("paused_for_login")
@@ -447,6 +504,24 @@ class GosuslugiVksBot:
                         pass
                     break
                 self.page.wait_for_timeout(1000)
+
+            if service_unavail:
+                try:
+                    self.page.reload(wait_until="domcontentloaded", timeout=30000)
+                    self.page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+                if self.is_service_unavailable_ip_block():
+                    logger.warning(
+                        "PAUSED_FOR_IP_BLOCK: Gosuslugi hâlâ «Сервис недоступен» gösteriyor! "
+                        "Farklı bir IP / telefon Wi-Fi Hotspot bağlantısına geçip tekrar «Devam Et (Resume)» butonuna basın."
+                    )
+                    try:
+                        with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                            pf.write("paused_for_ip_block")
+                    except Exception:
+                        pass
+                    continue
 
             # After user clicks Resume, switch to any newly logged-in tab or navigate away from stale login URL
             self.switch_to_logged_in_tab_if_available()
@@ -3402,12 +3477,13 @@ class GosuslugiVksBot:
         for tick in range(65):
             self.check_and_handle_error_modal()
             # Immediately stop if Gosuslugi shows 'У вас недостаточно полномочий для отправки уведомлений' (Image 3)
+            self.wait_if_logged_out()
             self.check_and_stop_if_insufficient_permissions()
 
             cur_url = self.page.url or ""
 
             # 1) Check if we have reached the actual positive confirmation screen ('Уведомление отправлено' / 'Заявление отправлено')
-            # IMPORTANT: Do NOT rely on 'В личный кабинет' button alone because that button ALSO appears on the 'У вас недостаточно полномочий' draft screen!
+            # IMPORTANT: Do NOT rely on 'В личный кабинет' button or generic 'lk.gosuslugi.ru' (which could be /drafts or an outage page)!
             sent_text = self.page.locator(
                 "h1:has-text('Уведомление отправлено'):visible, "
                 "h1:has-text('Заявление отправлено'):visible, "
@@ -3416,7 +3492,7 @@ class GosuslugiVksBot:
                 "h3:has-text('Уведомление отправлено'):visible, "
                 "div.title:has-text('Уведомление отправлено'):visible"
             )
-            if sent_text.count() > 0 or "lk.gosuslugi.ru" in cur_url:
+            if (sent_text.count() > 0 or "lk.gosuslugi.ru/order/" in cur_url) and not self.is_service_unavailable_ip_block():
                 self.check_and_stop_if_insufficient_permissions()
                 logger.info(">>> Final confirmation screen ('Уведомление отправлено') reached! <<<")
                 gosuslugi_order_no = self.extract_gosuslugi_order_number()

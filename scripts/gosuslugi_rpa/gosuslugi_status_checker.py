@@ -97,19 +97,172 @@ def is_gosuslugi_logged_out(page: Page) -> bool:
         return False
 
 
+def is_gosuslugi_service_unavailable(page: Page) -> bool:
+    """
+    Detects Gosuslugi's IP block / portal outage screen ('Сервис недоступен — Служба поддержки знает о проблеме
+    и устраняет её. Попробуйте зайти позже' or 'Доступ ограничен'), excluding MVD's 'Сервис МВД не отвечает'.
+    """
+    try:
+        cur_url = (page.url or "").lower()
+        if "gosuslugi.ru" not in cur_url:
+            return False
+        is_blocked = page.evaluate(
+            """() => {
+                const bodyText = ((document.body && document.body.innerText) || '').replace(/\\s+/g, ' ');
+                if (!bodyText) return false;
+                if (bodyText.includes('Сервис МВД не отвечает')) return false;
+                if (
+                    bodyText.includes('Сервис недоступен') &&
+                    (
+                        bodyText.includes('Служба поддержки знает о проблеме') ||
+                        bodyText.includes('Попробуйте зайти позже') ||
+                        !document.querySelector("input.search-input, lib-search input, epgu-search input, a[href*='/order/'], app-order-details")
+                    )
+                ) {
+                    return true;
+                }
+                if (
+                    bodyText.includes('Доступ ограничен') ||
+                    bodyText.includes('Подозрительная активность') ||
+                    bodyText.includes('Слишком много запросов')
+                ) {
+                    return true;
+                }
+                return false;
+            }"""
+        )
+        return bool(is_blocked)
+    except Exception:
+        return False
+
+
+def is_explicitly_not_found_on_orders_page(page: Page, app_no: str) -> bool:
+    """
+    Returns True ONLY when https://lk.gosuslugi.ru/orders is healthy (NOT logged out and NOT showing 'Сервис недоступен')
+    and explicitly displays 'Заявления не найдены' / 'ничего не найдено' for `app_no`.
+    """
+    clean_no = str(app_no or "").strip()
+    if not clean_no or is_gosuslugi_logged_out(page) or is_gosuslugi_service_unavailable(page):
+        return False
+    try:
+        return bool(
+            page.evaluate(
+                """(qNo) => {
+                    const bodyText = ((document.body && document.body.innerText) || '');
+                    if (!bodyText.includes('Заявления не найдены') && !bodyText.includes('По вашему запросу ничего не найдено')) {
+                        return false;
+                    }
+                    const inps = Array.from(document.querySelectorAll("input.search-input, lib-search input, epgu-search input, input[type='search'], main input[type='text']"));
+                    for (const inp of inps) {
+                        if (String(inp.value || '').trim() === qNo) return true;
+                    }
+                    return true;
+                }""",
+                clean_no,
+            )
+        )
+    except Exception:
+        return False
+
+
+def purge_confirmed_unsent_draft(sicil: str, app_no: str, worker_name: str, submitted_at: str = "") -> bool:
+    """
+    Removes a confirmed unsent draft `application_no` (which stayed in Gosuslugi 'Черновики' and returned
+    'Заявления не найдены' on /orders) from both local ledger and central server so it returns to 'Hazır'
+    and is never searched in vain again. Skips brand-new submissions (< 15 minutes old) still indexing.
+    """
+    clean_sicil = str(sicil or "").strip()
+    clean_no = str(app_no or "").strip()
+    if not clean_sicil or not clean_no:
+        return False
+    if submitted_at:
+        try:
+            sub_dt = datetime.strptime(submitted_at[:19], "%Y-%m-%d %H:%M:%S")
+            if abs((datetime.now() - sub_dt).total_seconds()) < 900:
+                return False
+        except Exception:
+            pass
+
+    logger.info(
+        f"  -> Taslakta kalan gönderilmemiş başvuru sistemden temizlendi: № {clean_no} "
+        f"(Sicil: {clean_sicil} — {worker_name}). Tekrar gönderim kuyruğuna (Hazır) alındı."
+    )
+    logger.info(
+        f"APPLICATION_DRAFT_CLEARED: {json.dumps({'sicil': clean_sicil, 'application_no': clean_no}, ensure_ascii=False)}"
+    )
+
+    ledger_path = os.path.join(CURRENT_DIR, "gosuslugi_applications.json")
+    try:
+        if os.path.exists(ledger_path):
+            with open(ledger_path, "r", encoding="utf-8") as lf:
+                raw = json.load(lf)
+            if isinstance(raw, list):
+                filtered = [
+                    it for it in raw
+                    if not (
+                        isinstance(it, dict)
+                        and str(it.get("sicil") or it.get("sicil_no") or "").strip() == clean_sicil
+                        and str(it.get("application_no") or "").strip() == clean_no
+                    )
+                ]
+                with open(ledger_path, "w", encoding="utf-8") as lf:
+                    json.dump(filtered, lf, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    try:
+        import urllib.request
+        import ssl
+        payload = json.dumps([
+            {
+                "sicil_no": clean_sicil,
+                "application_no": clean_no,
+                "clear_unsent_draft": True,
+            }
+        ]).encode("utf-8")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        for api_url in (
+            "https://hr.pondera.network/api/gosuslugi/submissions",
+            "http://localhost:3000/api/gosuslugi/submissions",
+        ):
+            try:
+                req = urllib.request.Request(
+                    api_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=8.0, context=ctx if api_url.startswith("https") else None) as _:
+                    break
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return True
+
+
 def wait_if_paused_or_logged_out(page: Page, return_to_orders: bool = True) -> bool:
     """
-    Checks if the user clicked Pause (rpa_pause.signal) OR if Gosuslugi logged out.
-    When Gosuslugi logs out, puts the robot into PAUSE mode and waits until the user
-    logs back into Gosuslugi AND clicks Resume ('Продолжить' / 'Devam Et').
-    Returns True if a pause/logout occurred and was resumed.
+    Checks if the user clicked Pause (rpa_pause.signal), if Gosuslugi logged out, OR if Gosuslugi
+    displayed 'Сервис недоступен' (IP block / portal restriction).
+    Puts the robot into PAUSE mode and waits until the user switches IP / logs in AND clicks Resume ('Продолжить' / 'Devam Et').
+    Returns True if a pause/logout/IP-block occurred and was resumed.
     """
     paused_once = False
     while True:
         logged_out = is_gosuslugi_logged_out(page)
+        service_unavail = False
+        if not logged_out and is_gosuslugi_service_unavailable(page):
+            try:
+                page.wait_for_timeout(1500)
+            except Exception:
+                time.sleep(1.5)
+            service_unavail = is_gosuslugi_service_unavailable(page)
         manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
 
-        if not logged_out and not manual_paused:
+        if not logged_out and not service_unavail and not manual_paused:
             break
 
         paused_once = True
@@ -119,7 +272,21 @@ def wait_if_paused_or_logged_out(page: Page, return_to_orders: bool = True) -> b
             except Exception:
                 pass
 
-        if logged_out:
+        if service_unavail:
+            try:
+                with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                    pf.write("paused_for_ip_block")
+            except Exception:
+                pass
+            logger.warning(
+                "PAUSED_FOR_IP_BLOCK: Gosuslugi «Сервис недоступен» uyarısı verdi (IP kısıtlaması). "
+                "Telefon Wi-Fi Hotspot / farklı bir IP'ye geçip «Devam Et (Resume)» butonuna basın."
+            )
+            try:
+                page.bring_to_front()
+            except Exception:
+                pass
+        elif logged_out:
             try:
                 with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
                     pf.write("paused_for_login")
@@ -129,6 +296,10 @@ def wait_if_paused_or_logged_out(page: Page, return_to_orders: bool = True) -> b
                 "PAUSED_FOR_LOGIN: Сессия Госуслуг завершилась (выход из аккаунта). "
                 "Робот поставлен на ПАУЗУ! Пожалуйста, войдите в Госуслуги в окне Chrome, а затем нажмите кнопку «Продолжить (Devam Et)»."
             )
+            try:
+                page.bring_to_front()
+            except Exception:
+                pass
         else:
             logger.info(
                 "ROBOT_PAUSED: Робот поставлен на паузу пользователем. Ожидание нажатия кнопки «Продолжить (Devam Et)»..."
@@ -152,7 +323,30 @@ def wait_if_paused_or_logged_out(page: Page, return_to_orders: bool = True) -> b
             except Exception:
                 time.sleep(1.0)
 
-        # Verify that Gosuslugi is no longer on the login screen before resuming
+        # After user switches IP / Hotspot and clicks Resume, reload /orders so the new IP takes effect immediately
+        if service_unavail or return_to_orders:
+            try:
+                if return_to_orders or "lk.gosuslugi.ru/orders" in (page.url or "").lower():
+                    page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=45000)
+                else:
+                    page.reload(wait_until="domcontentloaded", timeout=45000)
+                page.wait_for_timeout(2500)
+            except Exception:
+                pass
+
+        # Verify that Gosuslugi is no longer showing 'Сервис недоступен' or login screen before resuming
+        if is_gosuslugi_service_unavailable(page):
+            logger.warning(
+                "PAUSED_FOR_IP_BLOCK: Gosuslugi hâlâ «Сервис недоступен» gösteriyor! "
+                "Lütfen farklı bir IP / telefon Wi-Fi Hotspot bağlantısına geçip tekrar «Devam Et (Resume)» butonuna basın."
+            )
+            try:
+                with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                    pf.write("paused_for_ip_block")
+            except Exception:
+                pass
+            continue
+
         if is_gosuslugi_logged_out(page):
             logger.warning(
                 "PAUSED_FOR_LOGIN: Вход в Госуслуги ещё не завершён! Сначала войдите в аккаунт Госуслуг в Chrome, затем нажмите «Продолжить (Devam Et)»."
@@ -165,13 +359,6 @@ def wait_if_paused_or_logged_out(page: Page, return_to_orders: bool = True) -> b
             continue
 
         logger.info("LOGIN_RESTORED: Работа робота возобновлена! Продолжаем с текущего заявления...")
-        if return_to_orders:
-            try:
-                if "lk.gosuslugi.ru/orders" not in (page.url or "").lower():
-                    page.goto(ORDERS_URL, wait_until="domcontentloaded", timeout=45000)
-                    page.wait_for_timeout(2500)
-            except Exception:
-                pass
         break
 
     return paused_once
@@ -685,6 +872,9 @@ def fetch_bulk_orders_via_api(page: Page, max_pages: int = 15, fast_json_only: b
                 page.reload(wait_until="domcontentloaded", timeout=35000)
                 page.wait_for_timeout(1800 if fast_json_only else 2500)
 
+            if not fast_json_only:
+                wait_if_paused_or_logged_out(page, return_to_orders=True)
+
             orders_by_no.update(INTERCEPTED_FEED_ORDERS)
             orders_by_no.update(extract_orders_from_dom(page))
 
@@ -818,6 +1008,9 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
             # (`by_q_map[clean_no]["seq"] > prev_q_seq`) or the visible DOM card for `clean_no`.
             for step_idx in range(32):
                 page.wait_for_timeout(250)
+                if is_gosuslugi_service_unavailable(page) or is_gosuslugi_logged_out(page):
+                    if wait_if_paused_or_logged_out(page, return_to_orders=True):
+                        return query_single_order_by_no(page, clean_no, force_live_search=force_live_search)
                 if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status"):
                     got_specific_q_response = True
                     break
@@ -829,6 +1022,9 @@ def query_single_order_by_no(page: Page, app_no: str, force_live_search: bool = 
                     page.wait_for_timeout(350)
                     if clean_no in INTERCEPTED_FEED_ORDERS and INTERCEPTED_FEED_ORDERS[clean_no].get("gosuslugi_status"):
                         break
+                    if is_gosuslugi_service_unavailable(page):
+                        if wait_if_paused_or_logged_out(page, return_to_orders=True):
+                            return query_single_order_by_no(page, clean_no, force_live_search=force_live_search)
                     q_items = q_entry.get("items") or []
                     if len(q_items) == 0:
                         return None
@@ -2608,9 +2804,16 @@ def run_fast_json_status_sync_on_page(
                         f"  -> Найдено № {app_no} ({worker_name}): {candidate.get('gosuslugi_status')}"
                     )
                 else:
+                    wait_if_paused_or_logged_out(page, return_to_orders=True)
                     logger.info(
                         f"  -> Заявление № {app_no} не найдено в этом аккаунте Госуслуг."
                     )
+                    if (
+                        prev_status in ("Отправлено (PDF не скачан)", "Отправлено", "В обработке", "")
+                        and not prev_pdf_file
+                        and is_explicitly_not_found_on_orders_page(page, app_no)
+                    ):
+                        purge_confirmed_unsent_draft(sicil, app_no, worker_name, submitted_at)
 
             if not matched_order:
                 continue
@@ -3216,7 +3419,14 @@ def main():
                                 f"  -> Found № {app_no} via search on lk.gosuslugi.ru/orders (feed_id={candidate.get('feed_id')}): {matched_order['gosuslugi_status']}"
                             )
                     else:
+                        wait_if_paused_or_logged_out(page, return_to_orders=True)
                         logger.info(f"  -> Заявление № {app_no} не найдено в текущем аккаунте Госуслуг.")
+                        if (
+                            cur_status in ("Отправлено (PDF не скачан)", "Отправлено", "В обработке", "")
+                            and not pdf_file
+                            and is_explicitly_not_found_on_orders_page(page, app_no)
+                        ):
+                            purge_confirmed_unsent_draft(sicil, app_no, worker_name, submitted_at)
 
                 if matched_order:
                     matched_on_this_account_count += 1

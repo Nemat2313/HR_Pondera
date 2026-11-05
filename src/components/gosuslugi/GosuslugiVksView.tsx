@@ -4742,7 +4742,12 @@ export default function GosuslugiVksView() {
               </div>
               <div>
                 <div className="text-xs font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-300">
-                  {lang === 'ru'
+                  {bridgeStatus.manual_message &&
+                  /Сервис недоступен|Hotspot|IP/i.test(bridgeStatus.manual_message)
+                    ? lang === 'ru'
+                      ? 'РОБОТ НА ПАУЗЕ: «СЕРВИС НЕДОСТУПЕН» (СМЕНИТЕ IP / WI-FI HOTSPOT И ПРОДОЛЖИТЕ)'
+                      : 'ROBOT DURAKLATILDI: «СЕРВИС НЕДОСТУПЕН» (IP / WI-FI HOTSPOT DEĞİŞTİRİP DEVAM EDİN)'
+                    : lang === 'ru'
                     ? 'РОБОТ НА ПАУЗЕ: ОЖИДАНИЕ ВХОДА В ГОСУСЛУГИ ИЛИ ПРОДОЛЖЕНИЯ'
                     : 'ROBOT DURAKLATILDI: GOSUSLUGİ GİRİŞİ VEYA DEVAM KOMUTU BEKLENİYOR'}
                 </div>
