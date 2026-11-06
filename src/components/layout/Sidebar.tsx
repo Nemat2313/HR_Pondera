@@ -163,7 +163,7 @@ export default function Sidebar({
                 id: 'settings',
                 label: lang === 'ru' ? 'Настройки системы' : 'Ayarlar & Yönetim',
                 icon: Settings,
-                badge: 'RLS • DB • Mail',
+                badge: 'RLS • DB • AI',
                 badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
               },
             ]
@@ -267,7 +267,7 @@ export default function Sidebar({
                       TeamHub
                     </span>
                     <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 dark:bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-mono font-normal text-[9.5px] leading-tight">
-                      {versionInfo?.version || 'v2.8.15'}
+                      {versionInfo?.version || 'v2.8.16'}
                     </span>
                   </div>
                 </div>

@@ -102,6 +102,9 @@ export default function Home() {
     value: string;
   } | null>(null);
   const [complianceInitialSubTab, setComplianceInitialSubTab] = useState<'expiry' | 'standby' | 'scans'>('expiry');
+  const [settingsInitialSubTab, setSettingsInitialSubTab] = useState<
+    'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings'
+  >('users_rls');
 
   // Stats data
   const [stats, setStats] = useState<StatsData | null>(null);
@@ -250,6 +253,9 @@ export default function Home() {
           if (tab === 'personnel') {
             setInitialFilterForPersonnel(null);
           }
+          if (tab === 'settings') {
+            setSettingsInitialSubTab('users_rls');
+          }
           setActiveTab(tab);
         }}
         collapsed={collapsed}
@@ -331,7 +337,17 @@ export default function Home() {
 
         {activeTab === 'invitations' && <InvitationsTrackingView />}
 
-        {activeTab === 'travel_tickets' && <TravelTicketsAdminView />}
+        {activeTab === 'travel_tickets' && (
+          <TravelTicketsAdminView
+            onOpenAiSettings={() => {
+              if (user?.role !== 'viewer') {
+                setSettingsInitialSubTab('ai_settings');
+                setActiveTab('settings');
+              }
+            }}
+            onNavigateToPersonnel={handleNavigateToPersonnel}
+          />
+        )}
 
         {activeTab === 'camp_management' && <CampManagementView />}
 
@@ -366,7 +382,7 @@ export default function Home() {
             stats={stats}
             onOpenUpload={() => setIsUploadModalOpen(true)}
             onRefreshData={fetchStats}
-            initialSubTab="users_rls"
+            initialSubTab={settingsInitialSubTab}
           />
         )}
 

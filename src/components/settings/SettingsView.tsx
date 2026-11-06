@@ -23,18 +23,20 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from 'lucide-react';
 import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import UserManagementView from '@/components/admin/UserManagementView';
 import DatabaseManagementView from '@/components/database/DatabaseManagementView';
+import AISettingsTab from '@/components/settings/AISettingsTab';
 
 interface SettingsViewProps {
   stats: StatsData | null;
   onOpenUpload: () => void;
   onRefreshData: () => void;
-  initialSubTab?: 'users_rls' | 'database_excel' | 'mail_notifications';
+  initialSubTab?: 'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings';
 }
 
 interface SmtpSettingsState {
@@ -157,9 +159,13 @@ export default function SettingsView({
   const { lang } = useLanguage();
   const isAdmin = !user || user.role === 'admin';
 
-  const [activeSubTab, setActiveSubTab] = useState<'users_rls' | 'database_excel' | 'mail_notifications'>(
-    initialSubTab
-  );
+  const [activeSubTab, setActiveSubTab] = useState<
+    'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings'
+  >(initialSubTab);
+
+  useEffect(() => {
+    setActiveSubTab(initialSubTab);
+  }, [initialSubTab]);
 
   // Mail & Automation state
   const [loadingMail, setLoadingMail] = useState(false);
@@ -419,6 +425,19 @@ export default function SettingsView({
           >
             <Mail className="w-3.5 h-3.5" />
             <span>{lang === 'ru' ? '3. Почта и Автоматизация' : '3. Mail Bildirimleri & Otomasyon'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('ai_settings')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeSubTab === 'ai_settings'
+                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{lang === 'ru' ? '4. ИИ и Чтение Билетов/Сканов' : '4. Yapay Zeka (AI) & Evrak Okuma'}</span>
           </button>
         </div>
       </div>
@@ -992,6 +1011,9 @@ export default function SettingsView({
           </div>
         </div>
       )}
+
+      {/* TAB 4: YAPAY ZEKA (AI) & EVRAK / BİLET OKUMA BAĞLANTILARI */}
+      {activeSubTab === 'ai_settings' && <AISettingsTab />}
     </div>
   );
 }

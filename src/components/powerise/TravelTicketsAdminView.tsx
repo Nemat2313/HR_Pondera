@@ -24,6 +24,12 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import LiveTicketScannerSystem from '@/components/powerise/LiveTicketScannerSystem';
+
+interface TravelTicketsAdminViewProps {
+  onOpenAiSettings?: () => void;
+  onNavigateToPersonnel?: (filterType?: string, filterValue?: string) => void;
+}
 
 interface TicketItem {
   id: string;
@@ -137,8 +143,12 @@ const SAMPLE_TICKETS: TicketItem[] = [
   },
 ];
 
-export default function TravelTicketsAdminView() {
+export default function TravelTicketsAdminView({
+  onOpenAiSettings,
+  onNavigateToPersonnel,
+}: TravelTicketsAdminViewProps) {
   const { lang } = useLanguage();
+  const [activeMainTab, setActiveMainTab] = useState<'showcase' | 'live_scanner'>('showcase');
   const [filterType, setFilterType] = useState<'all' | 'flight' | 'train'>('all');
   const [search, setSearch] = useState('');
 
@@ -158,7 +168,67 @@ export default function TravelTicketsAdminView() {
   });
 
   return (
-    <div className="p-6 lg:p-8 space-y-8 font-normal max-w-7xl mx-auto">
+    <div className="p-6 lg:p-8 space-y-6 font-normal max-w-7xl mx-auto">
+      {/* 2-TAB TOP SWITCHER: 1) VITRIN / REKLAM (DEFAULT)  2) CANLI POWERISE AI BILET OKUMA */}
+      <div className="p-2 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('showcase')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === 'showcase'
+                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Plane className="w-3.5 h-3.5" />
+            <span>
+              {lang === 'ru'
+                ? '1. Презентация и Витрина Модуля'
+                : '1. Modül Tanıtım & Vitrin (Sunum)'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('live_scanner')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === 'live_scanner'
+                ? 'bg-emerald-100/95 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-400/40 text-emerald-950 dark:text-emerald-100 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>
+              {lang === 'ru'
+                ? '2. Живое ИИ-чтение билетов и Учет Гостей (DeepSeek / Powerise)'
+                : '2. Canlı AI Bilet Okuma & Çalışan / Misafir Takibi (DeepSeek)'}
+            </span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-400/30">
+              Canlı
+            </span>
+          </button>
+        </div>
+
+        {activeMainTab === 'showcase' && (
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('live_scanner')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer"
+          >
+            <span>Canlı Bilet Okuma Sistemine Geç</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {activeMainTab === 'live_scanner' ? (
+        <LiveTicketScannerSystem
+          onOpenAiSettings={onOpenAiSettings}
+          onNavigateToPersonnel={onNavigateToPersonnel}
+        />
+      ) : (
+        <div className="space-y-8">
       {/* Top Banner */}
       <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-50/90 via-white to-slate-50 dark:from-slate-900 dark:via-indigo-950 dark:to-slate-900 border border-indigo-100 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm dark:shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -496,6 +566,8 @@ export default function TravelTicketsAdminView() {
           </table>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 }
