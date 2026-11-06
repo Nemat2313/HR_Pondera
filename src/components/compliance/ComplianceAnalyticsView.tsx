@@ -18,8 +18,10 @@ import {
   Layers,
   ExternalLink,
   Hourglass,
+  FolderCheck,
 } from 'lucide-react';
 import StandbyComplianceView from './StandbyComplianceView';
+import DocumentScanControlView from './DocumentScanControlView';
 import {
   ResponsiveContainer,
   BarChart,
@@ -95,7 +97,11 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
     totalFilteredItems: number;
   } | null>(null);
 
-  const [complianceSubTab, setComplianceSubTab] = useState<'expiry' | 'standby'>('expiry');
+  const [complianceSubTab, setComplianceSubTab] = useState<'expiry' | 'standby' | 'scans'>('expiry');
+  const [scanTabCounts, setScanTabCounts] = useState<{ total: number; missing: number }>({
+    total: 5174,
+    missing: 0,
+  });
 
   // Filters
   const [filterDocType, setFilterDocType] = useState('all');
@@ -226,17 +232,17 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
     <div className="p-3 sm:p-5 lg:p-7 space-y-5 sm:space-y-6 max-w-full overflow-hidden">
       {/* SUB-TAB NAVIGATOR */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#111C35] p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900/90 rounded-xl border border-slate-200/70 dark:border-slate-800 flex-1 sm:flex-none">
+        <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900/90 rounded-xl border border-slate-200/70 dark:border-slate-800 flex-1 sm:flex-none">
           {/* Tab 1: Evrak Süresi */}
           <button
             onClick={() => setComplianceSubTab('expiry')}
             className={`flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               complianceSubTab === 'expiry'
-                ? 'bg-white dark:bg-emerald-600 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-emerald-500'
+                ? 'bg-white dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 shadow-sm ring-1 ring-emerald-300 dark:ring-emerald-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
             }`}
           >
-            <ShieldAlert className={`w-4 h-4 ${complianceSubTab === 'expiry' ? 'text-emerald-600 dark:text-white' : 'text-slate-500'}`} />
+            <ShieldAlert className={`w-4 h-4 ${complianceSubTab === 'expiry' ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500'}`} />
             <span>{lang === 'ru' ? 'Срок действия документов' : 'Evrak Geçerlilik & Süre Kontrolü'}</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 dark:bg-emerald-950/90 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
               {data?.totalActivePersonnel ? data.totalActivePersonnel.toLocaleString() : '5.005'}
@@ -248,22 +254,35 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
             onClick={() => setComplianceSubTab('standby')}
             className={`flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               complianceSubTab === 'standby'
-                ? 'bg-white dark:bg-amber-600 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-amber-500'
+                ? 'bg-white dark:bg-amber-500/25 text-amber-950 dark:text-amber-100 shadow-sm ring-1 ring-amber-300 dark:ring-amber-500/50'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
             }`}
           >
-            <Hourglass className={`w-4 h-4 ${complianceSubTab === 'standby' ? 'text-amber-600 dark:text-white' : 'text-amber-500'}`} />
-            <span>{lang === 'ru' ? 'Ожидание документов & Простой' : 'Evrak Bekleyenler & Standby (Yatan Gün)'}</span>
+            <Hourglass className={`w-4 h-4 ${complianceSubTab === 'standby' ? 'text-amber-600 dark:text-amber-300' : 'text-amber-500'}`} />
+            <span>{lang === 'ru' ? 'Ожидание документов & Простой' : 'Evrak Bekleyenler & Standby'}</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 dark:bg-amber-950/90 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
               323
             </span>
-            <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
-              {lang === 'ru' ? 'Критично (>3 нед)' : 'Kritik (>3 Hf)'}
+          </button>
+
+          {/* Tab 3: eBA Evrak Skan Kontrolü */}
+          <button
+            onClick={() => setComplianceSubTab('scans')}
+            className={`flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              complianceSubTab === 'scans'
+                ? 'bg-white dark:bg-indigo-500/25 text-indigo-950 dark:text-indigo-100 shadow-sm ring-1 ring-indigo-300 dark:ring-indigo-500/50'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <FolderCheck className={`w-4 h-4 ${complianceSubTab === 'scans' ? 'text-indigo-600 dark:text-indigo-300' : 'text-indigo-500'}`} />
+            <span>{lang === 'ru' ? 'Контроль сканов (eBA Архив)' : 'Evrak Skan Kontrolü (eBA Arşiv)'}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+              {scanTabCounts.total.toLocaleString('tr-TR')}
             </span>
           </button>
         </div>
 
-        <div className="text-[11px] text-slate-500 dark:text-slate-400 px-3 hidden lg:flex items-center gap-1.5 font-medium">
+        <div className="text-[11px] text-slate-500 dark:text-slate-400 px-3 hidden xl:flex items-center gap-1.5 font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
           <span>{lang === 'ru' ? 'Аналитика соответствия законодательству РФ' : 'RF Mevzuat & Operasyonel Uyumluluk Analitiği'}</span>
         </div>
@@ -271,6 +290,11 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
 
       {complianceSubTab === 'standby' ? (
         <StandbyComplianceView onNavigateToPersonnel={onNavigateToPersonnel} />
+      ) : complianceSubTab === 'scans' ? (
+        <DocumentScanControlView
+          onNavigateToPersonnel={onNavigateToPersonnel}
+          onLoadedMeta={(total, missing) => setScanTabCounts({ total, missing })}
+        />
       ) : (
         <>
           {/* TOP HEADER CARD */}

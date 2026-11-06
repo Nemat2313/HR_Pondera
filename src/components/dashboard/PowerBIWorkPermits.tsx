@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { ShieldCheck, FileSpreadsheet } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -129,9 +129,21 @@ export default function PowerBIWorkPermits({
         : selectedPermit
       : internalSelectedKey;
 
-  const data = permits && permits.length > 0 ? permits : DEFAULT_PERMIT_DATA;
+  const data = useMemo(
+    () => (permits && permits.length > 0 ? permits : DEFAULT_PERMIT_DATA),
+    [permits]
+  );
   const sumOfPermits = data.reduce((acc, d) => acc + d.count, 0);
   const grandTotal = sumOfPermits > 0 ? sumOfPermits : totalCount > 0 ? totalCount : 5364;
+
+  const [pieAnimActive, setPieAnimActive] = useState(true);
+  const permitSignature = `${grandTotal}-${data.map((d) => `${d.key}:${d.count}`).join(',')}`;
+
+  useEffect(() => {
+    setPieAnimActive(true);
+    const timer = setTimeout(() => setPieAnimActive(false), 1250);
+    return () => clearTimeout(timer);
+  }, [permitSignature]);
 
   // Active display item in center of donut
   const activeCenterItem = hoveredItem || (selectedKey ? data.find((d) => d.key === selectedKey) : null);
@@ -286,7 +298,10 @@ export default function PowerBIWorkPermits({
               nameKey="name"
               label={renderCustomLabel}
               labelLine={false}
-              isAnimationActive={false}
+              isAnimationActive={pieAnimActive}
+              animationBegin={220}
+              animationDuration={900}
+              animationEasing="ease-out"
               onClick={(entry) => handleSliceClick(entry)}
               onMouseEnter={(_, index) => setHoveredItem(data[index])}
               onMouseLeave={() => setHoveredItem(null)}

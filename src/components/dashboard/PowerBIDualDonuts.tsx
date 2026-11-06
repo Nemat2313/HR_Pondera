@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Briefcase, Globe2, FileSpreadsheet, Users2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -252,6 +252,17 @@ export default function PowerBIDualDonuts({
   onOpenPermitDetail,
 }: PowerBIDualDonutsProps) {
   const { lang, translateVal } = useLanguage();
+  const [pieAnimActive, setPieAnimActive] = useState(true);
+
+  const dataSignature = `${totalCount}-${collarData.map((c) => c.count).join(',')}-${categoryData
+    .map((c) => c.count)
+    .join(',')}`;
+
+  useEffect(() => {
+    setPieAnimActive(true);
+    const timer = setTimeout(() => setPieAnimActive(false), 1150);
+    return () => clearTimeout(timer);
+  }, [dataSignature]);
 
   const formatShortLabel = (rawLabel: string) => {
     if (lang === 'ru') {
@@ -400,7 +411,10 @@ export default function PowerBIDualDonuts({
                 nameKey="label"
                 label={createExternalCalloutRenderer(COLLAR_COLORS)}
                 labelLine={false}
-                isAnimationActive={false}
+                isAnimationActive={pieAnimActive}
+                animationBegin={40}
+                animationDuration={860}
+                animationEasing="ease-out"
                 onClick={(entry) => onSelectSlice && onSelectSlice('collar', entry.label)}
                 className="cursor-pointer focus:outline-none"
                 style={{ filter: 'url(#donutShadowCollar)' }}
@@ -500,7 +514,10 @@ export default function PowerBIDualDonuts({
                 nameKey="label"
                 label={createExternalCalloutRenderer(CATEGORY_COLORS)}
                 labelLine={false}
-                isAnimationActive={false}
+                isAnimationActive={pieAnimActive}
+                animationBegin={140}
+                animationDuration={880}
+                animationEasing="ease-out"
                 onClick={(entry) => onSelectSlice && onSelectSlice('category', entry.label)}
                 className="cursor-pointer focus:outline-none"
                 style={{ filter: 'url(#donutShadowCat)' }}
