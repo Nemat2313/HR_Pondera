@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
 import {
   computeZupVsRealReconciliation,
+  extractZupReportDate,
   parseZupWorksheetRows,
   saveZupRecordsToDb,
 } from '@/lib/zupReconciliation';
@@ -12,18 +13,6 @@ import { checkAndImportZupAutoFolder, sendReportEmailById } from '@/lib/emailNot
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function extractReportDateFromFileName(fileName: string, fallback = '29.10.2026'): string {
-  const mFull = fileName.match(/(\d{2})[._-](\d{2})[._-](\d{4})/);
-  if (mFull) {
-    return `${mFull[1]}.${mFull[2]}.${mFull[3]}`;
-  }
-  const mShort = fileName.match(/(\d{2})\.(\d{2})(?!\d)/);
-  if (mShort) {
-    return `${mShort[1]}.${mShort[2]}.2026`;
-  }
-  return fallback;
-}
 
 export async function GET() {
   try {
@@ -114,13 +103,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const reportDate = explicitDate || extractReportDateFromFileName(file.name, '29.10.2026');
+    const reportDate = explicitDate || extractZupReportDate(file.name, rawRows, '06.11.2026');
     const db = getDb();
     saveZupRecordsToDb(db, parsedRecords, reportDate, file.name);
 
     const updatedData = computeZupVsRealReconciliation(db);
     return NextResponse.json({
       ...updatedData,
+      uploadedCount: parsedRecords.length,
+      reportDate,
       uploadMessage: `1C ZUP Resmi Personel Listesi (${parsedRecords.length.toLocaleString('tr-TR')} kayıt - ${reportDate}) başarıyla yüklendi ve karşılaştırıldı.`,
     });
   } catch (err: any) {

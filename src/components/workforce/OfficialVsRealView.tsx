@@ -53,6 +53,9 @@ interface ZupMetadata {
   zupSourceFile: string;
   zupLastUpdated: string;
   isZupOutdated: boolean;
+  hasZupPassportColumn?: boolean;
+  hasZupInnColumn?: boolean;
+  hasZupDepartmentColumn?: boolean;
 }
 
 interface ZupDiscrepancyCounts {
@@ -156,6 +159,10 @@ interface AuditRecord {
   firma: string;
   gorev: string;
   zup_position?: string;
+  zup_department?: string;
+  zup_department_tr?: string;
+  zup_department_ru?: string;
+  zup_work_state?: string;
   eba_status: string;
   zup_status: string;
   eba_permit: string;
@@ -264,12 +271,14 @@ export default function OfficialVsRealView() {
       const json = await res.json();
       if (json?.success) {
         setData(json);
+        const countNum = Number(json.uploadedCount ?? json.summary?.zupOfficialTotal ?? 0);
+        const repDate = json.reportDate || json.metadata?.zupDate || '';
         setBannerMessage({
           type: 'success',
           text:
             lang === 'ru'
-              ? `Список 1С ЗУП успешно загружен (${json.uploadedCount} сотр., дата: ${json.reportDate}). Сверка обновлена!`
-              : `1C ZUP resmi personel listesi başarıyla yüklendi (${json.uploadedCount.toLocaleString('tr-TR')} personel, Tarih: ${json.reportDate}). Karşılaştırma güncellendi!`,
+              ? `Список 1С ЗУП успешно загружен (${countNum.toLocaleString('ru-RU')} сотр., дата: ${repDate}). Сверка обновлена!`
+              : `1C ZUP resmi personel listesi başarıyla yüklendi (${countNum.toLocaleString('tr-TR')} personel, Tarih: ${repDate}). Karşılaştırma güncellendi!`,
         });
       } else {
         setBannerMessage({
@@ -391,7 +400,7 @@ export default function OfficialVsRealView() {
       }
 
       if (q) {
-        const hay = `${r.sicil_no} ${r.zup_tabel_no} ${r.name} ${r.kiril_name} ${r.uyruk} ${r.region} ${r.proje_adi} ${r.firma} ${r.eba_passport} ${r.zup_passport} ${r.eba_inn} ${r.zup_inn}`.toLowerCase();
+        const hay = `${r.sicil_no} ${r.zup_tabel_no} ${r.name} ${r.kiril_name} ${r.uyruk} ${r.region} ${r.proje_adi} ${r.firma} ${r.zup_department || ''} ${r.zup_department_tr || ''} ${r.eba_passport} ${r.zup_passport} ${r.eba_inn} ${r.zup_inn}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
 
@@ -451,7 +460,7 @@ export default function OfficialVsRealView() {
       {
         Metrik: 'Realde (Pondera Ana Kadro) Aktif Olup 1C ZUPta Olmayan',
         Deger: s.realActiveNotInZupMainFirm,
-        Aciklama: `29.10 sonrası yeni işe giren: ${s.realActiveNotInZupRecentHire}`,
+        Aciklama: `${data.metadata.zupDate.slice(0, 5)} sonrası yeni işe giren: ${s.realActiveNotInZupRecentHire}`,
       },
       {
         Metrik: 'Realde (Taşeron) Aktif Olup 1C ZUPta Olmayan',
@@ -491,7 +500,7 @@ export default function OfficialVsRealView() {
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), '1_Genel_Mutabakat');
 
-    // Sheet 2: ZUP Active but Real Exited (145)
+    // Sheet 2: ZUP Active but Real Exited
     const exitedInReal = data.records
       .filter((r) => r.category === 'ZUP_ACTIVE_REAL_EXIT')
       .map((r) => ({
@@ -502,6 +511,8 @@ export default function OfficialVsRealView() {
         Uyruk: r.uyruk,
         Bölge: r.region,
         Proje: r.proje_adi,
+        '1C Resmi Şube (Подразделение)': r.zup_department_tr || r.zup_department || '—',
+        '1C Durum (Состояние)': r.zup_work_state || 'Работа',
         Firma: r.firma,
         'eBA Durum': r.eba_status,
         'eBA Çıkış Tarihi': r.eba_exit_date,
@@ -627,8 +638,8 @@ export default function OfficialVsRealView() {
       id: 'REAL_ACTIVE_NO_ZUP_MAIN',
       titleTr: "Pondera Ana Kadro / ZUP'ta Yok",
       titleRu: 'Основной штат Pondera / Нет в ЗУП',
-      subTr: `${summary.realActiveNotInZupRecentHire} kişi 29.10 sonrası yeni giriş`,
-      subRu: `${summary.realActiveNotInZupRecentHire} чел. приняты после 29.10`,
+      subTr: `${summary.realActiveNotInZupRecentHire} kişi ${metadata.zupDate.slice(0, 5)} sonrası yeni giriş`,
+      subRu: `${summary.realActiveNotInZupRecentHire} чел. приняты после ${metadata.zupDate.slice(0, 5)}`,
       count: dc.missingInZupMainFirm,
       tone: 'rose',
     },
@@ -645,8 +656,14 @@ export default function OfficialVsRealView() {
       id: 'PASSPORT_DIFF',
       titleTr: 'Pasaport Numarası Farklı',
       titleRu: 'Расхождение № паспорта',
-      subTr: 'ZUP ve eBA pasaport no uyuşmayanlar',
-      subRu: 'Номера паспортов в ЗУП и eBA не совпадают',
+      subTr:
+        metadata.hasZupPassportColumn === false
+          ? 'Mevcut ZUP raporunda Pasaport sütunu yok'
+          : 'ZUP ve eBA pasaport no uyuşmayanlar',
+      subRu:
+        metadata.hasZupPassportColumn === false
+          ? 'В текущей выгрузке ЗУП нет столбца Паспорт'
+          : 'Номера паспортов в ЗУП и eBA не совпадают',
       count: dc.passportMismatch,
       tone: 'amber',
     },
@@ -663,8 +680,14 @@ export default function OfficialVsRealView() {
       id: 'INN_DIFF',
       titleTr: 'İNN Numarası Uyuşmazlığı',
       titleRu: 'Несовпадение ИНН',
-      subTr: `+${dc.missingInnInEba} kişide eBA İNN alanı boş`,
-      subRu: `+у ${dc.missingInnInEba} чел. пустой ИНН в eBA`,
+      subTr:
+        metadata.hasZupInnColumn === false
+          ? 'Mevcut ZUP raporunda İNN sütunu yok'
+          : `+${dc.missingInnInEba} kişide eBA İNN alanı boş`,
+      subRu:
+        metadata.hasZupInnColumn === false
+          ? 'В текущей выгрузке ЗУП нет столбца ИНН'
+          : `+у ${dc.missingInnInEba} чел. пустой ИНН в eBA`,
       count: dc.innMismatch,
       tone: 'amber',
     },
@@ -2202,6 +2225,11 @@ export default function OfficialVsRealView() {
                       {/* Region / Project / Firma */}
                       <td className="py-2.5 px-3">
                         <div className="text-slate-800 dark:text-slate-200">{row.region}</div>
+                        {(row.zup_department_tr || row.zup_department_ru) && (
+                          <div className="text-[10.5px] text-indigo-600 dark:text-indigo-400 truncate max-w-[195px]">
+                            1C: {lang === 'ru' ? row.zup_department_ru : row.zup_department_tr}
+                          </div>
+                        )}
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
                           {row.firma}
                         </div>

@@ -25,6 +25,71 @@ export interface ZupOfficialRecord {
   doc_dept_code: string;
   doc_issue_date: string;
   schedule: string;
+  zup_department?: string;
+  work_state?: string;
+  insured_status?: string;
+}
+
+export function extractZupReportDate(
+  fileName: string,
+  rawRows?: any[][],
+  fallback = '06.11.2026'
+): string {
+  const cleanName = String(fileName || '').replace(/\.[^.]+$/, '');
+  // Match DD.MM.YYYY, DD_MM_YYYY, DD MM YYYY, or typo DD MM 206 -> 2026
+  const mFull = cleanName.match(/(\d{2})[\s._-]+(\d{2})[\s._-]+(20\d{2}|20\d)/);
+  if (mFull) {
+    const dd = mFull[1];
+    const mm = mFull[2];
+    const rawYr = mFull[3];
+    const yyyy = rawYr === '206' ? '2026' : rawYr.length === 3 ? `202${rawYr[2]}` : rawYr;
+    return `${dd}.${mm}.${yyyy}`;
+  }
+  const mShort = cleanName.match(/(\d{2})[._-](\d{2})(?!\d)/);
+  if (mShort) {
+    return `${mShort[1]}.${mShort[2]}.2026`;
+  }
+  if (rawRows && rawRows.length > 0) {
+    for (let i = 0; i < Math.min(10, rawRows.length); i++) {
+      const line = (rawRows[i] || []).map((c) => String(c || '')).join(' ');
+      const mHeader = line.match(/(\d{2})\.(\d{2})\.(20\d{2})/);
+      if (mHeader) {
+        return `${mHeader[1]}.${mHeader[2]}.${mHeader[3]}`;
+      }
+    }
+  }
+  return fallback;
+}
+
+export function formatZupBranchShort(rawDept?: string | null, lang: 'tr' | 'ru' = 'tr'): string {
+  const s = String(rawDept || '').trim();
+  if (!s) return '';
+  const low = s.toLowerCase();
+  if (low.includes('основное подразделение')) {
+    return lang === 'ru' ? 'Основное (Офис)' : 'Merkez (Основное)';
+  }
+  if (low.includes('казань')) {
+    return lang === 'ru' ? 'ОП г. Казань' : 'Kazan (ОП)';
+  }
+  if (low.includes('тобольск')) {
+    return lang === 'ru' ? 'ОП Тобольск / ДГП-2' : 'Tobolsk / DGP-2 (ОП)';
+  }
+  if (low.includes('эп-300') || low.includes('эп 300')) {
+    return lang === 'ru' ? 'ОП Нижнекамск / ЭП-300' : 'Nijnekamsk / EP-300 (ОП)';
+  }
+  if (low.includes('полистерол') || low.includes('полистирол')) {
+    return lang === 'ru' ? 'ОП Нижнекамск / Полистерол' : 'Nijnekamsk / Polisterol (ОП)';
+  }
+  if (low.includes('нижнекамск')) {
+    return lang === 'ru' ? 'ОП г. Нижнекамск' : 'Nijnekamsk (ОП)';
+  }
+  if (low.includes('усть-луга') || low.includes('кингисепп')) {
+    return lang === 'ru' ? 'ОП Усть-Луга' : 'Ust-Luga (ОП)';
+  }
+  if (low.includes('свободный') || low.includes('агхк')) {
+    return lang === 'ru' ? 'ОП Свободный (АГХК)' : 'Svobodniy / AGHK (ОП)';
+  }
+  return s.replace(/^Обособленное подразделение\s*/i, 'ОП ').trim();
 }
 
 const CITIZENSHIP_RU_TO_TR: Record<string, string> = {
@@ -114,13 +179,17 @@ export function mapZupTaxStatusToPermitCategory(taxStatus?: string | null): stri
   if (ts.includes('ЕАЭС') || ts.includes('EAES')) {
     return 'EAES';
   }
-  if (ts.includes('РЕЗИДЕНТ') && !ts.includes('НЕРЕЗИДЕНТ')) {
+  if (
+    ts.includes('РЕЗИДЕНТ') &&
+    !ts.includes('НЕРЕЗИДЕНТ') &&
+    !ts.includes('НЕ ЯВЛЯЮЩ')
+  ) {
     return 'RESIDENT';
   }
   return 'QUOTA_RNR';
 }
 
-export function ensureZupTableAndSeed(db: any): void {
+function ensureZupSchemaColumns(db: any): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS zup_official_personnel (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,13 +212,39 @@ export function ensureZupTableAndSeed(db: any): void {
       doc_issued_by TEXT,
       doc_dept_code TEXT,
       doc_issue_date TEXT,
-      schedule TEXT
+      schedule TEXT,
+      zup_department TEXT DEFAULT '',
+      work_state TEXT DEFAULT '',
+      insured_status TEXT DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_zup_tabel ON zup_official_personnel(tabel_no);
     CREATE INDEX IF NOT EXISTS idx_zup_norm_sicil ON zup_official_personnel(norm_sicil);
   `);
 
+  const existingCols = new Set(
+    (db.prepare('PRAGMA table_info(zup_official_personnel)').all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!existingCols.has('zup_department')) {
+    db.exec("ALTER TABLE zup_official_personnel ADD COLUMN zup_department TEXT DEFAULT '';");
+  }
+  if (!existingCols.has('work_state')) {
+    db.exec("ALTER TABLE zup_official_personnel ADD COLUMN work_state TEXT DEFAULT '';");
+  }
+  if (!existingCols.has('insured_status')) {
+    db.exec("ALTER TABLE zup_official_personnel ADD COLUMN insured_status TEXT DEFAULT '';");
+  }
+}
+
+export function ensureZupTableAndSeed(db: any): void {
+  ensureZupSchemaColumns(db);
+
   const countRow = db.prepare('SELECT COUNT(*) as c FROM zup_official_personnel').get() as { c: number };
+  const validTabelRow = db
+    .prepare("SELECT COUNT(*) as c FROM zup_official_personnel WHERE TRIM(COALESCE(tabel_no, '')) != ''")
+    .get() as { c: number };
+  const deptCountRow = db
+    .prepare("SELECT COUNT(*) as c FROM zup_official_personnel WHERE TRIM(COALESCE(zup_department, '')) != ''")
+    .get() as { c: number };
   const srcRow = db
     .prepare("SELECT value FROM system_info WHERE key = 'zup_source_file'")
     .get() as { value?: string } | undefined;
@@ -160,14 +255,17 @@ export function ensureZupTableAndSeed(db: any): void {
   const needsReseed =
     !countRow ||
     countRow.c === 0 ||
+    !validTabelRow ||
+    validTabelRow.c === 0 ||
     (srcRow?.value && srcRow.value.includes('???')) ||
-    (countRow.c === 4594 && (!vksCountRow || vksCountRow.c === 0));
+    (countRow.c === 4594 && (!vksCountRow || vksCountRow.c === 0)) ||
+    (srcRow?.value === 'Список сотрудников на 29.10.xlsx' && (!deptCountRow || deptCountRow.c === 0));
 
   if (!needsReseed) {
     return;
   }
 
-  // Auto-seed from data/zup_official_seed.json.gz if table is empty or had mangled encoding
+  // Auto-seed from data/zup_official_seed.json.gz if table is empty, broken, or older seed
   try {
     const seedPath = path.join(process.cwd(), 'data', 'zup_official_seed.json.gz');
     if (!fs.existsSync(seedPath)) return;
@@ -181,19 +279,23 @@ export function ensureZupTableAndSeed(db: any): void {
     const records = (parsed.records || []).map((r) => ({
       ...r,
       permit_category: mapZupTaxStatusToPermitCategory(r.tax_status),
-      citizenship_tr: CITIZENSHIP_RU_TO_TR[String(r.citizenship_ru || '').toUpperCase()] || r.citizenship_tr || r.citizenship_ru,
+      citizenship_tr:
+        CITIZENSHIP_RU_TO_TR[String(r.citizenship_ru || '').toUpperCase()] ||
+        r.citizenship_tr ||
+        r.citizenship_ru ||
+        '',
     }));
     if (records.length === 0) return;
 
     const cleanSource =
       parsed.source_file && !parsed.source_file.includes('???')
         ? parsed.source_file
-        : 'Список сотрудников на 29.10.xlsx';
+        : 'Список сотрудников 06.11.2026.xlsx';
 
     saveZupRecordsToDb(
       db,
       records,
-      parsed.report_date || '29.10.2026',
+      parsed.report_date || '06.11.2026',
       cleanSource
     );
   } catch {}
@@ -205,6 +307,7 @@ export function saveZupRecordsToDb(
   reportDate: string,
   sourceFile: string
 ): void {
+  ensureZupSchemaColumns(db);
   db.exec('BEGIN TRANSACTION;');
   try {
     db.prepare('DELETE FROM zup_official_personnel').run();
@@ -213,8 +316,9 @@ export function saveZupRecordsToDb(
         row_no, fio_kiril, gender, birth_date, tabel_no, norm_sicil,
         position_ru, hire_date, tax_status, permit_category,
         citizenship_ru, citizenship_tr, inn, snils,
-        doc_no, doc_series, doc_issued_by, doc_dept_code, doc_issue_date, schedule
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        doc_no, doc_series, doc_issued_by, doc_dept_code, doc_issue_date, schedule,
+        zup_department, work_state, insured_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const r of records) {
@@ -238,7 +342,10 @@ export function saveZupRecordsToDb(
         r.doc_issued_by || '',
         r.doc_dept_code || '',
         r.doc_issue_date || '',
-        r.schedule || ''
+        r.schedule || '',
+        r.zup_department || '',
+        r.work_state || '',
+        r.insured_status || ''
       );
     }
 
@@ -261,17 +368,125 @@ export function saveZupRecordsToDb(
   gCache.__ponderaZupReconciliationCache = null;
 }
 
+function parseCombined1CDocumentString(rawDoc: string): {
+  doc_series: string;
+  doc_no: string;
+  doc_issue_date: string;
+  doc_issued_by: string;
+} {
+  const s = String(rawDoc || '').trim().replace(/\s+/g, ' ');
+  if (!s) {
+    return { doc_series: '', doc_no: '', doc_issue_date: '', doc_issued_by: '' };
+  }
+
+  let doc_issue_date = '';
+  const mDate = s.match(/(?:от\s*)?(\d{2}\.\d{2}\.\d{4})/i);
+  if (mDate) {
+    doc_issue_date = normalizeDateValue(mDate[1]);
+  }
+
+  let doc_issued_by = '';
+  const mBy = s.match(/выдан[оа]?\s*:?\s*(.+?)(?:\s+код\s+подразделения|\s+\d{2}\.\d{2}\.\d{4}|$)/i);
+  if (mBy) {
+    doc_issued_by = mBy[1].trim();
+  }
+
+  // Strip trailing "от DD.MM.YYYY..." and leading document type names
+  const head = s
+    .replace(/\s+от\s+\d{2}\.\d{2}\.\d{4}.*$/i, '')
+    .replace(/\s+выдан.*$/i, '')
+    .replace(
+      /^(паспорт иностранного гражданина|паспорт гражданина рф|паспорт гражданина|иностранный паспорт|паспорт|вид на жительство|разрешение на временное проживание|удостоверение личности)\s*[:,]?\s*/i,
+      ''
+    )
+    .trim();
+
+  const mSerNo = head.match(/серия\s*([^\s№,]+)\s*(?:№|номер)?\s*([^\s,]+)/i);
+  if (mSerNo) {
+    return {
+      doc_series: mSerNo[1].trim(),
+      doc_no: mSerNo[2].trim(),
+      doc_issue_date,
+      doc_issued_by,
+    };
+  }
+
+  const mRfPass = head.match(/^(\d{2}\s?\d{2})\s+(?:№\s*)?(\d{6})$/);
+  if (mRfPass) {
+    return {
+      doc_series: mRfPass[1].trim(),
+      doc_no: mRfPass[2].trim(),
+      doc_issue_date,
+      doc_issued_by,
+    };
+  }
+
+  const mSplit = head.match(/^([A-Za-zА-Яа-я0-9-]{1,6})\s*(?:№\s*)?([A-Za-z0-9]{5,15})$/);
+  if (mSplit) {
+    return {
+      doc_series: mSplit[1].trim(),
+      doc_no: mSplit[2].trim(),
+      doc_issue_date,
+      doc_issued_by,
+    };
+  }
+
+  const cleaned = head.replace(/^№\s*/, '').trim();
+  return {
+    doc_series: '',
+    doc_no: cleaned,
+    doc_issue_date,
+    doc_issued_by,
+  };
+}
+
 export function parseZupWorksheetRows(rawRows: any[][]): ZupOfficialRecord[] {
   if (!rawRows || rawRows.length < 2) return [];
 
-  // Find header row (usually row 0, containing 'Сотрудник' or 'Табельный')
-  let headerRowIdx = 0;
-  for (let i = 0; i < Math.min(10, rawRows.length); i++) {
-    const rowStr = (rawRows[i] || []).map((c) => String(c || '').toLowerCase()).join(' ');
-    if (rowStr.includes('сотрудник') || rowStr.includes('табельн') || rowStr.includes('sicil')) {
-      headerRowIdx = i;
-      break;
+  // Score candidate header rows across top 40 rows (handles both flat row-0 exports and 1C ZUP 'Штатные сотрудники' reports with metadata/filter rows)
+  let headerRowIdx = -1;
+  let bestScore = 0;
+
+  for (let i = 0; i < Math.min(40, rawRows.length); i++) {
+    const cells = (rawRows[i] || []).map((c) =>
+      String(c || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+    );
+    let score = 0;
+    for (const h of cells) {
+      if (!h || h.length > 55) continue;
+      if (h === 'сотрудник' || h === 'фио' || h === 'физическое лицо' || h === 'tam adı' || h === 'ad soyad') {
+        score += 4;
+      }
+      if (h === 'табельный номер' || h === 'табельный' || h === 'таб. №' || h === 'sicil no') {
+        score += 4;
+      }
+      if (h === 'должность' || h === 'görevi') {
+        score += 2;
+      }
+      if (h.includes('дата приема') || h.includes('дата приёма') || h.includes('işe giriş')) {
+        score += 2;
+      }
+      if (h.includes('статус налогоплательщика') || h.includes('çalışma kart')) {
+        score += 2;
+      }
+      if (h === 'дата рождения' || h === 'doğum tarihi') {
+        score += 1;
+      }
+      if (h === 'состояние' || h.includes('статус застрахованного')) {
+        score += 1;
+      }
     }
+    if (score > bestScore) {
+      bestScore = score;
+      headerRowIdx = i;
+    }
+  }
+
+  if (headerRowIdx === -1 || bestScore < 4) {
+    return [];
   }
 
   const headers = (rawRows[headerRowIdx] || []).map((h) =>
@@ -281,65 +496,155 @@ export function parseZupWorksheetRows(rawRows: any[][]): ZupOfficialRecord[] {
       .replace(/\s+/g, ' ')
   );
 
-  const findCol = (candidates: string[], fallbackIdx: number) => {
+  const findCol = (candidates: string[], excludeSubstrings: string[] = []): number => {
     for (const cand of candidates) {
-      const idx = headers.findIndex((h) => h === cand || h.includes(cand));
-      if (idx !== -1) return idx;
+      const exactIdx = headers.findIndex(
+        (h) => h === cand && !excludeSubstrings.some((ex) => h.includes(ex))
+      );
+      if (exactIdx !== -1) return exactIdx;
     }
-    return fallbackIdx;
+    for (const cand of candidates) {
+      const subIdx = headers.findIndex(
+        (h) =>
+          h.length > 0 &&
+          h.length <= 55 &&
+          h.includes(cand) &&
+          !excludeSubstrings.some((ex) => h.includes(ex))
+      );
+      if (subIdx !== -1) return subIdx;
+    }
+    return -1;
   };
 
-  const idxNo = findCol(['№', 'nomer', 'sira'], 0);
-  const idxFio = findCol(['сотрудник', 'фио', 'tam adı', 'ad soyad'], 1);
-  const idxGender = findCol(['пол', 'cinsiyet'], 2);
-  const idxDob = findCol(['дата рождения', 'doğum tarihi'], 3);
-  const idxTabel = findCol(['табельный номер', 'табельный', 'sicil no'], 4);
-  const idxPos = findCol(['должность', 'görevi'], 5);
-  const idxHire = findCol(['дата приема', 'işe giriş'], 6);
-  const idxTax = findCol(['статус налогоплательщика', 'çalışma kart türü'], 7);
-  const idxCit = findCol(['страна гражданства', 'гражданство', 'uyruk'], 8);
-  const idxInn = findCol(['инн', 'inn'], 9);
-  const idxSnils = findCol(['снилс', 'cnils', 'snils'], 10);
-  const idxDocNo = findCol(['удостоверение.номер', 'номер паспорта', 'pasaport no'], 11);
-  const idxDocSer = findCol(['удостоверение.серия', 'серия паспорта', 'pasaport seri'], 12);
-  const idxDocBy = findCol(['удостоверение.кем выдан', 'кем выдан'], 13);
-  const idxDocCode = findCol(['удостоверение.код подразделения', 'код подразделения'], 14);
-  const idxDocDate = findCol(['удостоверение.дата выдачи', 'дата выдачи'], 15);
-  const idxSched = findCol(['график работы', 'график'], 16);
+  const cellStr = (row: any[], idx: number): string =>
+    idx >= 0 && idx < row.length ? String(row[idx] ?? '').trim() : '';
+
+  const cellRaw = (row: any[], idx: number): any =>
+    idx >= 0 && idx < row.length ? row[idx] : undefined;
+
+  const idxNo = findCol(['№', 'п/п', 'nomer', 'sira']);
+  const idxFio = findCol(
+    ['сотрудник', 'фио', 'физическое лицо', 'tam adı', 'ad soyad'],
+    ['всего сотрудников', 'работающие сотрудники']
+  );
+  const idxGender = findCol(['пол', 'cinsiyet'], ['полис', 'неполн', 'дополн']);
+  const idxDob = findCol(['дата рождения', 'doğum tarihi'], ['дней до']);
+  const idxTabel = findCol(['табельный номер', 'табельный', 'таб. №', 'таб. номер', 'sicil no']);
+  const idxPos = findCol(['должность', 'позиция штатного', 'görevi']);
+  const idxHire = findCol(['дата приема', 'дата приёма', 'işe giriş']);
+  const idxTax = findCol(['статус налогоплательщика', 'çalışma kart türü']);
+  const idxCit = findCol(['страна гражданства', 'гражданство', 'uyruk']);
+  const idxInn = findCol(['инн', 'inn'], ['иностран']);
+  const idxSnils = findCol(['снилс', 'страховой номер', 'cnils', 'snils']);
+  const idxDocNo = findCol(['удостоверение.номер', 'документ.номер', 'номер паспорта', 'pasaport no']);
+  const idxDocSer = findCol(['удостоверение.серия', 'документ.серия', 'серия паспорта', 'pasaport seri']);
+  const idxDocCombined = findCol(
+    [
+      'документ, удостоверяющий личность',
+      'документ удостоверяющий личность',
+      'удостоверение личности',
+      'паспортные данные',
+      'паспорт',
+    ],
+    ['номер', 'серия', 'кем выдан', 'код подразделения', 'дата выдачи']
+  );
+  const idxDocBy = findCol(['удостоверение.кем выдан', 'документ.кем выдан', 'кем выдан']);
+  const idxDocCode = findCol(['удостоверение.код подразделения', 'документ.код подразделения', 'код подразделения']);
+  const idxDocDate = findCol(['удостоверение.дата выдачи', 'документ.дата выдачи', 'дата выдачи']);
+  const idxSched = findCol(['график работы', 'график']);
+  const idxDept = findCol(
+    ['подразделение', 'обособленное подразделение', 'departman', 'şube'],
+    ['код подразделения']
+  );
+  const idxState = findCol(['состояние', 'durum']);
+  const idxInsured = findCol(['статус застрахованного лица', 'статус застрахованного']);
+
+  if (idxFio === -1 && idxTabel === -1) {
+    return [];
+  }
 
   const records: ZupOfficialRecord[] = [];
+  let currentGroupDepartment = '';
+
   for (let i = headerRowIdx + 1; i < rawRows.length; i++) {
     const r = rawRows[i];
     if (!r || !Array.isArray(r)) continue;
-    const fio = String(r[idxFio] ?? '').trim().replace(/\s+/g, ' ');
-    const tabel = String(r[idxTabel] ?? '').trim();
-    if (!fio && !tabel) continue;
 
-    const taxStatus = String(r[idxTax] ?? '').trim();
-    const citRu = String(r[idxCit] ?? '').trim().toUpperCase();
+    const col0 = String(r[0] ?? '').trim().replace(/\s+/g, ' ');
+    const fio = cellStr(r, idxFio).replace(/\s+/g, ' ');
+    const tabel = cellStr(r, idxTabel);
+
+    const col0Low = col0.toLowerCase();
+    const fioLow = fio.toLowerCase();
+
+    // Ignore summary / footer rows ('Итого', 'Всего сотрудников: ...')
+    if (
+      !tabel &&
+      (col0Low.startsWith('итого') ||
+        col0Low.startsWith('всего') ||
+        fioLow.startsWith('итого') ||
+        fioLow.startsWith('всего'))
+    ) {
+      continue;
+    }
+
+    // Track 1C ZUP 'Подразделение' group header rows (where Col 0 holds the branch name and FIO/Tabel are empty)
+    if (col0 && !/^\d+([.,]\d+)?$/.test(col0) && (!fio || fio === col0) && !tabel) {
+      currentGroupDepartment = col0;
+      continue;
+    }
+
+    if (!fio && !tabel) continue;
+    if (fioLow === 'сотрудник' || tabel.toLowerCase().includes('табельн')) continue;
+
+    const taxStatus = cellStr(r, idxTax);
+    const insuredStatus = cellStr(r, idxInsured);
+    let citRu = cellStr(r, idxCit).toUpperCase();
+    if (!citRu && insuredStatus.toLowerCase().startsWith('граждане рф')) {
+      citRu = 'РОССИЯ';
+    }
     const citTr = CITIZENSHIP_RU_TO_TR[citRu] || citRu;
 
+    let docNo = cellStr(r, idxDocNo);
+    let docSeries = cellStr(r, idxDocSer);
+    let docIssuedBy = cellStr(r, idxDocBy);
+    let docIssueDate = normalizeDateValue(cellRaw(r, idxDocDate));
+
+    if (!docNo && idxDocCombined >= 0) {
+      const parsedDoc = parseCombined1CDocumentString(cellStr(r, idxDocCombined));
+      docNo = parsedDoc.doc_no;
+      docSeries = docSeries || parsedDoc.doc_series;
+      docIssuedBy = docIssuedBy || parsedDoc.doc_issued_by;
+      docIssueDate = docIssueDate || parsedDoc.doc_issue_date;
+    }
+
+    const rowDept = cellStr(r, idxDept) || currentGroupDepartment;
+    const workState = cellStr(r, idxState);
+
     records.push({
-      row_no: Number(r[idxNo]) || records.length + 1,
+      row_no: records.length + 1,
       fio_kiril: fio,
-      gender: String(r[idxGender] ?? '').trim(),
-      birth_date: normalizeDateValue(r[idxDob]),
+      gender: cellStr(r, idxGender),
+      birth_date: normalizeDateValue(cellRaw(r, idxDob)),
       tabel_no: tabel,
       norm_sicil: normalizeSicilDigits(tabel),
-      position_ru: String(r[idxPos] ?? '').trim(),
-      hire_date: normalizeDateValue(r[idxHire]),
+      position_ru: cellStr(r, idxPos),
+      hire_date: normalizeDateValue(cellRaw(r, idxHire)),
       tax_status: taxStatus,
       permit_category: mapZupTaxStatusToPermitCategory(taxStatus),
       citizenship_ru: citRu,
       citizenship_tr: citTr,
-      inn: normalizeDigitsOnly(String(r[idxInn] ?? '')),
-      snils: String(r[idxSnils] ?? '').trim(),
-      doc_no: String(r[idxDocNo] ?? '').trim(),
-      doc_series: String(r[idxDocSer] ?? '').trim(),
-      doc_issued_by: String(r[idxDocBy] ?? '').trim(),
-      doc_dept_code: String(r[idxDocCode] ?? '').trim(),
-      doc_issue_date: normalizeDateValue(r[idxDocDate]),
-      schedule: String(r[idxSched] ?? '').trim(),
+      inn: normalizeDigitsOnly(cellStr(r, idxInn)),
+      snils: cellStr(r, idxSnils),
+      doc_no: docNo,
+      doc_series: docSeries,
+      doc_issued_by: docIssuedBy,
+      doc_dept_code: cellStr(r, idxDocCode),
+      doc_issue_date: docIssueDate,
+      schedule: cellStr(r, idxSched),
+      zup_department: rowDept,
+      work_state: workState,
+      insured_status: insuredStatus,
     });
   }
 
@@ -367,15 +672,17 @@ export function computeZupVsRealReconciliation(db: any) {
     sysMap[r.key] = r.value;
   }
 
-  const ebaDate = sysMap['data_freshness'] || '31.10.2026';
-  const zupDate = sysMap['zup_data_freshness'] || '29.10.2026';
-  const rawZupSource = sysMap['zup_source_file'] || 'Список сотрудников на 29.10.xlsx';
+  const ebaDate = sysMap['data_freshness'] || '03.11.2026';
+  const zupDate = sysMap['zup_data_freshness'] || '06.11.2026';
+  const rawZupSource = sysMap['zup_source_file'] || 'Список сотрудников 06.11.2026.xlsx';
   const zupSourceFile = rawZupSource.includes('???')
-    ? 'Список сотрудников на 29.10.xlsx'
+    ? 'Список сотрудников 06.11.2026.xlsx'
     : rawZupSource;
   const zupLastUpdated = sysMap['zup_last_updated'] || '';
+  const zupCutoffIso = normalizeDateValue(zupDate) || '2026-11-06';
+  const zupShortDate = zupDate.slice(0, 5);
 
-  const cacheKey = `${pVer.cnt}:${pVer.maxId}:${zVer.cnt}:${zVer.maxId}:${ebaDate}:${zupDate}`;
+  const cacheKey = `${pVer.cnt}:${pVer.maxId}:${zVer.cnt}:${zVer.maxId}:${ebaDate}:${zupDate}:${zupLastUpdated}`;
   const gCache = globalThis as unknown as {
     __ponderaZupReconciliationCache?: { key: string; data: any };
   };
@@ -540,6 +847,12 @@ export function computeZupVsRealReconciliation(db: any) {
 
     if (!matchedEba) {
       zupOnlyNotInRealDB++;
+      const zupDeptTr = formatZupBranchShort(zr.zup_department, 'tr');
+      const zupDeptRu = formatZupBranchShort(zr.zup_department, 'ru');
+      const zupActiveLabel =
+        zr.work_state && zr.work_state !== 'Работа'
+          ? `1C ZUP Aktif (${zr.work_state})`
+          : '1C ZUP Aktif';
       auditRecords.push({
         id: `zup-only-${zr.row_no}`,
         category: 'ZUP_ONLY_NO_EBA',
@@ -550,18 +863,22 @@ export function computeZupVsRealReconciliation(db: any) {
         zup_tabel_no: zr.tabel_no,
         name: zr.fio_kiril,
         kiril_name: zr.fio_kiril,
-        uyruk: zr.citizenship_tr || zr.citizenship_ru,
-        region: '1C ZUP Kaydı',
+        uyruk: zr.citizenship_tr || zr.citizenship_ru || '—',
+        region: zupDeptTr || '1C ZUP Kaydı',
         proje_adi: 'eBA Kaydı Yok',
         firma: 'PONDERA (1C ZUP)',
         gorev: zr.position_ru,
+        zup_department: zr.zup_department || '',
+        zup_department_tr: zupDeptTr,
+        zup_department_ru: zupDeptRu,
+        zup_work_state: zr.work_state || '',
         eba_status: 'Kaydı Yok',
-        zup_status: '1C ZUP Aktif',
+        zup_status: zupActiveLabel,
         eba_permit: '—',
         zup_permit: zr.permit_category,
         zup_tax_status: zr.tax_status,
         eba_passport: '—',
-        zup_passport: `${zr.doc_series ? zr.doc_series + ' ' : ''}${zr.doc_no}`.trim(),
+        zup_passport: `${zr.doc_series ? zr.doc_series + ' ' : ''}${zr.doc_no}`.trim() || '—',
         eba_inn: '—',
         zup_inn: zr.inn || '—',
         eba_hire_date: '—',
@@ -736,6 +1053,13 @@ export function computeZupVsRealReconciliation(db: any) {
         ? 'Orta'
         : 'Dusuk';
 
+    const zupDeptTr = formatZupBranchShort(zr.zup_department, 'tr');
+    const zupDeptRu = formatZupBranchShort(zr.zup_department, 'ru');
+    const zupActiveLabel =
+      zr.work_state && zr.work_state !== 'Работа'
+        ? `1C ZUP Aktif (${zr.work_state})`
+        : '1C ZUP Aktif';
+
     auditRecords.push({
       id: `matched-${matchedEba.id}-${zr.row_no}`,
       category,
@@ -746,14 +1070,18 @@ export function computeZupVsRealReconciliation(db: any) {
       zup_tabel_no: zr.tabel_no,
       name: matchedEba.ad_soyad || zr.fio_kiril,
       kiril_name: zr.fio_kiril || matchedEba.tam_adi_kiril || '',
-      uyruk: matchedEba.uyruk || zr.citizenship_tr,
+      uyruk: matchedEba.uyruk || zr.citizenship_tr || '—',
       region: matchedEba.region || 'Belirtilmemiş',
       proje_adi: matchedEba.proje_adi || 'Belirtilmemiş',
       firma: matchedEba.firma || 'PONDERA',
       gorev: matchedEba.gorevi || zr.position_ru,
       zup_position: zr.position_ru,
+      zup_department: zr.zup_department || '',
+      zup_department_tr: zupDeptTr,
+      zup_department_ru: zupDeptRu,
+      zup_work_state: zr.work_state || '',
       eba_status: isInterSiteTransfer && !isEbaActive ? `Şantiye Transferi (${exitReasonStr || 'Transfer'})` : matchedEba.genel_durum,
-      zup_status: '1C ZUP Aktif',
+      zup_status: zupActiveLabel,
       eba_permit: ebaPermit,
       zup_permit: zr.permit_category,
       zup_tax_status: zr.tax_status,
@@ -858,8 +1186,8 @@ export function computeZupVsRealReconciliation(db: any) {
       } else {
         realActiveNotInZupTotal++;
         const hireIso = normalizeDateValue(r.ise_giris_tarihi);
-        const isAfter29Oct = hireIso >= '2026-10-29';
-        if (isAfter29Oct) {
+        const isAfterZupDate = Boolean(hireIso && hireIso >= zupCutoffIso);
+        if (isAfterZupDate) {
           realActiveNotInZupRecentHire++;
         }
         if (isMainFirm) {
@@ -886,7 +1214,7 @@ export function computeZupVsRealReconciliation(db: any) {
           risk: isMainFirm ? 'Kritik' : 'Orta',
           matchMethod: 'NONE',
           diffFlags: isMainFirm
-            ? isAfter29Oct
+            ? isAfterZupDate
               ? ['RECENT_HIRE_AFTER_ZUP', 'MISSING_IN_ZUP_MAIN']
               : ['MISSING_IN_ZUP_MAIN']
             : ['SUBCON_NOT_IN_ZUP'],
@@ -900,6 +1228,10 @@ export function computeZupVsRealReconciliation(db: any) {
           firma: r.firma || '—',
           gorev: r.gorevi || '—',
           zup_position: '—',
+          zup_department: '',
+          zup_department_tr: '',
+          zup_department_ru: '',
+          zup_work_state: '',
           eba_status: 'Mevcut (Aktif)',
           zup_status: '1C ZUP Kaydı Yok',
           eba_permit: ebaPermit,
@@ -914,15 +1246,15 @@ export function computeZupVsRealReconciliation(db: any) {
           eba_exit_date: '—',
           diffDetailsTr: isMainFirm
             ? [
-                isAfter29Oct
-                  ? `Pondera Ana Kadroda aktif (Giriş: ${formatIsoToDisplay(hireIso)} — 29.10 ZUP listesinden sonra işe girmiş).`
+                isAfterZupDate
+                  ? `Pondera Ana Kadroda aktif (Giriş: ${formatIsoToDisplay(hireIso)} — ${zupShortDate} ZUP listesinden sonra işe girmiş).`
                   : `Pondera Ana Kadroda (${r.firma}) sahada aktif görünüyor ancak 1C ZUP resmi listesinde kaydı yok!`,
               ]
             : [`Taşeron firma (${r.firma || 'Taşeron'}) personeli — Pondera 1C ZUP bordrosu dışında.`],
           diffDetailsRu: isMainFirm
             ? [
-                isAfter29Oct
-                  ? `Основной штат Pondera (Принят: ${formatIsoToDisplay(hireIso)} — после выгрузки ЗУП от 29.10).`
+                isAfterZupDate
+                  ? `Основной штат Pondera (Принят: ${formatIsoToDisplay(hireIso)} — после выгрузки ЗУП от ${zupShortDate}).`
                   : `В основном штате Pondera (${r.firma}) активен в eBA, но отсутствует в 1С ЗУП!`,
               ]
             : [`Сотрудник субподрядчика (${r.firma || 'Субподряд'}) — вне штата 1С ЗУП Pondera.`],
@@ -1051,6 +1383,12 @@ export function computeZupVsRealReconciliation(db: any) {
   const matchedActiveRateMainFirm =
     realActiveMainFirm > 0 ? Number(((matchedActiveMainFirm / realActiveMainFirm) * 100).toFixed(1)) : 0;
 
+  const ebaIso = normalizeDateValue(ebaDate);
+  const zupIso = normalizeDateValue(zupDate);
+  const hasZupPassportColumn = zupRows.some((r) => Boolean(r.doc_no));
+  const hasZupInnColumn = zupRows.some((r) => Boolean(r.inn));
+  const hasZupDepartmentColumn = zupRows.some((r) => Boolean(r.zup_department));
+
   const result = {
     success: true,
     metadata: {
@@ -1058,7 +1396,12 @@ export function computeZupVsRealReconciliation(db: any) {
       zupDate,
       zupSourceFile,
       zupLastUpdated,
-      isZupOutdated: zupDate.trim() !== ebaDate.trim(),
+      isZupOutdated: Boolean(
+        ebaIso && zupIso ? zupIso < ebaIso : zupDate.trim() !== ebaDate.trim()
+      ),
+      hasZupPassportColumn,
+      hasZupInnColumn,
+      hasZupDepartmentColumn,
     },
     summary: {
       realActiveTotal,

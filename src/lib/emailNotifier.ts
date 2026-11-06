@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { getDb } from './db';
 import {
   computeZupVsRealReconciliation,
+  extractZupReportDate,
   parseZupWorksheetRows,
   saveZupRecordsToDb,
 } from './zupReconciliation';
@@ -491,7 +492,7 @@ export function buildReportEmailHtml(
             </tr>
             <tr>
               <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>Pondera Ana Kadro Aktif / 1C ZUP'ta Eksik</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #b45309;"><strong>${s.realActiveNotInZupMainFirm} Kişi</strong> (${s.realActiveNotInZupRecentHire} kişi 29.10 sonrası yeni giriş)</td>
+              <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #b45309;"><strong>${s.realActiveNotInZupMainFirm} Kişi</strong> (${s.realActiveNotInZupRecentHire} kişi ${recon.metadata.zupDate.slice(0, 5)} sonrası yeni giriş)</td>
             </tr>
           </table>
 
@@ -676,8 +677,11 @@ export function checkAndImportZupAutoFolder(dbInstance?: any): {
     const parsed = parseZupWorksheetRows(rawRows);
     if (parsed.length === 0) return { imported: false };
 
-    const mShort = latest.name.match(/(\d{2})\.(\d{2})(?!\d)/);
-    const reportDate = mShort ? `${mShort[1]}.${mShort[2]}.2026` : new Date().toLocaleDateString('tr-TR');
+    const reportDate = extractZupReportDate(
+      latest.name,
+      rawRows,
+      new Date().toLocaleDateString('tr-TR')
+    );
 
     saveZupRecordsToDb(db, parsed, reportDate, latest.name);
     db.prepare(`

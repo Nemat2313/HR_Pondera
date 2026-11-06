@@ -1061,7 +1061,7 @@ export async function sendZupVsRealTelegramReport(force = false): Promise<{
 
   const dateWarningLine = meta.isZupOutdated
     ? `⚠️ <b>Not:</b> <i>Real eBA listesi <b>${meta.ebaDate}</b>, 1C ZUP resmi listesi <b>${meta.zupDate}</b> tarihlidir (ZUP listesinin güncellenmesi gerekmektedir).</i>`
-    : `✅ <i>Her iki liste de güncel (${meta.ebaDate}).</i>`;
+    : `✅ <i>1C ZUP Resmi Liste: <b>${meta.zupDate}</b> • eBA Real Liste: <b>${meta.ebaDate}</b></i>`;
 
   const msg = [
     `⚖️ <b>HR Pondera — 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu</b>`,
@@ -1075,7 +1075,7 @@ export async function sendZupVsRealTelegramReport(force = false): Promise<{
     ``,
     `🚨 <b>2. Kadro & Durum Farkları (Kritik Sapmalar):</b>`,
     `• 🔴 <b>1C ZUP'ta Aktif / Real'de ÇIKIŞ Yapılmış:</b> <b>${s.zupActiveButRealExited}</b> kişi <i>(Sahadan ayrılmış, ZUP resmi çıkışı düşülmemiş!)</i>`,
-    `• 🟠 <b>Real Ana Kadroda Aktif / 1C ZUP'ta YOK:</b> <b>${s.realActiveNotInZupMainFirm}</b> kişi <i>(${s.realActiveNotInZupRecentHire} kişi 29.10 sonrası yeni giriş)</i>`,
+    `• 🟠 <b>Real Ana Kadroda Aktif / 1C ZUP'ta YOK:</b> <b>${s.realActiveNotInZupMainFirm}</b> kişi <i>(${s.realActiveNotInZupRecentHire} kişi ${meta.zupDate.slice(0, 5)} sonrası yeni giriş)</i>`,
     `• 🟡 <b>Real Taşeronda Aktif / 1C ZUP Dışı:</b> <b>${s.realActiveNotInZupSubcon}</b> kişi`,
     `• 🟣 <b>Sadece 1C ZUP'ta Var / eBA'da Kaydı Yok:</b> <b>${s.zupOnlyNotInRealDB}</b> kişi`,
     ``,
