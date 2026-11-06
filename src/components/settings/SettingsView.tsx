@@ -167,6 +167,14 @@ export default function SettingsView({
     setActiveSubTab(initialSubTab);
   }, [initialSubTab]);
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('pondera_settings_subtab', activeSubTab);
+    } catch {
+      // ignore
+    }
+  }, [activeSubTab]);
+
   // Mail & Automation state
   const [loadingMail, setLoadingMail] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);

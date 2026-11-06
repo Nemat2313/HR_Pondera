@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import OverviewView from '@/components/dashboard/OverviewView';
+import SettingsView from '@/components/settings/SettingsView';
 import LoginModal from '@/components/auth/LoginModal';
 import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
@@ -24,55 +25,118 @@ function ModuleLoadingFallback({ label = 'Sayfa yükleniyor...' }: { label?: str
   );
 }
 
-const PersonnelListView = dynamic(() => import('@/components/personnel/PersonnelListView'), {
-  loading: () => <ModuleLoadingFallback label="Personel Listesi yükleniyor..." />,
-});
-const SitesView = dynamic(() => import('@/components/sites/SitesView'), {
-  loading: () => <ModuleLoadingFallback label="Şantiye & Proje görünümü yükleniyor..." />,
-});
-const DemographicsView = dynamic(() => import('@/components/demographics/DemographicsView'), {
-  loading: () => <ModuleLoadingFallback label="Demografi & İstatistik yükleniyor..." />,
-});
-const ManagementReportsView = dynamic(() => import('@/components/reports/ManagementReportsView'), {
-  loading: () => <ModuleLoadingFallback label="Yönetim & Turnover raporu yükleniyor..." />,
-});
-const DatabaseManagementView = dynamic(() => import('@/components/database/DatabaseManagementView'), {
-  loading: () => <ModuleLoadingFallback />,
-});
-const UserManagementView = dynamic(() => import('@/components/admin/UserManagementView'), {
-  loading: () => <ModuleLoadingFallback />,
-});
-const ComplianceAnalyticsView = dynamic(() => import('@/components/compliance/ComplianceAnalyticsView'), {
-  loading: () => <ModuleLoadingFallback label="Evrak & Süre Analitiği yükleniyor..." />,
-});
-const GosuslugiVksView = dynamic(() => import('@/components/gosuslugi/GosuslugiVksView'), {
-  loading: () => <ModuleLoadingFallback label="Gosuslugi VKS Bildirim Listesi yükleniyor..." />,
-});
-const GosuslugiAnalyticsView = dynamic(() => import('@/components/gosuslugi/GosuslugiAnalyticsView'), {
-  loading: () => <ModuleLoadingFallback label="VKS İstatistik & Analiz yükleniyor..." />,
-});
-const PoweriseInnovationView = dynamic(() => import('@/components/powerise/PoweriseInnovationView'), {
-  loading: () => <ModuleLoadingFallback />,
-});
-const OfficialVsRealView = dynamic(() => import('@/components/workforce/OfficialVsRealView'), {
-  loading: () => <ModuleLoadingFallback label="1C ZUP & eBA Karşılaştırma yükleniyor..." />,
-});
-const QuotaTrackingView = dynamic(() => import('@/components/quotas/QuotaTrackingView'), {
-  loading: () => <ModuleLoadingFallback />,
-});
-const InvitationsTrackingView = dynamic(() => import('@/components/invitations/InvitationsTrackingView'), {
-  loading: () => <ModuleLoadingFallback />,
-});
-const TravelTicketsAdminView = dynamic(() => import('@/components/powerise/TravelTicketsAdminView'), {
-  loading: () => <ModuleLoadingFallback />,
-});
-const CampManagementView = dynamic(() => import('@/components/powerise/CampManagementView'), {
-  loading: () => <ModuleLoadingFallback />,
-});
-const SettingsView = dynamic(() => import('@/components/settings/SettingsView'), {
-  loading: () => <ModuleLoadingFallback label="Ayarlar & Yönetim yükleniyor..." />,
-});
-const ExcelUploadModal = dynamic(() => import('@/components/modals/ExcelUploadModal'));
+function ModuleChunkRetryFallback({ label }: { label: string }) {
+  return (
+    <div className="p-6 flex flex-col items-center justify-center min-h-[55vh] gap-3 text-center">
+      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+        {label} yüklenirken ağ geçişi algılandı
+      </p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+        VPN/ağ adaptörü değişimi veya yeni sunucu güncellemesi nedeniyle modül yeniden yüklenmeli.
+      </p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-100 hover:bg-emerald-200/80 dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 border border-emerald-300 dark:border-emerald-500/40 cursor-pointer"
+      >
+        <RefreshCw className="w-3.5 h-3.5" />
+        <span>Sayfayı Yenile</span>
+      </button>
+    </div>
+  );
+}
+
+// Resilient dynamic loader: retries 3 times on ERR_NETWORK_CHANGED / ChunkLoadError and never crashes React
+function dynamicWithRetry<T extends React.ComponentType<any>>(
+  importer: () => Promise<{ default: T }>,
+  label = 'Modül yükleniyor...'
+) {
+  return dynamic(
+    async () => {
+      const delays = [600, 1400, 2400];
+      for (let attempt = 0; attempt <= delays.length; attempt++) {
+        try {
+          return await importer();
+        } catch {
+          if (attempt < delays.length) {
+            await new Promise((r) => setTimeout(r, delays[attempt]));
+          }
+        }
+      }
+      if (typeof window !== 'undefined') {
+        try {
+          const last = Number(sessionStorage.getItem('pondera_chunk_reload_at') || '0');
+          if (Date.now() - last > 15000) {
+            sessionStorage.setItem('pondera_chunk_reload_at', String(Date.now()));
+            window.location.reload();
+          }
+        } catch {
+          // ignore
+        }
+      }
+      const FallbackComp = (() => <ModuleChunkRetryFallback label={label} />) as unknown as T;
+      return { default: FallbackComp };
+    },
+    { loading: () => <ModuleLoadingFallback label={label} /> }
+  );
+}
+
+const PersonnelListView = dynamicWithRetry(
+  () => import('@/components/personnel/PersonnelListView'),
+  'Personel Listesi yükleniyor...'
+);
+const SitesView = dynamicWithRetry(
+  () => import('@/components/sites/SitesView'),
+  'Şantiye & Proje görünümü yükleniyor...'
+);
+const DemographicsView = dynamicWithRetry(
+  () => import('@/components/demographics/DemographicsView'),
+  'Demografi & İstatistik yükleniyor...'
+);
+const ManagementReportsView = dynamicWithRetry(
+  () => import('@/components/reports/ManagementReportsView'),
+  'Yönetim & Turnover raporu yükleniyor...'
+);
+const ComplianceAnalyticsView = dynamicWithRetry(
+  () => import('@/components/compliance/ComplianceAnalyticsView'),
+  'Evrak & Süre Analitiği yükleniyor...'
+);
+const GosuslugiVksView = dynamicWithRetry(
+  () => import('@/components/gosuslugi/GosuslugiVksView'),
+  'Gosuslugi VKS Bildirim Listesi yükleniyor...'
+);
+const GosuslugiAnalyticsView = dynamicWithRetry(
+  () => import('@/components/gosuslugi/GosuslugiAnalyticsView'),
+  'VKS İstatistik & Analiz yükleniyor...'
+);
+const PoweriseInnovationView = dynamicWithRetry(
+  () => import('@/components/powerise/PoweriseInnovationView'),
+  'Powerise İnovasyon yükleniyor...'
+);
+const OfficialVsRealView = dynamicWithRetry(
+  () => import('@/components/workforce/OfficialVsRealView'),
+  '1C ZUP & eBA Karşılaştırma yükleniyor...'
+);
+const QuotaTrackingView = dynamicWithRetry(
+  () => import('@/components/quotas/QuotaTrackingView'),
+  'Kota Takibi yükleniyor...'
+);
+const InvitationsTrackingView = dynamicWithRetry(
+  () => import('@/components/invitations/InvitationsTrackingView'),
+  'Davetiye Takibi yükleniyor...'
+);
+const TravelTicketsAdminView = dynamicWithRetry(
+  () => import('@/components/powerise/TravelTicketsAdminView'),
+  'İdari İşler & AI Bilet yükleniyor...'
+);
+const CampManagementView = dynamicWithRetry(
+  () => import('@/components/powerise/CampManagementView'),
+  'Kamp & Lojman Takibi yükleniyor...'
+);
+const ExcelUploadModal = dynamicWithRetry(
+  () => import('@/components/modals/ExcelUploadModal'),
+  'Excel yükleme penceresi hazırlanıyor...'
+);
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
@@ -166,15 +230,39 @@ export default function Home() {
     }
   }, [user]);
 
-  // Preload heavy VKS & Personnel bundles on idle so sidebar tab switches feel instantaneous
+  // Preload heavy VKS, Personnel & Ticket AI bundles on idle so sidebar tab switches feel instantaneous
   useEffect(() => {
+    try {
+      const savedTab = sessionStorage.getItem('pondera_active_tab');
+      const savedSub = sessionStorage.getItem('pondera_settings_subtab') as
+        | 'users_rls'
+        | 'database_excel'
+        | 'mail_notifications'
+        | 'ai_settings'
+        | null;
+      if (savedSub) setSettingsInitialSubTab(savedSub);
+      if (savedTab) setActiveTab(savedTab);
+    } catch {
+      // ignore
+    }
+
     const timer = setTimeout(() => {
       import('@/components/gosuslugi/GosuslugiVksView').catch(() => {});
       import('@/components/gosuslugi/GosuslugiAnalyticsView').catch(() => {});
       import('@/components/personnel/PersonnelListView').catch(() => {});
+      import('@/components/powerise/TravelTicketsAdminView').catch(() => {});
     }, 650);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('pondera_active_tab', activeTab);
+      sessionStorage.setItem('pondera_settings_subtab', settingsInitialSubTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab, settingsInitialSubTab]);
 
   // Global search submit -> switches to Personnel List with search
   const handleSearchSubmit = (query: string) => {
