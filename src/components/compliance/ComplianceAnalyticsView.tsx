@@ -72,9 +72,13 @@ interface DocStat {
 
 interface ComplianceAnalyticsViewProps {
   onNavigateToPersonnel?: (filterType?: string, filterValue?: string) => void;
+  initialSubTab?: 'expiry' | 'standby' | 'scans';
 }
 
-export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: ComplianceAnalyticsViewProps) {
+export default function ComplianceAnalyticsView({
+  onNavigateToPersonnel,
+  initialSubTab,
+}: ComplianceAnalyticsViewProps) {
   const { user } = useAuth();
   const { lang, t, translateCol, translateVal } = useLanguage();
   const [loading, setLoading] = useState(true);
@@ -97,7 +101,14 @@ export default function ComplianceAnalyticsView({ onNavigateToPersonnel }: Compl
     totalFilteredItems: number;
   } | null>(null);
 
-  const [complianceSubTab, setComplianceSubTab] = useState<'expiry' | 'standby' | 'scans'>('expiry');
+  const [complianceSubTab, setComplianceSubTab] = useState<'expiry' | 'standby' | 'scans'>(
+    initialSubTab || 'expiry'
+  );
+  useEffect(() => {
+    if (initialSubTab) {
+      setComplianceSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
   const [scanTabCounts, setScanTabCounts] = useState<{ total: number; missing: number }>({
     total: 5174,
     missing: 0,

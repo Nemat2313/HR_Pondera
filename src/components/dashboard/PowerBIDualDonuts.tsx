@@ -113,14 +113,14 @@ export function PowerBIGenderCard({
   const femalePct = totalCount > 0 ? Math.max(1, Math.round((femaleCount / totalCount) * 100)) : 3;
 
   return (
-    <div className="p-4 sm:p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl flex flex-col justify-between transition-colors h-full">
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+    <div className="p-3.5 sm:p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-500/20 flex items-center justify-center border border-teal-200/60 dark:border-teal-500/30">
-            <Users2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+          <div className="w-6 h-6 rounded-lg bg-teal-50 dark:bg-teal-500/20 flex items-center justify-center border border-teal-200/60 dark:border-teal-500/30">
+            <Users2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
           </div>
           <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
-            {lang === 'ru' ? 'Распределение по полу (Мужчины / Женщины)' : 'Cinsiyet Dağılımı (Erkek / Kadın)'}
+            {lang === 'ru' ? 'Распределение по полу (М / Ж)' : 'Cinsiyet Dağılımı (Erkek / Kadın)'}
           </h3>
         </div>
         {onOpenDetail && (
@@ -135,13 +135,13 @@ export function PowerBIGenderCard({
         )}
       </div>
 
-      {/* Center: Side-by-side Tall Human Silhouettes & KPI counts */}
-      <div className="flex-1 min-h-[280px] flex flex-col justify-between py-3">
-        <div className="grid grid-cols-2 gap-3.5 flex-1 items-stretch">
-          {/* ERKEK (Tall Full-Body Male Figure Card) */}
+      {/* Compact Top-Half Body: Side-by-side Human Silhouettes & KPI counts */}
+      <div className="flex flex-col justify-between pt-2.5">
+        <div className="grid grid-cols-2 gap-2.5 items-stretch">
+          {/* ERKEK */}
           <div
             onClick={() => onSelectGender && onSelectGender('Erkek')}
-            className={`p-3.5 rounded-2xl bg-gradient-to-b from-teal-50/80 via-emerald-50/40 to-teal-100/50 dark:from-teal-950/50 dark:via-slate-900/70 dark:to-teal-950/40 border transition-all cursor-pointer flex items-center gap-3 group shadow-xs ${
+            className={`p-2.5 rounded-xl bg-gradient-to-b from-teal-50/80 via-emerald-50/40 to-teal-100/50 dark:from-teal-950/50 dark:via-slate-900/70 dark:to-teal-950/40 border transition-all cursor-pointer flex items-center gap-2.5 group shadow-2xs ${
               selectedGender === 'Erkek'
                 ? 'border-teal-500 ring-2 ring-teal-500/40'
                 : selectedGender !== 'all'
@@ -149,29 +149,29 @@ export function PowerBIGenderCard({
                 : 'border-teal-200/90 dark:border-teal-500/30 hover:border-teal-400'
             }`}
           >
-            <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-teal-200/70 dark:border-teal-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
-              <WcMaleIcon className="w-11 h-28" />
+            <div className="px-1.5 py-1.5 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-teal-200/70 dark:border-teal-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-2xs flex items-center justify-center">
+              <WcMaleIcon className="w-7 h-16" />
             </div>
             <div className="min-w-0 flex flex-col justify-center">
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
+              <span className="text-[11px] font-medium text-slate-700 dark:text-slate-300 leading-tight">
                 {lang === 'ru' ? 'Мужской штат' : 'Erkek Kadro'}
               </span>
-              <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-700 font-medium">
+              <span className="inline-flex w-fit mt-0.5 text-[10.5px] px-1.5 py-0.2 rounded bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-700 font-semibold">
                 %{malePct}
               </span>
-              <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
+              <p className="text-xl font-bold text-slate-800 dark:text-white font-mono mt-1 tracking-tight leading-none">
                 {maleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
                 {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
               </p>
             </div>
           </div>
 
-          {/* KADIN (Tall Full-Body Female Figure Card) */}
+          {/* KADIN */}
           <div
             onClick={() => onSelectGender && onSelectGender('Kadin')}
-            className={`p-3.5 rounded-2xl bg-gradient-to-b from-violet-50/80 via-purple-50/40 to-violet-100/50 dark:from-violet-950/45 dark:via-slate-900/70 dark:to-violet-950/40 border transition-all cursor-pointer flex items-center gap-3 group shadow-xs ${
+            className={`p-2.5 rounded-xl bg-gradient-to-b from-violet-50/80 via-purple-50/40 to-violet-100/50 dark:from-violet-950/45 dark:via-slate-900/70 dark:to-violet-950/40 border transition-all cursor-pointer flex items-center gap-2.5 group shadow-2xs ${
               selectedGender === 'Kadin'
                 ? 'border-violet-500 ring-2 ring-violet-500/40'
                 : selectedGender !== 'all'
@@ -179,20 +179,20 @@ export function PowerBIGenderCard({
                 : 'border-violet-200/90 dark:border-violet-500/30 hover:border-violet-400'
             }`}
           >
-            <div className="px-2 py-2 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-violet-200/70 dark:border-violet-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-xs flex items-center justify-center">
-              <WcFemaleIcon className="w-11 h-28" />
+            <div className="px-1.5 py-1.5 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-violet-200/70 dark:border-violet-800/60 shrink-0 group-hover:scale-105 transition-transform shadow-2xs flex items-center justify-center">
+              <WcFemaleIcon className="w-7 h-16" />
             </div>
             <div className="min-w-0 flex flex-col justify-center">
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-tight">
+              <span className="text-[11px] font-medium text-slate-700 dark:text-slate-300 leading-tight">
                 {lang === 'ru' ? 'Женский штат' : 'Kadın Kadro'}
               </span>
-              <span className="inline-flex w-fit mt-1 text-[11px] px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700 font-medium">
+              <span className="inline-flex w-fit mt-0.5 text-[10.5px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700 font-semibold">
                 %{femalePct}
               </span>
-              <p className="text-2xl font-bold text-slate-800 dark:text-white font-mono mt-1.5 tracking-tight leading-none">
+              <p className="text-xl font-bold text-slate-800 dark:text-white font-mono mt-1 tracking-tight leading-none">
                 {femaleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
                 {lang === 'ru' ? 'Активный штат' : 'Aktif Kadro'}
               </p>
             </div>
@@ -200,9 +200,9 @@ export function PowerBIGenderCard({
         </div>
 
         {/* Proportional dual progress bar & ratio footer */}
-        <div className="space-y-2 pt-3">
+        <div className="space-y-1.5 pt-2.5">
           <div className="space-y-1 px-0.5">
-            <div className="flex items-center justify-between text-xs font-medium">
+            <div className="flex items-center justify-between text-[11px] font-medium">
               <span className="text-teal-800 dark:text-teal-300">
                 %{malePct} {lang === 'ru' ? 'Мужчины' : 'Erkek'}
               </span>
@@ -210,7 +210,7 @@ export function PowerBIGenderCard({
                 %{femalePct} {lang === 'ru' ? 'Женщины' : 'Kadın'}
               </span>
             </div>
-            <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner p-0.5 gap-0.5">
+            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner p-0.5 gap-0.5">
               <div
                 className="bg-gradient-to-r from-teal-500 to-emerald-400 h-full rounded-l-full transition-all duration-500"
                 style={{ width: `${malePct}%` }}
@@ -224,12 +224,12 @@ export function PowerBIGenderCard({
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">
-              {lang === 'ru' ? 'Преимущественно полевой / строительный штат' : 'Saha / Şantiye yoğunluklu kadro'}
+          <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[10.5px] font-normal text-slate-600 dark:text-slate-400">
+              {lang === 'ru' ? 'Преимущественно полевой штат' : 'Saha / Şantiye yoğunluklu kadro'}
             </span>
-            <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
-              {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотношение' : 'Oran'}
+            <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 font-mono">
+              {maleCount + femaleCount > 0 ? (maleCount / Math.max(1, femaleCount)).toFixed(0) : 32}:1 {lang === 'ru' ? 'Соотнош.' : 'Oran'}
             </span>
           </div>
         </div>
@@ -354,13 +354,13 @@ export default function PowerBIDualDonuts({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
       {/* 1. BEYAZ YAKA / MAVİ YAKA (Thick Donut Wheel with External Callout Lines) */}
-      <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+      <div className="p-3.5 sm:p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-teal-500/20 flex items-center justify-center border border-emerald-200/60 dark:border-teal-500/30">
-              <Briefcase className="w-4 h-4 text-emerald-600 dark:text-teal-400" />
+            <div className="w-6 h-6 rounded-lg bg-emerald-50 dark:bg-teal-500/20 flex items-center justify-center border border-emerald-200/60 dark:border-teal-500/30">
+              <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-teal-400" />
             </div>
             <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
               {lang === 'ru' ? 'Распределение: Синие / Белые воротнички' : 'Beyaz Yaka / Mavi Yaka Dağılımı'}
@@ -378,10 +378,10 @@ export default function PowerBIDualDonuts({
           )}
         </div>
 
-        {/* Full-Height Donut Container with External Callouts */}
-        <div className="h-72 relative flex items-center justify-center">
+        {/* Compact Donut Container with External Callouts */}
+        <div className="h-56 relative flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart margin={{ top: 18, right: 28, bottom: 18, left: 28 }}>
+            <PieChart margin={{ top: 10, right: 24, bottom: 10, left: 24 }}>
               <defs>
                 <linearGradient id="collarGrad0" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#14b8a6" />
@@ -403,8 +403,8 @@ export default function PowerBIDualDonuts({
                 data={collarData}
                 cx="50%"
                 cy="50%"
-                innerRadius={48}
-                outerRadius={90}
+                innerRadius={40}
+                outerRadius={74}
                 cornerRadius={5}
                 paddingAngle={3}
                 dataKey="count"
@@ -440,13 +440,13 @@ export default function PowerBIDualDonuts({
             </PieChart>
           </ResponsiveContainer>
 
-          {/* Clean Center KPI Badge inside innerRadius=48 */}
+          {/* Clean Center KPI Badge inside innerRadius=40 */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-20 h-20 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
-              <span className="text-xl font-bold text-slate-800 dark:text-white leading-none tracking-tight">
+            <div className="w-16 h-16 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
+              <span className="text-lg font-bold text-slate-800 dark:text-white leading-none tracking-tight">
                 %{bluePct}
               </span>
-              <span className="text-[9px] text-emerald-700 dark:text-teal-400 font-medium uppercase tracking-wider mt-1 leading-tight">
+              <span className="text-[8.5px] text-emerald-700 dark:text-teal-400 font-medium uppercase tracking-wider mt-0.5 leading-tight">
                 {lang === 'ru' ? 'Синий вор.' : 'Mavi Yaka'}
               </span>
             </div>
@@ -455,11 +455,11 @@ export default function PowerBIDualDonuts({
       </div>
 
       {/* 2. EXPAT / SNG / YEREL STATÜSÜ (Donut with External Callout Lines, No Tooltip, No Bottom Legend) */}
-      <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+      <div className="p-3.5 sm:p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30">
-              <Globe2 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+            <div className="w-6 h-6 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30">
+              <Globe2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
             </div>
             <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white">
               {lang === 'ru' ? 'Статус: Экспат / СНГ / Местный' : 'Expat / SNG / Yerel Statüsü'}
@@ -477,10 +477,10 @@ export default function PowerBIDualDonuts({
           )}
         </div>
 
-        {/* Full-Height Donut Container with External Callouts */}
-        <div className="h-72 relative flex items-center justify-center">
+        {/* Compact Donut Container with External Callouts */}
+        <div className="h-56 relative flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart margin={{ top: 18, right: 28, bottom: 18, left: 28 }}>
+            <PieChart margin={{ top: 10, right: 24, bottom: 10, left: 24 }}>
               <defs>
                 <linearGradient id="catGrad0" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#22d3ee" />
@@ -506,8 +506,8 @@ export default function PowerBIDualDonuts({
                 data={categoryData}
                 cx="50%"
                 cy="50%"
-                innerRadius={48}
-                outerRadius={90}
+                innerRadius={40}
+                outerRadius={74}
                 cornerRadius={5}
                 paddingAngle={3}
                 dataKey="count"
@@ -543,13 +543,13 @@ export default function PowerBIDualDonuts({
             </PieChart>
           </ResponsiveContainer>
 
-          {/* Clean Center KPI Badge inside innerRadius=48 */}
+          {/* Clean Center KPI Badge inside innerRadius=40 */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-20 h-20 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
-              <span className="text-xl font-bold text-slate-800 dark:text-white leading-none tracking-tight">
+            <div className="w-16 h-16 rounded-full bg-slate-50/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 shadow-inner flex flex-col items-center justify-center px-1 text-center">
+              <span className="text-lg font-bold text-slate-800 dark:text-white leading-none tracking-tight">
                 %{expatPct}
               </span>
-              <span className="text-[9px] text-cyan-700 dark:text-cyan-400 font-medium uppercase tracking-wider mt-1 leading-tight">
+              <span className="text-[8.5px] text-cyan-700 dark:text-cyan-400 font-medium uppercase tracking-wider mt-0.5 leading-tight">
                 {lang === 'ru' ? 'Экспат' : 'Ekspat'}
               </span>
             </div>

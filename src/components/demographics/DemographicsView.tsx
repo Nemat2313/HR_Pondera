@@ -23,26 +23,33 @@ export default function DemographicsView({ stats, onNavigateToPersonnel }: Demog
   const femalePct = Math.round((femaleCount / total) * 100);
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      {/* Title */}
-      <div>
+    <div className="pt-3 px-4 lg:px-6 pb-6 space-y-4">
+      {/* Compact Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
             {lang === 'ru' ? 'Демография и профиль сотрудников' : 'Demografi & Çalışan Profili'}
           </h1>
           <span className="px-2.5 py-0.5 text-xs font-semibold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 rounded-full border border-teal-200/50 dark:border-teal-800/50">
             {lang === 'ru' ? 'Многонациональный штат' : 'Çok Uluslu Kadro'}
           </span>
         </div>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
+        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
           {lang === 'ru'
-            ? 'Интерактивная карта гражданств персонала, соотношение полов, категории воротничков и статусы занятости.'
-            : 'Personelin küresel uyruk haritası, cinsiyet oranları, yaka türü ve çalışma kategorisi analitikleri.'}
+            ? 'Интерактивная карта гражданств персонала, соотношение полов и статусы занятости.'
+            : 'Personelin küresel uyruk haritası, cinsiyet oranları ve çalışma kategorisi analitikleri.'}
         </p>
       </div>
 
-      {/* Top Cards: Gender, Category & HSE Compliance Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* 1. Interactive Global World Map & Enhanced Country Flag Cards FIRST (Above the Fold) */}
+      <WorldDemographicsMap
+        nationalities={nationalities}
+        totalEmployees={total}
+        onNavigateToPersonnel={onNavigateToPersonnel}
+      />
+
+      {/* 2. Summary Cards Below Map: Gender, Category & HSE Compliance Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Gender Breakdown */}
         <div className="p-6 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card flex flex-col justify-between">
           <div>
@@ -161,13 +168,6 @@ export default function DemographicsView({ stats, onNavigateToPersonnel }: Demog
           </div>
         </div>
       </div>
-
-      {/* Interactive Global World Map & Enhanced Country Flag Cards */}
-      <WorldDemographicsMap
-        nationalities={nationalities}
-        totalEmployees={total}
-        onNavigateToPersonnel={onNavigateToPersonnel}
-      />
     </div>
   );
 }

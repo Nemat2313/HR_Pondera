@@ -107,8 +107,8 @@ export default function Topbar({
 
   return (
     <header
-      className={`fixed top-0 right-0 z-30 h-16 bg-white/95 dark:bg-[#0F172A]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-all duration-300 flex items-center justify-between px-3 sm:px-6 left-0 ${
-        collapsed ? 'lg:left-20' : 'lg:left-56'
+      className={`fixed top-0 right-0 z-30 h-14 bg-white/95 dark:bg-[#0F172A]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-all duration-300 flex items-center justify-between px-3 sm:px-5 left-0 ${
+        collapsed ? 'lg:left-20' : 'lg:left-60'
       }`}
     >
       {/* Left: Hamburger (Mobile) + Global Search */}

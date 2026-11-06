@@ -246,16 +246,16 @@ export default function PowerBIWorkPermits({
   };
 
   return (
-    <div className="p-4 sm:p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl relative overflow-hidden transition-colors h-full flex flex-col justify-between">
+    <div className={`${compact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl relative overflow-hidden transition-colors h-full flex flex-col justify-between`}>
       {/* Background ambient glow */}
       <div className="hidden dark:block absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="hidden dark:block absolute bottom-0 left-0 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header - Clean single line, matching top row cards */}
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 relative z-10">
+      <div className={`flex items-center justify-between border-b border-slate-100 dark:border-slate-800 ${compact ? 'pb-2' : 'pb-3'} relative z-10`}>
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30 shrink-0">
-            <ShieldCheck className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+          <div className="w-6 h-6 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30 shrink-0">
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
           </div>
           <h3 className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
             {t('permits_title')}
@@ -283,15 +283,15 @@ export default function PowerBIWorkPermits({
       </div>
 
       {/* DONUT PIE CHART STAGE */}
-      <div className={`${compact ? 'h-72' : 'h-[380px]'} w-full relative flex items-center justify-center my-auto z-10`}>
+      <div className={`${compact ? 'h-56' : 'h-[380px]'} w-full relative flex items-center justify-center my-auto z-10`}>
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart margin={{ top: 18, right: 28, bottom: 18, left: 28 }}>
+          <PieChart margin={{ top: 10, right: 24, bottom: 10, left: 24 }}>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={compact ? 48 : 58}
-              outerRadius={compact ? 86 : 100}
+              innerRadius={compact ? 38 : 58}
+              outerRadius={compact ? 70 : 100}
               cornerRadius={4}
               paddingAngle={2.5}
               dataKey="count"
@@ -405,14 +405,14 @@ export default function PowerBIWorkPermits({
               </span>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center text-center px-2">
-              <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-white drop-shadow-xs">
+            <div className="flex flex-col items-center justify-center text-center px-1">
+              <span className={`${compact ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'} font-black font-mono text-slate-900 dark:text-white drop-shadow-xs leading-none`}>
                 {grandTotal.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-teal-400 max-w-[110px] leading-tight mt-0.5">
+              <span className="text-[8.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-teal-400 max-w-[92px] leading-tight mt-0.5">
                 {t('permits_registered_total')}
               </span>
-              <span className="text-[9px] text-slate-600 dark:text-slate-400 mt-1 font-semibold">
+              <span className="text-[8.5px] text-slate-600 dark:text-slate-400 mt-0.5 font-semibold">
                 {data.length} {lang === 'ru' ? 'Категорий' : 'Kategori'}
               </span>
             </div>

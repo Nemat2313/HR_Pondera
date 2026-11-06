@@ -104,6 +104,13 @@ export default function Sidebar({
           badgeColor: 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-800/50',
         },
         {
+          id: 'demographics',
+          label: t('nav_demographics'),
+          icon: PieChart,
+          badge: lang === 'ru' ? 'Карта' : 'Harita',
+          badgeColor: 'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
+        },
+        {
           id: 'compliance',
           label: t('nav_compliance'),
           icon: FileCheck2,
@@ -149,11 +156,6 @@ export default function Sidebar({
           icon: Building2,
           badge: user?.scope_type === 'region' ? (lang === 'ru' ? '1 Регион' : '1 Bölge') : (lang === 'ru' ? '6 Регионов' : '6 Bölge'),
           badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60',
-        },
-        {
-          id: 'demographics',
-          label: t('nav_demographics'),
-          icon: PieChart,
         },
         ...(user?.role !== 'viewer'
           ? [
@@ -265,7 +267,7 @@ export default function Sidebar({
                       TeamHub
                     </span>
                     <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 dark:bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-mono font-normal text-[9.5px] leading-tight">
-                      {versionInfo?.version || 'v2.8.14'}
+                      {versionInfo?.version || 'v2.8.15'}
                     </span>
                   </div>
                 </div>

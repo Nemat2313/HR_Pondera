@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Briefcase,
@@ -29,7 +29,8 @@ import PowerBITitlePyramid from './PowerBITitlePyramid';
 import PowerBIAgeDemographics from './PowerBIAgeDemographics';
 import PowerBIDualDonuts, { PowerBIGenderCard } from './PowerBIDualDonuts';
 import PowerBIRankedRegionBars from './PowerBIRankedRegionBars';
-import PowerBITenureAndFirms from './PowerBITenureAndFirms';
+import PowerBIHubCompanionCard, { ZupHubSummary } from './PowerBIHubCompanionCard';
+import PowerBIComplianceSummaryHub, { HubSummaryPayload } from './PowerBIComplianceSummaryHub';
 
 interface OverviewViewProps {
   stats: StatsData | null;
@@ -56,6 +57,8 @@ interface OverviewViewProps {
   setFirmFilter: (filter: 'all' | 'main' | 'subcon') => void;
   onNavigateToPersonnel: (filterType?: string, filterValue?: string) => void;
   onNavigateToTurnover: () => void;
+  onNavigateToCompliance?: (subTab: 'expiry' | 'standby' | 'scans') => void;
+  onNavigateToOfficialReal?: () => void;
   onResetFilters: () => void;
 }
 
@@ -84,10 +87,32 @@ export default function OverviewView({
   setFirmFilter,
   onNavigateToPersonnel,
   onNavigateToTurnover,
+  onNavigateToCompliance,
+  onNavigateToOfficialReal,
   onResetFilters,
 }: OverviewViewProps) {
   const { user } = useAuth();
   const { lang, t, translateVal } = useLanguage();
+  const [hubData, setHubData] = useState<(HubSummaryPayload & { zup?: ZupHubSummary }) | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedRegion !== 'all') params.set('region', selectedRegion);
+    if (selectedProject !== 'all') params.set('project', selectedProject);
+    if (firmFilter !== 'all') params.set('firmType', firmFilter);
+    if (user) {
+      params.set('userScopeType', user.scope_type);
+      params.set('userScopeValue', user.scope_value);
+    }
+    fetch(`/api/dashboard/hub-summary?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (json?.success) {
+          setHubData(json);
+        }
+      })
+      .catch(() => {});
+  }, [selectedRegion, selectedProject, firmFilter, user]);
   const [drillModal, setDrillModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -172,7 +197,7 @@ export default function OverviewView({
   };
 
   return (
-    <div className="p-3 sm:p-5 lg:p-7 space-y-4 sm:space-y-6 max-w-full overflow-hidden relative">
+    <div className="pt-2 sm:pt-2.5 px-3 sm:px-5 pb-5 space-y-2.5 sm:space-y-3 max-w-full overflow-hidden relative">
       {/* Subtle Background Glow Texture - Only in dark mode */}
       <div
         className="fixed inset-0 pointer-events-none dark:opacity-30 opacity-0 bg-cover bg-center -z-10"
@@ -464,8 +489,8 @@ export default function OverviewView({
         }}
       />
 
-      {/* 4. DECOMPOSITION TREE (2/3) & GENDER DISTRIBUTION CARD (1/3 - SWAPPED WITH WORK PERMITS) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+      {/* 4. DECOMPOSITION TREE (2/3) & SPLIT RIGHT COLUMN: TOP = GENDER, BOTTOM = 1C ZUP / TENURE */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
         <div className="lg:col-span-2 flex flex-col">
           <PowerBIDecompositionTree
             treeData={pbi?.decompositionTree || []}
@@ -496,7 +521,7 @@ export default function OverviewView({
             }}
           />
         </div>
-        <div className="lg:col-span-1 flex flex-col">
+        <div className="lg:col-span-1 flex flex-col gap-3.5">
           <PowerBIGenderCard
             totalCount={total}
             maleCount={maleCount}
@@ -512,11 +537,26 @@ export default function OverviewView({
               });
             }}
           />
+          <PowerBIHubCompanionCard
+            zup={hubData?.zup || null}
+            tenureBrackets={pbi?.tenureBrackets || []}
+            avgTenure={pbi?.avgTenure || 1.8}
+            totalCount={total}
+            onNavigateToOfficialReal={onNavigateToOfficialReal}
+            onOpenTenureDetail={() => {
+              setDrillModal({
+                isOpen: true,
+                title: lang === 'ru' ? 'Персонал по стажу работы' : 'Kıdem Dağılımı Personeli',
+                filterType: 'region',
+                filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
+              });
+            }}
+          />
         </div>
       </div>
 
       {/* 5. TITLE PYRAMID & DEMOGRAPHIC AGE PYRAMID (SIDE-BY-SIDE) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
         <PowerBITitlePyramid
           pyramidData={pbi?.titlePyramid || []}
           totalCount={total}
@@ -525,7 +565,7 @@ export default function OverviewView({
             const cleanTitle = title.replace(/^\d+\.\s*/, '');
             setSelectedTitle(selectedTitle === cleanTitle ? 'all' : cleanTitle);
           }}
-          onOpenDetail={(title) => {
+          onOpenDetail={() => {
             setDrillModal({
               isOpen: true,
               title: lang === 'ru' ? 'Список персонала по уровню должности' : 'Ünvan Kademesi Personel Listesi',
@@ -558,31 +598,18 @@ export default function OverviewView({
         />
       </div>
 
-      {/* 6. FIRMA / TAŞERON RANKINGS & TENURE BRACKETS */}
-      <PowerBITenureAndFirms
+      {/* 6. EVRAK & SÜRE ANALİTİĞİ (3 SEKME CANLI ÖZETİ) + GİZLİ ALT FİRMA SATIRI */}
+      <PowerBIComplianceSummaryHub
+        hubData={hubData}
         topFirms={pbi?.topFirms || []}
-        tenureBrackets={pbi?.tenureBrackets || []}
         totalCount={total}
+        onNavigateToCompliance={(sub) => {
+          if (onNavigateToCompliance) onNavigateToCompliance(sub);
+        }}
         onSelectFirm={(firm) => {
           setDrillModal({
             isOpen: true,
             title: `${lang === 'ru' ? 'Персонал компании' : 'Firma Personeli'}: ${firm}`,
-            filterType: 'region',
-            filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
-          });
-        }}
-        onOpenFirmDetail={() => {
-          setDrillModal({
-            isOpen: true,
-            title: lang === 'ru' ? 'Персонал компаний / подрядчиков' : 'Firma / Taşeron Personeli',
-            filterType: 'region',
-            filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
-          });
-        }}
-        onOpenTenureDetail={() => {
-          setDrillModal({
-            isOpen: true,
-            title: lang === 'ru' ? 'Персонал по стажу работы' : 'Kıdem Dağılımı Personeli',
             filterType: 'region',
             filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
           });

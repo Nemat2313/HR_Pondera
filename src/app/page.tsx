@@ -101,6 +101,7 @@ export default function Home() {
     type: string;
     value: string;
   } | null>(null);
+  const [complianceInitialSubTab, setComplianceInitialSubTab] = useState<'expiry' | 'standby' | 'scans'>('expiry');
 
   // Stats data
   const [stats, setStats] = useState<StatsData | null>(null);
@@ -278,8 +279,8 @@ export default function Home() {
 
       {/* Main Content Area: pl-0 on mobile, responsive padding on desktop */}
       <main
-        className={`pt-16 transition-all duration-300 min-h-screen pl-0 ${
-          collapsed ? 'lg:pl-20' : 'lg:pl-56'
+        className={`pt-14 transition-all duration-300 min-h-screen pl-0 ${
+          collapsed ? 'lg:pl-20' : 'lg:pl-60'
         }`}
       >
         {(activeTab === 'overview' ||
@@ -309,6 +310,11 @@ export default function Home() {
             setFirmFilter={setFirmFilter}
             onNavigateToPersonnel={handleNavigateToPersonnel}
             onNavigateToTurnover={() => setActiveTab('turnover')}
+            onNavigateToCompliance={(sub) => {
+              setComplianceInitialSubTab(sub);
+              setActiveTab('compliance');
+            }}
+            onNavigateToOfficialReal={() => setActiveTab('official_real')}
             onResetFilters={handleResetFilters}
           />
         )}
@@ -330,7 +336,10 @@ export default function Home() {
         {activeTab === 'camp_management' && <CampManagementView />}
 
         {activeTab === 'compliance' && (
-          <ComplianceAnalyticsView onNavigateToPersonnel={handleNavigateToPersonnel} />
+          <ComplianceAnalyticsView
+            onNavigateToPersonnel={handleNavigateToPersonnel}
+            initialSubTab={complianceInitialSubTab}
+          />
         )}
 
         {activeTab === 'personnel' && (
