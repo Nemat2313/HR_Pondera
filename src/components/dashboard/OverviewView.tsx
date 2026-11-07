@@ -197,7 +197,7 @@ export default function OverviewView({
   };
 
   return (
-    <div className="pt-2 sm:pt-2.5 px-3 sm:px-5 pb-5 space-y-2.5 sm:space-y-3 max-w-full overflow-hidden relative">
+    <div className="pt-2 sm:pt-2.5 px-3 sm:px-5 pb-5 space-y-2.5 sm:space-y-3 max-w-full overflow-x-clip relative">
       {/* Subtle Background Glow Texture - Only in dark mode */}
       <div
         className="fixed inset-0 pointer-events-none dark:opacity-30 opacity-0 bg-cover bg-center -z-10"
@@ -228,9 +228,9 @@ export default function OverviewView({
         </div>
       )}
 
-      {/* Active Cross-Filtering Bar */}
+      {/* Sticky Active Cross-Filtering Bar (Always visible while scrolling when any chart filter is active; hidden when cleared) */}
       {hasActiveFilters && (
-        <div className="p-3.5 bg-white dark:bg-[#131F38]/95 border border-slate-200 dark:border-teal-500/40 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800 dark:text-white shadow-sm dark:shadow-xl backdrop-blur-md">
+        <div className="sticky top-[60px] z-20 p-3 sm:p-3.5 bg-white/95 dark:bg-[#131F38]/95 border border-teal-300 dark:border-teal-500/50 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800 dark:text-white shadow-lg shadow-slate-900/10 dark:shadow-black/40 ring-1 ring-teal-500/20 backdrop-blur-xl transition-all">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 font-bold text-teal-600 dark:text-teal-300">
               <Filter className="w-4 h-4 text-teal-500" />
@@ -357,10 +357,10 @@ export default function OverviewView({
 
             <button
               onClick={onResetFilters}
-              className="font-bold text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 transition-colors"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 text-rose-700 dark:text-rose-200 border border-rose-300 dark:border-rose-500/40 shadow-xs transition-all cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Очистить' : 'Temizle'}</span>
+              <span>{lang === 'ru' ? 'Сбросить фильтр' : 'Filtreyi Temizle'}</span>
             </button>
           </div>
         </div>

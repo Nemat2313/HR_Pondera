@@ -437,7 +437,22 @@ const columnDictionaryRu: Record<string, string> = {
 
 // Column Group Categories (Turkish to Russian)
 const columnGroupDictionaryRu: Record<string, string> = {
-  '1. Temel & Kimlik Bilgileri': '1. Основная информация и паспортные данные',
+  '1. Temel & Kimlik Bilgileri': '1. Основная информация и личные данные',
+  '2. Pozisyon & Şantiye Görev': '2. Должность и данные по участку',
+  '3. Pasaport Evrakları': '3. Паспортные документы',
+  '4. Vize & Davetiye Evrakları': '4. Виза и приглашение',
+  '5. Propusk (Saha Giriş Kartı)': '5. Пропуск на объект (и ФСБ)',
+  '6. Migrasyon & Registrasyon': '6. Миграционный учет и регистрация',
+  '7. Patent & Çalışma İzni': '7. Патент и разрешение на работу (РНР)',
+  '8. Daktiloskopiya (Parmak İzi)': '8. Дактилоскопия и биометрия',
+  '9. Vergi & SNILS / INN': '9. ИНН, СНИЛС и ФНС',
+  '10. İş Sözleşmesi & Resmi Bordro': '10. Трудовой договор и официальный штат',
+  '11. İSG, HSE & Dil Sertifikaları': '11. Охрана труда (HSE) и сертификат языка',
+  '12. Sağlık, Medikal & DMS': '12. Медосмотр (29н) и полис ДМС',
+  '13. Karantina & Medikal Testler': '13. Карантин и медицинские тесты',
+  '14. Konaklama, Kamp & Ulaşım': '14. Проживание, городок и перелеты',
+  '15. İletişim & Adres Bilgileri': '15. Контакты, адреса и примечания',
+  '16. İşten Çıkış & Fesih': '16. Увольнение и выезд',
   '2. Şantiye & Görev Bilgileri': '2. Объект и должностные данные',
   '3. Pasaport & Kimlik Belgeleri': '3. Паспорт и удостоверения личности',
   '4. Vize & Oturum İzni (RVP/VNJ)': '4. Виза и вид на жительство (РВП/ВНЖ)',

@@ -378,7 +378,7 @@ export default function Home() {
           if (user?.role !== 'viewer' && user?.role !== 'idari_isler') setIsUploadModalOpen(true);
         }}
         onOpenLogin={() => setIsLoginModalOpen(true)}
-        activeFilterCount={activeFilterCount}
+        activeFilterCount={effectiveTab === 'overview' ? activeFilterCount : 0}
         onResetFilters={handleResetFilters}
       />
 

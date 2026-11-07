@@ -80,6 +80,24 @@ interface EmailLogItem {
   created_at: string;
 }
 
+interface ReleaseHighlightItem {
+  title: string;
+  description: string;
+}
+
+interface ReleaseDraftState {
+  version: string;
+  subjectPrefix: string;
+  greeting: string;
+  intro: string;
+  toEmails: string[];
+  ccEmails: string[];
+  highlights: ReleaseHighlightItem[];
+  closingNote: string;
+  lastSentVersion?: string | null;
+  lastSentAt?: string | null;
+}
+
 export const CORPORATE_IT_EMAIL_SUBJECT =
   'Pondera HR TeamHub (hr.pondera.network) — Kurumsal Bildirim Mail Hesabı (info@pondera.ru), Gosuslugi RPA Robotu, Güvenlik Özeti ve 1C ZUP Günlük Otomatik Veri Aktarımı Hk.';
 
@@ -204,6 +222,25 @@ export default function SettingsView({
 
   const [rules, setRules] = useState<EmailRuleItem[]>([]);
   const [logs, setLogs] = useState<EmailLogItem[]>([]);
+  const [releaseDraft, setReleaseDraft] = useState<ReleaseDraftState>({
+    version: 'v2.8.27',
+    subjectPrefix: 'Pondera İK & Saha Yönetim Sistemi — Yeni Sürüm ve Güncelleme Özeti',
+    greeting: 'Sayın Zahid Bey,',
+    intro:
+      'Pondera İK & Saha Yönetim Sistemi (hr.pondera.network) üzerinde son dönemde talep edilen geliştirmeler tamamlanarak canlı kullanıma alınmıştır. İK ve saha ekiplerimizin iş süreçlerini kolaylaştıran başlıca yenilikler aşağıda özetlenmiştir:',
+    toEmails: ['zahid.rahimov@pondera.ru'],
+    ccEmails: ['nemat2313@gmail.com', 'ikbildirim@pondera.ru'],
+    highlights: [],
+    closingNote:
+      'Tüm yenilikleri https://hr.pondera.network adresinden inceleyebilirsiniz.',
+    lastSentVersion: null,
+    lastSentAt: null,
+  });
+  const [releaseToText, setReleaseToText] = useState('zahid.rahimov@pondera.ru');
+  const [releaseCcText, setReleaseCcText] = useState('nemat2313@gmail.com, ikbildirim@pondera.ru');
+  const [savingReleaseDraft, setSavingReleaseDraft] = useState(false);
+  const [sendingReleaseMode, setSendingReleaseMode] = useState<'none' | 'preview' | 'official'>('none');
+  const [showReleaseCard, setShowReleaseCard] = useState(true);
 
   // Temporary input state for adding To / CC emails per rule
   const [newToInput, setNewToInput] = useState<Record<string, string>>({});
@@ -224,6 +261,11 @@ export default function SettingsView({
         setSmtp(json.smtp);
         setRules(json.rules || []);
         setLogs(json.logs || []);
+        if (json.releaseDraft) {
+          setReleaseDraft(json.releaseDraft);
+          setReleaseToText((json.releaseDraft.toEmails || ['zahid.rahimov@pondera.ru']).join(', '));
+          setReleaseCcText((json.releaseDraft.ccEmails || []).join(', '));
+        }
       }
     } catch {
       // handled silently
@@ -367,6 +409,80 @@ export default function SettingsView({
     setTimeout(() => setCopiedMailText(false), 3000);
   };
 
+  const buildNormalizedReleasePayload = (): ReleaseDraftState => {
+    const toList = releaseToText
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.includes('@'));
+    const ccList = releaseCcText
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.includes('@'));
+    return {
+      ...releaseDraft,
+      toEmails: toList.length > 0 ? toList : ['zahid.rahimov@pondera.ru'],
+      ccEmails: ccList,
+    };
+  };
+
+  const handleSaveReleaseDraft = async () => {
+    if (!isAdmin) return;
+    setSavingReleaseDraft(true);
+    setFeedback(null);
+    try {
+      const payload = buildNormalizedReleasePayload();
+      const res = await fetch('/api/settings/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_release_draft', releaseDraft: payload }),
+      });
+      const json = await res.json();
+      if (json?.success && json.releaseDraft) {
+        setReleaseDraft(json.releaseDraft);
+        setReleaseToText((json.releaseDraft.toEmails || []).join(', '));
+        setReleaseCcText((json.releaseDraft.ccEmails || []).join(', '));
+        setFeedback({ type: 'success', text: json.message });
+      } else {
+        setFeedback({ type: 'error', text: json?.message || 'Sürüm özeti taslağı kaydedilemedi.' });
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'Taslak kaydedilirken hata oluştu.' });
+    } finally {
+      setSavingReleaseDraft(false);
+    }
+  };
+
+  const handleSendReleaseSummary = async (isPreviewTest: boolean) => {
+    if (!isAdmin) return;
+    setSendingReleaseMode(isPreviewTest ? 'preview' : 'official');
+    setFeedback(null);
+    try {
+      const payload = buildNormalizedReleasePayload();
+      const res = await fetch('/api/settings/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_release_summary',
+          releaseDraft: payload,
+          isPreviewTest,
+          overrideTo: isPreviewTest ? ['nemat2313@gmail.com'] : undefined,
+          overrideCc: isPreviewTest ? [] : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (json?.releaseDraft) setReleaseDraft(json.releaseDraft);
+      if (json?.logs) setLogs(json.logs);
+      setFeedback({
+        type: json?.status === 'SENT' ? 'success' : json?.status === 'QUEUED' ? 'info' : 'error',
+        text: json?.message || 'Sürüm özeti gönderim işlemi tamamlandı.',
+      });
+    } catch {
+      setFeedback({ type: 'error', text: 'Sürüm özeti gönderilirken hata oluştu.' });
+    } finally {
+      setSendingReleaseMode('none');
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-7 space-y-5 max-w-[1440px] mx-auto">
       {/* TOP SETTINGS HEADER & MULTI-TAB SWITCHER */}
@@ -494,6 +610,231 @@ export default function SettingsView({
               </button>
             </div>
           )}
+
+          {/* SECTION 0: EXECUTIVE HR DIRECTOR RELEASE SUMMARY EMAIL (ikbildirim@pondera.ru -> Zahid Bey) */}
+          <div className="p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-emerald-300/80 dark:border-teal-500/40 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Sparkles className="w-4 h-4 text-emerald-600 dark:text-teal-400" />
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Yeni Sürüm & Biriken Güncellemeler Özeti Bildirimi (Personel Müdürü Formatı • ikbildirim@pondera.ru)
+                  </h2>
+                  {releaseDraft.lastSentVersion && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10.5px] bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      Son Gönderilen: {releaseDraft.lastSentVersion} ({releaseDraft.lastSentAt})
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Her ufak düzeltmede otomatik mail atılmaz. Yapılan işler biriktiğinde, <strong>Personel Müdürü’nün (Zahid Bey)</strong> doğrudan saha ve İK işleyişi açısından okuyabileceği sade özet halinde <strong>ikbildirim@pondera.ru</strong> üzerinden tek tıkla gönderilir.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!isAdmin || savingReleaseDraft}
+                  onClick={handleSaveReleaseDraft}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs cursor-pointer transition-all"
+                >
+                  {savingReleaseDraft ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
+                  )}
+                  <span>Taslağı Kaydet</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!isAdmin || sendingReleaseMode !== 'none'}
+                  onClick={() => handleSendReleaseSummary(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 text-xs cursor-pointer transition-all"
+                >
+                  {sendingReleaseMode === 'preview' ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" />
+                  ) : (
+                    <Mail className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
+                  )}
+                  <span>Önizleme Test Gönder (nemat2313@gmail.com)</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!isAdmin || sendingReleaseMode !== 'none'}
+                  onClick={() => handleSendReleaseSummary(false)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-emerald-400 dark:border-teal-400/50 bg-emerald-100 hover:bg-emerald-200/90 dark:bg-teal-500/25 dark:hover:bg-teal-500/35 text-emerald-950 dark:text-teal-100 text-xs cursor-pointer transition-all shadow-xs"
+                >
+                  {sendingReleaseMode === 'official' ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-700 dark:text-teal-300" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5 text-emerald-700 dark:text-teal-300" />
+                  )}
+                  <span>Sürüm Özetini Zahid Bey’e Gönder</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowReleaseCard((p) => !p)}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>{showReleaseCard ? 'Daralt' : 'Düzenle / Gör'}</span>
+                  {showReleaseCard ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {showReleaseCard && (
+              <div className="space-y-3.5 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+                      Sürüm Numarası
+                    </label>
+                    <input
+                      type="text"
+                      value={releaseDraft.version}
+                      disabled={!isAdmin}
+                      onChange={(e) => setReleaseDraft({ ...releaseDraft, version: e.target.value })}
+                      placeholder="v2.8.27"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+                      TO (Birincil Alıcı — Zahid Bey)
+                    </label>
+                    <input
+                      type="text"
+                      value={releaseToText}
+                      disabled={!isAdmin}
+                      onChange={(e) => setReleaseToText(e.target.value)}
+                      placeholder="zahid.rahimov@pondera.ru"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+                      CC (Bilgi Kopya Alıcıları)
+                    </label>
+                    <input
+                      type="text"
+                      value={releaseCcText}
+                      disabled={!isAdmin}
+                      onChange={(e) => setReleaseCcText(e.target.value)}
+                      placeholder="nemat2313@gmail.com, ikbildirim@pondera.ru"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+                      Hitap Başlığı
+                    </label>
+                    <input
+                      type="text"
+                      value={releaseDraft.greeting}
+                      disabled={!isAdmin}
+                      onChange={(e) => setReleaseDraft({ ...releaseDraft, greeting: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+                      Üst Yönetici Giriş Özeti
+                    </label>
+                    <input
+                      type="text"
+                      value={releaseDraft.intro}
+                      disabled={!isAdmin}
+                      onChange={(e) => setReleaseDraft({ ...releaseDraft, intro: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                      Biriken Sürüm Yenilikleri (Teknik Terim Olmadan, Personel Müdürü Anlatımıyla)
+                    </span>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReleaseDraft({
+                            ...releaseDraft,
+                            highlights: [
+                              ...releaseDraft.highlights,
+                              {
+                                title: `${releaseDraft.highlights.length + 1}. Yeni Güncelleme Başlığı`,
+                                description: '',
+                              },
+                            ],
+                          })
+                        }
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-teal-950/60 text-emerald-800 dark:text-teal-300 border border-emerald-200 dark:border-teal-800 text-[11px] cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> Yeni Madde Ekle
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+                    {releaseDraft.highlights.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-2xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={item.title}
+                            disabled={!isAdmin}
+                            onChange={(e) => {
+                              const next = [...releaseDraft.highlights];
+                              next[idx] = { ...next[idx], title: e.target.value };
+                              setReleaseDraft({ ...releaseDraft, highlights: next });
+                            }}
+                            className="flex-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                          />
+                          {isAdmin && releaseDraft.highlights.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReleaseDraft({
+                                  ...releaseDraft,
+                                  highlights: releaseDraft.highlights.filter((_, i) => i !== idx),
+                                })
+                              }
+                              className="p-1.5 text-slate-400 hover:text-rose-500 cursor-pointer"
+                              title="Maddeyi Sil"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={item.description}
+                          disabled={!isAdmin}
+                          onChange={(e) => {
+                            const next = [...releaseDraft.highlights];
+                            next[idx] = { ...next[idx], description: e.target.value };
+                            setReleaseDraft({ ...releaseDraft, highlights: next });
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11.5px] leading-relaxed resize-y"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* SECTION A: SMTP CONNECTION & 1C ZUP AUTO-SYNC SETTINGS */}
           <form

@@ -89,6 +89,54 @@ FIELD_ALIASES = {
     'oda_no': ['oda no', 'oda', 'комната']
 }
 
+def classify_column_group(col_name):
+    n = (
+        str(col_name or "")
+        .strip()
+        .replace("İ", "i").replace("I", "i").replace("ı", "i")
+        .replace("Ş", "s").replace("ş", "s")
+        .replace("Ğ", "g").replace("ğ", "g")
+        .replace("Ü", "u").replace("ü", "u")
+        .replace("Ö", "o").replace("ö", "o")
+        .replace("Ç", "c").replace("ç", "c")
+        .lower()
+    )
+    n = re.sub(r"\s+", " ", n)
+    if any(k in n for k in ("karantina", "pcr", "antikor", "revirde", "kontakt durumu")):
+        return "13. Karantina & Medikal Testler"
+    if any(k in n for k in ("migrasyon", "registrasyon", "sinir kapisi")):
+        return "6. Migrasyon & Registrasyon"
+    if any(k in n for k in ("sozlesme", "dop sog", "eski resmi", "ise giris emri", "ise giris bildirgesi")) or n.startswith("resmi "):
+        return "10. İş Sözleşmesi & Resmi Bordro"
+    if n in ("cikis tarihi", "cikis sebebi", "tahmini cikis tarihi") or "isten cikis" in n or "fesih" in n:
+        return "16. İşten Çıkış & Fesih"
+    if any(k in n for k in ("pasaport", "passport", "kodpozdravleniya")):
+        return "3. Pasaport Evrakları"
+    if "vize" in n or "davetiye" in n:
+        return "4. Vize & Davetiye Evrakları"
+    if "propusk" in n:
+        return "5. Propusk (Saha Giriş Kartı)"
+    if any(k in n for k in ("patent", "calisma kart", "rnr")):
+        return "7. Patent & Çalışma İzni"
+    if any(k in n for k in ("daktilo", "gosuslug", "biometri")):
+        return "8. Daktiloskopiya (Parmak İzi)"
+    if "inn " in n or n == "inn no" or "cnils" in n or "snils" in n or "nfs " in n or n.endswith(" nfs"):
+        return "9. Vergi & SNILS / INN"
+    if any(k in n for k in ("hse", "isg", "dil sinav", "dil sertifika")):
+        return "11. İSG, HSE & Dil Sertifikaları"
+    if any(k in n for k in ("dms", "saglik", "psikoloji", "kan test", "narkoloji", "rontgen")) or n.startswith("asi ") or n.startswith("asidan "):
+        return "12. Sağlık, Medikal & DMS"
+    if "kamp" in n or n in ("oda no", "blok no", "yatak no") or "ucus " in n or "izine gidis" in n or "izin donus" in n:
+        return "14. Konaklama, Kamp & Ulaşım"
+    if any(k in n for k in ("telefon", "mail", "adres", "acil durum", "genel notlar")):
+        return "15. İletişim & Adres Bilgileri"
+    if n in ("region", "proje adi", "kategori", "firma", "departman", "ek gorev", "sorumlu kisi", "grup sefi") or any(
+        k in n for k in ("calisma lokasyon", "mevcut bulundugu yer", "gorevi", "endirekt", "gunduz / gece", "transfer", "sibur kpp", "personel puan")
+    ):
+        return "2. Pozisyon & Şantiye Görev"
+    return "1. Temel & Kimlik Bilgileri"
+
+
 def infer_region_from_project(project_name):
     p = (project_name or '').upper()
     if 'POLISTEROL' in p or 'NIZHNEKAMSK' in p or 'KAZAN' in p or 'ТАТАР' in p:
@@ -420,8 +468,12 @@ def build_database():
             headers = [clean_val(c) or f"Col_{idx+1}" for idx, c in enumerate(row)]
             col_map = map_headers(headers)
 
-            # Populate columns_meta
-            cols_meta = [(idx + 1, h, "Genel") for idx, h in enumerate(headers)]
+            # Populate columns_meta with 16 operational document groups
+            cols_meta = [
+                (idx + 1, h, classify_column_group(h))
+                for idx, h in enumerate(headers)
+                if not re.match(r"^Col_\d+$", h, re.IGNORECASE)
+            ]
             cursor.executemany("INSERT OR REPLACE INTO columns_meta (col_index, col_name, col_group) VALUES (?, ?, ?)", cols_meta)
 
             # Pre-extract indices

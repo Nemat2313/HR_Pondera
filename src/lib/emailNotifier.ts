@@ -2072,3 +2072,275 @@ export function checkAndImportZupAutoFolder(dbInstance?: any): {
     return { imported: false };
   }
 }
+
+export interface ReleaseSummaryHighlight {
+  title: string;
+  description: string;
+}
+
+export interface ReleaseSummaryDraft {
+  version: string;
+  subjectPrefix: string;
+  greeting: string;
+  intro: string;
+  toEmails: string[];
+  ccEmails: string[];
+  highlights: ReleaseSummaryHighlight[];
+  closingNote: string;
+  lastSentVersion?: string | null;
+  lastSentAt?: string | null;
+}
+
+function escapeEmailHtml(val: string): string {
+  return String(val || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export const DEFAULT_RELEASE_SUMMARY_DRAFT: ReleaseSummaryDraft = {
+  version: 'v2.8.27',
+  subjectPrefix: 'Pondera İK & Saha Yönetim Sistemi — Yeni Sürüm ve Güncelleme Özeti',
+  greeting: 'Sayın Zahid Bey,',
+  intro:
+    'Pondera İK & Saha Yönetim Sistemi (hr.pondera.network) üzerinde son dönemde talep edilen geliştirmeler ve operasyonel iyileştirmeler tamamlanarak canlı kullanıma alınmıştır. İK ve saha ekiplerimizin iş süreçlerini kolaylaştıran başlıca yenilikler aşağıda özetlenmiştir:',
+  toEmails: ['zahid.rahimov@pondera.ru'],
+  ccEmails: ['nemat2313@gmail.com', 'ikbildirim@pondera.ru'],
+  highlights: [
+    {
+      title: '1. Kazan Bölgesinin Şantiye Bazlı Ayrı Gösterimi',
+      description:
+        'Uygulamadaki tüm grafik, filtre ve tablolarda, ayrıca günlük e-posta ve Telegram bildirimlerinde toplu "Kazan" gösterimi kaldırıldı. Artık NHNK mPE-300, Kazan Katalizor, Nizhnekamsk Polisterol, NHNK SKLAD PROPILEN ve SIBUR Nijnekamsk şantiyeleri ayrı ayrı takip edilebilmektedir.',
+    },
+    {
+      title: '2. Standart Pondera Bilet Tablosu (29 Sütun) ve "İdari İşler" Kullanıcı Yetkisi',
+      description:
+        'Satın alınan biletlerin takip tablosu Pondera standart 29 sütunluk Excel yapısına uyarlandı; bilet üzerinde yer almayan bilgiler elle girilip düzenlenebilir hale getirildi ve "Personelden Mi Kesilecek?" alanı varsayılan olarak "No (Hayır)" ayarlandı. Yalnızca İdari İşler ve Bilet ekranlarına erişebilen özel "İdari İşler" kullanıcı rolü eklendi.',
+    },
+    {
+      title: '3. Şantiye Bazlı Karşılama TV Panosu (Uçak • Tren • Otobüs)',
+      description:
+        'Henüz yolculuğu gerçekleşmemiş uçak, tren ve otobüs biletlerinin tamamı karşılama panosuna dahil edildi. Her şantiyenin İdari İşler ekibi kendi şantiyesini veya takip ettiği güzergahı seçerek havalimanı/gar formatındaki karşılama ekranını ofis televizyonunda canlı izleyebilmektedir.',
+    },
+    {
+      title: '4. Bilet Fiyat Analitiği ve 35 Bin Kişilik Kadrodan Personel Eşleştirmesi',
+      description:
+        'En çok bilet alınan güzergahlardaki aylık fiyat değişimlerini, ulaşım türü maliyetlerini ve şantiye harcamalarını gösteren "Bilet Fiyat & Güzergah Analitiği" raporu eklendi. Bilet okutulduğunda tüm 35 bin kişilik kadro havuzundan arama yapılmakta; yeni işe başlayacak (Bekleniyor) adaylar "Misafir" olmadan ve geri dönen eski çalışanlar doğrudan kendi sicilleriyle eşleşmektedir.',
+    },
+    {
+      title: '5. Gosuslugi VKS 2026 3. Çeyrek Arşivi ve 4. Çeyrek Dönem Hazırlığı',
+      description:
+        'Tamamlanan 2026 3. Çeyrek VKS bildirim verileri (3.088 kişilik liste ve 3.020 tamamlanan bildirim) kalıcı dönem arşivine alındı; geçmiş dönem verilerine dönem seçiciden her zaman ulaşılabilmektedir. Her 15 dakikada bir gönderilen otomatik VKS bildirimleri durduruldu (yeni bildirim döneminde tek tuşla tekrar aktif edilebilir) ve sistem 2026 4. Çeyrek listesinin yüklenmesine hazır hale getirildi.',
+    },
+    {
+      title: '6. Kurumsal Pondera Logosu ve Ekran Kullanım Kolaylıkları',
+      description:
+        'Uygulama arayüzüne, karşılama ekranına ve kurumsal e-posta bildirimlerine resmi Pondera Industry logosu eklendi. Ana sayfadaki grafik filtreleme temizleme çubuğu sayfa aşağı kaydırıldığında da sürekli görünür hale getirildi; Personel Listesi sayfasındaki 16 evrak ve bilgi kolon grubu eksiksiz düzenlendi.',
+    },
+  ],
+  closingNote:
+    'Tüm yenilikleri https://hr.pondera.network adresinden inceleyebilirsiniz. İlave talep veya önerileriniz doğrultusunda geliştirmelere devam edilecektir.',
+  lastSentVersion: null,
+  lastSentAt: null,
+};
+
+export function getReleaseSummaryDraft(dbInstance?: any): ReleaseSummaryDraft {
+  const db = dbInstance || getDb();
+  ensureEmailTables(db);
+  const raw = getSysInfo(db, 'email_release_summary_draft');
+  const lastSentVersion = getSysInfo(db, 'email_release_last_sent_version');
+  const lastSentAt = getSysInfo(db, 'email_release_last_sent_at');
+
+  if (!raw) {
+    return {
+      ...DEFAULT_RELEASE_SUMMARY_DRAFT,
+      lastSentVersion,
+      lastSentAt,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_RELEASE_SUMMARY_DRAFT,
+      ...parsed,
+      toEmails:
+        Array.isArray(parsed.toEmails) && parsed.toEmails.length > 0
+          ? parsed.toEmails
+          : DEFAULT_RELEASE_SUMMARY_DRAFT.toEmails,
+      ccEmails: Array.isArray(parsed.ccEmails)
+        ? parsed.ccEmails
+        : DEFAULT_RELEASE_SUMMARY_DRAFT.ccEmails,
+      highlights:
+        Array.isArray(parsed.highlights) && parsed.highlights.length > 0
+          ? parsed.highlights
+          : DEFAULT_RELEASE_SUMMARY_DRAFT.highlights,
+      lastSentVersion,
+      lastSentAt,
+    };
+  } catch {
+    return {
+      ...DEFAULT_RELEASE_SUMMARY_DRAFT,
+      lastSentVersion,
+      lastSentAt,
+    };
+  }
+}
+
+export function saveReleaseSummaryDraft(
+  draft: Partial<ReleaseSummaryDraft>,
+  dbInstance?: any
+): ReleaseSummaryDraft {
+  const db = dbInstance || getDb();
+  ensureEmailTables(db);
+  const current = getReleaseSummaryDraft(db);
+  const cleanTo = Array.isArray(draft.toEmails)
+    ? draft.toEmails.map((e) => String(e || '').trim()).filter((e) => e.includes('@'))
+    : current.toEmails;
+  const cleanCc = Array.isArray(draft.ccEmails)
+    ? draft.ccEmails.map((e) => String(e || '').trim()).filter((e) => e.includes('@'))
+    : current.ccEmails;
+  const cleanHighlights = Array.isArray(draft.highlights)
+    ? draft.highlights
+        .map((h) => ({
+          title: String(h?.title || '').trim(),
+          description: String(h?.description || '').trim(),
+        }))
+        .filter((h) => h.title || h.description)
+    : current.highlights;
+
+  const merged: ReleaseSummaryDraft = {
+    version: String(draft.version || current.version || 'v2.8.27').trim(),
+    subjectPrefix: String(
+      draft.subjectPrefix || current.subjectPrefix || DEFAULT_RELEASE_SUMMARY_DRAFT.subjectPrefix
+    ).trim(),
+    greeting: String(draft.greeting ?? current.greeting).trim(),
+    intro: String(draft.intro ?? current.intro).trim(),
+    toEmails: cleanTo.length > 0 ? cleanTo : ['zahid.rahimov@pondera.ru'],
+    ccEmails: cleanCc,
+    highlights: cleanHighlights.length > 0 ? cleanHighlights : DEFAULT_RELEASE_SUMMARY_DRAFT.highlights,
+    closingNote: String(draft.closingNote ?? current.closingNote).trim(),
+    lastSentVersion: current.lastSentVersion || null,
+    lastSentAt: current.lastSentAt || null,
+  };
+
+  setSysInfo(db, 'email_release_summary_draft', JSON.stringify(merged));
+  return merged;
+}
+
+export function buildReleaseSummaryEmailHtml(draft: ReleaseSummaryDraft): {
+  subject: string;
+  html: string;
+} {
+  const msk = getMoscowClock();
+  const ver = draft.version || 'v2.8.27';
+  const subject = `${draft.subjectPrefix} (${ver}) — ${msk.dateDisplay}`;
+
+  const itemsHtml = draft.highlights
+    .map(
+      (item) => `
+      <tr>
+        <td style="padding: 0 0 12px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #0d9488; border-radius: 10px;">
+            <tr>
+              <td style="padding: 13px 16px;">
+                <div style="font-size: 13.5px; color: #0f172a; margin-bottom: 5px;">
+                  <strong>${escapeEmailHtml(item.title)}</strong>
+                </div>
+                <div style="font-size: 12.5px; line-height: 1.6; color: #334155;">
+                  ${escapeEmailHtml(item.description)}
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`
+    )
+    .join('');
+
+  const bodyHtml = `
+    <div style="font-size: 13.5px; line-height: 1.65; color: #1e293b; margin-bottom: 16px;">
+      <p style="margin: 0 0 10px 0;"><strong>${escapeEmailHtml(draft.greeting)}</strong></p>
+      <p style="margin: 0;">${escapeEmailHtml(draft.intro)}</p>
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 14px; margin-bottom: 8px;">
+      ${itemsHtml}
+    </table>
+
+    ${
+      draft.closingNote
+        ? `<div style="margin-top: 14px; padding: 12px 15px; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 12.5px; line-height: 1.6; color: #065f46;">
+            ${escapeEmailHtml(draft.closingNote)}
+          </div>`
+        : ''
+    }
+  `;
+
+  return {
+    subject,
+    html: renderCorporateEmailShell({
+      accentHex: '#0d9488',
+      headerBgHex: '#0f172a',
+      badgeText: `PONDERA İK SİSTEMİ • YENİ SÜRÜM ÖZETİ (${ver.toUpperCase()})`,
+      title: `🚀 Pondera İK Yönetim Sistemi Güncelleme Özeti (${ver})`,
+      subtitle: `Tarih: ${msk.dateDisplay} ${msk.timeDisplay} • Gönderen: ikbildirim@pondera.ru`,
+      bodyHtml,
+      ctaLabel: 'Pondera İK Sistemini Aç (hr.pondera.network) →',
+    }),
+  };
+}
+
+export async function sendReleaseSummaryEmail(options?: {
+  draft?: Partial<ReleaseSummaryDraft>;
+  overrideTo?: string[];
+  overrideCc?: string[];
+  isPreviewTest?: boolean;
+}): Promise<{
+  ok: boolean;
+  status: 'SENT' | 'QUEUED' | 'ERROR';
+  message: string;
+  draft: ReleaseSummaryDraft;
+}> {
+  const db = getDb();
+  const smtp = getSmtpConfig(db);
+  const savedDraft = options?.draft
+    ? saveReleaseSummaryDraft(options.draft, db)
+    : getReleaseSummaryDraft(db);
+
+  const toList =
+    options?.overrideTo && options.overrideTo.length > 0
+      ? options.overrideTo
+      : savedDraft.toEmails.length > 0
+      ? savedDraft.toEmails
+      : ['zahid.rahimov@pondera.ru'];
+  const ccList =
+    options?.overrideCc !== undefined ? options.overrideCc : savedDraft.ccEmails;
+
+  const { subject: rawSubject, html } = buildReleaseSummaryEmailHtml(savedDraft);
+  const subject = options?.isPreviewTest ? `[ÖNİZLEME / TEST] ${rawSubject}` : rawSubject;
+
+  if (!smtp.enabled || !smtp.pass) {
+    const msg = 'SMTP aktif olmadığı veya şifre girilmediği için sürüm özeti gönderilemedi.';
+    logEmailDelivery(db, 'release_summary', subject, toList, ccList, 'QUEUED', msg);
+    return { ok: false, status: 'QUEUED', message: msg, draft: savedDraft };
+  }
+
+  const res = await sendRawSmtpMail(smtp, toList, ccList, subject, html);
+  const status = res.ok ? 'SENT' : 'ERROR';
+  logEmailDelivery(db, 'release_summary', subject, toList, ccList, status, res.detail);
+
+  if (res.ok && !options?.isPreviewTest) {
+    const msk = getMoscowClock();
+    setSysInfo(db, 'email_release_last_sent_version', savedDraft.version);
+    setSysInfo(db, 'email_release_last_sent_at', `${msk.dateDisplay} ${msk.timeDisplay}`);
+  }
+
+  return {
+    ok: res.ok,
+    status,
+    message: res.detail,
+    draft: getReleaseSummaryDraft(db),
+  };
+}

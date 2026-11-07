@@ -9,6 +9,10 @@ import {
   getEmailLogs,
   sendReportEmailById,
   checkAndImportZupAutoFolder,
+  getReleaseSummaryDraft,
+  saveReleaseSummaryDraft,
+  sendReleaseSummaryEmail,
+  DEFAULT_RELEASE_SUMMARY_DRAFT,
 } from '@/lib/emailNotifier';
 
 export const runtime = 'nodejs';
@@ -20,6 +24,7 @@ export async function GET() {
     const smtp = getSmtpConfig(db);
     const rules = getEmailReportRules(db);
     const logs = getEmailLogs(20, db);
+    const releaseDraft = getReleaseSummaryDraft(db);
 
     return NextResponse.json({
       success: true,
@@ -30,6 +35,7 @@ export async function GET() {
       },
       rules,
       logs,
+      releaseDraft,
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -90,6 +96,43 @@ export async function POST(request: Request) {
         status: sendRes.status,
         message: sendRes.message,
         rules: getEmailReportRules(db),
+        logs: getEmailLogs(20, db),
+      });
+    }
+
+    if (action === 'save_release_draft') {
+      const savedDraft = saveReleaseSummaryDraft(body.releaseDraft || {}, db);
+      return NextResponse.json({
+        success: true,
+        message: 'Yeni sürüm özeti e-posta taslağı kaydedildi.',
+        releaseDraft: savedDraft,
+      });
+    }
+
+    if (action === 'reset_release_draft') {
+      const resetDraft = saveReleaseSummaryDraft(DEFAULT_RELEASE_SUMMARY_DRAFT, db);
+      return NextResponse.json({
+        success: true,
+        message: 'Varsayılan Personel Müdürü sürüm özeti şablonu yüklendi.',
+        releaseDraft: resetDraft,
+      });
+    }
+
+    if (action === 'send_release_summary') {
+      const isPreviewTest = Boolean(body.isPreviewTest);
+      const overrideTo = Array.isArray(body.overrideTo) ? body.overrideTo : undefined;
+      const overrideCc = Array.isArray(body.overrideCc) ? body.overrideCc : undefined;
+      const sendRes = await sendReleaseSummaryEmail({
+        draft: body.releaseDraft,
+        overrideTo,
+        overrideCc,
+        isPreviewTest,
+      });
+      return NextResponse.json({
+        success: sendRes.ok,
+        status: sendRes.status,
+        message: sendRes.message,
+        releaseDraft: sendRes.draft,
         logs: getEmailLogs(20, db),
       });
     }

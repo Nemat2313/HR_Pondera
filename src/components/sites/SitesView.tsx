@@ -236,11 +236,135 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
         { name: 'IZP', count: 2, desc: lang === 'ru' ? 'Инженерная поддержка завода полимеров ИЗП' : 'IZP Polimer Tesisi Mühendislik Desteği' },
       ],
     },
+    'Nizhny Novgorod': {
+      city: lang === 'ru' ? 'Нижегородская область, г. Кстово, Россия' : 'Nijniy Novgorod (Kstovo), Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Нефтехимический комплекс в Нижегородской области — строительно-монтажные и пусконаладочные работы.'
+          : 'Nijniy Novgorod (Kstovo) Petrokimya Tesisi endüstriyel montaj ve mühendislik sahası.',
+      collarWhitePct: 24,
+      collarBluePct: 76,
+      expatPct: 55,
+      color: '#4f46e5',
+      gradient: 'from-indigo-600 to-blue-600',
+      projects: [
+        { name: 'Nizhny Novgorod', count: 21, desc: lang === 'ru' ? 'Промышленная площадка Нижний Новгород' : 'Nijniy Novgorod Endüstriyel Saha' },
+      ],
+    },
+    Murmansk: {
+      city: lang === 'ru' ? 'Мурманская область, Россия' : 'Murmansk Bölgesi, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Арктический центр крупнотоннажных морских сооружений и СПГ инфраструктуры.'
+          : 'Murmansk Arktik Deniz Yapıları ve LNG Endüstriyel Altyapı Projesi.',
+      collarWhitePct: 20,
+      collarBluePct: 80,
+      expatPct: 50,
+      color: '#0369a1',
+      gradient: 'from-sky-700 to-blue-700',
+      projects: [
+        { name: 'Murmansk', count: 10, desc: lang === 'ru' ? 'Площадка Мурманск' : 'Murmansk Endüstriyel Sahası' },
+      ],
+    },
+    'Amur-AGHK': {
+      city: lang === 'ru' ? 'Амурская область, г. Свободный, Россия' : 'Amur Bölgesi, Svobodniy, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Амурский газохимический комплекс (АГХК) — технологические линии и монтаж.'
+          : 'Amur Gaz Kimya Kompleksi (AGHK) proses borulama ve mekanik montaj sahası.',
+      collarWhitePct: 18,
+      collarBluePct: 82,
+      expatPct: 54,
+      color: '#0e7490',
+      gradient: 'from-cyan-700 to-teal-600',
+      projects: [
+        { name: 'Amur-AGHK', count: 120, desc: lang === 'ru' ? 'Площадка Амур-АГХК' : 'Amur-AGHK Proje Sahası' },
+      ],
+    },
+    Amur: {
+      city: lang === 'ru' ? 'Амурская область, Россия' : 'Amur Bölgesi, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Амурский газоперерабатывающий и газохимический промышленный узел.'
+          : 'Amur Gaz İşleme ve Endüstriyel Tesis Sahası.',
+      collarWhitePct: 18,
+      collarBluePct: 82,
+      expatPct: 54,
+      color: '#0891b2',
+      gradient: 'from-cyan-600 to-sky-600',
+      projects: [
+        { name: 'Amur', count: 50, desc: lang === 'ru' ? 'Промышленная площадка Амур' : 'Amur Endüstriyel Sahası' },
+      ],
+    },
+    'SPS 2520': {
+      city: lang === 'ru' ? 'Нижнекамск, Республика Татарстан' : 'Nijnekamsk, Tataristan Cumhuriyeti',
+      desc:
+        lang === 'ru'
+          ? 'Промышленная установка СПС 2520 — строительно-монтажный участок.'
+          : 'SPS 2520 Endüstriyel Ünite ve Montaj Sahası.',
+      collarWhitePct: 16,
+      collarBluePct: 84,
+      expatPct: 56,
+      color: '#0d9488',
+      gradient: 'from-teal-600 to-cyan-600',
+      projects: [
+        { name: 'SPS 2520', count: 25, desc: lang === 'ru' ? 'Проект СПС 2520' : 'SPS 2520 Proje Sahası' },
+      ],
+    },
+    Udokan: {
+      city: lang === 'ru' ? 'Забайкальский край, Удокан, Россия' : 'Zabaykalskiy Bölgesi, Udokan, Rusya',
+      desc:
+        lang === 'ru'
+          ? 'Горно-металлургический комплекс «Удокан» — промышленное строительство.'
+          : 'Udokan Madencilik ve Metalurji Kompleksi endüstriyel tesis sahası.',
+      collarWhitePct: 22,
+      collarBluePct: 78,
+      expatPct: 48,
+      color: '#b45309',
+      gradient: 'from-amber-700 to-orange-600',
+      projects: [
+        { name: 'Udokan', count: 15, desc: lang === 'ru' ? 'Площадка Удокан' : 'Udokan Proje Sahası' },
+      ],
+    },
+  };
+
+  const fallbackPalette = ['#0d9488', '#0284c7', '#2563eb', '#059669', '#d97706', '#7c3aed', '#4f46e5', '#0891b2'];
+
+  const getSiteMeta = (label: string, count = 0, idx = 0) => {
+    const cleanLabel = String(label || '').trim() || (lang === 'ru' ? 'Участок' : 'Şantiye');
+    const existing = siteCatalog[cleanLabel];
+    if (existing) {
+      return {
+        ...existing,
+        projects: existing.projects.map((p, pIdx) =>
+          pIdx === 0 && existing.projects.length === 1 && count > 0 ? { ...p, count } : p
+        ),
+      };
+    }
+    return {
+      city: lang === 'ru' ? `${cleanLabel}, Россия` : `${cleanLabel} Sahası, Rusya`,
+      desc:
+        lang === 'ru'
+          ? `Производственный и строительно-монтажный участок Pondera (${cleanLabel}).`
+          : `Pondera endüstriyel inşaat, mekanik montaj ve saha operasyon merkezi (${cleanLabel}).`,
+      collarWhitePct: 16,
+      collarBluePct: 84,
+      expatPct: 55,
+      color: fallbackPalette[idx % fallbackPalette.length] || '#0d9488',
+      gradient: 'from-teal-600 to-cyan-600',
+      projects: [
+        {
+          name: cleanLabel,
+          count,
+          desc: lang === 'ru' ? 'Действующая площадка проекта' : 'Aktif Şantiye & Proje Sahası',
+        },
+      ],
+    };
   };
 
   // Stacked chart dataset: Region with White and Blue Collar distribution
-  const stackedData = regions.map((r) => {
-    const meta = siteCatalog[r.label] || { collarWhitePct: 16, collarBluePct: 84 };
+  const stackedData = regions.map((r, rIdx) => {
+    const meta = getSiteMeta(r.label, r.count, rIdx);
     const whiteCount = Math.round((r.count * meta.collarWhitePct) / 100);
     const blueCount = Math.max(0, r.count - whiteCount);
     return {
@@ -251,9 +375,13 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
     };
   });
 
-  const activeSite = siteCatalog[activeRegionKey] || siteCatalog['Kazan'];
-  const activeRegionCount = regions.find((r) => r.label === activeRegionKey)?.count || 2258;
-  const activeRegionPct = total > 0 ? ((activeRegionCount / total) * 100).toFixed(1) : '42.1';
+  const effectiveRegionKey =
+    regions.some((r) => r.label === activeRegionKey)
+      ? activeRegionKey
+      : regions[0]?.label || 'NHNK mPE-300';
+  const activeRegionCount = regions.find((r) => r.label === effectiveRegionKey)?.count || 0;
+  const activeSite = getSiteMeta(effectiveRegionKey, activeRegionCount, 0);
+  const activeRegionPct = total > 0 ? ((activeRegionCount / total) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="p-4 sm:p-6 lg:p-7 space-y-5 max-w-full">
@@ -270,7 +398,9 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                   {lang === 'ru' ? 'Карта участков и проектов' : 'Şantiye & Proje Kapasite Haritası'}
                 </h1>
                 <span className="px-3 py-0.5 rounded-full bg-emerald-50 dark:bg-teal-500/20 text-emerald-700 dark:text-teal-300 border border-emerald-200 dark:border-teal-500/40 text-xs font-bold">
-                  {lang === 'ru' ? '6 Регионов • 9 Мегапроектов' : '6 Bölge • 9 Mega Proje'}
+                  {lang === 'ru'
+                    ? `${regions.length} Активных участков и объектов`
+                    : `${regions.length} Aktif Şantiye & Bölge`}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
@@ -322,7 +452,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mt-4 pt-4 border-t border-slate-200/80 dark:border-slate-700/80">
           {regions.map((region, idx) => {
             const pct = total > 0 ? ((region.count / total) * 100).toFixed(0) : '0';
-            const isSelected = activeRegionKey === region.label;
+            const isSelected = effectiveRegionKey === region.label;
             return (
               <button
                 key={idx}
@@ -373,13 +503,12 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
             {/* Treemap Multi-Block Canvas */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-h-[460px]">
               {regions.map((region, rIdx) => {
-                const meta = siteCatalog[region.label] || siteCatalog['Kazan'];
+                const meta = getSiteMeta(region.label, region.count, rIdx);
                 const pct = total > 0 ? ((region.count / total) * 100).toFixed(1) : '0';
-                const isSelected = activeRegionKey === region.label;
+                const isSelected = effectiveRegionKey === region.label;
 
-                // Relative span for top 2 regions
-                const isLarge = region.label === 'Kazan';
-                const isMedium = region.label === 'Svobodny-AGHK' || region.label === 'Tobolsk';
+                // Relative span for largest site
+                const isLarge = rIdx === 0 && regions.length > 2;
 
                 return (
                   <div
@@ -482,7 +611,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
 
               <div className="mt-4">
                 <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                  {activeRegionKey}
+                  {effectiveRegionKey}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1 font-medium">
                   <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-teal-400 shrink-0" />
@@ -554,10 +683,10 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                         isOpen: true,
                         title:
                           lang === 'ru'
-                            ? `Список сотрудников участка ${activeRegionKey}`
-                            : `${activeRegionKey} Şantiyesi Personel Listesi`,
+                            ? `Список сотрудников участка ${effectiveRegionKey}`
+                            : `${effectiveRegionKey} Şantiyesi Personel Listesi`,
                         filterType: 'region',
-                        filterValue: activeRegionKey,
+                        filterValue: effectiveRegionKey,
                       })
                     }
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black text-xs shadow-md shadow-teal-500/25 transition-all cursor-pointer"
@@ -571,7 +700,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
                   </button>
 
                   <button
-                    onClick={() => onNavigateToPersonnel('region', activeRegionKey)}
+                    onClick={() => onNavigateToPersonnel('region', effectiveRegionKey)}
                     className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition-colors"
                   >
                     <span>{lang === 'ru' ? 'Фильтровать в общей таблице' : 'Genel Personel Tablosunda Filtrele'}</span>
