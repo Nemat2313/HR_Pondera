@@ -189,7 +189,10 @@ export function ensureAiTicketTables() {
     SET deepseek_ocr_model = 'deepseek-ai/deepseek-vl2'
     WHERE id = 1
       AND deepseek_ocr_base_url LIKE '%siliconflow.com%'
-      AND deepseek_ocr_model = 'deepseek-ai/DeepSeek-OCR';
+      AND (
+        deepseek_ocr_model = 'deepseek-ai/DeepSeek-OCR'
+        OR deepseek_ocr_model LIKE '%DeepSeek-V4-Flash-Vision-Exp%'
+      );
 
     UPDATE ai_provider_settings
     SET fallback_provider = ''
@@ -906,10 +909,26 @@ async function fetchOpenAiEndpointModels(
   }
 }
 
+function humanizeProviderApiError(err: any, providerTitle: string): Error {
+  const msg = String(err?.message || 'Bilinmeyen AI hatası.');
+  if (
+    msg.includes('402') ||
+    msg.includes('30001') ||
+    /insufficient[_\s]balance/i.test(msg) ||
+    /balance is insufficient/i.test(msg)
+  ) {
+    return new Error(
+      `Bakiye Yetersiz (API 402): Seçtiğiniz ${providerTitle} hesabındaki başlangıç kredisi / bakiye bitti. Sağlayıcı panelinden bakiye yükleyebilir (1$ ≈ 400+ bilet) veya Oku butonunun yanından anahtarı hazır başka bir AI (örn. ücretsiz Google Gemini / Rusya AI) seçebilirsiniz.`
+    );
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
 function resolveEndpointModels(configuredModel: string, availableModels: string[]): {
   exactConfiguredMatch: string | null;
   visionModels: string[];
   textModels: string[];
+  freeTextModels: string[];
 } {
   const trimmedCfg = (configuredModel || '').trim();
   if (availableModels.length === 0) {
@@ -917,7 +936,8 @@ function resolveEndpointModels(configuredModel: string, availableModels: string[
     return {
       exactConfiguredMatch: trimmedCfg || null,
       visionModels: [fallbackV],
-      textModels: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-7B-Instruct', fallbackV],
+      textModels: ['Qwen/Qwen3-8B', 'Qwen/Qwen2.5-7B-Instruct', 'deepseek-ai/DeepSeek-V3', fallbackV],
+      freeTextModels: ['Qwen/Qwen3-8B', 'Qwen/Qwen2.5-7B-Instruct', 'THUDM/GLM-4-9B-0414'],
     };
   }
 
@@ -931,19 +951,22 @@ function resolveEndpointModels(configuredModel: string, availableModels: string[
       id
     );
 
+  // Order vision models from most economical / free-friendly (vl2, 8B, 9B, 7B) to larger paid models
   const visionPriorityRegexes: RegExp[] = [
     /deepseek.*ocr/i,
     /^deepseek-ai\/deepseek-vl2$/i,
-    /deepseek.*(vl2|vl|vision)/i,
-    /^Qwen\/Qwen2\.5-VL-72B-Instruct$/i,
-    /^Qwen\/Qwen3-VL-32B-Instruct$/i,
-    /^Qwen\/Qwen2\.5-VL-32B-Instruct$/i,
-    /^Qwen\/Qwen2-VL-72B-Instruct$/i,
     /^Qwen\/Qwen3-VL-8B-Instruct$/i,
+    /^THUDM\/GLM-4\.1V-9B-Thinking$/i,
     /^Qwen\/Qwen2\.5-VL-7B-Instruct$/i,
     /^Pro\/Qwen\/Qwen2\.5-VL-7B-Instruct$/i,
+    /qwen.*(vl).*(7b|8b)/i,
+    /glm-4.*v.*9b/i,
+    /^Qwen\/Qwen3-VL-30B-A3B-Instruct$/i,
+    /^Qwen\/Qwen3-VL-32B-Instruct$/i,
+    /^Qwen\/Qwen2\.5-VL-32B-Instruct$/i,
+    /^Qwen\/Qwen2\.5-VL-72B-Instruct$/i,
+    /deepseek.*(vl2|vl|vision)/i,
     /qwen.*(vl|vision|ocr).*instruct/i,
-    /qwen.*(vl|vision|ocr)/i,
     /(got-ocr|olmocr|dots\.ocr|paddleocr|ocr)/i,
     /(glm-4.*v|pixtral|internvl|gemma-3.*it|llama.*vision)/i,
   ];
@@ -966,18 +989,26 @@ function resolveEndpointModels(configuredModel: string, availableModels: string[
   const isLikelyVisionOnly = (id: string) =>
     /(vl2|-vl-|_vl_|vision|ocr|pixtral|internvl)/i.test(id);
 
-  const textPriorityRegexes: RegExp[] = [
-    /^deepseek-ai\/DeepSeek-V3(\.2|\.1|-0324)?$/i,
-    /deepseek-ai\/DeepSeek-V3/i,
-    /^Qwen\/Qwen2\.5-72B-Instruct$/i,
-    /^Qwen\/Qwen2\.5-32B-Instruct$/i,
-    /^Qwen\/Qwen3-32B$/i,
+  // SiliconFlow $0.00 / M permanent FREE text models (7B/8B/9B)
+  const freeTextRegexes: RegExp[] = [
     /^Qwen\/Qwen3-8B$/i,
     /^Qwen\/Qwen2\.5-7B-Instruct$/i,
-    /^Pro\/Qwen\/Qwen2\.5-7B-Instruct$/i,
     /^THUDM\/GLM-4-9B-0414$/i,
-    /instruct$/i,
+    /^THUDM\/glm-4-9b-chat$/i,
+    /^deepseek-ai\/DeepSeek-R1-0528-Qwen3-8B$/i,
+    /^deepseek-ai\/DeepSeek-R1-Distill-Qwen-7B$/i,
+    /^Qwen\/Qwen2-7B-Instruct$/i,
+    /^internlm\/internlm2_5-7b-chat$/i,
   ];
+
+  const freeTextModels: string[] = [];
+  for (const rx of freeTextRegexes) {
+    for (const m of availableModels) {
+      if (rx.test(m) && !isNonChatAsset(m) && !isLikelyVisionOnly(m) && !freeTextModels.includes(m)) {
+        freeTextModels.push(m);
+      }
+    }
+  }
 
   const textModels: string[] = [];
   const pushText = (id: string | null | undefined) => {
@@ -985,7 +1016,17 @@ function resolveEndpointModels(configuredModel: string, availableModels: string[
     if (!textModels.includes(id)) textModels.push(id);
   };
 
-  for (const rx of textPriorityRegexes) {
+  // Put at most ONE paid DeepSeek-V3 variant first, followed IMMEDIATELY by all $0 FREE models!
+  const v3Exact = availableModels.find((m) => /^deepseek-ai\/DeepSeek-V3$/i.test(m));
+  if (v3Exact) pushText(v3Exact);
+  for (const fm of freeTextModels) pushText(fm);
+
+  const secondaryTextRegexes: RegExp[] = [
+    /^Qwen\/Qwen2\.5-32B-Instruct$/i,
+    /^Qwen\/Qwen2\.5-72B-Instruct$/i,
+    /instruct$/i,
+  ];
+  for (const rx of secondaryTextRegexes) {
     for (const m of availableModels) {
       if (rx.test(m)) pushText(m);
     }
@@ -995,6 +1036,7 @@ function resolveEndpointModels(configuredModel: string, availableModels: string[
     exactConfiguredMatch,
     visionModels,
     textModels,
+    freeTextModels,
   };
 }
 
@@ -1346,13 +1388,15 @@ async function executeSingleProviderTicketParse(
       throw new Error(`SiliconFlow / Vision API yetkilendirme hatası (${httpError})`);
     }
 
-    const { exactConfiguredMatch, visionModels, textModels } = resolveEndpointModels(
-      configuredModel,
-      availableModels
-    );
+    const { exactConfiguredMatch, visionModels, textModels, freeTextModels } =
+      resolveEndpointModels(configuredModel, availableModels);
 
     const persistResolvedVisionModel = (resolvedId: string) => {
-      if (resolvedId && resolvedId !== settings.deepseek_ocr_model) {
+      if (
+        resolvedId &&
+        resolvedId !== settings.deepseek_ocr_model &&
+        !/DeepSeek-V4-Flash-Vision-Exp/i.test(resolvedId)
+      ) {
         try {
           const db = ensureAiTicketTables();
           db.prepare('UPDATE ai_provider_settings SET deepseek_ocr_model = ? WHERE id = 1').run(
@@ -1367,10 +1411,11 @@ async function executeSingleProviderTicketParse(
     let combinedTranscription = '';
     let usedVisionModel = '';
     let lastVisionErr: any = null;
+    let visionHitInsufficientBalance = false;
 
     // Step 1: Visual scan reading via verified Vision / OCR models on this SiliconFlow / vLLM endpoint
     if (images.length > 0 && visionModels.length > 0) {
-      for (const candidateVision of visionModels.slice(0, 4)) {
+      for (const candidateVision of visionModels.slice(0, 6)) {
         const isPureOcrModel = /ocr/i.test(candidateVision);
         const isShort4kVlModel = /deepseek-vl/i.test(candidateVision);
 
@@ -1443,7 +1488,7 @@ async function executeSingleProviderTicketParse(
             combinedTranscription = vlOut;
             break;
           } else {
-            // Long-context Vision-Language model (e.g. Qwen2.5-VL-72B/32B/7B or Qwen3-VL)
+            // Long-context Vision-Language model (e.g. Qwen3-VL-8B, GLM-4.1V-9B, Qwen2.5-VL, DeepSeek-V4-Flash)
             const vlOut = await callOpenAiCompatibleVisionOrText({
               baseUrl,
               apiKey,
@@ -1451,7 +1496,7 @@ async function executeSingleProviderTicketParse(
               systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
               userInstruction: baseUserInstruction,
               imagesDataUrls: images.slice(0, 2),
-              maxTokens: 2400,
+              maxTokens: 2600,
             });
             usedVisionModel = candidateVision;
             if (!exactConfiguredMatch) persistResolvedVisionModel(candidateVision);
@@ -1479,6 +1524,9 @@ async function executeSingleProviderTicketParse(
           if (errStr.includes('API 401')) {
             throw vErr;
           }
+          if (errStr.includes('402') || errStr.includes('30001')) {
+            visionHitInsufficientBalance = true;
+          }
         }
       }
     }
@@ -1501,10 +1549,13 @@ async function executeSingleProviderTicketParse(
     }
 
     // Step 2: Structure transcription into strict Ticket JSON using verified text models on the SAME endpoint
+    // If paid Vision models hit 402/30001 (account balance = $0), try SiliconFlow's $0.00 FREE models FIRST!
     const jsonModelsToTry =
-      textModels.length > 0
-        ? textModels.slice(0, 4)
-        : ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-7B-Instruct'];
+      visionHitInsufficientBalance && freeTextModels.length > 0
+        ? freeTextModels.slice(0, 5)
+        : textModels.length > 0
+        ? textModels.slice(0, 5)
+        : ['Qwen/Qwen3-8B', 'Qwen/Qwen2.5-7B-Instruct', 'THUDM/GLM-4-9B-0414', 'deepseek-ai/DeepSeek-V3'];
 
     let lastStructErr: any = null;
     for (const candidateTextModel of jsonModelsToTry) {
@@ -1692,8 +1743,22 @@ export async function parseTicketDocument(input: TicketParseInput) {
   const selectedProvider: AiProviderId =
     input.providerOverride || settings.active_provider || 'deepseek';
 
+  const providerTitles: Record<AiProviderId, string> = {
+    deepseek: 'DeepSeek Resmi API (platform.deepseek.com)',
+    deepseek_ocr: 'SiliconFlow / DeepSeek-OCR (cloud.siliconflow.com)',
+    yandex: 'Yandex Cloud AI',
+    gigachat: 'Sber GigaChat',
+    gemini: 'Google Gemini',
+    openrouter: 'OpenRouter',
+    ru_docs_ocr: 'RussianDocsOCR',
+  };
+
   // Strict single-provider execution: NEVER auto-switch to another AI provider behind the user's back
-  return await executeSingleProviderTicketParse(selectedProvider, input, settings);
+  try {
+    return await executeSingleProviderTicketParse(selectedProvider, input, settings);
+  } catch (err: any) {
+    throw humanizeProviderApiError(err, providerTitles[selectedProvider] || selectedProvider);
+  }
 }
 
 export function hasProviderCredentials(
@@ -1785,7 +1850,7 @@ export async function testAiProviderConnection(
         };
       }
 
-      const { exactConfiguredMatch, visionModels } = resolveEndpointModels(
+      const { exactConfiguredMatch, visionModels, freeTextModels } = resolveEndpointModels(
         configuredModel,
         availableModels
       );
@@ -1801,7 +1866,7 @@ export async function testAiProviderConnection(
 
       // Perform a REAL /chat/completions vision test with a valid 64x64 PNG so 20012 / 402 errors are caught immediately!
       let lastTestErr = '';
-      for (const candidateModel of visionModels.slice(0, 4)) {
+      for (const candidateModel of visionModels.slice(0, 6)) {
         try {
           const reply = await callOpenAiCompatibleVisionOrText({
             baseUrl: base,
@@ -1813,7 +1878,10 @@ export async function testAiProviderConnection(
             maxTokens: 24,
           });
 
-          if (candidateModel !== saved.deepseek_ocr_model) {
+          if (
+            candidateModel !== saved.deepseek_ocr_model &&
+            !/DeepSeek-V4-Flash-Vision-Exp/i.test(candidateModel)
+          ) {
             try {
               const db = ensureAiTicketTables();
               db.prepare(
@@ -1832,7 +1900,7 @@ export async function testAiProviderConnection(
             availableVisionModels: visionModels.slice(0, 15),
             modelReply: reply.slice(0, 60),
             message: wasAutoResolved
-              ? `"${configuredModel}" bu sunucuda yer almadığı için çalışan görsel model otomatik doğrulandı ve seçildi: ${candidateModel}`
+              ? `"${configuredModel}" yerine aktif görsel model doğrulandı ve seçildi: ${candidateModel}`
               : `Görsel evrak modeli canlı /chat/completions testinden başarıyla geçti (${candidateModel}).`,
           };
         } catch (err: any) {
@@ -1841,12 +1909,39 @@ export async function testAiProviderConnection(
         }
       }
 
+      // If paid Vision models hit 402/30001, check if $0 FREE text models still work for digital e-ticket PDFs!
+      if (
+        (lastTestErr.includes('402') || lastTestErr.includes('30001')) &&
+        freeTextModels.length > 0
+      ) {
+        try {
+          await callOpenAiCompatibleVisionOrText({
+            baseUrl: base,
+            apiKey: s.deepseek_ocr_api_key,
+            model: freeTextModels[0],
+            systemPrompt: 'Reply concisely.',
+            userInstruction: 'Reply OK',
+            imagesDataUrls: [],
+            maxTokens: 16,
+          });
+          return {
+            ok: true,
+            latencyMs: Date.now() - start,
+            availableVisionModels: visionModels.slice(0, 15),
+            resolvedModel: visionModels[0],
+            message: `Ücretsiz metin modeli (${freeTextModels[0]}) aktif (Dijital e-bilet PDF'lerini ücretsiz okur); ancak fotoğraf/scan görsel modelleri için SiliconFlow hesabınızda bakiye kalmadı (API 402).`,
+          };
+        } catch {
+          // Even free models blocked by $0 balance
+        }
+      }
+
       return {
         ok: false,
         latencyMs: Date.now() - start,
         availableVisionModels: visionModels.slice(0, 15),
         resolvedModel: visionModels[0],
-        message: `Görsel model çağrısı başarısız (${visionModels[0]}): ${lastTestErr}`,
+        message: humanizeProviderApiError(new Error(lastTestErr), 'SiliconFlow').message,
       };
     }
 
