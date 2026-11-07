@@ -4,6 +4,7 @@ import {
   AiProviderId,
   cleanTicketPassportNumber,
   containsCyrillic,
+  extractPassportFallbackFromText,
   matchPassengersAgainstPondera,
   parseTicketDocument,
   transliterateToLatinUpper,
@@ -87,9 +88,12 @@ export async function POST(request: Request) {
         displayLatin = transliterateToLatinUpper(displayLatin);
       }
 
-      const cleanedPasp = cleanTicketPassportNumber(
-        rp.passportNumber || rp.passport_number || rp.documentNumber || ''
-      );
+      const fallbackPasp =
+        rawPassengers.length === 1 ? extractPassportFallbackFromText(extractedPdfText) : '';
+      const cleanedPasp =
+        cleanTicketPassportNumber(
+          rp.passportNumber || rp.passport_number || rp.documentNumber || ''
+        ) || fallbackPasp;
 
       return {
         passengerName: displayLatin || displayCyr || 'İSİMSİZ YOLCU',

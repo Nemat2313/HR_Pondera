@@ -138,7 +138,10 @@ function loadPdfJsFromCdn(): Promise<any> {
   return pdfJsPromise;
 }
 
-async function prepareFileForAi(file: File): Promise<{
+async function prepareFileForAi(
+  file: File,
+  provider?: ActiveAiProviderId
+): Promise<{
   mimeType: string;
   primaryImageDataUrl?: string;
   extraPageDataUrls: string[];
@@ -193,30 +196,31 @@ async function prepareFileForAi(file: File): Promise<{
     };
   }
 
-  // Convert raw PDF to bare base64 first as universal fallback
-  const rawBase64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const str = String(reader.result || '');
-      const idx = str.indexOf(',');
-      resolve(idx >= 0 ? str.slice(idx + 1) : str);
-    };
-    reader.onerror = (e) => reject(e);
-  });
+  const readRawBase64 = () =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const str = String(reader.result || '');
+        const idx = str.indexOf(',');
+        resolve(idx >= 0 ? str.slice(idx + 1) : str);
+      };
+      reader.onerror = (e) => reject(e);
+    });
 
   try {
     const pdfjsLib = await loadPdfJsFromCdn();
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const maxPages = Math.min(pdf.numPages, 3);
-    const renderedPages: string[] = [];
+    const pages: any[] = [];
     let fullText = '';
 
+    // 1) Fast digital text pass (~20ms) before deciding whether heavy canvas JPEG rendering is needed
     for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
+      pages.push(page);
 
-      // 1) Extract digital text in visual Y-to-X reading order
       const textContent = await page.getTextContent();
       const items = (textContent.items || []) as Array<{
         str?: string;
@@ -246,20 +250,40 @@ async function prepareFileForAi(file: File): Promise<{
       if (pageStr.trim()) {
         fullText += `--- Sayfa ${pageNum} ---\n${pageStr.trim()}\n\n`;
       }
+    }
 
-      // 2) Render first 2 pages to high-res JPEG so scanned image PDFs are visually read!
-      if (pageNum <= 2) {
-        const viewport = page.getViewport({ scale: 1.9 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          await page.render({ canvasContext: ctx, viewport }).promise;
-          renderedPages.push(canvas.toDataURL('image/jpeg', 0.84));
-        }
+    const nonWsChars = fullText.replace(/\s+/g, '').length;
+    const isPureVisualOcrProvider =
+      provider === 'yandex' ||
+      provider === 'gigachat' ||
+      provider === 'ru_docs_ocr' ||
+      provider === 'deepseek_ocr';
+
+    // FAST PATH: Digital e-ticket PDF on DeepSeek / OpenRouter — skip 1.5MB JPEG canvas rendering & upload!
+    if (nonWsChars >= 100 && !isPureVisualOcrProvider) {
+      return {
+        mimeType: 'application/pdf',
+        extraPageDataUrls: [],
+        extractedPdfText: fullText.trim(),
+      };
+    }
+
+    // VISUAL SCAN PATH: Scanned image-only PDF (<100 chars digital text) or pure OCR provider
+    const renderedPages: string[] = [];
+    for (let i = 0; i < Math.min(pages.length, 2); i++) {
+      const page = pages[i];
+      const viewport = page.getViewport({ scale: 1.45 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        renderedPages.push(canvas.toDataURL('image/jpeg', 0.78));
       }
     }
+
+    const rawBase64 = renderedPages.length === 0 ? await readRawBase64() : undefined;
 
     return {
       mimeType: renderedPages.length > 0 ? 'image/jpeg' : 'application/pdf',
@@ -269,6 +293,7 @@ async function prepareFileForAi(file: File): Promise<{
       extractedPdfText: fullText.trim(),
     };
   } catch {
+    const rawBase64 = await readRawBase64();
     return {
       mimeType: 'application/pdf',
       extraPageDataUrls: [],
@@ -457,15 +482,16 @@ export default function LiveTicketScannerSystem({
     setIsScanning(true);
     setBannerMsg(null);
 
-    for (const item of targets) {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === item.id ? { ...f, status: 'processing', errorMessage: undefined } : f
-        )
-      );
+    const targetIds = new Set(targets.map((t) => t.id));
+    setFiles((prev) =>
+      prev.map((f) =>
+        targetIds.has(f.id) ? { ...f, status: 'processing', errorMessage: undefined } : f
+      )
+    );
 
+    const processSingleFile = async (item: UploadedTicketFile) => {
       try {
-        const prepared = await prepareFileForAi(item.file);
+        const prepared = await prepareFileForAi(item.file, selectedProvider);
         const res = await fetch('/api/tickets/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -493,7 +519,7 @@ export default function LiveTicketScannerSystem({
                 : f
             )
           );
-          continue;
+          return;
         }
 
         const newRows: ParsedPassengerItem[] = (json.passengers || []).map(
@@ -572,7 +598,21 @@ export default function LiveTicketScannerSystem({
           )
         );
       }
-    }
+    };
+
+    // Process up to 3 tickets concurrently in parallel (~3x faster batch speed!)
+    const CONCURRENCY = 3;
+    let cursor = 0;
+    const workers = Array.from(
+      { length: Math.min(CONCURRENCY, targets.length) },
+      async () => {
+        while (cursor < targets.length) {
+          const currentIndex = cursor++;
+          await processSingleFile(targets[currentIndex]);
+        }
+      }
+    );
+    await Promise.all(workers);
 
     setIsScanning(false);
   };
@@ -1343,6 +1383,7 @@ export default function LiveTicketScannerSystem({
                             <input
                               type="text"
                               value={row.passportNumber}
+                              placeholder="Bilette basılı değil (Manuel girin)"
                               onChange={(e) =>
                                 setParsedPassengers((prev) =>
                                   prev.map((r) =>
@@ -1352,7 +1393,7 @@ export default function LiveTicketScannerSystem({
                                   )
                                 )
                               }
-                              className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono"
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono placeholder:font-sans placeholder:text-[10.5px] placeholder:text-slate-400"
                             />
                           </div>
                           <div>

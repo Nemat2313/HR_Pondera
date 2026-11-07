@@ -447,7 +447,7 @@ export function cleanTicketPassportNumber(raw: string | undefined | null): strin
     .replace(/[\s\-№#/:.,]/g, '')
     .trim();
   // Strip airline GDS / RZD document type prefixes (ported from Powerise BulkTicketUpload)
-  const prefixes = ['PSP', 'PASS', 'PASSPORT', 'DOC', 'NP', 'ZP', 'PN', 'RF'];
+  const prefixes = ['PSPRUS', 'PSPUZB', 'PSPTJK', 'PSPIND', 'PSPTUR', 'PSP', 'PASS', 'PASSPORT', 'DOC', 'NP', 'ZP', 'PN', 'RF'];
   for (const p of prefixes) {
     if (s.startsWith(p) && s.length >= p.length + 6) {
       s = s.slice(p.length);
@@ -455,6 +455,47 @@ export function cleanTicketPassportNumber(raw: string | undefined | null): strin
     }
   }
   return s.replace(/[^A-Z0-9]/g, '');
+}
+
+export function trimAirlineLegalBoilerplate(rawText: string): string {
+  if (!rawText) return '';
+  // Cut repetitive multi-page Warsaw Convention / baggage rule tables that appear AFTER Total Amount
+  const cutMarkers = [
+    /\n\s*RECEIPT REMARKS\b/i,
+    /\n\s*LEGAL AND PASSENGER NOTICES\b/i,
+    /\n\s*YO['‘’]?LOVCHILARGA BILDIRISHNOMA\b/i,
+    /\n\s*УВЕДОМЛЕНИЕ ПАССАЖИРАМ\b/i,
+    /\n\s*CONDITIONS OF CONTRACT\b/i,
+  ];
+  let trimmed = rawText;
+  for (const rx of cutMarkers) {
+    const m = trimmed.match(rx);
+    if (m && m.index !== undefined && m.index > 250) {
+      trimmed = trimmed.slice(0, m.index).trim();
+    }
+  }
+  return trimmed;
+}
+
+export function extractPassportFallbackFromText(rawText: string): string {
+  if (!rawText) return '';
+  const patterns: RegExp[] = [
+    /\bSSR\s+DOCS\s+[A-Z0-9]{2}\s+[A-Z]{2}\d*[\/\-]+P[\/\-]+[A-Z]{2,3}[\/\-]+([A-Z0-9]{6,12})\b/i,
+    /\bFOID[:\s\/-]*(?:PP|PSP|NP|PN)?[A-Z]{0,3}[\s\/-]*([A-Z]{0,2}\d{6,10})\b/i,
+    /\b(?:PSPRUS|PSPUZB|PSPTJK|PSPIND|PSPTUR|PSP|NP)\s*([A-Z]{0,2}\d{6,10})\b/i,
+    /(?:Passport|Pasport|Паспорт|Документ|Document\s*No|Belge\s*No|Hujjat)\s*(?:№|No|#|:|\/|-|\s){1,6}(?:ЗП|ПН|ПП|PSP|NP|RF)?[\s№:\/-]*([A-Z\u0400-\u04FF]{1,2}[\s-]?\d{6,9}|\d{2}[\s-]?\d{7,8})/i,
+  ];
+  for (const rx of patterns) {
+    const m = rawText.match(rx);
+    if (m && m[1]) {
+      const cleaned = cleanTicketPassportNumber(m[1]);
+      // Avoid matching 10-13 digit airline ticket numbers (e.g. 2502115507720) or phone numbers (+998...)
+      if (cleaned.length >= 7 && cleaned.length <= 11 && !/^25021\d+/.test(cleaned) && !/^998\d+/.test(cleaned)) {
+        return cleaned;
+      }
+    }
+  }
+  return '';
 }
 
 function levenshteinDistance(a: string, b: string): number {
@@ -758,41 +799,42 @@ export function matchPassengersAgainstPondera(
 
 // ---------------- HUMAN-LIKE SEMANTIC TICKET & ITINERARY EXTRACTION PROMPT ----------------
 
-export const HUMAN_TICKET_SYSTEM_PROMPT = `You are a senior multilingual travel document analyst fluent in Russian, Turkish, and English.
-Instead of doing blind line-by-line OCR, read and understand the whole document layout like an experienced human travel coordinator:
-- Distinguish actual PASSENGER NAMES and PASSPORT/DOCUMENT NUMBERS from agency headers, cashier names, company legal names (e.g. ООО ПОНДЕРА / PONDERA / POWERISE), baggage rules, and fare endorsements.
-- Recognize both AIRLINE E-TICKETS (Aeroflot, Uzbekistan Airways, Turkish Airlines, S7, Utair, Pobeda, Air India, Ural Airlines, Azimuth, Pegasus, Charter manifests) AND RUSSIAN RAILWAYS (РЖД / RZD) electronic tickets / control coupons (Контрольный купон, Поезд, Вагон, Место, Отправление, Прибытие).
-- If MULTIPLE PASSENGERS appear on the same itinerary/booking, extract EVERY passenger into the "passengers" array with their respective passportNumber, ticketNumber, and seatOrWagon.
-- Clean airline GDS prefixes from passport numbers (for example "PSPFA4210519" -> "FA4210519", "NP 75 1234567" -> "751234567").
-- Keep passengerName in clean UPPERCASE Latin if Latin is shown; if the ticket is strictly in Cyrillic (common on RZD domestic tickets), keep Cyrillic in passengerNameCyrillic AND provide standard GOST Latin transliteration in passengerName.
-- If a total invoice/booking amount covers N passengers and individual fares are not broken out, put the per-passenger share in "pricePerPassenger" and total in "totalPrice".
+export const HUMAN_TICKET_SYSTEM_PROMPT = `You are a senior multilingual travel document analyst fluent in Russian, Turkish, Uzbek, and English.
+Read and understand the ticket document accurately and concisely:
+- Distinguish actual PASSENGER NAMES and PASSPORT/DOCUMENT NUMBERS from agency headers, company names (ООО ПОНДЕРА / PONDERA / POWERISE), and baggage/fare rules.
+- Recognize both AIRLINE E-TICKETS (Uzbekistan Airways, Aeroflot, Turkish Airlines, S7, Utair, Pobeda, Air India, Ural Airlines, Azimuth, Pegasus, SomonAir, Charter manifests) AND RUSSIAN RAILWAYS (РЖД / RZD) electronic tickets.
+- MULTI-SEGMENT / ROUND-TRIP RULE: If ONE passenger has multiple connecting or return flights on the same ticket (e.g. HY279 Urgench->Istanbul, HY274 Istanbul->Tashkent, HY51 Tashkent->Urgench), output ONLY ONE entry for that person in "passengers"! Combine flight numbers with " / " in "flightOrTrainNumber" (e.g. "HY279 / HY274 / HY51"), put initial origin in "departureCity", primary destination in "arrivalCity", first flight departure in "departureDate", and final return/arrival date in "returnOrArrivalDate".
+- MULTIPLE DISTINCT PEOPLE: Only add multiple objects in "passengers" when multiple DIFFERENT human passengers are listed on a group booking.
+- PASSPORT NUMBER RULE: Extract passport/document number if printed (cleaning GDS prefixes like "PSPFA4210519" -> "FA4210519", "FOID PP..." -> "..."). If NO passport/ID number is printed on the ticket (for example Uzbekistan Airways web receipts only print Booking ref & Ticket number), set "passportNumber": "". Never put ticket numbers or PNR into "passportNumber".
+- Keep passengerName in clean UPPERCASE Latin without titles (strip MR, MRS, MS, ADT, CHD, INF — e.g. "Ruzmetov Nematjon Mr (ADT)" -> "RUZMETOV NEMATJON"). If strictly Cyrillic, put Cyrillic in passengerNameCyrillic and GOST Latin in passengerName.
+- Use Total Amount for "totalPrice" and "pricePerPassenger" (with its exact 3-letter currency code: RUB, UZS, USD, EUR, TRY).
 
-Return ONLY a valid JSON object (no markdown fences, no commentary) matching this exact schema:
+Return ONLY a single valid JSON object (no markdown fences, no comments, no extra keys) matching this exact schema:
 {
   "transportType": "flight" | "train",
   "passengers": [
     {
       "passengerName": "SURNAME GIVENNAME",
-      "passengerNameCyrillic": "ФАМИЛИЯ ИМЯ ОТЧЕСТВО or empty string",
-      "passportNumber": "Cleaned passport/document number without PSP/NP prefix",
-      "ticketNumber": "13-digit e-ticket or 14-digit RZD ticket number",
-      "seatOrWagon": "e.g. Vagon 04 Seat 18 or 14A or empty string",
-      "citizenship": "3-letter code if visible (UZB, RUS, TUR, IND, TJK, KAZ, KGZ, AZE, BLR) or empty string"
+      "passengerNameCyrillic": "",
+      "passportNumber": "",
+      "ticketNumber": "250 2115507720",
+      "seatOrWagon": "",
+      "citizenship": ""
     }
   ],
-  "bookingReference": "PNR / Booking code (6-char airline PNR or RZD order number)",
-  "carrier": "Airline name or RZD train brand (e.g. Aeroflot, Uzbekistan Airways, RZD Sapsan)",
-  "flightOrTrainNumber": "e.g. SU-1871, HY-631, TK-419, 002M, 758A",
-  "departureCity": "Departure city name",
-  "arrivalCity": "Arrival city name",
-  "departureAirportOrStation": "IATA code (SVO, TAS, IST, LED, KZN) or Railway station name",
-  "arrivalAirportOrStation": "IATA code or Railway station name",
-  "departureDate": "DD.MM.YYYY HH:mm (or DD.MM.YYYY if time not shown)",
-  "returnOrArrivalDate": "Arrival or return date DD.MM.YYYY HH:mm (or empty string)",
-  "ticketClass": "economy" | "business" | "platzkart" | "kupe",
-  "totalPrice": 0,
-  "pricePerPassenger": 0,
-  "currency": "RUB" | "USD" | "EUR" | "TRY" | "UZS"
+  "bookingReference": "XIGH54",
+  "carrier": "Uzbekistan Airways",
+  "flightOrTrainNumber": "HY279",
+  "departureCity": "Urgench",
+  "arrivalCity": "Istanbul",
+  "departureAirportOrStation": "UGC",
+  "arrivalAirportOrStation": "IST",
+  "departureDate": "17.10.2025 09:25",
+  "returnOrArrivalDate": "17.10.2025 11:45",
+  "ticketClass": "economy",
+  "totalPrice": 27408,
+  "pricePerPassenger": 27408,
+  "currency": "RUB"
 }`;
 
 // ---------------- CUSTOM HTTPS REQUEST WITH RUSSIAN TRUSTED CA (FOR GIGACHAT) ----------------
@@ -1236,6 +1278,7 @@ async function callOpenAiCompatibleVisionOrText(params: {
   extraHeaders?: Record<string, string>;
   omitSystemMessage?: boolean;
   maxTokens?: number;
+  jsonMode?: boolean;
 }): Promise<string> {
   const endpoint = `${params.baseUrl.trim().replace(/\/+$/, '')}/chat/completions`;
   const headers: Record<string, string> = {
@@ -1267,19 +1310,40 @@ async function callOpenAiCompatibleVisionOrText(params: {
 
   const isShort4kContextModel = /deepseek-vl/i.test(params.model);
   const safeMaxTokens =
-    params.maxTokens ?? (isShort4kContextModel ? 1100 : 2400);
+    params.maxTokens ?? (isShort4kContextModel ? 1000 : 1400);
 
-  const bodyPayload = {
+  const basePayload: Record<string, unknown> = {
     model: params.model.trim(),
     messages,
-    temperature: 0.05,
+    temperature: 0.0,
     max_tokens: safeMaxTokens,
   };
+
+  if (params.jsonMode) {
+    const withJsonFormat = {
+      ...basePayload,
+      response_format: { type: 'json_object' },
+    };
+    const respJson = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(withJsonFormat),
+    });
+    if (respJson.ok) {
+      const json = await respJson.json();
+      return String(json?.choices?.[0]?.message?.content || '');
+    }
+    // Only fall back to plain call if this model/endpoint rejected response_format (HTTP 400)
+    if (respJson.status !== 400) {
+      const errText = await respJson.text();
+      throw new Error(`API ${respJson.status}: ${errText.slice(0, 280)}`);
+    }
+  }
 
   const resp = await fetch(endpoint, {
     method: 'POST',
     headers,
-    body: JSON.stringify(bodyPayload),
+    body: JSON.stringify(basePayload),
   });
 
   if (!resp.ok) {
@@ -1443,28 +1507,117 @@ export interface TicketParseInput {
   providerOverride?: AiProviderId;
 }
 
+function repairLlmJsonString(input: string): string {
+  // 1) Normalize smart quotes outside or inside JSON delimiters & sanitize raw newlines inside string literals
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+      } else if (ch === '\\') {
+        out += ch;
+        escaped = true;
+      } else if (ch === '"') {
+        out += ch;
+        inString = false;
+      } else if (ch === '\n' || ch === '\r' || ch === '\t') {
+        out += ' ';
+      } else {
+        out += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+        out += ch;
+      } else {
+        out += ch;
+      }
+    }
+  }
+
+  // 2) Remove trailing commas before closing } or ]
+  out = out.replace(/,\s*([}\]])/g, '$1');
+
+  // 3) Insert missing commas between adjacent objects/arrays/properties (fixes "Expected ',' or ']' after array element")
+  out = out.replace(/\}\s*\{/g, '},{');
+  out = out.replace(/\]\s*\[/g, '],[');
+  out = out.replace(/(["\d]|true|false|null|\}|\])\s*\n\s*"/g, '$1,\n"');
+  out = out.replace(/(["\d]|true|false|null)\s+\{/g, '$1,{');
+
+  return out;
+}
+
+function extractBalancedJsonObject(str: string): string | null {
+  const start = str.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < str.length; i++) {
+    const ch = str[i];
+    if (inStr) {
+      if (esc) {
+        esc = false;
+      } else if (ch === '\\') {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+      }
+    } else {
+      if (ch === '"') {
+        inStr = true;
+      } else if (ch === '{') {
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          return str.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  const lastBrace = str.lastIndexOf('}');
+  return lastBrace > start ? str.slice(start, lastBrace + 1) : null;
+}
+
 export function extractJsonFromModelOutput(rawContent: string): Record<string, any> {
   const trimmed = (rawContent || '').trim();
   if (!trimmed) throw new Error('Yapay zeka boş yanıt döndürdü.');
 
   // Strip DeepSeek <think>...</think> reasoning block if present
-  const withoutThink = trimmed.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const withoutThink = trimmed
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^<think>[\s\S]*$/gi, '')
+    .trim();
 
   const fenceMatch =
     withoutThink.match(/```json\s*([\s\S]*?)```/i) ||
     withoutThink.match(/```\s*([\s\S]*?)```/i);
   const candidate = fenceMatch ? fenceMatch[1].trim() : withoutThink;
 
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    const firstBrace = candidate.indexOf('{');
-    const lastBrace = candidate.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+  const attempts = [
+    candidate,
+    extractBalancedJsonObject(candidate) || '',
+    repairLlmJsonString(extractBalancedJsonObject(candidate) || candidate),
+  ].filter(Boolean);
+
+  let lastParseErr: any = null;
+  for (const attempt of attempts) {
+    try {
+      const parsed = JSON.parse(attempt);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch (e) {
+      lastParseErr = e;
     }
-    throw new Error('Yapay zeka yanıtı geçerli bir JSON formatına dönüştürülemedi.');
   }
+
+  throw new Error(
+    `Yapay zeka yanıtı JSON formatına dönüştürülemedi (${String(lastParseErr?.message || 'parse error')}).`
+  );
 }
 
 function splitDataUrl(dataUrl: string): { mimeType: string; base64: string } {
@@ -1486,10 +1639,13 @@ async function executeSingleProviderTicketParse(
     }
   }
 
-  const pdfTextContext = (input.extractedPdfText || '').trim();
+  const pdfTextContext = trimAirlineLegalBoilerplate((input.extractedPdfText || '').trim());
+  const nonWsTextLen = pdfTextContext.replace(/\s+/g, '').length;
+  const hasRichDigitalPdfText = nonWsTextLen >= 100;
+
   const baseUserInstruction = pdfTextContext
-    ? `Analyze this travel ticket/itinerary ("${input.fileName}") like a human travel specialist.\n\n[DIGITAL / LAYOUT TEXT FROM DOCUMENT]:\n${pdfTextContext.slice(0, 14000)}\n\nCross-check with the visual scan (if attached) and return ONLY valid JSON.`
-    : `Analyze this travel ticket/itinerary scan ("${input.fileName}") like a human travel specialist and return ONLY valid JSON.`;
+    ? `Extract structured ticket JSON from "${input.fileName}":\n\n${pdfTextContext.slice(0, 7500)}`
+    : `Extract structured ticket JSON from this scan ("${input.fileName}").`;
 
   if (provider === 'deepseek') {
     const baseUrl = settings.deepseek_base_url.trim() || 'https://api.deepseek.com/v1';
@@ -1499,10 +1655,10 @@ async function executeSingleProviderTicketParse(
         'DeepSeek API anahtarı henüz girilmemiş. Ayarlar > 4. Yapay Zeka (AI) & Evrak Okuma sekmesinden DeepSeek API Key ekleyin.'
       );
     }
-    const configuredModel = settings.deepseek_model.trim() || 'deepseek-chat';
+    const configuredModel = settings.deepseek_model.trim() || 'deepseek-flash';
     const isOfficialDeepseek = baseUrl.includes('api.deepseek.com');
 
-    // Check live /models on custom or official DeepSeek endpoint (supports V3, R1, V4/V4.1 Flash, etc.)
+    // Check cached /models on DeepSeek endpoint (cached 5 mins — 0 ms overhead after first call)
     const { models: dsModels } = await fetchOpenAiEndpointModels(baseUrl, apiKey);
     const exactCatalogMatch = dsModels.find(
       (m) => m.toLowerCase() === configuredModel.toLowerCase()
@@ -1513,15 +1669,41 @@ async function executeSingleProviderTicketParse(
     const effectiveModel =
       exactCatalogMatch ||
       flashCatalogMatch ||
-      (dsModels.length === 0 ? configuredModel : 'deepseek-chat');
+      dsModels[0] ||
+      configuredModel;
 
+    // FAST PATH (~2s): Digital PDFs already have crisp layout text — skip sending 1.5MB vision images!
+    if (hasRichDigitalPdfText) {
+      const textModel =
+        effectiveModel === 'deepseek-reasoner'
+          ? 'deepseek-reasoner'
+          : dsModels.length === 0 || dsModels.includes(effectiveModel)
+          ? effectiveModel
+          : dsModels[0] || 'deepseek-chat';
+      const rawFast = await callOpenAiCompatibleVisionOrText({
+        baseUrl,
+        apiKey,
+        model: textModel,
+        systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
+        userInstruction: baseUserInstruction,
+        imagesDataUrls: [],
+        jsonMode: true,
+        maxTokens: 1100,
+      });
+      return {
+        parsed: extractJsonFromModelOutput(rawFast),
+        providerLabel: `DeepSeek AI (${textModel})`,
+      };
+    }
+
+    // VISUAL SCAN PATH: Camera photo, WhatsApp image, or scanned image-only PDF (<100 chars digital text)
     const looksMultimodalModel =
       /flash|vl|vision|ocr|v4/i.test(effectiveModel) ||
       (!isOfficialDeepseek &&
         effectiveModel !== 'deepseek-chat' &&
         effectiveModel !== 'deepseek-reasoner');
 
-    if (images.length > 0 && (looksMultimodalModel || pdfTextContext.length < 20)) {
+    if (images.length > 0 && (looksMultimodalModel || !hasRichDigitalPdfText)) {
       try {
         const rawVision = await callOpenAiCompatibleVisionOrText({
           baseUrl,
@@ -1530,44 +1712,44 @@ async function executeSingleProviderTicketParse(
           systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
           userInstruction: baseUserInstruction,
           imagesDataUrls: images.slice(0, 2),
+          jsonMode: true,
+          maxTokens: 1200,
         });
         return {
           parsed: extractJsonFromModelOutput(rawVision),
-          providerLabel: `DeepSeek AI (${effectiveModel})`,
+          providerLabel: `DeepSeek AI Vision (${effectiveModel})`,
         };
       } catch (visionErr: any) {
         const vMsg = String(visionErr?.message || '');
         if (vMsg.includes('API 401') || vMsg.includes('API 402') || vMsg.includes('API 429')) {
           throw visionErr;
         }
-        // If image_url is not supported by this DeepSeek text model and we have digital PDF text, fall through cleanly
+        if (nonWsTextLen < 20) {
+          throw visionErr;
+        }
       }
     }
 
-    if (pdfTextContext.length < 20) {
+    if (nonWsTextLen < 20) {
       throw new Error(
-        'Bu dosya metin katmanı olmayan taranmış bir görüntü (Scan). Resmi DeepSeek metin modeli görsel kabul etmedi; lütfen Oku butonunun yanından görsel (Vision) destekli bir motor seçin.'
+        'Bu dosya metin katmanı olmayan taranmış bir görüntü (Scan). Seçili model görsel kabul etmedi.'
       );
     }
 
-    const semanticModel =
-      effectiveModel === 'deepseek-reasoner'
-        ? 'deepseek-reasoner'
-        : dsModels.includes(effectiveModel)
-        ? effectiveModel
-        : 'deepseek-chat';
     const raw = await callOpenAiCompatibleVisionOrText({
       baseUrl,
       apiKey,
-      model: semanticModel,
+      model: effectiveModel,
       systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
-      userInstruction: `Read and understand this complete ticket content like a human specialist and return ONLY valid JSON:\n\n${pdfTextContext.slice(0, 15000)}`,
+      userInstruction: baseUserInstruction,
       imagesDataUrls: [],
+      jsonMode: true,
+      maxTokens: 1100,
     });
 
     return {
       parsed: extractJsonFromModelOutput(raw),
-      providerLabel: `DeepSeek AI (${semanticModel})`,
+      providerLabel: `DeepSeek AI (${effectiveModel})`,
     };
   }
 
