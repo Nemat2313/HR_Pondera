@@ -17,6 +17,7 @@ import {
   ensureVksQuarterlyArchiveAndState,
   isVks15MinNotificationEnabled,
 } from '@/lib/vksQuarterManager';
+import { checkAndSendQuotaAlerts } from '@/lib/quotaManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,6 +71,14 @@ export async function GET(request: Request) {
         emailRes,
       });
     }
+    if (testMode === 'quota') {
+      const quotaRes = await checkAndSendQuotaAlerts(true);
+      return NextResponse.json({
+        success: true,
+        mode: 'test_quota',
+        quotaRes,
+      });
+    }
     if (testMode === 'both') {
       const vksRes = await checkAndSendVks15MinReport(true);
       const compRes = await sendDailyCompliance915Report(true);
@@ -108,6 +117,16 @@ export async function GET(request: Request) {
 
     // 3. Check Scheduled Corporate Email Reports (09:15 Compliance, 09:20 ZUP vs Real, 09:30 VKS, 10:00 Turnover)
     const emailScheduleResult = await runScheduledEmailReports(false);
+
+    // 3b. Threshold-based Low Quota & Expiring ИРС (РНП) Alerts (only sends when critical fingerprint changes)
+    let quotaAlertResult: any = { skipped: true };
+    if (msk.hour === 9 && msk.minute >= 25 && msk.minute <= 29) {
+      const lastQuotaCronDate = getSystemVal(db, 'telegram_quota_last_daily_date') || '';
+      if (lastQuotaCronDate !== msk.dateIso) {
+        setSystemVal(db, 'telegram_quota_last_daily_date', msk.dateIso);
+        quotaAlertResult = await checkAndSendQuotaAlerts(false);
+      }
+    }
 
     // 4. Server-side outbox flush: try delivering any previously queued messages directly from the server
     const queuedOnServer = claimPendingOutboxMessages(db);

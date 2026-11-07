@@ -180,7 +180,7 @@ export default function Sidebar({
           id: 'quotas',
           label: t('nav_quotas'),
           icon: Briefcase,
-          badge: lang === 'ru' ? 'Квота' : 'Kota',
+          badge: lang === 'ru' ? 'ИРС • Live' : 'ИРС • Canlı',
           badgeColor: 'bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-700/50',
         },
         {

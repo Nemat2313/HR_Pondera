@@ -166,6 +166,7 @@ export function resetDb() {
   delete gState.__ponderaColumnsClassified;
   delete gState.__ponderaUpcomingTicketsSeeded;
   delete gState.__ponderaAiTicketTablesEnsured;
+  delete gState.__ponderaQuotaTablesEnsured;
   delete gState.__ponderaEmployeeMatchIndex;
   delete gState.__ponderaStatusPdfCache;
   if (gState.__ponderaAnalyticsResponseCache?.clear) {
