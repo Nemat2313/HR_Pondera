@@ -11,6 +11,7 @@ import {
   ensureVksQuarterlyArchiveAndState,
   getVksQuarterOverview,
   getAllArchivedGosuslugiAppNos,
+  isVks15MinNotificationEnabled,
 } from '@/lib/vksQuarterManager';
 
 export const runtime = 'nodejs';
@@ -554,8 +555,15 @@ export async function POST(request: Request) {
     ensureTable(db);
     const quarterOverview = getVksQuarterOverview(db);
     const archivedQuarterCodes = new Set(quarterOverview.archives.map((a) => a.quarter_code));
+    const latestArchivedAt = quarterOverview.archives[0]?.archived_at || '';
     const checkQuarterArchiveByAppStmt = db.prepare(
       `SELECT id, gosuslugi_status FROM gosuslugi_submissions_archive WHERE application_no = ? AND application_no != '' LIMIT 1`
+    );
+    const checkQuarterArchiveErrorBySicilStmt = db.prepare(
+      `SELECT id, submitted_at FROM gosuslugi_submissions_archive WHERE sicil_no = ? AND application_no = '' AND gosuslugi_status = ? LIMIT 1`
+    );
+    const checkActiveMasterBySicilStmt = db.prepare(
+      `SELECT 1 FROM gosuslugi_vks_master_list WHERE sicil_no = ? LIMIT 1`
     );
     const updateQuarterArchiveByAppStmt = db.prepare(
       `UPDATE gosuslugi_submissions_archive
@@ -880,6 +888,30 @@ export async function POST(request: Request) {
             );
           }
           continue;
+        }
+
+        if (!adminForceOverride) {
+          if (quarterOverview.activeMasterCount === 0) {
+            continue;
+          }
+          if (!appNo && sicil) {
+            if (!checkActiveMasterBySicilStmt.get(sicil)) {
+              continue;
+            }
+            if (!rawItemPeriod) {
+              const archivedErr = checkQuarterArchiveErrorBySicilStmt.get(sicil, normalizedStatus) as
+                | { id: number; submitted_at: string }
+                | undefined;
+              if (
+                archivedErr &&
+                (!rawIncomingSubAt ||
+                  rawIncomingSubAt === archivedErr.submitted_at ||
+                  (latestArchivedAt && rawIncomingSubAt <= latestArchivedAt))
+              ) {
+                continue;
+              }
+            }
+          }
         }
       }
 
@@ -1336,7 +1368,7 @@ export async function POST(request: Request) {
       upserted++;
     }
 
-    if (newlyMvdNotFoundAlerts.length > 0) {
+    if (newlyMvdNotFoundAlerts.length > 0 && isVks15MinNotificationEnabled(db)) {
       const msk = getMoscowTimeParts();
       const lines = newlyMvdNotFoundAlerts
         .slice(0, 15)
@@ -1409,6 +1441,7 @@ export async function PATCH(request: Request) {
 
     const db = getDb();
     ensureTable(db);
+    const patchQuarterOverview = getVksQuarterOverview(db);
     invalidateGosuslugiAnalyticsCache();
 
     const nowStr = getMoscowNowIso();
@@ -1493,7 +1526,7 @@ export async function PATCH(request: Request) {
         }
       }
       if (appNo && checkArchivedRefusalStmt.get(appNo)) continue;
-      if (sicil) {
+      if (sicil && patchQuarterOverview.activeMasterCount > 0) {
         const res = bySicilStmt.run(status, status, detail, appNo, nowStr, sicil, appNo, appNo);
         updated += res.changes;
       }
@@ -1524,19 +1557,6 @@ export async function DELETE(request: Request) {
 
     const db = getDb();
     ensureTable(db);
-    const quarterOverview = getVksQuarterOverview(db);
-    const archivedQuarterCodes = new Set(quarterOverview.archives.map((a) => a.quarter_code));
-    const checkQuarterArchiveByAppStmt = db.prepare(
-      `SELECT id, gosuslugi_status FROM gosuslugi_submissions_archive WHERE application_no = ? AND application_no != '' LIMIT 1`
-    );
-    const updateQuarterArchiveByAppStmt = db.prepare(
-      `UPDATE gosuslugi_submissions_archive
-       SET gosuslugi_status = CASE WHEN ? = 'Услуга оказана' THEN 'Услуга оказана' ELSE gosuslugi_status END,
-           pdf_filename = COALESCE(NULLIF(?, ''), pdf_filename),
-           status_pdf_filename = COALESCE(NULLIF(?, ''), status_pdf_filename),
-           checked_at = COALESCE(NULLIF(?, ''), checked_at)
-       WHERE application_no = ? AND application_no != ''`
-    );
     invalidateGosuslugiAnalyticsCache();
     const nowStr = getMoscowNowIso();
 

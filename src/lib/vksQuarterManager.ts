@@ -585,6 +585,19 @@ export function getVksQuarterOverview(db: any): VksQuarterOverview {
     db.prepare('SELECT COUNT(*) AS cnt FROM gosuslugi_vks_master_list').get() as { cnt: number }
   ).cnt;
 
+  if (activeMasterCount === 0) {
+    const cleaned = db
+      .prepare(
+        `DELETE FROM gosuslugi_submissions
+         WHERE LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'`
+      )
+      .run();
+    if (cleaned.changes > 0) {
+      db.prepare(`DELETE FROM gosuslugi_submission_history`).run();
+      invalidateGosuslugiAnalyticsCache();
+    }
+  }
+
   const activeSentCount = (
     db
       .prepare(
