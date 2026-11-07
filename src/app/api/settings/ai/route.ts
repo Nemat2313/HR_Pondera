@@ -25,7 +25,7 @@ function formatSettingsResponse(s: AiProviderSettingsRow) {
     hasDeepseekKey: Boolean(s.deepseek_api_key && s.deepseek_api_key.trim().length > 0),
 
     deepseekOcrBaseUrl: s.deepseek_ocr_base_url || 'https://api.siliconflow.com/v1',
-    deepseekOcrModel: s.deepseek_ocr_model || 'deepseek-ai/DeepSeek-OCR',
+    deepseekOcrModel: s.deepseek_ocr_model || 'deepseek-ai/deepseek-vl2',
     deepseekOcrApiKey: maskSecretKey(s.deepseek_ocr_api_key),
     hasDeepseekOcrKey: Boolean(s.deepseek_ocr_api_key && s.deepseek_ocr_api_key.trim().length > 0),
 
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
         current.deepseek_ocr_api_key
       ),
       deepseek_ocr_model: String(
-        incoming.deepseekOcrModel ?? current.deepseek_ocr_model ?? 'deepseek-ai/DeepSeek-OCR'
+        incoming.deepseekOcrModel ?? current.deepseek_ocr_model ?? 'deepseek-ai/deepseek-vl2'
       ).trim(),
       yandex_folder_id: String(
         incoming.yandexFolderId ?? current.yandex_folder_id ?? ''
@@ -181,6 +181,8 @@ export async function POST(request: Request) {
         latencyMs: result.latencyMs,
         message: result.message,
         modelReply: result.modelReply || '',
+        resolvedModel: result.resolvedModel || '',
+        availableVisionModels: result.availableVisionModels || [],
       });
     }
 

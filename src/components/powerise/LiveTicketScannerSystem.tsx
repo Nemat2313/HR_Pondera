@@ -29,8 +29,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
-type AiProviderChoice =
-  | ''
+type ActiveAiProviderId =
   | 'deepseek'
   | 'deepseek_ocr'
   | 'yandex'
@@ -297,7 +296,8 @@ export default function LiveTicketScannerSystem({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [subView, setSubView] = useState<'scanner' | 'ledger' | 'guests'>('scanner');
-  const [providerOverride, setProviderOverride] = useState<AiProviderChoice>('');
+  const [selectedProvider, setSelectedProvider] = useState<ActiveAiProviderId>('deepseek');
+  const providerInitializedRef = useRef(false);
 
   // Server ledger & AI readiness state
   const [savedTickets, setSavedTickets] = useState<Array<Record<string, any>>>([]);
@@ -378,7 +378,22 @@ export default function LiveTicketScannerSystem({
           setRegions(json.regions || []);
           setProjects(json.projects || []);
           if (json.stats) setLedgerStats(json.stats);
-          if (json.aiStatus) setAiStatus(json.aiStatus);
+          if (json.aiStatus) {
+            setAiStatus(json.aiStatus);
+            if (!providerInitializedRef.current) {
+              providerInitializedRef.current = true;
+              const configuredActive = (json.aiStatus.activeProvider || 'deepseek') as ActiveAiProviderId;
+              const readinessMap = (json.aiStatus.readiness || {}) as Record<string, boolean>;
+              if (readinessMap[configuredActive]) {
+                setSelectedProvider(configuredActive);
+              } else {
+                const firstReady = (
+                  ['deepseek_ocr', 'deepseek', 'yandex', 'gigachat', 'gemini', 'openrouter', 'ru_docs_ocr'] as ActiveAiProviderId[]
+                ).find((k) => readinessMap[k]);
+                setSelectedProvider(firstReady || configuredActive);
+              }
+            }
+          }
         }
       })
       .catch(() => {});
@@ -435,7 +450,8 @@ export default function LiveTicketScannerSystem({
   };
 
   const handleScanPendingFiles = async () => {
-    const targets = files.filter((f) => f.status === 'pending' || f.status === 'error');
+    const pendingOrError = files.filter((f) => f.status === 'pending' || f.status === 'error');
+    const targets = pendingOrError.length > 0 ? pendingOrError : files;
     if (targets.length === 0) return;
 
     setIsScanning(true);
@@ -460,7 +476,7 @@ export default function LiveTicketScannerSystem({
             extraPageDataUrls: prepared.extraPageDataUrls,
             rawFileBase64: prepared.rawFileBase64,
             extractedPdfText: prepared.extractedPdfText,
-            providerOverride: providerOverride || undefined,
+            providerOverride: selectedProvider,
           }),
         });
         const json = await res.json();
@@ -800,8 +816,8 @@ export default function LiveTicketScannerSystem({
   const pendingFilesCount = files.filter(
     (f) => f.status === 'pending' || f.status === 'error'
   ).length;
-  const activeEngineId = aiStatus?.activeProvider || 'deepseek';
-  const activeEngineLabel = PROVIDER_LABELS[activeEngineId] || 'DeepSeek AI';
+  const selectedEngineLabel = PROVIDER_LABELS[selectedProvider] || 'DeepSeek AI';
+  const isSelectedEngineReady = Boolean(aiStatus?.readiness?.[selectedProvider]);
 
   return (
     <div className="space-y-4">
@@ -818,38 +834,24 @@ export default function LiveTicketScannerSystem({
                   ? 'Живое ИИ-чтение билетов и учет сотрудников / гостей (Powerise)'
                   : 'Powerise Canlı AI Bilet Okuma & Çalışan / Misafir (Guest) Takip Merkezi'}
               </span>
-              {aiStatus?.isActiveProviderReady ? (
+              {isSelectedEngineReady ? (
                 <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/60">
-                  Aktif Motor Hazır: {activeEngineLabel}
+                  Seçili AI Hazır: {selectedEngineLabel}
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700/60">
-                  Varsayılan: {activeEngineLabel} (API Anahtarı Bekleniyor)
+                  Seçili AI: {selectedEngineLabel} (API Anahtarı Yok)
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Okutulan biletlerdeki yolcular Pondera kadrosunda aranır; kadroda olmayanlar otomatik olarak{' '}
-              <strong className="text-slate-700 dark:text-slate-200">Misafir (GUEST-...)</strong> statüsünde takibe alınır.
+              <strong className="text-slate-700 dark:text-slate-200">Misafir (GUEST-...)</strong> statüsünde takibe alınır. Otomatik sağlayıcı geçişi kapalıdır.
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={providerOverride}
-            onChange={(e) => setProviderOverride(e.target.value as AiProviderChoice)}
-            className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-          >
-            <option value="">Varsayılan Motoru Kullan ({activeEngineId.toUpperCase()})</option>
-            <option value="deepseek">DeepSeek AI (İnsan Gibi Anlama)</option>
-            <option value="deepseek_ocr">DeepSeek-OCR / VL2 (Scan Akışı)</option>
-            <option value="yandex">Yandex Vision + YandexGPT (Rusya AI)</option>
-            <option value="gigachat">Sber GigaChat-Pro (Rusya AI)</option>
-            <option value="gemini">Google Gemini 2.0 Flash</option>
-            <option value="openrouter">OpenRouter</option>
-          </select>
-
           {onOpenAiSettings && (
             <button
               type="button"
@@ -1047,31 +1049,74 @@ export default function LiveTicketScannerSystem({
               }}
               className="hidden"
             />
-            <div className="max-w-xl mx-auto space-y-2.5">
+            <div className="max-w-3xl mx-auto space-y-3">
               <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-300 mx-auto">
                 <UploadCloud className="w-5 h-5" />
               </div>
               <div className="text-sm font-bold text-slate-900 dark:text-white">
                 Uçak veya RZD Tren Biletlerini Buraya Sürükleyin (PDF, JPG, PNG)
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
                 Tek veya çok yolculu (grup) bilet PDF’lerini, WhatsApp ekran görüntülerini ve kamera taramalarını topluca yükleyebilirsiniz.
               </p>
+
               <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 cursor-pointer transition-colors"
                 >
                   Dosya Seç (.PDF / .JPG / .PNG)
                 </button>
 
-                {pendingFilesCount > 0 && (
+                {/* AI PROVIDER SELECTOR DIRECTLY BESIDE THE SCAN BUTTON */}
+                <div className="inline-flex flex-wrap sm:flex-nowrap items-center justify-center gap-2 p-1.5 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-indigo-200/85 dark:border-indigo-500/40 shadow-2xs">
+                  <div className="flex items-center gap-1.5 pl-2">
+                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      Hangi AI:
+                    </span>
+                    <select
+                      value={selectedProvider}
+                      disabled={isScanning}
+                      onChange={(e) => setSelectedProvider(e.target.value as ActiveAiProviderId)}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value="deepseek">
+                        1. DeepSeek AI (Resmi API){' '}
+                        {aiStatus?.readiness?.deepseek ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
+                      </option>
+                      <option value="deepseek_ocr">
+                        2. DeepSeek-OCR / VL2 (SiliconFlow){' '}
+                        {aiStatus?.readiness?.deepseek_ocr ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
+                      </option>
+                      <option value="yandex">
+                        3. Yandex Vision + YandexGPT (Rusya){' '}
+                        {aiStatus?.readiness?.yandex ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
+                      </option>
+                      <option value="gigachat">
+                        4. Sber GigaChat-Pro (Rusya){' '}
+                        {aiStatus?.readiness?.gigachat ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
+                      </option>
+                      <option value="gemini">
+                        5. Google Gemini 2.0 Flash{' '}
+                        {aiStatus?.readiness?.gemini ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
+                      </option>
+                      <option value="openrouter">
+                        6. OpenRouter{' '}
+                        {aiStatus?.readiness?.openrouter ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
+                      </option>
+                      <option value="ru_docs_ocr">
+                        7. RussianDocsOCR (Yerel){' '}
+                        {aiStatus?.readiness?.ru_docs_ocr ? '— ✓ Hazır' : '— Kurulu Değil'}
+                      </option>
+                    </select>
+                  </div>
+
                   <button
                     type="button"
-                    disabled={isScanning}
+                    disabled={isScanning || files.length === 0}
                     onClick={handleScanPendingFiles}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-100 hover:bg-indigo-200/80 dark:bg-indigo-500/25 dark:hover:bg-indigo-500/35 text-indigo-950 dark:text-indigo-100 border border-indigo-300 dark:border-indigo-400/50 cursor-pointer disabled:opacity-60"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-100 hover:bg-indigo-200/85 dark:bg-indigo-500/30 dark:hover:bg-indigo-500/45 text-indigo-950 dark:text-indigo-100 border border-indigo-300 dark:border-indigo-400/50 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed transition-all"
                   >
                     {isScanning ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -1080,11 +1125,15 @@ export default function LiveTicketScannerSystem({
                     )}
                     <span>
                       {isScanning
-                        ? 'AI Evrakları İnsan Gibi Okuyor...'
-                        : `${pendingFilesCount} Bilet Dosyasını AI ile Oku`}
+                        ? 'Seçili AI Evrakları Okuyor...'
+                        : pendingFilesCount > 0
+                        ? `${pendingFilesCount} Bilet Dosyasını AI ile Oku`
+                        : files.length > 0
+                        ? `${files.length} Dosyayı Seçili AI ile Tekrar Oku`
+                        : 'Bilet Dosyasını AI ile Oku'}
                     </span>
                   </button>
-                )}
+                </div>
 
                 {files.length > 0 && !isScanning && (
                   <button

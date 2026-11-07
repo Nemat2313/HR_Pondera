@@ -127,14 +127,14 @@ export function ensureAiTicketTables() {
     CREATE TABLE IF NOT EXISTS ai_provider_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       active_provider TEXT NOT NULL DEFAULT 'deepseek',
-      fallback_provider TEXT NOT NULL DEFAULT 'yandex',
-      hybrid_ocr_enabled INTEGER NOT NULL DEFAULT 1,
+      fallback_provider TEXT NOT NULL DEFAULT '',
+      hybrid_ocr_enabled INTEGER NOT NULL DEFAULT 0,
       deepseek_api_key TEXT NOT NULL DEFAULT '',
       deepseek_base_url TEXT NOT NULL DEFAULT 'https://api.deepseek.com/v1',
-      deepseek_model TEXT NOT NULL DEFAULT 'deepseek-flash',
+      deepseek_model TEXT NOT NULL DEFAULT 'deepseek-chat',
       deepseek_ocr_base_url TEXT NOT NULL DEFAULT 'https://api.siliconflow.com/v1',
       deepseek_ocr_api_key TEXT NOT NULL DEFAULT '',
-      deepseek_ocr_model TEXT NOT NULL DEFAULT 'deepseek-ai/DeepSeek-OCR',
+      deepseek_ocr_model TEXT NOT NULL DEFAULT 'deepseek-ai/deepseek-vl2',
       yandex_folder_id TEXT NOT NULL DEFAULT '',
       yandex_api_key TEXT NOT NULL DEFAULT '',
       yandex_model TEXT NOT NULL DEFAULT 'yandexgpt/latest',
@@ -170,12 +170,12 @@ export function ensureAiTicketTables() {
     ) VALUES (
       1,
       'deepseek',
-      'yandex',
-      1,
+      '',
+      0,
       'https://api.deepseek.com/v1',
-      'deepseek-flash',
+      'deepseek-chat',
       'https://api.siliconflow.com/v1',
-      'deepseek-ai/DeepSeek-OCR',
+      'deepseek-ai/deepseek-vl2',
       'yandexgpt/latest',
       'GIGACHAT_API_PERS',
       'GigaChat-Pro',
@@ -184,6 +184,16 @@ export function ensureAiTicketTables() {
       'deepseek/deepseek-chat-v3-0324',
       datetime('now')
     );
+
+    UPDATE ai_provider_settings
+    SET deepseek_ocr_model = 'deepseek-ai/deepseek-vl2'
+    WHERE id = 1
+      AND deepseek_ocr_base_url LIKE '%siliconflow.com%'
+      AND deepseek_ocr_model = 'deepseek-ai/DeepSeek-OCR';
+
+    UPDATE ai_provider_settings
+    SET fallback_provider = ''
+    WHERE id = 1 AND fallback_provider != '';
 
     CREATE TABLE IF NOT EXISTS travel_guests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,14 +265,14 @@ export function getAiProviderSettings(): AiProviderSettingsRow {
     row || {
       id: 1,
       active_provider: 'deepseek',
-      fallback_provider: 'yandex',
-      hybrid_ocr_enabled: 1,
+      fallback_provider: '',
+      hybrid_ocr_enabled: 0,
       deepseek_api_key: process.env.DEEPSEEK_API_KEY || '',
       deepseek_base_url: 'https://api.deepseek.com/v1',
-      deepseek_model: 'deepseek-flash',
+      deepseek_model: 'deepseek-chat',
       deepseek_ocr_base_url: 'https://api.siliconflow.com/v1',
       deepseek_ocr_api_key: process.env.SILICONFLOW_API_KEY || '',
-      deepseek_ocr_model: 'deepseek-ai/DeepSeek-OCR',
+      deepseek_ocr_model: 'deepseek-ai/deepseek-vl2',
       yandex_folder_id: process.env.YANDEX_FOLDER_ID || '',
       yandex_api_key: process.env.YANDEX_API_KEY || '',
       yandex_model: 'yandexgpt/latest',
@@ -846,14 +856,158 @@ async function runRussianDocsOcr(
   return String(json?.text || json?.full_text || json?.markdown || JSON.stringify(json));
 }
 
+// Valid 64x64 24-bit RGB white PNG used for real /chat/completions verification on Vision/OCR models
+// (64x64 satisfies Qwen2-VL/Qwen2.5-VL patch factor>=28 and DeepSeek-VL2 / OCR image decoders)
+const TEST_PNG_64X64_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAXklEQVR4nO3PMQ0AMAzAsPInvYLYYVWKESTzjhsd8KsBrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BbQHKU9LC7/CP1AAAAABJRU5ErkJggg==';
+
+const endpointModelsCache = new Map<string, { expiresAt: number; models: string[] }>();
+
+async function fetchOpenAiEndpointModels(
+  baseUrl: string,
+  apiKey: string
+): Promise<{ models: string[]; httpError?: string }> {
+  const cleanBase = baseUrl.trim().replace(/\/+$/, '');
+  const cleanKey = apiKey.trim();
+  const cacheKey = `${cleanBase}|${cleanKey.slice(-8)}`;
+  const cached = endpointModelsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { models: cached.models };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch(`${cleanBase}/models`, {
+      headers: { Authorization: `Bearer ${cleanKey}` },
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      return { models: [], httpError: `HTTP ${resp.status}: ${txt.slice(0, 180)}` };
+    }
+    const json = await resp.json();
+    const list: string[] = Array.isArray(json?.data)
+      ? json.data
+          .map((item: any) => String(item?.id || '').trim())
+          .filter((id: string) => id.length > 0)
+      : [];
+    if (list.length > 0) {
+      endpointModelsCache.set(cacheKey, {
+        expiresAt: Date.now() + 5 * 60 * 1000,
+        models: list,
+      });
+    }
+    return { models: list };
+  } catch (err: any) {
+    return { models: [], httpError: String(err?.message || 'Model listesi alınamadı.') };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function resolveEndpointModels(configuredModel: string, availableModels: string[]): {
+  exactConfiguredMatch: string | null;
+  visionModels: string[];
+  textModels: string[];
+} {
+  const trimmedCfg = (configuredModel || '').trim();
+  if (availableModels.length === 0) {
+    const fallbackV = trimmedCfg || 'deepseek-ai/deepseek-vl2';
+    return {
+      exactConfiguredMatch: trimmedCfg || null,
+      visionModels: [fallbackV],
+      textModels: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-7B-Instruct', fallbackV],
+    };
+  }
+
+  const exactConfiguredMatch =
+    availableModels.find((m) => m === trimmedCfg) ||
+    availableModels.find((m) => m.toLowerCase() === trimmedCfg.toLowerCase()) ||
+    null;
+
+  const isNonChatAsset = (id: string) =>
+    /(embed|bge-|rerank|whisper|sensevoice|cosyvoice|fish-speech|flux|stable-diffusion|kolors|wan2|hunyuanvideo|cogvideo|speech|tts|asr)/i.test(
+      id
+    );
+
+  const visionPriorityRegexes: RegExp[] = [
+    /deepseek.*ocr/i,
+    /^deepseek-ai\/deepseek-vl2$/i,
+    /deepseek.*(vl2|vl|vision)/i,
+    /^Qwen\/Qwen2\.5-VL-72B-Instruct$/i,
+    /^Qwen\/Qwen3-VL-32B-Instruct$/i,
+    /^Qwen\/Qwen2\.5-VL-32B-Instruct$/i,
+    /^Qwen\/Qwen2-VL-72B-Instruct$/i,
+    /^Qwen\/Qwen3-VL-8B-Instruct$/i,
+    /^Qwen\/Qwen2\.5-VL-7B-Instruct$/i,
+    /^Pro\/Qwen\/Qwen2\.5-VL-7B-Instruct$/i,
+    /qwen.*(vl|vision|ocr).*instruct/i,
+    /qwen.*(vl|vision|ocr)/i,
+    /(got-ocr|olmocr|dots\.ocr|paddleocr|ocr)/i,
+    /(glm-4.*v|pixtral|internvl|gemma-3.*it|llama.*vision)/i,
+  ];
+
+  const visionModels: string[] = [];
+  const pushVision = (id: string | null | undefined) => {
+    if (!id || isNonChatAsset(id)) return;
+    if (!visionModels.includes(id)) visionModels.push(id);
+  };
+
+  if (exactConfiguredMatch) {
+    pushVision(exactConfiguredMatch);
+  }
+  for (const rx of visionPriorityRegexes) {
+    for (const m of availableModels) {
+      if (rx.test(m)) pushVision(m);
+    }
+  }
+
+  const isLikelyVisionOnly = (id: string) =>
+    /(vl2|-vl-|_vl_|vision|ocr|pixtral|internvl)/i.test(id);
+
+  const textPriorityRegexes: RegExp[] = [
+    /^deepseek-ai\/DeepSeek-V3(\.2|\.1|-0324)?$/i,
+    /deepseek-ai\/DeepSeek-V3/i,
+    /^Qwen\/Qwen2\.5-72B-Instruct$/i,
+    /^Qwen\/Qwen2\.5-32B-Instruct$/i,
+    /^Qwen\/Qwen3-32B$/i,
+    /^Qwen\/Qwen3-8B$/i,
+    /^Qwen\/Qwen2\.5-7B-Instruct$/i,
+    /^Pro\/Qwen\/Qwen2\.5-7B-Instruct$/i,
+    /^THUDM\/GLM-4-9B-0414$/i,
+    /instruct$/i,
+  ];
+
+  const textModels: string[] = [];
+  const pushText = (id: string | null | undefined) => {
+    if (!id || isNonChatAsset(id) || isLikelyVisionOnly(id)) return;
+    if (!textModels.includes(id)) textModels.push(id);
+  };
+
+  for (const rx of textPriorityRegexes) {
+    for (const m of availableModels) {
+      if (rx.test(m)) pushText(m);
+    }
+  }
+
+  return {
+    exactConfiguredMatch,
+    visionModels,
+    textModels,
+  };
+}
+
 async function callOpenAiCompatibleVisionOrText(params: {
   baseUrl: string;
   apiKey: string;
   model: string;
-  systemPrompt: string;
+  systemPrompt?: string;
   userInstruction: string;
   imagesDataUrls: string[];
   extraHeaders?: Record<string, string>;
+  omitSystemMessage?: boolean;
+  maxTokens?: number;
 }): Promise<string> {
   const endpoint = `${params.baseUrl.trim().replace(/\/+$/, '')}/chat/completions`;
   const headers: Record<string, string> = {
@@ -862,9 +1016,8 @@ async function callOpenAiCompatibleVisionOrText(params: {
     ...(params.extraHeaders || {}),
   };
 
-  const userContent: Array<Record<string, unknown>> = [
-    { type: 'text', text: params.userInstruction },
-  ];
+  // Place image_url blocks BEFORE text block (required by DeepSeek-OCR / vLLM templates and supported by all OpenAI vision APIs)
+  const userContent: Array<Record<string, unknown>> = [];
   for (const dataUrl of params.imagesDataUrls) {
     if (dataUrl) {
       userContent.push({
@@ -873,18 +1026,26 @@ async function callOpenAiCompatibleVisionOrText(params: {
       });
     }
   }
+  userContent.push({ type: 'text', text: params.userInstruction });
+
+  const messages: Array<Record<string, unknown>> = [];
+  if (!params.omitSystemMessage && params.systemPrompt) {
+    messages.push({ role: 'system', content: params.systemPrompt });
+  }
+  messages.push({
+    role: 'user',
+    content: params.imagesDataUrls.length > 0 ? userContent : params.userInstruction,
+  });
+
+  const isShort4kContextModel = /deepseek-vl/i.test(params.model);
+  const safeMaxTokens =
+    params.maxTokens ?? (isShort4kContextModel ? 1100 : 2400);
 
   const bodyPayload = {
     model: params.model.trim(),
-    messages: [
-      { role: 'system', content: params.systemPrompt },
-      {
-        role: 'user',
-        content: params.imagesDataUrls.length > 0 ? userContent : params.userInstruction,
-      },
-    ],
-    temperature: 0.1,
-    max_tokens: 2800,
+    messages,
+    temperature: 0.05,
+    max_tokens: safeMaxTokens,
   };
 
   const resp = await fetch(endpoint, {
@@ -1109,108 +1270,57 @@ async function executeSingleProviderTicketParse(
         'DeepSeek API anahtarı henüz girilmemiş. Ayarlar > 4. Yapay Zeka (AI) & Evrak Okuma sekmesinden DeepSeek API Key ekleyin.'
       );
     }
-    const model = settings.deepseek_model.trim() || 'deepseek-flash';
+    const configuredModel = settings.deepseek_model.trim() || 'deepseek-chat';
     const baseUrl = settings.deepseek_base_url.trim() || 'https://api.deepseek.com/v1';
+    const isOfficialDeepseek = baseUrl.includes('api.deepseek.com');
 
-    // Step 1: If we have visual scan images and model is multimodal (e.g. deepseek-flash / vl / ocr), try direct Vision first
-    const looksTextOnlyModel = model === 'deepseek-chat' || model === 'deepseek-reasoner';
-    if (images.length > 0 && !looksTextOnlyModel) {
-      try {
-        const raw = await callOpenAiCompatibleVisionOrText({
-          baseUrl,
-          apiKey,
-          model,
-          systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
-          userInstruction: baseUserInstruction,
-          imagesDataUrls: images,
-        });
-        return {
-          parsed: extractJsonFromModelOutput(raw),
-          providerLabel: `DeepSeek AI (${model})`,
-        };
-      } catch (visionErr: any) {
-        // If account/endpoint doesn't support image_url on this model, fall through to Hybrid OCR/Text + DeepSeek-Chat semantic reasoning!
-        const msg = String(visionErr?.message || '');
-        const shouldTryHybrid =
-          pdfTextContext.length > 30 ||
-          (settings.hybrid_ocr_enabled === 1 &&
-            Boolean(
-              settings.deepseek_ocr_api_key.trim() ||
-                (settings.yandex_folder_id.trim() && settings.yandex_api_key.trim()) ||
-                settings.ru_docs_ocr_url.trim()
-            ));
-        if (!shouldTryHybrid) {
-          throw new Error(
-            `DeepSeek görsel okuma uyarısı (${msg.slice(0, 140)}). Taranmış resim/PDF için Ayarlar'dan "DeepSeek-OCR / VL2 (SiliconFlow)" veya hibrit Yandex Vision OCR anahtarını aktif edebilirsiniz.`
-          );
-        }
-      }
+    // Check live /models on custom or official DeepSeek endpoint to avoid 400 Model Not Exist if 'deepseek-flash' isn't hosted
+    const { models: dsModels } = await fetchOpenAiEndpointModels(baseUrl, apiKey);
+    const hasConfiguredInCatalog =
+      dsModels.length === 0 ||
+      dsModels.some((m) => m.toLowerCase() === configuredModel.toLowerCase());
+    const effectiveModel = hasConfiguredInCatalog ? configuredModel : 'deepseek-chat';
+
+    const looksMultimodalModel =
+      effectiveModel !== 'deepseek-chat' &&
+      effectiveModel !== 'deepseek-reasoner' &&
+      (!isOfficialDeepseek || dsModels.some((m) => m.toLowerCase() === effectiveModel.toLowerCase()));
+
+    if (images.length > 0 && looksMultimodalModel) {
+      const raw = await callOpenAiCompatibleVisionOrText({
+        baseUrl,
+        apiKey,
+        model: effectiveModel,
+        systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
+        userInstruction: baseUserInstruction,
+        imagesDataUrls: images.slice(0, 2),
+      });
+      return {
+        parsed: extractJsonFromModelOutput(raw),
+        providerLabel: `DeepSeek AI (${effectiveModel})`,
+      };
     }
 
-    // Step 2: Human-like semantic understanding with DeepSeek-V3 (deepseek-chat) over PDF text OR Hybrid Vision OCR!
-    let richDocumentText = pdfTextContext;
-
-    if (richDocumentText.length < 40) {
-      const firstImg = images[0]
-        ? splitDataUrl(images[0])
-        : input.rawFileBase64
-        ? { mimeType: input.mimeType || 'application/pdf', base64: input.rawFileBase64 }
-        : null;
-
-      if (firstImg && settings.deepseek_ocr_api_key.trim()) {
-        // Use DeepSeek-OCR / VL2 to turn visual layout into structured markdown first
-        const ocrMd = await callOpenAiCompatibleVisionOrText({
-          baseUrl: settings.deepseek_ocr_base_url || 'https://api.siliconflow.com/v1',
-          apiKey: settings.deepseek_ocr_api_key,
-          model: settings.deepseek_ocr_model || 'deepseek-ai/DeepSeek-OCR',
-          systemPrompt: 'Transcribe the entire document scan faithfully with tables and layout in Markdown.',
-          userInstruction: 'Read all text, numbers, names, passport IDs, dates, and fares from this ticket.',
-          imagesDataUrls: images.length > 0 ? images : [`data:${firstImg.mimeType};base64,${firstImg.base64}`],
-        });
-        richDocumentText = ocrMd;
-      } else if (
-        firstImg &&
-        settings.yandex_folder_id.trim() &&
-        settings.yandex_api_key.trim()
-      ) {
-        richDocumentText = await runYandexVisionOcr(
-          firstImg.base64,
-          firstImg.mimeType,
-          settings.yandex_folder_id,
-          settings.yandex_api_key
-        );
-      } else if (firstImg && settings.ru_docs_ocr_url.trim()) {
-        richDocumentText = await runRussianDocsOcr(
-          firstImg.base64,
-          firstImg.mimeType,
-          settings.ru_docs_ocr_url,
-          settings.ru_docs_ocr_key
-        );
-      }
-    }
-
-    if (richDocumentText.length < 15) {
+    if (pdfTextContext.length < 20) {
       throw new Error(
-        'Bu dosya metin katmanı olmayan taranmış bir görüntü (Scan). DeepSeek-Chat metin modeli yerine Ayarlar > AI sekmesinden "DeepSeek-OCR / VL2" veya "Hibrit Yandex Vision + DeepSeek" seçeneğini etkinleştirin.'
+        'Bu dosya metin katmanı olmayan taranmış bir görüntü (Scan). Resmi DeepSeek metin modeli (deepseek-chat) görsel kabul etmez; lütfen Oku butonunun yanından "DeepSeek-OCR / VL2 (SiliconFlow)" veya "Yandex Vision + YandexGPT" seçin.'
       );
     }
 
-    const semanticModel = looksTextOnlyModel ? model : 'deepseek-chat';
+    const semanticModel =
+      effectiveModel === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat';
     const raw = await callOpenAiCompatibleVisionOrText({
       baseUrl,
       apiKey,
       model: semanticModel,
       systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
-      userInstruction: `Read and understand this complete ticket content like a human specialist (fixing any OCR typos in dates, cities, or passport prefixes) and return ONLY valid JSON:\n\n${richDocumentText.slice(0, 15000)}`,
+      userInstruction: `Read and understand this complete ticket content like a human specialist and return ONLY valid JSON:\n\n${pdfTextContext.slice(0, 15000)}`,
       imagesDataUrls: [],
     });
 
     return {
       parsed: extractJsonFromModelOutput(raw),
-      providerLabel:
-        pdfTextContext.length >= 40
-          ? `DeepSeek AI (${semanticModel})`
-          : `DeepSeek AI + Hibrit Görsel Akış (${semanticModel})`,
+      providerLabel: `DeepSeek AI (${semanticModel})`,
     };
   }
 
@@ -1222,47 +1332,207 @@ async function executeSingleProviderTicketParse(
       );
     }
     const baseUrl = settings.deepseek_ocr_base_url.trim() || 'https://api.siliconflow.com/v1';
-    const ocrModel = settings.deepseek_ocr_model.trim() || 'deepseek-ai/DeepSeek-OCR';
+    const configuredModel = settings.deepseek_ocr_model.trim() || 'deepseek-ai/deepseek-vl2';
 
-    // Pure DeepSeek-OCR models sometimes output structured Markdown rather than JSON directly;
-    // if JSON parsing fails on direct output, we convert the Markdown via DeepSeek-V3 on the same endpoint!
-    const raw = await callOpenAiCompatibleVisionOrText({
+    const { models: availableModels, httpError } = await fetchOpenAiEndpointModels(
       baseUrl,
-      apiKey,
-      model: ocrModel,
-      systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
-      userInstruction: baseUserInstruction,
-      imagesDataUrls: images,
-    });
-
-    try {
-      return {
-        parsed: extractJsonFromModelOutput(raw),
-        providerLabel: `DeepSeek-OCR Vision (${ocrModel.split('/').pop()})`,
-      };
-    } catch {
-      // Second pass: DeepSeek-OCR returned rich layout Markdown -> structure into JSON via DeepSeek-V3!
-      const v3Model = settings.deepseek_api_key.trim()
-        ? 'deepseek-chat'
-        : 'deepseek-ai/DeepSeek-V3';
-      const v3Base = settings.deepseek_api_key.trim()
-        ? settings.deepseek_base_url || 'https://api.deepseek.com/v1'
-        : baseUrl;
-      const v3Key = settings.deepseek_api_key.trim() || apiKey;
-
-      const structured = await callOpenAiCompatibleVisionOrText({
-        baseUrl: v3Base,
-        apiKey: v3Key,
-        model: v3Model,
-        systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
-        userInstruction: `Extract structured JSON from this DeepSeek-OCR scan transcription:\n\n${raw.slice(0, 15000)}`,
-        imagesDataUrls: [],
-      });
-      return {
-        parsed: extractJsonFromModelOutput(structured),
-        providerLabel: `DeepSeek-OCR + V3 Anlama`,
-      };
+      apiKey
+    );
+    if (
+      availableModels.length === 0 &&
+      httpError &&
+      (httpError.includes('401') || httpError.includes('403'))
+    ) {
+      throw new Error(`SiliconFlow / Vision API yetkilendirme hatası (${httpError})`);
     }
+
+    const { exactConfiguredMatch, visionModels, textModels } = resolveEndpointModels(
+      configuredModel,
+      availableModels
+    );
+
+    const persistResolvedVisionModel = (resolvedId: string) => {
+      if (resolvedId && resolvedId !== settings.deepseek_ocr_model) {
+        try {
+          const db = ensureAiTicketTables();
+          db.prepare('UPDATE ai_provider_settings SET deepseek_ocr_model = ? WHERE id = 1').run(
+            resolvedId
+          );
+        } catch {
+          // ignore db write race
+        }
+      }
+    };
+
+    let combinedTranscription = '';
+    let usedVisionModel = '';
+    let lastVisionErr: any = null;
+
+    // Step 1: Visual scan reading via verified Vision / OCR models on this SiliconFlow / vLLM endpoint
+    if (images.length > 0 && visionModels.length > 0) {
+      for (const candidateVision of visionModels.slice(0, 4)) {
+        const isPureOcrModel = /ocr/i.test(candidateVision);
+        const isShort4kVlModel = /deepseek-vl/i.test(candidateVision);
+
+        try {
+          if (isPureOcrModel) {
+            const ocrMarkdown = await callOpenAiCompatibleVisionOrText({
+              baseUrl,
+              apiKey,
+              model: candidateVision,
+              omitSystemMessage: true,
+              maxTokens: 2000,
+              userInstruction:
+                'Perform OCR and extract all text, tables, passenger names, passport numbers, dates, flight/train numbers, booking references, routes, and fares from this document in Markdown format.',
+              imagesDataUrls: images.slice(0, 2),
+            });
+            usedVisionModel = candidateVision;
+            if (!exactConfiguredMatch) persistResolvedVisionModel(candidateVision);
+
+            try {
+              const maybeJson = extractJsonFromModelOutput(ocrMarkdown);
+              if (maybeJson && (Array.isArray(maybeJson.passengers) || maybeJson.passengerName)) {
+                return {
+                  parsed: maybeJson,
+                  providerLabel: `DeepSeek-OCR (${candidateVision.split('/').pop()})`,
+                };
+              }
+            } catch {
+              // OCR model returned Markdown; proceed to Step 2 JSON structuring
+            }
+            combinedTranscription = ocrMarkdown;
+            break;
+          } else if (isShort4kVlModel) {
+            // deepseek-ai/deepseek-vl2 has a strict 4,096 total context limit (input + max_tokens <= 4096)
+            const compactPdfHint = pdfTextContext
+              ? `\n[PDF TEXT SNIPPET]:\n${pdfTextContext.slice(0, 1400)}\n`
+              : '';
+            const compactPrompt =
+              `Read this travel ticket scan carefully (distinguish passenger vs agency, Cyrillic/Latin names, passport/document number, PNR, flight/train number, cities, YYYY-MM-DD dates, fare).${compactPdfHint}\n` +
+              `Return ONLY valid JSON matching:\n` +
+              `{"transportType":"flight","bookingReference":"","carrier":"","flightOrTrainNumber":"","departureCity":"","arrivalCity":"","departureAirportOrStation":"","arrivalAirportOrStation":"","departureDate":"YYYY-MM-DD","returnOrArrivalDate":"","ticketClass":"economy","totalAmount":0,"currency":"RUB","passengers":[{"passengerName":"","passengerNameCyrillic":"","passportNumber":"","citizenship":"","ticketNumber":"","seatOrWagon":"","ticketPrice":0}]}`;
+
+            const vlOut = await callOpenAiCompatibleVisionOrText({
+              baseUrl,
+              apiKey,
+              model: candidateVision,
+              omitSystemMessage: true,
+              maxTokens: 1050,
+              userInstruction: compactPrompt,
+              imagesDataUrls: images.slice(0, 1),
+            });
+            usedVisionModel = candidateVision;
+            if (!exactConfiguredMatch) persistResolvedVisionModel(candidateVision);
+
+            if (pdfTextContext.length <= 1400 && images.length <= 1) {
+              try {
+                const parsedDirect = extractJsonFromModelOutput(vlOut);
+                if (
+                  parsedDirect &&
+                  (Array.isArray(parsedDirect.passengers) || parsedDirect.passengerName)
+                ) {
+                  return {
+                    parsed: parsedDirect,
+                    providerLabel: `DeepSeek-VL2 (${candidateVision.split('/').pop()})`,
+                  };
+                }
+              } catch {
+                // Fall through to Step 2 text JSON structuring
+              }
+            }
+            combinedTranscription = vlOut;
+            break;
+          } else {
+            // Long-context Vision-Language model (e.g. Qwen2.5-VL-72B/32B/7B or Qwen3-VL)
+            const vlOut = await callOpenAiCompatibleVisionOrText({
+              baseUrl,
+              apiKey,
+              model: candidateVision,
+              systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
+              userInstruction: baseUserInstruction,
+              imagesDataUrls: images.slice(0, 2),
+              maxTokens: 2400,
+            });
+            usedVisionModel = candidateVision;
+            if (!exactConfiguredMatch) persistResolvedVisionModel(candidateVision);
+
+            try {
+              const parsedDirect = extractJsonFromModelOutput(vlOut);
+              if (
+                parsedDirect &&
+                (Array.isArray(parsedDirect.passengers) || parsedDirect.passengerName)
+              ) {
+                return {
+                  parsed: parsedDirect,
+                  providerLabel: `SiliconFlow Vision (${candidateVision.split('/').pop()})`,
+                };
+              }
+            } catch {
+              // Fall through to Step 2 text JSON structuring
+            }
+            combinedTranscription = vlOut;
+            break;
+          }
+        } catch (vErr: any) {
+          lastVisionErr = vErr;
+          const errStr = String(vErr?.message || '');
+          if (errStr.includes('API 401')) {
+            throw vErr;
+          }
+        }
+      }
+    }
+
+    if (pdfTextContext.length > 25) {
+      combinedTranscription = combinedTranscription
+        ? `${combinedTranscription}\n\n[DIGITAL PDF TEXT]:\n${pdfTextContext}`
+        : pdfTextContext;
+    }
+
+    if (!combinedTranscription.trim()) {
+      throw (
+        lastVisionErr ||
+        new Error(
+          availableModels.length > 0 && visionModels.length === 0
+            ? 'Bu SiliconFlow / vLLM uç noktasında aktif görsel (Vision/OCR) model bulunamadı.'
+            : 'DeepSeek-OCR / VL2 belgeden görsel veya metin içeriği çıkaramadı.'
+        )
+      );
+    }
+
+    // Step 2: Structure transcription into strict Ticket JSON using verified text models on the SAME endpoint
+    const jsonModelsToTry =
+      textModels.length > 0
+        ? textModels.slice(0, 4)
+        : ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-7B-Instruct'];
+
+    let lastStructErr: any = null;
+    for (const candidateTextModel of jsonModelsToTry) {
+      try {
+        const structured = await callOpenAiCompatibleVisionOrText({
+          baseUrl,
+          apiKey,
+          model: candidateTextModel,
+          systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
+          userInstruction: `Extract structured ticket JSON from this document content:\n\n${combinedTranscription.slice(0, 15000)}`,
+          imagesDataUrls: [],
+          maxTokens: 2400,
+        });
+        const visionTag = usedVisionModel ? `${usedVisionModel.split('/').pop()} + ` : '';
+        return {
+          parsed: extractJsonFromModelOutput(structured),
+          providerLabel: `SiliconFlow (${visionTag}${candidateTextModel.split('/').pop()})`,
+        };
+      } catch (err: any) {
+        lastStructErr = err;
+      }
+    }
+
+    throw (
+      lastStructErr ||
+      lastVisionErr ||
+      new Error('SiliconFlow / DeepSeek-OCR çıktısı JSON yapısına dönüştürülemedi.')
+    );
   }
 
   if (provider === 'yandex') {
@@ -1419,31 +1689,11 @@ async function executeSingleProviderTicketParse(
 
 export async function parseTicketDocument(input: TicketParseInput) {
   const settings = getAiProviderSettings();
-  const primaryProvider: AiProviderId =
+  const selectedProvider: AiProviderId =
     input.providerOverride || settings.active_provider || 'deepseek';
 
-  try {
-    return await executeSingleProviderTicketParse(primaryProvider, input, settings);
-  } catch (primaryErr: any) {
-    const fb = settings.fallback_provider as AiProviderId | '';
-    if (
-      !input.providerOverride &&
-      fb &&
-      fb !== primaryProvider &&
-      hasProviderCredentials(fb, settings)
-    ) {
-      try {
-        const fallbackResult = await executeSingleProviderTicketParse(fb, input, settings);
-        return {
-          parsed: fallbackResult.parsed,
-          providerLabel: `${fallbackResult.providerLabel} (Yedek Devrede)`,
-        };
-      } catch {
-        // Throw original primary error for clarity
-      }
-    }
-    throw primaryErr;
-  }
+  // Strict single-provider execution: NEVER auto-switch to another AI provider behind the user's back
+  return await executeSingleProviderTicketParse(selectedProvider, input, settings);
 }
 
 export function hasProviderCredentials(
@@ -1473,7 +1723,14 @@ export function hasProviderCredentials(
 export async function testAiProviderConnection(
   provider: AiProviderId,
   overrides?: Partial<AiProviderSettingsRow>
-): Promise<{ ok: boolean; latencyMs: number; message: string; modelReply?: string }> {
+): Promise<{
+  ok: boolean;
+  latencyMs: number;
+  message: string;
+  modelReply?: string;
+  resolvedModel?: string;
+  availableVisionModels?: string[];
+}> {
   const saved = getAiProviderSettings();
   const s: AiProviderSettingsRow = { ...saved, ...(overrides || {}) };
   const start = Date.now();
@@ -1483,35 +1740,29 @@ export async function testAiProviderConnection(
       if (!s.deepseek_api_key.trim()) {
         return { ok: false, latencyMs: 0, message: 'DeepSeek API Key girilmedi.' };
       }
-      // Test with deepseek-chat (guaranteed available on every DeepSeek account) or chosen model
-      const testModel = s.deepseek_model.trim() || 'deepseek-chat';
-      let usedModel = testModel;
-      let reply = '';
-      try {
-        reply = await callOpenAiCompatibleVisionOrText({
-          baseUrl: s.deepseek_base_url || 'https://api.deepseek.com/v1',
-          apiKey: s.deepseek_api_key,
-          model: testModel,
-          systemPrompt: 'Reply concisely.',
-          userInstruction: 'Reply with: DEEPSEEK_PONDERA_OK',
-          imagesDataUrls: [],
-        });
-      } catch {
-        usedModel = 'deepseek-chat';
-        reply = await callOpenAiCompatibleVisionOrText({
-          baseUrl: s.deepseek_base_url || 'https://api.deepseek.com/v1',
-          apiKey: s.deepseek_api_key,
-          model: 'deepseek-chat',
-          systemPrompt: 'Reply concisely.',
-          userInstruction: 'Reply with: DEEPSEEK_PONDERA_OK',
-          imagesDataUrls: [],
-        });
-      }
+      const base = s.deepseek_base_url || 'https://api.deepseek.com/v1';
+      const { models: dsModels } = await fetchOpenAiEndpointModels(base, s.deepseek_api_key);
+      const requested = s.deepseek_model.trim() || 'deepseek-chat';
+      const usedModel =
+        dsModels.length === 0 || dsModels.some((m) => m.toLowerCase() === requested.toLowerCase())
+          ? requested
+          : 'deepseek-chat';
+
+      const reply = await callOpenAiCompatibleVisionOrText({
+        baseUrl: base,
+        apiKey: s.deepseek_api_key,
+        model: usedModel,
+        systemPrompt: 'Reply concisely.',
+        userInstruction: 'Reply with: DEEPSEEK_PONDERA_OK',
+        imagesDataUrls: [],
+        maxTokens: 32,
+      });
       return {
         ok: true,
         latencyMs: Date.now() - start,
-        message: `DeepSeek AI bağlantısı başarılı (${usedModel}).`,
+        message: `DeepSeek AI canlı bağlantısı başarılı (${usedModel}).`,
         modelReply: reply.slice(0, 80),
+        resolvedModel: usedModel,
       };
     }
 
@@ -1520,17 +1771,82 @@ export async function testAiProviderConnection(
         return { ok: false, latencyMs: 0, message: 'DeepSeek-OCR / SiliconFlow API Key girilmedi.' };
       }
       const base = (s.deepseek_ocr_base_url || 'https://api.siliconflow.com/v1').replace(/\/+$/, '');
-      const resp = await fetch(`${base}/models`, {
-        headers: { Authorization: `Bearer ${s.deepseek_ocr_api_key.trim()}` },
-      });
-      if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(`HTTP ${resp.status}: ${txt.slice(0, 160)}`);
+      const configuredModel = (s.deepseek_ocr_model || 'deepseek-ai/deepseek-vl2').trim();
+
+      const { models: availableModels, httpError } = await fetchOpenAiEndpointModels(
+        base,
+        s.deepseek_ocr_api_key
+      );
+      if (availableModels.length === 0 && httpError) {
+        return {
+          ok: false,
+          latencyMs: Date.now() - start,
+          message: `SiliconFlow / Vision uç noktası hatası: ${httpError}`,
+        };
       }
+
+      const { exactConfiguredMatch, visionModels } = resolveEndpointModels(
+        configuredModel,
+        availableModels
+      );
+
+      if (visionModels.length === 0) {
+        return {
+          ok: false,
+          latencyMs: Date.now() - start,
+          message:
+            'Bu uç noktada aktif bir Görsel (Vision/OCR) modeli bulunamadı. URL ve hesap yetkilerinizi kontrol edin.',
+        };
+      }
+
+      // Perform a REAL /chat/completions vision test with a valid 64x64 PNG so 20012 / 402 errors are caught immediately!
+      let lastTestErr = '';
+      for (const candidateModel of visionModels.slice(0, 4)) {
+        try {
+          const reply = await callOpenAiCompatibleVisionOrText({
+            baseUrl: base,
+            apiKey: s.deepseek_ocr_api_key,
+            model: candidateModel,
+            omitSystemMessage: true,
+            userInstruction: 'Reply with one word: OK',
+            imagesDataUrls: [TEST_PNG_64X64_DATA_URL],
+            maxTokens: 24,
+          });
+
+          if (candidateModel !== saved.deepseek_ocr_model) {
+            try {
+              const db = ensureAiTicketTables();
+              db.prepare(
+                'UPDATE ai_provider_settings SET deepseek_ocr_model = ? WHERE id = 1'
+              ).run(candidateModel);
+            } catch {
+              // ignore
+            }
+          }
+
+          const wasAutoResolved = !exactConfiguredMatch || exactConfiguredMatch !== candidateModel;
+          return {
+            ok: true,
+            latencyMs: Date.now() - start,
+            resolvedModel: candidateModel,
+            availableVisionModels: visionModels.slice(0, 15),
+            modelReply: reply.slice(0, 60),
+            message: wasAutoResolved
+              ? `"${configuredModel}" bu sunucuda yer almadığı için çalışan görsel model otomatik doğrulandı ve seçildi: ${candidateModel}`
+              : `Görsel evrak modeli canlı /chat/completions testinden başarıyla geçti (${candidateModel}).`,
+          };
+        } catch (err: any) {
+          lastTestErr = String(err?.message || 'Görsel model yanıt vermedi.');
+          if (lastTestErr.includes('API 401')) break;
+        }
+      }
+
       return {
-        ok: true,
+        ok: false,
         latencyMs: Date.now() - start,
-        message: `DeepSeek-OCR / VL2 uç noktası doğrulandı (${s.deepseek_ocr_model}).`,
+        availableVisionModels: visionModels.slice(0, 15),
+        resolvedModel: visionModels[0],
+        message: `Görsel model çağrısı başarısız (${visionModels[0]}): ${lastTestErr}`,
       };
     }
 

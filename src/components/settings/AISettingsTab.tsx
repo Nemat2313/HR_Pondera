@@ -75,13 +75,13 @@ interface AiSettingsFormState {
 
 const DEFAULT_FORM: AiSettingsFormState = {
   activeProvider: 'deepseek',
-  fallbackProvider: 'yandex',
-  hybridOcrEnabled: true,
+  fallbackProvider: '',
+  hybridOcrEnabled: false,
   deepseekBaseUrl: 'https://api.deepseek.com/v1',
-  deepseekModel: 'deepseek-flash',
+  deepseekModel: 'deepseek-chat',
   deepseekApiKey: '',
   deepseekOcrBaseUrl: 'https://api.siliconflow.com/v1',
-  deepseekOcrModel: 'deepseek-ai/DeepSeek-OCR',
+  deepseekOcrModel: 'deepseek-ai/deepseek-vl2',
   deepseekOcrApiKey: '',
   yandexFolderId: '',
   yandexModel: 'yandexgpt/latest',
@@ -116,6 +116,7 @@ export default function AISettingsTab() {
   const [testResults, setTestResults] = useState<
     Record<string, { ok: boolean; latencyMs: number; message: string }>
   >({});
+  const [discoveredVisionModels, setDiscoveredVisionModels] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('/api/settings/ai')
@@ -128,6 +129,33 @@ export default function AISettingsTab() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const handleMakePrimary = async (provider: ProviderKey) => {
+    const nextForm = { ...form, activeProvider: provider };
+    setForm(nextForm);
+    if (!isAdmin) return;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/settings/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', settings: nextForm }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        if (json.settings) setForm((prev) => ({ ...prev, ...json.settings }));
+        setFeedback({
+          type: 'success',
+          text: `Ana yapay zeka motoru "${provider}" olarak güncellendi ve kaydedildi.`,
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -171,6 +199,12 @@ export default function AISettingsTab() {
         }),
       });
       const json = await res.json();
+      if (Array.isArray(json?.availableVisionModels) && json.availableVisionModels.length > 0) {
+        setDiscoveredVisionModels(json.availableVisionModels);
+      }
+      if (provider === 'deepseek_ocr' && json?.ok && json?.resolvedModel) {
+        setForm((prev) => ({ ...prev, deepseekOcrModel: String(json.resolvedModel) }));
+      }
       setTestResults((prev) => ({
         ...prev,
         [provider]: {
@@ -306,10 +340,10 @@ export default function AISettingsTab() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
           <div>
             <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Varsayılan Ana Yapay Zeka (Primary AI)
+              Varsayılan Seçili Yapay Zeka (Bilet Okutma Ekranı Açılış Seçimi)
             </label>
             <select
               value={form.activeProvider}
@@ -326,43 +360,17 @@ export default function AISettingsTab() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Otomatik Yedek Sağlayıcı (Rusya VPN’siz Fallback)
-            </label>
-            <select
-              value={form.fallbackProvider}
-              onChange={(e) => setForm((p) => ({ ...p, fallbackProvider: e.target.value }))}
-              className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:border-indigo-500"
-            >
-              <option value="">Yedek Kullanma (Sadece Seçili AI)</option>
-              <option value="yandex">Yandex Vision + YandexGPT (Rusya İçi Önerilen)</option>
-              <option value="gigachat">Sber GigaChat-Pro (Rusya İçi VPN’siz)</option>
-              <option value="deepseek_ocr">DeepSeek-OCR / VL2 (SiliconFlow)</option>
-              <option value="deepseek">DeepSeek Cloud API</option>
-              <option value="gemini">Google Gemini 2.0 Flash</option>
-            </select>
-          </div>
-
           <div className="flex items-end">
-            <label className="w-full flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50 cursor-pointer">
+            <div className="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800">
               <div>
-                <div className="text-xs font-semibold text-indigo-950 dark:text-indigo-200">
-                  Hibrit Görsel + DeepSeek Anlama
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Otomatik Sağlayıcı Geçişi Kapalıdır (Manuel Kontrol)
                 </div>
                 <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
-                  Scan resimlerde Vision OCR + DeepSeek-V3 birlikte çalışsın
+                  Bilet okuturken <strong>Oku</strong> butonunun hemen yanındaki kutudan hangi AI ile okutulacağını her seferinde seçebilirsiniz; sistem başka AI’a sessizce geçmez.
                 </div>
               </div>
-              <input
-                type="checkbox"
-                checked={form.hybridOcrEnabled}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, hybridOcrEnabled: e.target.checked }))
-                }
-                className="w-4 h-4 accent-indigo-600 rounded"
-              />
-            </label>
+            </div>
           </div>
         </div>
       </div>
@@ -456,13 +464,23 @@ export default function AISettingsTab() {
         >
           <div className="flex items-start justify-between gap-2">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-bold text-slate-900 dark:text-white">
                   1. DeepSeek AI (Resmi API)
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300">
-                  Varsayılan Motor
-                </span>
+                {form.activeProvider === 'deepseek' ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300">
+                    Aktif Ana Motor
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleMakePrimary('deepseek')}
+                    className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 hover:bg-indigo-100 dark:bg-slate-800 dark:hover:bg-indigo-950 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    Ana Motor Yap
+                  </button>
+                )}
                 {form.hasDeepseekKey && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
                     Anahtar Kayıtlı
@@ -567,10 +585,23 @@ export default function AISettingsTab() {
         >
           <div className="flex items-start justify-between gap-2">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-bold text-slate-900 dark:text-white">
                   2. DeepSeek-OCR / VL2 (Görsel Scan Akışı)
                 </span>
+                {form.activeProvider === 'deepseek_ocr' ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300">
+                    Aktif Ana Motor
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleMakePrimary('deepseek_ocr')}
+                    className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 cursor-pointer"
+                  >
+                    Ana Motor Yap & Kaydet
+                  </button>
+                )}
                 {form.hasDeepseekOcrKey && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
                     Anahtar Kayıtlı
@@ -621,9 +652,18 @@ export default function AISettingsTab() {
                 className="w-full px-3 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
               />
               <datalist id="deepseek-ocr-models">
-                <option value="deepseek-ai/DeepSeek-OCR" />
-                <option value="deepseek-ai/deepseek-vl2" />
-                <option value="Qwen/Qwen2.5-VL-72B-Instruct" />
+                {(discoveredVisionModels.length > 0
+                  ? discoveredVisionModels
+                  : [
+                      'deepseek-ai/deepseek-vl2',
+                      'Qwen/Qwen2.5-VL-72B-Instruct',
+                      'Qwen/Qwen3-VL-32B-Instruct',
+                      'Qwen/Qwen2.5-VL-7B-Instruct',
+                      'deepseek-ai/DeepSeek-OCR',
+                    ]
+                ).map((mId) => (
+                  <option key={mId} value={mId} />
+                ))}
               </datalist>
             </div>
           </div>
