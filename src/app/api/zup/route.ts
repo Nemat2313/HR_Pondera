@@ -9,7 +9,11 @@ import {
   saveZupRecordsToDb,
 } from '@/lib/zupReconciliation';
 import { sendZupVsRealTelegramReport } from '@/lib/telegramNotifier';
-import { checkAndImportZupAutoFolder, sendReportEmailById } from '@/lib/emailNotifier';
+import {
+  checkAndImportZupAutoFolder,
+  sendReportEmailById,
+  triggerOnUploadEmailReports,
+} from '@/lib/emailNotifier';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -106,6 +110,7 @@ export async function POST(request: Request) {
     const reportDate = explicitDate || extractZupReportDate(file.name, rawRows, '06.11.2026');
     const db = getDb();
     saveZupRecordsToDb(db, parsedRecords, reportDate, file.name);
+    await triggerOnUploadEmailReports('zup');
 
     const updatedData = computeZupVsRealReconciliation(db);
     return NextResponse.json({

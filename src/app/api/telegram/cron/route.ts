@@ -9,6 +9,10 @@ import {
   claimPendingOutboxMessages,
   markOutboxDelivered,
 } from '@/lib/telegramNotifier';
+import {
+  runScheduledEmailReports,
+  sendReportEmailById,
+} from '@/lib/emailNotifier';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,28 +47,34 @@ export async function GET(request: Request) {
     }
     if (testMode === 'compliance') {
       const compRes = await sendDailyCompliance915Report(true);
+      const emailRes = await sendReportEmailById('daily_compliance');
       return NextResponse.json({
         success: true,
         mode: 'test_compliance',
         compRes,
+        emailRes,
       });
     }
     if (testMode === 'zup') {
       const zupRes = await sendZupVsRealTelegramReport(true);
+      const emailRes = await sendReportEmailById('zup_vs_real');
       return NextResponse.json({
         success: true,
         mode: 'test_zup',
         zupRes,
+        emailRes,
       });
     }
     if (testMode === 'both') {
       const vksRes = await checkAndSendVks15MinReport(true);
       const compRes = await sendDailyCompliance915Report(true);
+      const emailRes = await runScheduledEmailReports(true);
       return NextResponse.json({
         success: true,
         mode: 'test_both',
         vksRes,
         compRes,
+        emailRes,
       });
     }
 
@@ -84,10 +94,13 @@ export async function GET(request: Request) {
       vksResult = await checkAndSendVks15MinReport(false);
     }
 
-    // 2. Check Daily 09:15 Moscow Time Document Expiry Report
+    // 2. Check Daily 09:15 Moscow Time Document Expiry Report (Telegram)
     const complianceResult = await sendDailyCompliance915Report(false);
 
-    // 3. Server-side outbox flush: try delivering any previously queued messages directly from the server
+    // 3. Check Scheduled Corporate Email Reports (09:15 Compliance, 09:20 ZUP vs Real, 09:30 VKS, 10:00 Turnover)
+    const emailScheduleResult = await runScheduledEmailReports(false);
+
+    // 4. Server-side outbox flush: try delivering any previously queued messages directly from the server
     const queuedOnServer = claimPendingOutboxMessages(db);
     if (queuedOnServer.length > 0) {
       const flushedIds: number[] = [];
@@ -107,6 +120,7 @@ export async function GET(request: Request) {
       moscowTime: `${msk.dateDisplay} ${msk.timeDisplay}`,
       vksResult,
       complianceResult,
+      emailScheduleResult,
       pendingOutbox: [],
     });
   } catch (err: any) {

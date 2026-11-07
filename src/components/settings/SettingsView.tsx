@@ -191,13 +191,13 @@ export default function SettingsView({
 
   const [smtp, setSmtp] = useState<SmtpSettingsState>({
     enabled: false,
-    host: 'mail.pondera.ru',
+    host: 'smtppro.zoho.com',
     port: 465,
     secure: true,
-    user: 'info@pondera.ru',
+    user: 'ikbildirim@pondera.ru',
     pass: '',
-    fromName: 'Pondera HR TeamHub Bildirim Sistemi',
-    fromEmail: 'info@pondera.ru',
+    fromName: 'Pondera İK Bildirim Sistemi',
+    fromEmail: 'ikbildirim@pondera.ru',
     zupApiToken: 'PONDERA-ZUP-SYNC-2026-SECRET',
     zupAutoFolder: '/var/www/hr_pondera/uploads/zup_auto',
   });
@@ -506,16 +506,37 @@ export default function SettingsView({
                 <div>
                   <h2 className="text-sm font-bold text-slate-900 dark:text-white">
                     {lang === 'ru'
-                      ? '1. Подключение корпоративной почты (SMTP) и Авто-синхронизация 1С ЗУП'
-                      : '1. Kurumsal Mail (SMTP) Bağlantı Bilgileri & 1C ZUP Otomasyon Ayarları'}
+                      ? '1. Подключение корпоративной почты Zoho Mail (SMTP) и Авто-синхронизация 1С ЗУП'
+                      : '1. Kurumsal Mail (Zoho Mail SMTP) & Telegram Eşzamanlı Bildirim Ayarları'}
                   </h2>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Rusya’da VPN gerektirmeden tüm raporların kurumsal e-posta (örn. info@pondera.ru) üzerinden gönderilmesi ve ileride farklı bir maile kolayca geçilebilmesi için bağlantı paneli.
+                    Tüm Telegram bildirimleri (15 dk Gosuslugi VKS, MVD uyarıları, günlük evrak süreleri, 1C ZUP fark özeti ve turnover) eşzamanlı olarak <strong>ikbildirim@pondera.ru</strong> (Zoho Mail SSL 465) üzerinden e-posta alıcılarına da iletilir.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSmtp((prev) => ({
+                        ...prev,
+                        enabled: true,
+                        host: 'smtppro.zoho.com',
+                        port: 465,
+                        secure: true,
+                        user: prev.user || 'ikbildirim@pondera.ru',
+                        fromEmail: prev.user || 'ikbildirim@pondera.ru',
+                        fromName: prev.fromName || 'Pondera İK Bildirim Sistemi',
+                      }))
+                    }
+                    className="px-2.5 py-1.5 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/15 text-amber-900 dark:text-amber-200 font-semibold text-[11px] cursor-pointer transition-all"
+                  >
+                    Zoho Mail (pondera.ru) Hazır Ayar
+                  </button>
+                )}
+
                 <label className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200 cursor-pointer px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                   <input
                     type="checkbox"
@@ -564,23 +585,39 @@ export default function SettingsView({
                   onChange={(e) =>
                     setSmtp({ ...smtp, user: e.target.value, fromEmail: e.target.value })
                   }
-                  placeholder="info@pondera.ru"
+                  placeholder="ikbildirim@pondera.ru"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">
-                  E-Posta Şifresi / Uygulama Şifresi
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] text-slate-500 dark:text-slate-400">
+                    E-Posta Şifresi / Uygulama Şifresi
+                  </label>
+                  {smtp.hasPassword && isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setSmtp({ ...smtp, pass: '' })}
+                      className="text-[10.5px] text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                    >
+                      Yeni Şifre Gir
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <KeyRound className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="password"
                     value={smtp.pass}
                     disabled={!isAdmin}
+                    onFocus={() => {
+                      if (smtp.pass === '••••••••') {
+                        setSmtp({ ...smtp, pass: '' });
+                      }
+                    }}
                     onChange={(e) => setSmtp({ ...smtp, pass: e.target.value })}
-                    placeholder="••••••••••••"
+                    placeholder={smtp.hasPassword ? 'Kayıtlı (Değiştirmek için yazın)' : '••••••••••••'}
                     className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                   />
                 </div>
@@ -595,7 +632,7 @@ export default function SettingsView({
                   value={smtp.host}
                   disabled={!isAdmin}
                   onChange={(e) => setSmtp({ ...smtp, host: e.target.value })}
-                  placeholder="mail.pondera.ru / smtp.yandex.ru"
+                  placeholder="smtppro.zoho.com"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                 />
               </div>

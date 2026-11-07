@@ -4,6 +4,7 @@ import path from 'path';
 import { getDb } from '@/lib/db';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 import { computeZupVsRealReconciliation } from '@/lib/zupReconciliation';
+import { sendCustomAlertEmail } from '@/lib/emailNotifier';
 
 export function getTelegramConfig() {
   let dbToken = '';
@@ -626,6 +627,51 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
   if (!tgRes.ok) {
     enqueueTelegramOutbox(db, 'vks', msg);
   }
+
+  // Dual-channel notification: send matching VKS 15-min activity summary via corporate Email
+  const emailSubject = `🔔 [Pondera VKS / Gosuslugi] 15 Dk Hareket Özeti (+${deltaSent} Gönderim, ${current.totalServiceRendered} Tamamlanan) — ${msk.dateDisplay} ${msk.timeDisplay}`;
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 16px; overflow: hidden; background: #ffffff;">
+      <div style="background: #1e3a8a; color: #ffffff; padding: 18px 24px;">
+        <h2 style="margin: 0; font-size: 17px;">🔔 Gosuslugi VKS Bildirim Raporu (15 Dakika Özeti)</h2>
+        <p style="margin: 5px 0 0; font-size: 12px; color: #bfdbfe;">Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • Ortak Sunucu (hr.pondera.network)</p>
+      </div>
+      <div style="padding: 20px 24px; color: #1e293b; font-size: 13px; line-height: 1.6;">
+        <h3 style="margin: 0 0 8px; font-size: 14px; color: #0f172a;">⏱ Son 15 Dakikadaki Hareketler</h3>
+        <ul style="margin: 0 0 16px; padding-left: 18px;">
+          <li>Gönderilen Bildirim: <strong>+${deltaSent}</strong></li>
+          <li>Oluşan Hata (Ошибка): <strong>+${deltaErrors}</strong></li>
+          <li>İndirilen Başvuru PDF: <strong>+${deltaPdfs}</strong></li>
+          <li>İndirilen Statü PDF (A4): <strong>+${deltaStatusPdfs}</strong></li>
+          <li>Statüsü Güncellenen Kayıt: <strong>+${statusChangedCount}</strong></li>
+        </ul>
+        <h3 style="margin: 0 0 8px; font-size: 14px; color: #0f172a;">🏛 Gosuslugi / МВД Başvuru Durumları</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px;">
+          <tr style="background: #f0fdf4;">
+            <td style="padding: 7px 12px; border: 1px solid #bbf7d0;"><strong>🟢 Услуга оказана (Tamamlanan)</strong></td>
+            <td style="padding: 7px 12px; border: 1px solid #bbf7d0; color: #166534;"><strong>${current.totalServiceRendered}</strong>${deltaServiceRendered > 0 ? ` (+${deltaServiceRendered} yeni)` : ''}</td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>🔵 Заявление зарегистрировано (Kayıtlı)</strong></td>
+            <td style="padding: 7px 12px; border: 1px solid #e2e8f0; color: #1d4ed8;"><strong>${current.totalRegistered}</strong></td>
+          </tr>
+          <tr style="background: #fef2f2;">
+            <td style="padding: 7px 12px; border: 1px solid #fecaca;"><strong>🔴 Услуга отказана (МВД Red)</strong></td>
+            <td style="padding: 7px 12px; border: 1px solid #fecaca; color: #b91c1c;"><strong>${current.totalRefused}</strong>${deltaRefused > 0 ? ` (+${deltaRefused} yeni)` : ''}</td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>📤 Отправлено (Bekleyen)</strong></td>
+            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>${current.totalSentPendingStatus}</strong></td>
+          </tr>
+          <tr style="background: #f8fafc;">
+            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>📊 Genel Toplam Başarılı / Arşiv PDF</strong></td>
+            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>${current.totalSent}</strong> (Başvuru PDF: ${current.totalPdf} | Statü A4 PDF: ${current.totalStatusPdf} | Hata: ${current.totalErrors})</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  `;
+  await sendCustomAlertEmail('vks_gosuslugi', emailSubject, emailHtml);
 
   return {
     sent: tgRes.ok,

@@ -5,6 +5,7 @@ import {
   enqueueTelegramOutbox,
   getMoscowTimeParts,
 } from '@/lib/telegramNotifier';
+import { sendCustomAlertEmail } from '@/lib/emailNotifier';
 import { getStatusPdfMaps, invalidateGosuslugiAnalyticsCache } from '@/lib/gosuslugiPdfCache';
 
 export const runtime = 'nodejs';
@@ -1302,6 +1303,30 @@ export async function POST(request: Request) {
       } catch {
         enqueueTelegramOutbox(db, 'mvd_not_found', alertHtml);
       }
+
+      const emailRowsHtml = newlyMvdNotFoundAlerts
+        .slice(0, 20)
+        .map(
+          (w, idx) =>
+            `<li><strong>${idx + 1}. ${w.workerName}</strong> — Sicil: <code>${w.sicil}</code> (${w.citizenship})</li>`
+        )
+        .join('');
+      await sendCustomAlertEmail(
+        'vks_gosuslugi',
+        `⚠️ [Pondera VKS / Gosuslugi] МВД Veritabanında Bulunamayan Personel (${newlyMvdNotFoundAlerts.length} Kişi)`,
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; border: 1px solid #fecaca; border-radius: 16px; overflow: hidden; background: #ffffff;">
+            <div style="background: #991b1b; color: #ffffff; padding: 16px 22px;">
+              <h2 style="margin: 0; font-size: 16px;">⚠️ ГОСУСЛУГИ ВКС — Данные не найдены в базе МВД</h2>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #fecaca;">Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay}</p>
+            </div>
+            <div style="padding: 18px 22px; color: #1e293b; font-size: 13px; line-height: 1.6;">
+              <p>Aşağıdaki VKS personelleri için Gosuslugi formunda <strong>«Данные не найдены в базе МВД»</strong> uyarısı alındı ve kayıtlar <strong>MVD Bulunamadı</strong> sekmesine ayrıldı:</p>
+              <ul style="padding-left: 18px;">${emailRowsHtml}</ul>
+            </div>
+          </div>
+        `
+      );
     }
 
     return NextResponse.json({
