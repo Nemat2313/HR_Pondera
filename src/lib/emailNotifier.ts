@@ -98,6 +98,12 @@ function getMoscowClock(now = new Date()) {
   };
 }
 
+const fmtNum = (n: number | string | undefined | null): string => {
+  const num = Number(n ?? 0);
+  if (isNaN(num)) return String(n ?? '0');
+  return num.toLocaleString('tr-TR');
+};
+
 const LEGACY_PLACEHOLDER_EMAILS = new Set([
   'ik@pondera.ru',
   'saha.koordinasyon@pondera.ru',
@@ -105,6 +111,7 @@ const LEGACY_PLACEHOLDER_EMAILS = new Set([
   'vks.operasyon@pondera.ru',
   'yonetim@pondera.ru',
   'info@pondera.ru',
+  'baris@pondera.ru',
 ]);
 
 const DEFAULT_SMTP_CONFIG: SmtpConfig = {
@@ -134,8 +141,8 @@ const DEFAULT_REPORT_RULES: EmailReportRule[] = [
     enabled: true,
     frequency: 'daily',
     scheduleTime: '09:15',
-    toEmails: ['ikbildirim@pondera.ru'],
-    ccEmails: [],
+    toEmails: ['zahid.rahimov@pondera.ru', 'nemat2313@gmail.com'],
+    ccEmails: ['ikbildirim@pondera.ru'],
     attachSummaryTable: true,
     lastSentAt: null,
     lastStatus: null,
@@ -151,8 +158,8 @@ const DEFAULT_REPORT_RULES: EmailReportRule[] = [
     enabled: true,
     frequency: 'daily',
     scheduleTime: '09:20',
-    toEmails: ['ikbildirim@pondera.ru'],
-    ccEmails: [],
+    toEmails: ['zahid.rahimov@pondera.ru', 'nemat2313@gmail.com'],
+    ccEmails: ['ikbildirim@pondera.ru'],
     attachSummaryTable: true,
     lastSentAt: null,
     lastStatus: null,
@@ -168,8 +175,8 @@ const DEFAULT_REPORT_RULES: EmailReportRule[] = [
     enabled: true,
     frequency: 'daily',
     scheduleTime: '09:30',
-    toEmails: ['ikbildirim@pondera.ru'],
-    ccEmails: [],
+    toEmails: ['zahid.rahimov@pondera.ru', 'nemat2313@gmail.com'],
+    ccEmails: ['ikbildirim@pondera.ru'],
     attachSummaryTable: true,
     lastSentAt: null,
     lastStatus: null,
@@ -185,8 +192,8 @@ const DEFAULT_REPORT_RULES: EmailReportRule[] = [
     enabled: true,
     frequency: 'weekdays',
     scheduleTime: '10:00',
-    toEmails: ['ikbildirim@pondera.ru'],
-    ccEmails: [],
+    toEmails: ['zahid.rahimov@pondera.ru', 'nemat2313@gmail.com'],
+    ccEmails: ['ikbildirim@pondera.ru'],
     attachSummaryTable: true,
     lastSentAt: null,
     lastStatus: null,
@@ -254,7 +261,6 @@ function normalizeSecretPassInput(incoming: string | undefined, existing: string
   const trimmed = String(incoming).trim();
   if (!trimmed) return existing;
   if (/^[•*]+$/.test(trimmed)) return existing;
-  // Handle accidental paste right next to masked bullets
   if (trimmed.includes('••••')) {
     const stripped = trimmed.replace(/•+/g, '').trim();
     return stripped || existing;
@@ -270,7 +276,6 @@ export function saveSmtpConfig(config: Partial<SmtpConfig>, dbInstance?: any): S
   const rawFromEmail = (config.fromEmail ?? current.fromEmail ?? nextUser).trim();
   const nextHost = (config.host ?? current.host ?? DEFAULT_SMTP_CONFIG.host).trim();
 
-  // Zoho Mail strictly enforces From === authenticated user unless alias is verified
   const safeFromEmail =
     nextHost.toLowerCase().includes('zoho') || !rawFromEmail || rawFromEmail === 'info@pondera.ru'
       ? nextUser
@@ -310,24 +315,25 @@ export function getEmailReportRules(dbInstance?: any): EmailReportRule[] {
   const db = dbInstance || getDb();
   ensureEmailTables(db);
   const smtp = getSmtpConfig(db);
-  const defaultTo = (smtp.user && !LEGACY_PLACEHOLDER_EMAILS.has(smtp.user.toLowerCase()))
-    ? smtp.user.toLowerCase()
-    : 'ikbildirim@pondera.ru';
+  const defaultTo =
+    smtp.user && !LEGACY_PLACEHOLDER_EMAILS.has(smtp.user.toLowerCase())
+      ? smtp.user.toLowerCase()
+      : 'ikbildirim@pondera.ru';
 
   const row = db.prepare('SELECT value FROM system_info WHERE key = ?').get('email_report_rules') as
     | { value?: string }
     | undefined;
   if (!row?.value) {
-    return DEFAULT_REPORT_RULES.map((r) => ({ ...r, toEmails: [defaultTo] }));
+    return DEFAULT_REPORT_RULES;
   }
   try {
     const saved = JSON.parse(row.value) as EmailReportRule[];
     if (!Array.isArray(saved)) {
-      return DEFAULT_REPORT_RULES.map((r) => ({ ...r, toEmails: [defaultTo] }));
+      return DEFAULT_REPORT_RULES;
     }
     return DEFAULT_REPORT_RULES.map((def) => {
       const found = saved.find((s) => s.id === def.id);
-      if (!found) return { ...def, toEmails: [defaultTo] };
+      if (!found) return def;
       const cleanTo = sanitizeRecipientList(found.toEmails, defaultTo);
       const cleanCc = sanitizeRecipientList(found.ccEmails);
       return {
@@ -342,7 +348,7 @@ export function getEmailReportRules(dbInstance?: any): EmailReportRule[] {
       };
     });
   } catch {
-    return DEFAULT_REPORT_RULES.map((r) => ({ ...r, toEmails: [defaultTo] }));
+    return DEFAULT_REPORT_RULES;
   }
 }
 
@@ -389,11 +395,6 @@ function logEmailDelivery(
   );
 }
 
-/**
- * Zero-dependency RFC-compliant SMTP over SSL/TLS client.
- * Sends RCPT TO sequentially one recipient at a time so multi-recipient To + CC lists
- * never pipeline-collide, and supports Zoho custom-domain auto-fallback.
- */
 function attemptSmtpSendSingleHost(
   host: string,
   config: SmtpConfig,
@@ -454,12 +455,10 @@ function attemptSmtpSendSingleHost(
         if (!buffer.endsWith('\r\n')) return;
         const lines = buffer.replace(/\r\n$/, '').split('\r\n');
         const lastLine = lines[lines.length - 1] || '';
-        // Multi-line SMTP response continues if 4th char is '-'
         if (lastLine.length >= 4 && lastLine[3] === '-') return;
         const code = parseInt(lastLine.slice(0, 3), 10);
         buffer = '';
 
-        // Step 6 handles per-recipient RCPT TO responses individually
         if (step === 6) {
           const currentRcpt = recipients[rcptIndex];
           if (code >= 200 && code < 300) {
@@ -600,7 +599,6 @@ async function sendRawSmtpMail(
     return { ok: true, detail: firstAttempt.detail };
   }
 
-  // Automatic Zoho custom-domain fallback (smtp.zoho.com <-> smtppro.zoho.com)
   const lowerHost = primaryHost.toLowerCase();
   if (lowerHost === 'smtp.zoho.com' || lowerHost === 'mail.zoho.com') {
     const retryPro = await attemptSmtpSendSingleHost(
@@ -704,10 +702,10 @@ function computeLiveComplianceSummary(db: any) {
   const docDefinitions = [
     { id: 'pasaport', label: 'Pasaport' },
     { id: 'vize', label: 'Vize' },
-    { id: 'propusk', label: 'Propusk (Saha Kartı)' },
+    { id: 'propusk', label: 'Propusk (Saha Giriş Kartı)' },
     { id: 'patent', label: 'Patent / Çalışma İzni' },
-    { id: 'registrasyon', label: 'Registrasyon' },
-    { id: 'daktilo', label: 'Daktiloskopiya' },
+    { id: 'registrasyon', label: 'Registrasyon (İkamet Kaydı)' },
+    { id: 'daktilo', label: 'Daktiloskopiya (Parmak İzi)' },
     { id: 'dms', label: 'Sağlık / DMS Sigorta' },
     { id: 'dil', label: 'Dil Sertifikası' },
   ];
@@ -745,7 +743,7 @@ function computeLiveComplianceSummary(db: any) {
 
   const regionBreakdown: Record<
     string,
-    { region: string; total: number; expired: number; critical: number; missing: number }
+    { region: string; total: number; expired: number; critical: number; warning: number; missing: number; valid: number }
   > = {};
 
   const getDaysDiff = (dateVal: any): number | null => {
@@ -776,7 +774,15 @@ function computeLiveComplianceSummary(db: any) {
     }
     const reg = r.region || 'Diğer';
     if (!regionBreakdown[reg]) {
-      regionBreakdown[reg] = { region: reg, total: 0, expired: 0, critical: 0, missing: 0 };
+      regionBreakdown[reg] = {
+        region: reg,
+        total: 0,
+        expired: 0,
+        critical: 0,
+        warning: 0,
+        missing: 0,
+        valid: 0,
+      };
     }
     regionBreakdown[reg].total++;
 
@@ -873,9 +879,11 @@ function computeLiveComplianceSummary(db: any) {
       } else if (status === 'warning') {
         docStats[d.id].warningCount++;
         totalWarning++;
+        regionBreakdown[reg].warning++;
       } else if (status === 'valid') {
         docStats[d.id].validCount++;
         totalValid++;
+        regionBreakdown[reg].valid++;
       } else {
         docStats[d.id].missingCount++;
         totalMissing++;
@@ -896,20 +904,40 @@ function computeLiveComplianceSummary(db: any) {
     totalValid,
     complianceRate,
     docList: docDefinitions.map((d) => docStats[d.id]),
-    topRegions: Object.values(regionBreakdown)
-      .sort((a, b) => b.expired + b.critical - (a.expired + a.critical))
-      .slice(0, 8),
+    topRegions: Object.values(regionBreakdown).sort(
+      (a, b) => b.expired + b.critical - (a.expired + a.critical)
+    ),
   };
 }
 
 function computeGosuslugiVksEmailSummary(db: any) {
+  let totalSent = 0;
+  let totalPdf = 0;
+  let totalNoPdf = 0;
+  let totalStatusPdf = 0;
+  let totalNoStatusPdf = 0;
+  let totalErrors = 0;
   let totalRendered = 0;
   let totalRegistered = 0;
   let totalRefused = 0;
   let totalPending = 0;
-  let totalErrors = 0;
-  let totalPdf = 0;
-  let totalStatusPdf = 0;
+
+  const statusPdfByAppNo = new Map<string, string>();
+  const statusPdfBySicil = new Map<string, string>();
+  try {
+    const pdfDir = path.join(process.cwd(), 'data', 'gosuslugi_pdfs');
+    if (fs.existsSync(pdfDir)) {
+      const files = fs.readdirSync(pdfDir);
+      for (const f of files) {
+        if (!f.toUpperCase().includes('_STATUS_A4.PDF')) continue;
+        const mApp = f.match(/([789]\d{9})/);
+        if (mApp) statusPdfByAppNo.set(mApp[1], f);
+        const mSic = f.match(/^(\d{4,8})_/);
+        if (mSic) statusPdfBySicil.set(mSic[1], f);
+      }
+    }
+  } catch {}
+
   try {
     const rawRows = db
       .prepare(
@@ -919,40 +947,243 @@ function computeGosuslugiVksEmailSummary(db: any) {
          ORDER BY CASE WHEN gosuslugi_status LIKE '%оказана%' THEN 0 WHEN application_no != '' THEN 1 ELSE 2 END ASC, submitted_at DESC, id DESC`
       )
       .all() as any[];
+
+    const doesPdfMatchApp = (fn: string, targetApp: string) => {
+      if (!fn) return false;
+      if (!targetApp) return true;
+      if (fn.includes(targetApp)) return true;
+      const m = fn.match(/([789]\d{9})/);
+      if (m && m[1] !== targetApp) return false;
+      return true;
+    };
+
     const seen = new Set<string>();
     for (const r of rawRows) {
-      const s = String(r.sicil_no || '').trim();
-      if (!s || seen.has(s)) continue;
-      seen.add(s);
-      const st = String(r.gosuslugi_status || '').trim();
+      const sicil = String(r.sicil_no || '').trim();
+      if (!sicil || seen.has(sicil)) continue;
+      seen.add(sicil);
+
       const appNo = String(r.application_no || '').trim();
-      if (!appNo && /Browser has been closed|Target page/i.test(st)) continue;
-      if (/^ошибк/i.test(st)) {
-        totalErrors++;
+      const rawStatus = String(r.gosuslugi_status || '').trim();
+      if (
+        !appNo &&
+        /Target page, context or browser has been closed|Browser has been closed|Context or browser has been closed/i.test(
+          rawStatus
+        )
+      ) {
         continue;
       }
-      if (r.pdf_filename && !String(r.pdf_filename).toUpperCase().includes('_STATUS_A4')) totalPdf++;
-      if (r.status_pdf_filename || String(r.pdf_filename || '').toUpperCase().includes('_STATUS_A4')) {
-        totalStatusPdf++;
+
+      const rawPdf = String(r.pdf_filename || '').trim();
+      const pdf =
+        !rawPdf.toUpperCase().includes('_STATUS_A4') && doesPdfMatchApp(rawPdf, appNo) ? rawPdf : '';
+      const statusPdf =
+        [
+          String(r.status_pdf_filename || '').trim(),
+          appNo ? statusPdfByAppNo.get(appNo) || '' : '',
+          sicil ? statusPdfBySicil.get(sicil) || '' : '',
+          rawPdf.toUpperCase().includes('_STATUS_A4') ? rawPdf : '',
+        ].find((cand) => Boolean(cand) && doesPdfMatchApp(cand, appNo)) || '';
+
+      const isError = /^ошибк/i.test(rawStatus);
+      const hasPdf = Boolean(pdf);
+      const hasStatusPdf = Boolean(statusPdf);
+      const isSent =
+        !isError &&
+        (Boolean(appNo) ||
+          hasPdf ||
+          hasStatusPdf ||
+          /отправлен|зарегистрирован|оказан|исполнен|отказан|принят|промежуточн|обработк|PDF не скачан/i.test(
+            rawStatus
+          ));
+
+      if (isError) {
+        totalErrors++;
+      } else if (isSent) {
+        totalSent++;
+        if (hasPdf) totalPdf++;
+        else totalNoPdf++;
+        if (hasStatusPdf) totalStatusPdf++;
+        else totalNoStatusPdf++;
+
+        if (/оказан|исполнен/i.test(rawStatus)) totalRendered++;
+        else if (/отказан|отказ/i.test(rawStatus)) totalRefused++;
+        else if (/зарегистрирован|отправлено в ведомство|принят|промежуточн/i.test(rawStatus)) {
+          totalRegistered++;
+        } else {
+          totalPending++;
+        }
       }
-      if (/оказан|исполнен/i.test(st)) totalRendered++;
-      else if (/отказан|отказ/i.test(st)) totalRefused++;
-      else if (/зарегистрирован|отправлено в ведомство|принят|промежуточн/i.test(st)) totalRegistered++;
-      else if (appNo || /отправлен/i.test(st)) totalPending++;
     }
   } catch {}
 
-  const totalSent = totalRendered + totalRegistered + totalRefused + totalPending;
   return {
+    totalRecords: totalSent + totalErrors,
     totalSent,
+    totalPdf,
+    totalNoPdf,
+    totalStatusPdf,
+    totalNoStatusPdf,
+    totalErrors,
     totalRendered,
     totalRegistered,
     totalRefused,
     totalPending,
-    totalErrors,
-    totalPdf,
-    totalStatusPdf,
   };
+}
+
+/**
+ * Outlook-Desktop, Gmail & Zoho Mail compatible corporate HTML shell.
+ * Uses table-based layout and solid bgcolor attributes so headers and KPI cards
+ * never break or render white-on-white in Microsoft Outlook.
+ */
+export function renderCorporateEmailShell(opts: {
+  accentHex: string;
+  headerBgHex: string;
+  badgeText: string;
+  title: string;
+  subtitle: string;
+  bodyHtml: string;
+  ctaLabel?: string;
+}): string {
+  const cta = opts.ctaLabel || 'Canlı İK Yönetim Paneline Git →';
+  return `<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body style="margin: 0; padding: 0; background-color: #eef2f6; font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #0f172a; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef2f6" style="background-color: #eef2f6; padding: 24px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="740" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width: 740px; width: 100%; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; overflow: hidden;">
+          <!-- Top Accent Bar -->
+          <tr>
+            <td bgcolor="${opts.accentHex}" height="5" style="background-color: ${opts.accentHex}; font-size: 1px; line-height: 1px;">&nbsp;</td>
+          </tr>
+          <!-- Corporate Header -->
+          <tr>
+            <td bgcolor="${opts.headerBgHex}" style="background-color: ${opts.headerBgHex}; padding: 22px 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td>
+                    <span style="display: inline-block; padding: 3px 10px; background-color: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22); border-radius: 999px; color: #e2e8f0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;">
+                      ${opts.badgeText}
+                    </span>
+                    <h1 style="margin: 10px 0 6px; font-size: 19px; line-height: 1.35; font-weight: 700; color: #ffffff;">
+                      ${opts.title}
+                    </h1>
+                    <p style="margin: 0; font-size: 12.5px; color: #cbd5e1; line-height: 1.45;">
+                      ${opts.subtitle}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Main Body -->
+          <tr>
+            <td style="padding: 24px 28px; color: #1e293b; font-size: 13px; line-height: 1.55;">
+              ${opts.bodyHtml}
+
+              <!-- CTA Bar -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e8f0;">
+                <tr>
+                  <td align="left" valign="middle">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td bgcolor="${opts.headerBgHex}" style="background-color: ${opts.headerBgHex}; border-radius: 8px;">
+                          <a href="https://hr.pondera.network" target="_blank" style="display: inline-block; padding: 10px 20px; color: #ffffff; font-size: 12.5px; font-weight: 700; text-decoration: none;">
+                            ${cta}
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td align="right" valign="middle" style="font-size: 11.5px; color: #64748b;">
+                    <strong>hr.pondera.network</strong>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td bgcolor="#f8fafc" style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 28px; font-size: 11px; color: #64748b; line-height: 1.5;">
+              <strong>Pondera Industry • HR TeamHub Otomatik Bildirim Merkezi</strong><br />
+              Gönderici: <a href="mailto:ikbildirim@pondera.ru" style="color: #475569; text-decoration: none;">ikbildirim@pondera.ru</a> • Bu rapor Telegram İK Bildirim Kanalı ile eşzamanlı olarak oluşturulmuştur.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+function renderKpiGrid4(
+  cards: Array<{
+    label: string;
+    value: string;
+    sub: string;
+    bgHex: string;
+    borderHex: string;
+    valueHex: string;
+  }>
+): string {
+  const tds = cards
+    .map(
+      (c, idx) => `
+      <td width="25%" valign="top" style="padding-left: ${idx === 0 ? '0' : '5px'}; padding-right: ${
+        idx === cards.length - 1 ? '0' : '5px'
+      };">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${
+          c.bgHex
+        }" style="background-color: ${c.bgHex}; border: 1px solid ${
+        c.borderHex
+      }; border-radius: 10px;">
+          <tr>
+            <td style="padding: 12px 12px;">
+              <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #475569; margin-bottom: 4px;">
+                ${c.label}
+              </div>
+              <div style="font-size: 20px; font-weight: 800; color: ${c.valueHex}; line-height: 1.2;">
+                ${c.value}
+              </div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.3;">
+                ${c.sub}
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>`
+    )
+    .join('');
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;"><tr>${tds}</tr></table>`;
+}
+
+function renderProgressBar(pct: number, fillHex = '#059669'): string {
+  const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+  const rem = 100 - clamped;
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 3px;">
+      <tr>
+        ${
+          clamped > 0
+            ? `<td width="${clamped}%" bgcolor="${fillHex}" height="5" style="background-color: ${fillHex}; border-radius: 3px; font-size: 1px; line-height: 1px;">&nbsp;</td>`
+            : ''
+        }
+        ${
+          rem > 0
+            ? `<td width="${rem}%" bgcolor="#e2e8f0" height="5" style="background-color: #e2e8f0; border-radius: 3px; font-size: 1px; line-height: 1px;">&nbsp;</td>`
+            : ''
+        }
+      </tr>
+    </table>
+  `;
 }
 
 export function buildReportEmailHtml(
@@ -961,347 +1192,636 @@ export function buildReportEmailHtml(
 ): { subject: string; html: string } {
   const db = dbInstance || getDb();
   const msk = getMoscowClock();
-
-  if (reportId === 'test_connection') {
-    const smtp = getSmtpConfig(db);
-    return {
-      subject: `✅ [Pondera HR TeamHub] Kurumsal E-Posta (Zoho Mail) Bağlantı Testi (${msk.dateDisplay})`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
-          <div style="background: #0f172a; color: #ffffff; padding: 20px 24px;">
-            <h2 style="margin: 0; font-size: 18px;">Pondera HR TeamHub — Çift Kanallı (Telegram + Mail) Bildirim Sistemi</h2>
-            <p style="margin: 6px 0 0; font-size: 12px; color: #94a3b8;">Tarih: ${msk.dateDisplay} ${msk.timeDisplay} (MSK) • Gönderici: ${smtp.user} • Sunucu: hr.pondera.network</p>
-          </div>
-          <div style="padding: 24px; color: #1e293b; font-size: 14px; line-height: 1.6;">
-            <p>Merhaba,</p>
-            <p>Bu e-posta <strong>Pondera HR TeamHub (hr.pondera.network)</strong> üzerindeki <strong>Zoho Kurumsal E-Posta Bildirim Motoru (${smtp.user})</strong> tarafından canlı bağlantı doğrulaması amacıyla gönderilmiştir.</p>
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 14px 16px; border-radius: 10px; color: #166534; font-size: 13px;">
-              ✅ <strong>Telegram + Kurumsal E-Posta Eşzamanlı Bildirim Aktif:</strong>
-              <ul style="margin: 8px 0 0; padding-left: 18px;">
-                <li>Günlük Evrak Süreleri &amp; Eksik Evrak Raporu (09:15 MSK)</li>
-                <li>1C ZUP (Resmi) ↔ eBA (Real) Kadro &amp; Veri Fark Raporu (09:20 MSK)</li>
-                <li>Gosuslugi VKS 15 Dakika Özeti, MVD Uyarıları &amp; Günlük Raporu (09:30 MSK)</li>
-                <li>Yönetim &amp; Turnover Kadro Özeti Raporu (10:00 MSK)</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      `,
-    };
-  }
-
   const recon = computeZupVsRealReconciliation(db);
   const s = recon.summary;
   const dc = s.discrepancyCounts;
 
-  if (reportId === 'zup_vs_real') {
-    const subject = `⚖️ [Pondera İK] 1C ZUP (Resmi) vs eBA (Real) Personel Karşılaştırma Özeti (${recon.metadata.zupDate} ↔ ${recon.metadata.ebaDate})`;
-    const regionRowsHtml = recon.byRegion
-      .filter((r: any) => r.realActive > 0 || r.zupActiveRealExit > 0)
-      .map(
-        (r: any) => `
+  if (reportId === 'test_connection') {
+    const comp = computeLiveComplianceSummary(db);
+    const g = computeGosuslugiVksEmailSummary(db);
+    const subject = `✅ [Pondera İK] Telegram + Kurumsal Mail Eşzamanlı Bildirim Sistemi Aktif (${msk.dateDisplay})`;
+
+    const kpiHtml = renderKpiGrid4([
+      {
+        label: 'AKTİF SAHA KADROSU',
+        value: `${fmtNum(s.realActiveTotal)}`,
+        sub: `Ana: ${fmtNum(s.realActiveMainFirm)} | Taşeron: ${fmtNum(s.realActiveSubcon)}`,
+        bgHex: '#f8fafc',
+        borderHex: '#cbd5e1',
+        valueHex: '#0f172a',
+      },
+      {
+        label: 'EVRAK UYUM ORANI',
+        value: `%${comp.complianceRate}`,
+        sub: `${fmtNum(comp.totalValid)} / ${fmtNum(comp.totalDocsCount)} Geçerli`,
+        bgHex: '#ecfdf5',
+        borderHex: '#a7f3d0',
+        valueHex: '#047857',
+      },
+      {
+        label: '1C ZUP RESMİ ORAN',
+        value: `%${s.matchedActiveRateMainFirm}`,
+        sub: `${fmtNum(s.matchedActiveBoth)} Eşleşen Aktif`,
+        bgHex: '#eef2ff',
+        borderHex: '#c7d2fe',
+        valueHex: '#3730a3',
+      },
+      {
+        label: 'GOSUSLUGI VKS',
+        value: `${fmtNum(g.totalSent)}`,
+        sub: `Оказана: ${fmtNum(g.totalRendered)} | PDF: ${fmtNum(g.totalPdf)}`,
+        bgHex: '#eff6ff',
+        borderHex: '#bfdbfe',
+        valueHex: '#1d4ed8',
+      },
+    ]);
+
+    const bodyHtml = `
+      ${kpiHtml}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f0fdf4" style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; margin-bottom: 18px;">
         <tr>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${r.region}</strong></td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${r.realActive}</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #059669;"><strong>${r.inZupOfficial}</strong> (%${r.officialRatePct})</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #d97706;">${r.missingMainFirm}</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #4f46e5;">${r.transferCount || 0}</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #e11d48;"><strong>${r.zupActiveRealExit}</strong></td>
+          <td style="padding: 14px 16px; color: #14532d; font-size: 13px;">
+            <strong>✅ Kurumsal E-Posta &amp; Telegram Çift Kanal Otomasyonu Devrede</strong><br />
+            Telegram İK grubuna düşen tüm periyodik ve anlık bildirimler artık aynı anda <strong>ikbildirim@pondera.ru</strong> üzerinden ilgili yöneticilere kurumsal tablo formatında da iletilmektedir.
+          </td>
         </tr>
-      `
-      )
-      .join('');
+      </table>
 
-    const permitRowsHtml = (recon.byPermitStatus || [])
-      .map(
-        (p: any) => `
-        <tr>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${p.shortTr || p.labelTr}</strong></td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${p.zupCount}</td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${p.realActiveCount}</td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: ${
-            p.diff === 0 ? '#059669' : '#b45309'
-          };"><strong>${p.diff > 0 ? `+${p.diff}` : p.diff}</strong></td>
-        </tr>
-      `
-      )
-      .join('');
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 740px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 16px; overflow: hidden; background: #ffffff;">
-        <div style="background: linear-gradient(90deg, #1e1b4b, #312e81); color: #ffffff; padding: 20px 24px;">
-          <h2 style="margin: 0; font-size: 18px;">⚖️ 1C ZUP (Resmi) ↔ eBA (Real) Çapraz Denetim Raporu</h2>
-          <p style="margin: 6px 0 0; font-size: 12px; color: #c7d2fe;">
-            1C ZUP Liste Tarihi: <strong>${recon.metadata.zupDate}</strong> | eBA Real Tarihi: <strong>${recon.metadata.ebaDate}</strong> | Moskova Saati: ${msk.timeDisplay}
-          </p>
-        </div>
-        <div style="padding: 20px 24px; color: #1e293b; font-size: 13px; line-height: 1.55;">
-          <h3 style="margin-top: 0; color: #0f172a; font-size: 15px;">1. Genel Kadro Mutabakatı</h3>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 13px;">
-            <tr style="background: #f8fafc;">
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>Real (eBA) Aktif Kadro</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>${s.realActiveTotal} Kişi</strong> (Pondera: ${s.realActiveMainFirm} | Taşeron: ${s.realActiveSubcon})</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>1C ZUP Resmi Aktif Kadro</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>${s.zupOfficialTotal} Kişi</strong></td>
-            </tr>
-            <tr style="background: #f0fdf4;">
-              <td style="padding: 8px 12px; border: 1px solid #bbf7d0;"><strong>Mevcuttan Resmide (1C ZUP) Çalışan</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #bbf7d0; color: #166534;"><strong>${s.matchedActiveBoth} Kişi</strong> (Pondera Ana Kadro: <strong>%${s.matchedActiveRateMainFirm}</strong>)</td>
-            </tr>
-            <tr style="background: #eef2ff;">
-              <td style="padding: 8px 12px; border: 1px solid #c7d2fe;"><strong>Şirket İçi Şantiye Transferi (ZUP Aktif)</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #c7d2fe; color: #3730a3;"><strong>${s.zupTransferPermitCheckCount || 0} Kişi</strong> (Resmi çıkış gerekmez, çalışma izni bölgesi kontrol edilmeli)</td>
-            </tr>
-            <tr style="background: #fff1f2;">
-              <td style="padding: 8px 12px; border: 1px solid #fecdd3;"><strong>1C ZUP'ta Aktif / Real'de Gerçek Çıkışlı</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #fecdd3; color: #be123c;"><strong>${s.zupActiveButRealExited} Kişi</strong> (Acil 1C ZUP resmi çıkışı düşülmeli)</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>Pondera Ana Kadro Aktif / 1C ZUP'ta Eksik</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #b45309;"><strong>${s.realActiveNotInZupMainFirm} Kişi</strong> (${s.realActiveNotInZupRecentHire} kişi ${recon.metadata.zupDate.slice(0, 5)} sonrası yeni giriş)</td>
-            </tr>
-          </table>
-
-          <h3 style="color: #0f172a; font-size: 15px;">2. Çalışma / Vergi Statüsü Dağılımı</h3>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
-            <thead>
-              <tr style="background: #f1f5f9; text-align: left;">
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1;">Statü / İzin Türü</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">1C ZUP</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">eBA Real</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Fark</th>
-              </tr>
-            </thead>
-            <tbody>${permitRowsHtml}</tbody>
-          </table>
-
-          <h3 style="color: #0f172a; font-size: 15px;">3. Bölge Bazlı Resmi Çalışma Oranları</h3>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
-            <thead>
-              <tr style="background: #f1f5f9; text-align: left;">
-                <th style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1;">Bölge</th>
-                <th style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Real Aktif</th>
-                <th style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Resmide (ZUP)</th>
-                <th style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Ana Kadro Eksik</th>
-                <th style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Şantiye Transferi</th>
-                <th style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Gerçek Çıkış</th>
-              </tr>
-            </thead>
-            <tbody>${regionRowsHtml}</tbody>
-          </table>
-
-          <h3 style="color: #0f172a; font-size: 15px;">4. Sicil &amp; Kimlik Veri Farkları</h3>
-          <ul style="padding-left: 18px; margin: 6px 0 16px;">
-            <li>Pasaport No Uyuşmazlığı: <strong>${dc.passportMismatch} kişi</strong></li>
-            <li>Çalışma / Vergi Statüsü Farkı (VKS/Patent/RNR): <strong>${dc.permitStatusMismatch} kişi</strong></li>
-            <li>İNN Numarası Farklı: <strong>${dc.innMismatch} kişi</strong> (eBA İNN Eksik: <strong>${dc.missingInnInEba} kişi</strong>)</li>
-            <li>Sicil No Format Farkı (Nokta/Harf eki): <strong>${dc.sicilFormatDiff} kişi</strong></li>
-            <li>Doğum Tarihi Farkı: <strong>${dc.birthDateMismatch} kişi</strong></li>
-          </ul>
-
-          <p style="font-size: 12px; color: #64748b; margin-top: 16px;">
-            Detaylı interaktif grafik ve Excel raporu için: <a href="https://hr.pondera.network" style="color: #4f46e5;">https://hr.pondera.network</a> (Resmi &amp; Real Karşılaştırma Modülü)
-          </p>
-        </div>
-      </div>
+      <h3 style="margin: 0 0 8px; font-size: 14px; color: #0f172a;">📅 Otomatik Gönderim Takvimi (Moskova Saati — MSK)</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12.5px;">
+        <thead>
+          <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
+            <th align="left" style="padding: 9px 12px; border: 1px solid #cbd5e1;">Rapor Adı</th>
+            <th align="left" style="padding: 9px 12px; border: 1px solid #cbd5e1;">Periyot &amp; Saat</th>
+            <th align="left" style="padding: 9px 12px; border: 1px solid #cbd5e1;">Kanal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>1. Günlük Evrak Süreleri &amp; Eksik Evrak Raporu</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">Her Gün • <strong>09:15 MSK</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #047857;"><strong>Telegram + E-Posta</strong></td>
+          </tr>
+          <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>2. 1C ZUP (Resmi) ↔ eBA (Real) Kadro &amp; Fark Raporu</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">Her Gün • <strong>09:20 MSK</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #047857;"><strong>Telegram + E-Posta</strong></td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>3. Gosuslugi VKS Başvuru &amp; МВД Durum Özeti</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">15 Dk Hareket Varsa &amp; <strong>09:30 MSK</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #047857;"><strong>Telegram + E-Posta</strong></td>
+          </tr>
+          <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>4. Yönetim &amp; Kadro Turnover Analiz Özeti</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">Hafta İçi • <strong>10:00 MSK</strong></td>
+            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #1d4ed8;"><strong>Kurumsal E-Posta</strong></td>
+          </tr>
+        </tbody>
+      </table>
     `;
-    return { subject, html };
+
+    return {
+      subject,
+      html: renderCorporateEmailShell({
+        accentHex: '#10b981',
+        headerBgHex: '#0f172a',
+        badgeText: 'PONDERA HR TEAMHUB • SİSTEM DOĞRULAMA & GENEL ÖZET',
+        title: 'Kurumsal E-Posta & Telegram Eşzamanlı Bildirim Merkezi',
+        subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • Sunucu: hr.pondera.network`,
+        bodyHtml,
+      }),
+    };
   }
 
+  // --- REPORT 2: 1C ZUP (Official) vs eBA (Real) Reconciliation ---
+  if (reportId === 'zup_vs_real') {
+    const meta = recon.metadata;
+    const subject = `⚖️ [Pondera İK] 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu (${meta.zupDate} ↔ ${meta.ebaDate})`;
+
+    const kpiHtml = renderKpiGrid4([
+      {
+        label: 'EBA REAL AKTİF',
+        value: fmtNum(s.realActiveTotal),
+        sub: `Ana: ${fmtNum(s.realActiveMainFirm)} | Taşeron: ${fmtNum(s.realActiveSubcon)}`,
+        bgHex: '#f8fafc',
+        borderHex: '#cbd5e1',
+        valueHex: '#0f172a',
+      },
+      {
+        label: '1C ZUP RESMİ KADRO',
+        value: fmtNum(s.zupOfficialTotal),
+        sub: `Liste: ${meta.zupDate}`,
+        bgHex: '#eef2ff',
+        borderHex: '#c7d2fe',
+        valueHex: '#312e81',
+      },
+      {
+        label: 'RESMİDE ÇALIŞAN',
+        value: fmtNum(s.matchedActiveBoth),
+        sub: `Ana Kadro: %${s.matchedActiveRateMainFirm} | Genel: %${s.matchedActiveRateAll}`,
+        bgHex: '#ecfdf5',
+        borderHex: '#a7f3d0',
+        valueHex: '#047857',
+      },
+      {
+        label: 'ZUP AKTİF / REAL ÇIKIŞ',
+        value: fmtNum(s.zupActiveButRealExited),
+        sub: `Transfer (İç Geçiş): ${fmtNum(s.zupTransferPermitCheckCount || 0)}`,
+        bgHex: '#fff1f2',
+        borderHex: '#fecdd3',
+        valueHex: '#be123c',
+      },
+    ]);
+
+    const dateBannerHtml = meta.isZupOutdated
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fffbeb" style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; margin-bottom: 18px;">
+           <tr><td style="padding: 11px 15px; color: #92400e; font-size: 12.5px;">⚠️ <strong>Liste Güncellik Uyarısı:</strong> Real eBA listesi <strong>${meta.ebaDate}</strong>, 1C ZUP resmi listesi <strong>${meta.zupDate}</strong> tarihlidir.</td></tr>
+         </table>`
+      : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f0fdf4" style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; margin-bottom: 18px;">
+           <tr><td style="padding: 10px 15px; color: #166534; font-size: 12.5px;">✅ <strong>Tam Eşzamanlı Veri:</strong> 1C ZUP Resmi Liste (<strong>${meta.zupDate}</strong>) ↔ eBA Real Liste (<strong>${meta.ebaDate}</strong>)</td></tr>
+         </table>`;
+
+    const permitRowsHtml = (recon.byPermitStatus || [])
+      .map((p: any, idx: number) => {
+        const diffNum = Number(p.diff || 0);
+        const diffStr = diffNum > 0 ? `+${fmtNum(diffNum)}` : fmtNum(diffNum);
+        const diffColor = diffNum === 0 ? '#059669' : '#b45309';
+        const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+        return `
+        <tr bgcolor="${rowBg}" style="background-color: ${rowBg};">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${p.labelTr || p.shortTr}</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(p.zupCount)}</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${fmtNum(p.realActiveCount)}</td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: ${diffColor};"><strong>${diffStr}</strong></td>
+        </tr>`;
+      })
+      .join('');
+
+    const regionRowsHtml = (recon.byRegion || [])
+      .filter((r: any) => r.realActive > 0 || r.zupActiveRealExit > 0)
+      .map((r: any, idx: number) => {
+        const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+        return `
+        <tr bgcolor="${rowBg}" style="background-color: ${rowBg};">
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${r.region}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;">${fmtNum(r.realActive)}</td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #047857;">
+            <strong>${fmtNum(r.inZupOfficial)}</strong> <span style="font-size: 11px; color: #059669;">(%${r.officialRatePct})</span>
+            ${renderProgressBar(Number(r.officialRatePct || 0), '#10b981')}
+          </td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #b45309;">${fmtNum(r.missingMainFirm)}</td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #4338ca;">${fmtNum(r.transferCount || 0)}</td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #be123c;"><strong>${fmtNum(r.zupActiveRealExit)}</strong></td>
+        </tr>`;
+      })
+      .join('');
+
+    const bodyHtml = `
+      ${dateBannerHtml}
+      ${kpiHtml}
+
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">📊 1. Genel Kadro Mutabakatı &amp; Kritik Sapmalar</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px; font-size: 12.5px; border: 1px solid #cbd5e1;">
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>eBA Real Aktif Kadro (${meta.ebaDate})</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(s.realActiveTotal)} Kişi</strong> (Ana Kadro: ${fmtNum(s.realActiveMainFirm)} | Taşeron: ${fmtNum(s.realActiveSubcon)})</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>1C ZUP Resmi Kadro (${meta.zupDate})</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(s.zupOfficialTotal)} Kişi</strong></td>
+        </tr>
+        <tr bgcolor="#f0fdf4" style="background-color: #f0fdf4;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #bbf7d0; color: #14532d;"><strong>✅ Hem Real'de Aktif Hem Resmide Çalışan</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #bbf7d0; color: #14532d;"><strong>${fmtNum(s.matchedActiveBoth)} Kişi</strong> (Ana Kadro: <strong>%${s.matchedActiveRateMainFirm}</strong> | Genel: <strong>%${s.matchedActiveRateAll}</strong>)</td>
+        </tr>
+        <tr bgcolor="#eef2ff" style="background-color: #eef2ff;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #c7d2fe; color: #312e81;"><strong>🔄 Şirket İçi Şantiye Transferi (ZUP Aktif)</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #c7d2fe; color: #312e81;"><strong>${fmtNum(s.zupTransferPermitCheckCount || 0)} Kişi</strong> (İzin bölgesi kontrolü)</td>
+        </tr>
+        <tr bgcolor="#fff1f2" style="background-color: #fff1f2;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #fecdd3; color: #9f1239;"><strong>🔴 1C ZUP'ta Aktif / Real'de ÇIKIŞ Yapılmış</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #fecdd3; color: #be123c;"><strong>${fmtNum(s.zupActiveButRealExited)} Kişi</strong> (Sahadan ayrılmış, resmi çıkışı düşülecek)</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #92400e;"><strong>🟠 Real Ana Kadroda Aktif / 1C ZUP'ta Yok</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #b45309;"><strong>${fmtNum(s.realActiveNotInZupMainFirm)} Kişi</strong> (${fmtNum(s.realActiveNotInZupRecentHire)} yeni giriş)</td>
+        </tr>
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>🟡 Real Taşeronda Aktif / 1C ZUP Dışı</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(s.realActiveNotInZupSubcon)} Kişi</strong></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px;"><strong>🟣 Sadece 1C ZUP'ta Var / eBA'da Kaydı Yok</strong></td>
+          <td align="right" style="padding: 8px 12px;"><strong>${fmtNum(s.zupOnlyNotInRealDB)} Kişi</strong></td>
+        </tr>
+      </table>
+
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🪪 2. Statü / Çalışma İzni Bazlı 1C ZUP vs eBA Real Dağılımı</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px; font-size: 12px; border: 1px solid #cbd5e1;">
+        <thead>
+          <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
+            <th align="left" style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #334155;">Statü / İzin Türü</th>
+            <th align="right" style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #334155;">1C ZUP</th>
+            <th align="right" style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #334155;">eBA Real</th>
+            <th align="right" style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #334155;">Fark</th>
+          </tr>
+        </thead>
+        <tbody>${permitRowsHtml}</tbody>
+      </table>
+
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 3. Bölge Bazlı Resmi (1C ZUP) Çalışma Oranları</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px; font-size: 12px; border: 1px solid #cbd5e1;">
+        <thead>
+          <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
+            <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Bölge</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Real Aktif</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Resmide (ZUP)</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Ana Eksik</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Transfer</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Gerçek Çıkış</th>
+          </tr>
+        </thead>
+        <tbody>${regionRowsHtml}</tbody>
+      </table>
+
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🔍 4. Eşleşen Personellerde Veri &amp; Kimlik Farkları</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">🛂 Pasaport Numarası Farklı</td>
+          <td align="right" style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(dc.passportMismatch)} kişi</strong></td>
+          <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; border-left: 1px solid #e2e8f0;">🪪 Çalışma Statüsü (VKS/Patent/RNR) Farklı</td>
+          <td align="right" style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(dc.permitStatusMismatch)} kişi</strong></td>
+        </tr>
+        <tr>
+          <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;">🧾 İNN Numarası Farklı / eBA Boş</td>
+          <td align="right" style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(dc.innMismatch)} / ${fmtNum(dc.missingInnInEba)}</strong></td>
+          <td style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0; border-left: 1px solid #e2e8f0;">🔢 Sicil No Format Farkı (Nokta/Harf eki)</td>
+          <td align="right" style="padding: 7px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(dc.sicilFormatDiff)} kişi</strong></td>
+        </tr>
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 7px 12px;">🎂 Doğum Tarihi Farklı</td>
+          <td align="right" style="padding: 7px 12px;"><strong>${fmtNum(dc.birthDateMismatch)} kişi</strong></td>
+          <td style="padding: 7px 12px; border-left: 1px solid #e2e8f0;">🔤 Kiril Ad Soyad Yazım Farkı</td>
+          <td align="right" style="padding: 7px 12px;"><strong>${fmtNum(dc.kirilNameDiff)} kişi</strong></td>
+        </tr>
+      </table>
+    `;
+
+    return {
+      subject,
+      html: renderCorporateEmailShell({
+        accentHex: '#6366f1',
+        headerBgHex: '#1e1b4b',
+        badgeText: 'PONDERA İK • RESMİ (1C ZUP) ↔ REAL (eBA) MUTABAKAT RAPORU',
+        title: '⚖️ 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu',
+        subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • ZUP Liste: ${meta.zupDate} • eBA Liste: ${meta.ebaDate}`,
+        bodyHtml,
+        ctaLabel: 'Resmi & Real Karşılaştırma Modülünü Aç →',
+      }),
+    };
+  }
+
+  // --- REPORT 1: Daily Document Expiry & Compliance ---
   if (reportId === 'daily_compliance') {
     const comp = computeLiveComplianceSummary(db);
-    const subject = `📋 [Pondera İK] Günlük Evrak Süreleri & Eksik Evrak Raporu (${msk.dateDisplay} — Uyum: %${comp.complianceRate})`;
-    const docRowsHtml = comp.docList
-      .map(
-        (d) => `
+    const subject = `📋 [Pondera İK] Günlük Evrak Süreleri İstatistik Raporu (${msk.dateDisplay} — Uyum: %${comp.complianceRate})`;
+
+    const kpiHtml = renderKpiGrid4([
+      {
+        label: 'AKTİF PERSONEL',
+        value: fmtNum(comp.activePersonnelCount),
+        sub: `Referans: ${comp.referenceDateDisplay}`,
+        bgHex: '#f8fafc',
+        borderHex: '#cbd5e1',
+        valueHex: '#0f172a',
+      },
+      {
+        label: 'KONTROL EDİLEN EVRAK',
+        value: fmtNum(comp.totalDocsCount),
+        sub: '8 Yasal Evrak Türü',
+        bgHex: '#f8fafc',
+        borderHex: '#cbd5e1',
+        valueHex: '#0f172a',
+      },
+      {
+        label: 'GENEL UYUM ORANI',
+        value: `%${comp.complianceRate}`,
+        sub: `${fmtNum(comp.totalValid)} Geçerli Evrak`,
+        bgHex: '#ecfdf5',
+        borderHex: '#a7f3d0',
+        valueHex: '#047857',
+      },
+      {
+        label: 'GEÇMİŞ + KRİTİK',
+        value: fmtNum(comp.totalExpired + comp.totalCritical),
+        sub: `${fmtNum(comp.totalExpired)} Geçmiş | ${fmtNum(comp.totalCritical)} Kritik`,
+        bgHex: '#fef2f2',
+        borderHex: '#fecaca',
+        valueHex: '#b91c1c',
+      },
+    ]);
+
+    const statusSummaryBar = `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f8fafc" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 20px; font-size: 12px;">
         <tr>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${d.label}</strong></td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${d.totalChecked}</td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #dc2626;"><strong>${d.expiredCount}</strong></td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #ea580c;"><strong>${d.criticalCount}</strong></td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #ca8a04;">${d.warningCount}</td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #64748b;">${d.missingCount}</td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #059669;"><strong>${d.validCount}</strong></td>
+          <td style="padding: 10px 14px;">
+            🔴 Süresi Geçmiş: <strong style="color: #dc2626;">${fmtNum(comp.totalExpired)}</strong> &nbsp;•&nbsp;
+            🟠 Kritik (≤15g / Vize ≤30g): <strong style="color: #ea580c;">${fmtNum(comp.totalCritical)}</strong> &nbsp;•&nbsp;
+            🟡 Yaklaşan Uyarı: <strong style="color: #ca8a04;">${fmtNum(comp.totalWarning)}</strong> &nbsp;•&nbsp;
+            ⚪ Eksik Evrak: <strong style="color: #475569;">${fmtNum(comp.totalMissing)}</strong> &nbsp;•&nbsp;
+            🟢 Geçerli: <strong style="color: #059669;">${fmtNum(comp.totalValid)}</strong>
+          </td>
         </tr>
-      `
-      )
+      </table>
+    `;
+
+    const docRowsHtml = comp.docList
+      .map((d, idx) => {
+        const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+        const rate = d.totalChecked > 0 ? Math.round((d.validCount / d.totalChecked) * 100) : 0;
+        return `
+        <tr bgcolor="${rowBg}" style="background-color: ${rowBg};">
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${d.label}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;">${fmtNum(d.totalChecked)}</td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #dc2626;"><strong>${fmtNum(d.expiredCount)}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #ea580c;"><strong>${fmtNum(d.criticalCount)}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #ca8a04;">${fmtNum(d.warningCount)}</td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${fmtNum(d.missingCount)}</td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #059669;"><strong>${fmtNum(d.validCount)}</strong> <span style="font-size: 11px;">(%${rate})</span></td>
+        </tr>`;
+      })
       .join('');
 
     const regRowsHtml = comp.topRegions
-      .map(
-        (r) => `
-        <tr>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${r.region}</strong></td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${r.total}</td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #dc2626;"><strong>${r.expired}</strong></td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #ea580c;"><strong>${r.critical}</strong></td>
-          <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #64748b;">${r.missing}</td>
-        </tr>
-      `
-      )
+      .map((r, idx) => {
+        const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+        return `
+        <tr bgcolor="${rowBg}" style="background-color: ${rowBg};">
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${r.region}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(r.total)}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #dc2626;"><strong>${fmtNum(r.expired)}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #ea580c;"><strong>${fmtNum(r.critical)}</strong></td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #ca8a04;">${fmtNum(r.warning)}</td>
+          <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${fmtNum(r.missing)}</td>
+        </tr>`;
+      })
       .join('');
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 740px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 16px; overflow: hidden; background: #ffffff;">
-        <div style="background: #065f46; color: #ffffff; padding: 18px 24px;">
-          <h2 style="margin: 0; font-size: 18px;">📋 Günlük Evrak Geçerlilik &amp; Süre Analitiği Raporu</h2>
-          <p style="margin: 6px 0 0; font-size: 12px; color: #a7f3d0;">
-            Tarih: ${msk.dateDisplay} ${msk.timeDisplay} (MSK) • Veri Referansı: ${comp.referenceDateDisplay} • Aktif Personel: <strong>${comp.activePersonnelCount}</strong> Kişi
-          </p>
-        </div>
-        <div style="padding: 20px 24px; color: #1e293b; font-size: 13px; line-height: 1.6;">
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 13px;">
-            <tr style="background: #f0fdf4;">
-              <td style="padding: 8px 12px; border: 1px solid #bbf7d0;"><strong>Kontrol Edilen Toplam Evrak / Uyum Oranı</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #bbf7d0; color: #166534;"><strong>${comp.totalDocsCount} Evrak — %${comp.complianceRate} Geçerli (${comp.totalValid})</strong></td>
-            </tr>
-            <tr style="background: #fef2f2;">
-              <td style="padding: 8px 12px; border: 1px solid #fecaca;"><strong>Süresi Geçmiş / Kritik (≤15 Gün, Vize ≤30 Gün)</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #fecaca; color: #b91c1c;"><strong>${comp.totalExpired} Süresi Geçmiş</strong> • <strong>${comp.totalCritical} Kritik</strong> • ${comp.totalWarning} Yaklaşan • ${comp.totalMissing} Eksik</td>
-            </tr>
-          </table>
+    const bodyHtml = `
+      ${kpiHtml}
+      ${statusSummaryBar}
 
-          <h3 style="color: #0f172a; font-size: 15px; margin-bottom: 8px;">1. Evrak Türüne Göre Dağılım</h3>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
-            <thead>
-              <tr style="background: #f1f5f9; text-align: left;">
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1;">Evrak Türü</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Toplam</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Geçmiş</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Kritik</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Uyarı</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Eksik</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Geçerli</th>
-              </tr>
-            </thead>
-            <tbody>${docRowsHtml}</tbody>
-          </table>
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">📂 1. Evrak Türüne Göre Dağılım Tablosu</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px; font-size: 12px; border: 1px solid #cbd5e1;">
+        <thead>
+          <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
+            <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Evrak Türü</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Toplam</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #b91c1c;">Geçmiş</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #c2410c;">Kritik</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #a16207;">Uyarı</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #475569;">Eksik</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #047857;">Geçerli</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${docRowsHtml}
+          <tr bgcolor="#e2e8f0" style="background-color: #e2e8f0; font-weight: 700;">
+            <td style="padding: 9px 10px; border-top: 2px solid #94a3b8;"><strong>TOPLAM</strong></td>
+            <td align="right" style="padding: 9px 10px; border-top: 2px solid #94a3b8;"><strong>${fmtNum(comp.totalDocsCount)}</strong></td>
+            <td align="right" style="padding: 9px 10px; border-top: 2px solid #94a3b8; color: #b91c1c;"><strong>${fmtNum(comp.totalExpired)}</strong></td>
+            <td align="right" style="padding: 9px 10px; border-top: 2px solid #94a3b8; color: #c2410c;"><strong>${fmtNum(comp.totalCritical)}</strong></td>
+            <td align="right" style="padding: 9px 10px; border-top: 2px solid #94a3b8; color: #a16207;"><strong>${fmtNum(comp.totalWarning)}</strong></td>
+            <td align="right" style="padding: 9px 10px; border-top: 2px solid #94a3b8; color: #334155;"><strong>${fmtNum(comp.totalMissing)}</strong></td>
+            <td align="right" style="padding: 9px 10px; border-top: 2px solid #94a3b8; color: #047857;"><strong>${fmtNum(comp.totalValid)} (%${comp.complianceRate})</strong></td>
+          </tr>
+        </tbody>
+      </table>
 
-          <h3 style="color: #0f172a; font-size: 15px; margin-bottom: 8px;">2. Bölge Bazlı Özet</h3>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px;">
-            <thead>
-              <tr style="background: #f1f5f9; text-align: left;">
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1;">Bölge</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Personel</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Süresi Geçmiş</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Kritik</th>
-                <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Eksik</th>
-              </tr>
-            </thead>
-            <tbody>${regRowsHtml}</tbody>
-          </table>
-
-          <p style="font-size: 12px; color: #64748b; margin-top: 12px;">
-            Kişi bazlı listeler ve Excel çıktısı için: <a href="https://hr.pondera.network" style="color: #059669;">https://hr.pondera.network</a> (Evrak &amp; Süre Analitiği)
-          </p>
-        </div>
-      </div>
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 2. Bölge / Şantiye Bazlı Evrak Özeti</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
+        <thead>
+          <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
+            <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Bölge</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Aktif Kişi</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #b91c1c;">Süresi Geçmiş</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #c2410c;">Kritik</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #a16207;">Uyarı</th>
+            <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #475569;">Eksik</th>
+          </tr>
+        </thead>
+        <tbody>${regRowsHtml}</tbody>
+      </table>
     `;
-    return { subject, html };
+
+    return {
+      subject,
+      html: renderCorporateEmailShell({
+        accentHex: '#10b981',
+        headerBgHex: '#064e3b',
+        badgeText: 'PONDERA İK • GÜNLÜK EVRAK GEÇERLİLİK & SÜRE ANALİTİĞİ',
+        title: '📋 Günlük Evrak Süreleri İstatistik Raporu',
+        subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • Veri Referansı: ${comp.referenceDateDisplay} • Aktif Kadro: ${fmtNum(comp.activePersonnelCount)} Kişi`,
+        bodyHtml,
+        ctaLabel: 'Evrak & Süre Analitiği Tablosunu Aç →',
+      }),
+    };
   }
 
+  // --- REPORT 3: Gosuslugi VKS & MVD Status ---
   if (reportId === 'vks_gosuslugi') {
     const g = computeGosuslugiVksEmailSummary(db);
     const vksPermit = (recon.byPermitStatus || []).find((p: any) => p.key === 'VKS');
-    const subject = `🛂 [Pondera İK] VKS (BKC) Gosuslugi & MVD Yasal Bildirim Raporu (${msk.dateDisplay})`;
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 16px; overflow: hidden; background: #ffffff;">
-        <div style="background: #1e3a8a; color: #ffffff; padding: 18px 24px;">
-          <h2 style="margin: 0; font-size: 18px;">🛂 VKS (ВКС) Gosuslugi &amp; МВД Yasal Bildirim Raporu</h2>
-          <p style="margin: 6px 0 0; font-size: 12px; color: #bfdbfe;">Tarih: ${msk.dateDisplay} ${msk.timeDisplay} (MSK) • Aktif Saha VKS Uzmanı: ${vksPermit?.realActiveCount || 0} Kişi</p>
-        </div>
-        <div style="padding: 20px 24px; color: #1e293b; font-size: 13px; line-height: 1.6;">
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px;">
-            <tr style="background: #f0fdf4;">
-              <td style="padding: 8px 12px; border: 1px solid #bbf7d0;"><strong>🟢 Услуга оказана (МВД Tamamlanan)</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #bbf7d0; color: #166534;"><strong>${g.totalRendered} Başvuru</strong></td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>🔵 Заявление зарегистрировано (Kayıtlı)</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #1d4ed8;"><strong>${g.totalRegistered} Başvuru</strong></td>
-            </tr>
-            <tr style="background: #fef2f2;">
-              <td style="padding: 8px 12px; border: 1px solid #fecaca;"><strong>🔴 Услуга отказана (МВД Red)</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #fecaca; color: #b91c1c;"><strong>${g.totalRefused} Başvuru</strong></td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>📤 Отправлено (МВД Yanıtı Bekleyen)</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>${g.totalPending} Başvuru</strong></td>
-            </tr>
-            <tr style="background: #f8fafc;">
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>📄 Toplam Başarılı Gönderim &amp; Arşiv PDF</strong></td>
-              <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>${g.totalSent} Gönderim</strong> (Başvuru PDF: ${g.totalPdf} | Statü A4 PDF: ${g.totalStatusPdf} | Hata: ${g.totalErrors})</td>
-            </tr>
-          </table>
-          <p style="font-size: 12px; color: #64748b;">
-            Detaylı VKS bildirim takibi ve PDF dekont arşivi için: <a href="https://hr.pondera.network" style="color: #2563eb;">https://hr.pondera.network</a>
-          </p>
-        </div>
-      </div>
+    const subject = `🔔 [Pondera VKS / Gosuslugi] МВД Başvuru & Dekont Durum Raporu (${msk.dateDisplay} — ${fmtNum(g.totalSent)} Gönderim)`;
+
+    const kpiHtml = renderKpiGrid4([
+      {
+        label: 'BAŞARILI GÖNDERİM',
+        value: fmtNum(g.totalSent),
+        sub: `Toplam Kayıt: ${fmtNum(g.totalRecords)}`,
+        bgHex: '#eff6ff',
+        borderHex: '#bfdbfe',
+        valueHex: '#1e3a8a',
+      },
+      {
+        label: 'УСЛУГА ОКАЗАНА',
+        value: fmtNum(g.totalRendered),
+        sub: 'МВД Tamamlanan',
+        bgHex: '#ecfdf5',
+        borderHex: '#a7f3d0',
+        valueHex: '#047857',
+      },
+      {
+        label: 'ЗАРЕГИСТРИРОВАНО',
+        value: fmtNum(g.totalRegistered),
+        sub: `Bekleyen: ${fmtNum(g.totalPending)}`,
+        bgHex: '#eef2ff',
+        borderHex: '#c7d2fe',
+        valueHex: '#3730a3',
+      },
+      {
+        label: 'ARŞİV PDF DEKONT',
+        value: `${fmtNum(g.totalPdf)} / ${fmtNum(g.totalStatusPdf)}`,
+        sub: 'Başvuru / Statü A4 PDF',
+        bgHex: '#f8fafc',
+        borderHex: '#cbd5e1',
+        valueHex: '#0f172a',
+      },
+    ]);
+
+    const bodyHtml = `
+      ${kpiHtml}
+
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏛 1. Gosuslugi / МВД Başvuru Durumları (JSON Statü)</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px; font-size: 12.5px; border: 1px solid #cbd5e1;">
+        <tr bgcolor="#f0fdf4" style="background-color: #f0fdf4;">
+          <td style="padding: 9px 12px; border-bottom: 1px solid #bbf7d0; color: #14532d;"><strong>🟢 Услуга оказана (МВД Onaylandı / Tamamlanan)</strong></td>
+          <td align="right" style="padding: 9px 12px; border-bottom: 1px solid #bbf7d0; color: #14532d;"><strong>${fmtNum(g.totalRendered)}</strong></td>
+        </tr>
+        <tr>
+          <td style="padding: 9px 12px; border-bottom: 1px solid #e2e8f0; color: #1e40af;"><strong>🔵 Заявление зарегистрировано (МВД Kayıtlı / İncelemede)</strong></td>
+          <td align="right" style="padding: 9px 12px; border-bottom: 1px solid #e2e8f0; color: #1d4ed8;"><strong>${fmtNum(g.totalRegistered)}</strong></td>
+        </tr>
+        <tr bgcolor="#fff1f2" style="background-color: #fff1f2;">
+          <td style="padding: 9px 12px; border-bottom: 1px solid #fecdd3; color: #9f1239;"><strong>🔴 Услуга отказана (МВД Red)</strong></td>
+          <td align="right" style="padding: 9px 12px; border-bottom: 1px solid #fecdd3; color: #be123c;"><strong>${fmtNum(g.totalRefused)}</strong></td>
+        </tr>
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 9px 12px;"><strong>📤 Отправлено (Bekleyen — Kuyrukta / МВД Yanıtı Bekleniyor)</strong></td>
+          <td align="right" style="padding: 9px 12px;"><strong>${fmtNum(g.totalPending)}</strong></td>
+        </tr>
+      </table>
+
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">📊 2. Ortak Sunucu Genel Toplam &amp; PDF Arşiv Durumu (Tüm Bilgisayarlar)</h3>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12.5px; border: 1px solid #cbd5e1;">
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>✅ Toplam Başarılı Gönderim</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(g.totalSent)}</strong></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; padding-left: 24px;">├ 📄 Başvuru (Заявка) PDF İndirilen</td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #047857;"><strong>${fmtNum(g.totalPdf)}</strong></td>
+        </tr>
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; padding-left: 24px;">├ ⚡ Başvuru PDF Bekleyen (Hızlı Gönderim)</td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${fmtNum(g.totalNoPdf)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; padding-left: 24px;">├ 📸 Statü PDF (A4) İndirilen</td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #1d4ed8;"><strong>${fmtNum(g.totalStatusPdf)}</strong></td>
+        </tr>
+        <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; padding-left: 24px;">└ ⏳ Statü PDF Bekleyen</td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${fmtNum(g.totalNoStatusPdf)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #b45309;"><strong>⚠️ Toplam Hatalı Kayıt (Ошибка)</strong></td>
+          <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #b45309;"><strong>${fmtNum(g.totalErrors)}</strong></td>
+        </tr>
+        <tr bgcolor="#e2e8f0" style="background-color: #e2e8f0;">
+          <td style="padding: 9px 12px; border-top: 2px solid #94a3b8;"><strong>📌 Genel Toplam İşlenen Kayıt (Aktif Saha VKS: ${fmtNum(vksPermit?.realActiveCount || 0)})</strong></td>
+          <td align="right" style="padding: 9px 12px; border-top: 2px solid #94a3b8;"><strong>${fmtNum(g.totalRecords)}</strong></td>
+        </tr>
+      </table>
     `;
-    return { subject, html };
+
+    return {
+      subject,
+      html: renderCorporateEmailShell({
+        accentHex: '#3b82f6',
+        headerBgHex: '#1e3a8a',
+        badgeText: 'PONDERA İK • GOSUSLUGI ВКС & МВД YASAL BİLDİRİM MERKEZİ',
+        title: '🔔 Gosuslugi VKS Bildirim & МВД Durum Raporu',
+        subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • Ortak Sunucu (Tüm Bilgisayarlar)`,
+        bodyHtml,
+        ctaLabel: 'Gosuslugi VKS Bildirim Panelini Aç →',
+      }),
+    };
   }
 
+  // --- REPORT 4: Management & Turnover Summary ---
   const vksRow = (recon.byPermitStatus || []).find((p: any) => p.key === 'VKS');
   const vksCount = vksRow?.realActiveCount || 0;
   const vksPct = s.realActiveTotal > 0 ? ((vksCount / s.realActiveTotal) * 100).toFixed(1) : '0.0';
   const regionSummaryHtml = (recon.byRegion || [])
     .filter((r: any) => r.realActive > 0)
-    .map(
-      (r: any) => `
-      <tr>
-        <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${r.region}</strong></td>
-        <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right;"><strong>${r.realActive}</strong></td>
-        <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #059669;">${r.inZupOfficial} (%${r.officialRatePct})</td>
-        <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #4f46e5;">${r.transferCount || 0}</td>
-      </tr>
-    `
-    )
+    .map((r: any, idx: number) => {
+      const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+      return `
+      <tr bgcolor="${rowBg}" style="background-color: ${rowBg};">
+        <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${r.region}</strong></td>
+        <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(r.realActive)}</strong></td>
+        <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #059669;">${fmtNum(r.inZupOfficial)} (%${r.officialRatePct})</td>
+        <td align="right" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #4338ca;">${fmtNum(r.transferCount || 0)}</td>
+      </tr>`;
+    })
     .join('');
 
-  const subject = `📊 [Pondera İK] Yönetim & Kadro Turnover Özeti (${msk.dateDisplay} — Aktif: ${s.realActiveTotal})`;
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 16px; overflow: hidden; background: #ffffff;">
-      <div style="background: #0f172a; color: #ffffff; padding: 18px 24px;">
-        <h2 style="margin: 0; font-size: 18px;">📊 Yönetim &amp; Kadro Analiz Özeti (Transferler Hariç)</h2>
-        <p style="margin: 6px 0 0; font-size: 12px; color: #94a3b8;">Tarih: ${msk.dateDisplay} ${msk.timeDisplay} (MSK) • Aktif Kadro: ${s.realActiveTotal} Kişi</p>
-      </div>
-      <div style="padding: 20px 24px; color: #1e293b; font-size: 13px; line-height: 1.6;">
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px;">
-          <tr style="background: #f8fafc;">
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>Toplam Aktif Saha Kadrosu</strong></td>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>${s.realActiveTotal} Kişi</strong> (Pondera Ana Kadro: ${s.realActiveMainFirm} | Taşeron: ${s.realActiveSubcon})</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>VKS (Yüksek Nitelikli Uzman) Kadrosu</strong></td>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #1d4ed8;"><strong>${vksCount} Kişi</strong> (Genel Kadroda %${vksPct})</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><strong>Şirket İçi Şantiye Transferleri</strong></td>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #4f46e5;"><strong>${s.zupTransferPermitCheckCount || 0} Kişi</strong> (Turnover çıkış hesabından arındırılmıştır)</td>
-          </tr>
-        </table>
-        <h3 style="color: #0f172a; font-size: 15px; margin-bottom: 8px;">Bölge Bazlı Aktif Kadro Dağılımı</h3>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 12px;">
-          <thead>
-            <tr style="background: #f1f5f9; text-align: left;">
-              <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1;">Bölge</th>
-              <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Aktif Personel</th>
-              <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">1C ZUP Resmi</th>
-              <th style="padding: 7px 10px; border-bottom: 2px solid #cbd5e1; text-align: right;">Transfer</th>
-            </tr>
-          </thead>
-          <tbody>${regionSummaryHtml}</tbody>
-        </table>
-        <p style="font-size: 12px; color: #64748b;">
-          Yönetim &amp; Turnover grafikleri için: <a href="https://hr.pondera.network" style="color: #0f172a;">https://hr.pondera.network</a>
-        </p>
-      </div>
-    </div>
+  const subject = `📊 [Pondera İK] Yönetim & Kadro Turnover Özeti (${msk.dateDisplay} — Aktif: ${fmtNum(s.realActiveTotal)})`;
+  const kpiHtml = renderKpiGrid4([
+    {
+      label: 'TOPLAM AKTİF KADRO',
+      value: fmtNum(s.realActiveTotal),
+      sub: `Liste: ${recon.metadata.ebaDate}`,
+      bgHex: '#f8fafc',
+      borderHex: '#cbd5e1',
+      valueHex: '#0f172a',
+    },
+    {
+      label: 'PONDERA ANA KADRO',
+      value: fmtNum(s.realActiveMainFirm),
+      sub: `Taşeron: ${fmtNum(s.realActiveSubcon)}`,
+      bgHex: '#ecfdf5',
+      borderHex: '#a7f3d0',
+      valueHex: '#047857',
+    },
+    {
+      label: 'VKS UZMAN KADROSU',
+      value: fmtNum(vksCount),
+      sub: `Genel Oran: %${vksPct}`,
+      bgHex: '#eff6ff',
+      borderHex: '#bfdbfe',
+      valueHex: '#1d4ed8',
+    },
+    {
+      label: 'ŞANTİYE TRANSFERİ',
+      value: fmtNum(s.zupTransferPermitCheckCount || 0),
+      sub: 'Turnover Çıkış Hariç',
+      bgHex: '#eef2ff',
+      borderHex: '#c7d2fe',
+      valueHex: '#3730a3',
+    },
+  ]);
+
+  const bodyHtml = `
+    ${kpiHtml}
+    <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 Bölge Bazlı Aktif Kadro Dağılımı</h3>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
+      <thead>
+        <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
+          <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Bölge</th>
+          <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Aktif Personel</th>
+          <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">1C ZUP Resmi</th>
+          <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">İç Transfer</th>
+        </tr>
+      </thead>
+      <tbody>${regionSummaryHtml}</tbody>
+    </table>
   `;
-  return { subject, html };
+
+  return {
+    subject,
+    html: renderCorporateEmailShell({
+      accentHex: '#0ea5e9',
+      headerBgHex: '#0f172a',
+      badgeText: 'PONDERA İK • YÖNETİM & TURNOVER ANALİZ ÖZETİ',
+      title: '📊 Yönetim & Kadro Analiz Raporu (Şantiye Transferleri Hariç)',
+      subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • Aktif Saha Kadrosu: ${fmtNum(s.realActiveTotal)} Kişi`,
+      bodyHtml,
+      ctaLabel: 'Yönetim & Turnover Raporlarını Aç →',
+    }),
+  };
 }
 
 export async function sendReportEmailById(
@@ -1352,7 +1872,7 @@ export async function sendReportEmailById(
   const status = res.ok ? 'SENT' : 'ERROR';
   logEmailDelivery(db, reportId, subject, toList, ccList, status, res.detail);
 
-  if (rule) {
+  if (rule && !overrideRecipients?.to) {
     const msk = getMoscowClock();
     const updated = rules.map((r) =>
       r.id === reportId
@@ -1369,14 +1889,11 @@ export async function sendReportEmailById(
   return { ok: res.ok, status, message: res.detail };
 }
 
-/**
- * Sends event-driven alerts (e.g. 15-min VKS Gosuslugi activity, MVD Not Found alert)
- * to the recipients configured on the matching EmailReportRule alongside Telegram.
- */
 export async function sendCustomAlertEmail(
   ruleId: EmailReportRule['id'],
   subject: string,
-  htmlBody: string
+  htmlBody: string,
+  overrideRecipients?: { to?: string[]; cc?: string[] }
 ): Promise<{ ok: boolean; skipped?: boolean; detail: string }> {
   try {
     const db = getDb();
@@ -1386,15 +1903,18 @@ export async function sendCustomAlertEmail(
     }
     const rules = getEmailReportRules(db);
     const rule = rules.find((r) => r.id === ruleId);
-    if (rule && !rule.enabled) {
+    if (rule && !rule.enabled && !overrideRecipients?.to) {
       return { ok: false, skipped: true, detail: `${ruleId} e-posta kuralı pasif.` };
     }
 
     const toList =
-      rule?.toEmails && rule.toEmails.length > 0
+      overrideRecipients?.to && overrideRecipients.to.length > 0
+        ? overrideRecipients.to
+        : rule?.toEmails && rule.toEmails.length > 0
         ? rule.toEmails
         : [smtp.user || 'ikbildirim@pondera.ru'];
-    const ccList = rule?.ccEmails || [];
+    const ccList =
+      overrideRecipients?.cc !== undefined ? overrideRecipients.cc : rule?.ccEmails || [];
 
     const res = await sendRawSmtpMail(smtp, toList, ccList, subject, htmlBody);
     logEmailDelivery(db, `${ruleId}_alert`, subject, toList, ccList, res.ok ? 'SENT' : 'ERROR', res.detail);
@@ -1404,10 +1924,6 @@ export async function sendCustomAlertEmail(
   }
 }
 
-/**
- * Evaluates all enabled scheduled email rules against current Moscow time (MSK)
- * and sends each due report once per day. Called automatically by /api/telegram/cron.
- */
 export async function runScheduledEmailReports(force = false): Promise<{
   checkedAtMsk: string;
   triggered: Array<{ id: string; ok: boolean; status: string; message: string }>;
@@ -1439,7 +1955,6 @@ export async function runScheduledEmailReports(force = false): Promise<{
       const [hhStr, mmStr] = String(rule.scheduleTime || '09:15').split(':');
       const schedMinutes = (parseInt(hhStr || '9', 10) || 9) * 60 + (parseInt(mmStr || '15', 10) || 0);
 
-      // Trigger within a 2-hour window starting at scheduleTime
       if (currentMinutes < schedMinutes || currentMinutes > schedMinutes + 120) {
         continue;
       }
@@ -1459,7 +1974,6 @@ export async function runScheduledEmailReports(force = false): Promise<{
 
       const res = await sendReportEmailById(rule.id);
       if (!res.ok) {
-        // Allow at most one retry later in the window if first attempt failed
         setSysInfo(db, sentKey, '');
       }
       triggered.push({ id: rule.id, ok: res.ok, status: res.status, message: res.message });
@@ -1472,9 +1986,6 @@ export async function runScheduledEmailReports(force = false): Promise<{
   return { checkedAtMsk: `${msk.dateDisplay} ${msk.timeDisplay}`, triggered };
 }
 
-/**
- * Triggers any enabled rules configured with frequency === 'on_upload'
- */
 export async function triggerOnUploadEmailReports(
   source: 'eba' | 'zup'
 ): Promise<Array<{ id: string; ok: boolean; status: string }>> {
@@ -1494,9 +2005,6 @@ export async function triggerOnUploadEmailReports(
   return results;
 }
 
-/**
- * Checks if 1C ZUP scheduled task dropped a newer Excel file in the configured auto-sync directory
- */
 export function checkAndImportZupAutoFolder(dbInstance?: any): {
   imported: boolean;
   fileName?: string;

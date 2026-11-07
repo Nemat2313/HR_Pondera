@@ -4,7 +4,7 @@ import path from 'path';
 import { getDb } from '@/lib/db';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 import { computeZupVsRealReconciliation } from '@/lib/zupReconciliation';
-import { sendCustomAlertEmail } from '@/lib/emailNotifier';
+import { sendCustomAlertEmail, renderCorporateEmailShell } from '@/lib/emailNotifier';
 
 export function getTelegramConfig() {
   let dbToken = '';
@@ -630,47 +630,64 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
 
   // Dual-channel notification: send matching VKS 15-min activity summary via corporate Email
   const emailSubject = `🔔 [Pondera VKS / Gosuslugi] 15 Dk Hareket Özeti (+${deltaSent} Gönderim, ${current.totalServiceRendered} Tamamlanan) — ${msk.dateDisplay} ${msk.timeDisplay}`;
-  const emailHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 16px; overflow: hidden; background: #ffffff;">
-      <div style="background: #1e3a8a; color: #ffffff; padding: 18px 24px;">
-        <h2 style="margin: 0; font-size: 17px;">🔔 Gosuslugi VKS Bildirim Raporu (15 Dakika Özeti)</h2>
-        <p style="margin: 5px 0 0; font-size: 12px; color: #bfdbfe;">Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • Ortak Sunucu (hr.pondera.network)</p>
-      </div>
-      <div style="padding: 20px 24px; color: #1e293b; font-size: 13px; line-height: 1.6;">
-        <h3 style="margin: 0 0 8px; font-size: 14px; color: #0f172a;">⏱ Son 15 Dakikadaki Hareketler</h3>
-        <ul style="margin: 0 0 16px; padding-left: 18px;">
-          <li>Gönderilen Bildirim: <strong>+${deltaSent}</strong></li>
-          <li>Oluşan Hata (Ошибка): <strong>+${deltaErrors}</strong></li>
-          <li>İndirilen Başvuru PDF: <strong>+${deltaPdfs}</strong></li>
-          <li>İndirilen Statü PDF (A4): <strong>+${deltaStatusPdfs}</strong></li>
-          <li>Statüsü Güncellenen Kayıt: <strong>+${statusChangedCount}</strong></li>
-        </ul>
-        <h3 style="margin: 0 0 8px; font-size: 14px; color: #0f172a;">🏛 Gosuslugi / МВД Başvuru Durumları</h3>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px;">
-          <tr style="background: #f0fdf4;">
-            <td style="padding: 7px 12px; border: 1px solid #bbf7d0;"><strong>🟢 Услуга оказана (Tamamlanan)</strong></td>
-            <td style="padding: 7px 12px; border: 1px solid #bbf7d0; color: #166534;"><strong>${current.totalServiceRendered}</strong>${deltaServiceRendered > 0 ? ` (+${deltaServiceRendered} yeni)` : ''}</td>
-          </tr>
-          <tr>
-            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>🔵 Заявление зарегистрировано (Kayıtlı)</strong></td>
-            <td style="padding: 7px 12px; border: 1px solid #e2e8f0; color: #1d4ed8;"><strong>${current.totalRegistered}</strong></td>
-          </tr>
-          <tr style="background: #fef2f2;">
-            <td style="padding: 7px 12px; border: 1px solid #fecaca;"><strong>🔴 Услуга отказана (МВД Red)</strong></td>
-            <td style="padding: 7px 12px; border: 1px solid #fecaca; color: #b91c1c;"><strong>${current.totalRefused}</strong>${deltaRefused > 0 ? ` (+${deltaRefused} yeni)` : ''}</td>
-          </tr>
-          <tr>
-            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>📤 Отправлено (Bekleyen)</strong></td>
-            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>${current.totalSentPendingStatus}</strong></td>
-          </tr>
-          <tr style="background: #f8fafc;">
-            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>📊 Genel Toplam Başarılı / Arşiv PDF</strong></td>
-            <td style="padding: 7px 12px; border: 1px solid #e2e8f0;"><strong>${current.totalSent}</strong> (Başvuru PDF: ${current.totalPdf} | Statü A4 PDF: ${current.totalStatusPdf} | Hata: ${current.totalErrors})</td>
-          </tr>
-        </table>
-      </div>
-    </div>
+  const emailBodyInner = `
+    <h3 style="margin: 0 0 8px; font-size: 14px; color: #0f172a;">⏱ 1. Son 15 Dakikadaki Hareketler</h3>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 18px; font-size: 12.5px; border: 1px solid #cbd5e1;">
+      <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">✅ Gönderilen Bildirim</td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #047857;"><strong>+${deltaSent}</strong></td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; border-left: 1px solid #e2e8f0;">❌ Oluşan Hata (Ошибка)</td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #b91c1c;"><strong>+${deltaErrors}</strong></td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">📄 İndirilen Başvuru PDF</td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>+${deltaPdfs}</strong></td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; border-left: 1px solid #e2e8f0;">📸 İndirilen Statü PDF (A4)</td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>+${deltaStatusPdfs}</strong></td>
+      </tr>
+      <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+        <td style="padding: 8px 12px;" colspan="3">🔄 Statüsü Güncellenen Kayıt (JSON)</td>
+        <td align="right" style="padding: 8px 12px;"><strong>+${statusChangedCount}</strong></td>
+      </tr>
+    </table>
+
+    <h3 style="margin: 0 0 8px; font-size: 14px; color: #0f172a;">🏛 2. Gosuslugi / МВД Başvuru Durumları &amp; Genel Toplam</h3>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12.5px; border: 1px solid #cbd5e1;">
+      <tr bgcolor="#f0fdf4" style="background-color: #f0fdf4;">
+        <td style="padding: 8px 12px; border-bottom: 1px solid #bbf7d0; color: #14532d;"><strong>🟢 Услуга оказана (Tamamlanan)</strong></td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #bbf7d0; color: #14532d;"><strong>${current.totalServiceRendered}</strong>${deltaServiceRendered > 0 ? ` (+${deltaServiceRendered} yeni)` : ''}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #1d4ed8;"><strong>🔵 Заявление зарегистрировано (Kayıtlı)</strong></td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #1d4ed8;"><strong>${current.totalRegistered}</strong></td>
+      </tr>
+      <tr bgcolor="#fff1f2" style="background-color: #fff1f2;">
+        <td style="padding: 8px 12px; border-bottom: 1px solid #fecdd3; color: #9f1239;"><strong>🔴 Услуга отказана (МВД Red)</strong></td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #fecdd3; color: #be123c;"><strong>${current.totalRefused}</strong>${deltaRefused > 0 ? ` (+${deltaRefused} yeni)` : ''}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>📤 Отправлено (Bekleyen — МВД Yanıtı Bekleniyor)</strong></td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${current.totalSentPendingStatus}</strong></td>
+      </tr>
+      <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>✅ Toplam Başarılı Gönderim / PDF Arşiv</strong></td>
+        <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${current.totalSent}</strong> (Başvuru PDF: ${current.totalPdf} | Statü A4: ${current.totalStatusPdf})</td>
+      </tr>
+      <tr bgcolor="#e2e8f0" style="background-color: #e2e8f0;">
+        <td style="padding: 9px 12px; border-top: 2px solid #94a3b8;"><strong>📌 Genel Toplam İşlenen Kayıt (Hata: ${current.totalErrors})</strong></td>
+        <td align="right" style="padding: 9px 12px; border-top: 2px solid #94a3b8;"><strong>${current.totalRecords}</strong></td>
+      </tr>
+    </table>
   `;
+  const emailHtml = renderCorporateEmailShell({
+    accentHex: '#3b82f6',
+    headerBgHex: '#1e3a8a',
+    badgeText: 'PONDERA İK • GOSUSLUGI ВКС 15 DAKİKA HAREKET ÖZETİ',
+    title: '🔔 Gosuslugi VKS Bildirim Raporu (15 Dk Özeti)',
+    subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • Ortak Sunucu (hr.pondera.network)`,
+    bodyHtml: emailBodyInner,
+    ctaLabel: 'Gosuslugi VKS Bildirim Panelini Aç →',
+  });
   await sendCustomAlertEmail('vks_gosuslugi', emailSubject, emailHtml);
 
   return {
