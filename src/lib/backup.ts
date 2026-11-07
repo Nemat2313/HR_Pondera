@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { getDb, resetDb } from '@/lib/db';
+import { ensureAiTicketTables } from '@/lib/aiTicketEngine';
 
 export interface PreActionBackupStats {
   personnelTotal: number;
@@ -420,6 +421,9 @@ export function restorePreActionBackup(backupId?: string): {
     }
 
     const label = targetMeta ? `${targetMeta.createdAt} (${targetMeta.actionLabelTr})` : path.basename(targetGzPath);
+    try {
+      ensureAiTicketTables();
+    } catch {}
     return {
       success: true,
       message: `Veritabanı başarıyla "${label}" yedeğine geri yüklendi.`,

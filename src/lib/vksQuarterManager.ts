@@ -11,6 +11,7 @@ export interface QuarterPeriodInfo {
   shortLabelRu: string;
   periodStart: string;
   periodEnd: string;
+  periodEndIso: string;
   nextQuarterCode: string;
 }
 
@@ -28,8 +29,33 @@ export interface QuarterArchiveRecord {
   archived_by: string;
 }
 
+export interface VksQuarterItem {
+  quarter_code: string;
+  year: number;
+  quarter: number;
+  quarter_label: string;
+  quarter_label_ru: string;
+  short_label_tr: string;
+  short_label_ru: string;
+  period_start: string;
+  period_end: string;
+  period_end_iso: string;
+  has_ended: boolean;
+  is_active: boolean;
+  is_archived: boolean;
+  status: 'active' | 'archived' | 'planned';
+  master_count: number;
+  sent_count: number;
+  completed_count: number;
+  refused_count: number;
+  error_count: number;
+}
+
 export interface VksQuarterOverview {
   activeQuarter: string;
+  defaultQuarter: string;
+  defaultLabelTr: string;
+  defaultLabelRu: string;
   activeLabelTr: string;
   activeLabelRu: string;
   shortLabelTr: string;
@@ -37,23 +63,59 @@ export interface VksQuarterOverview {
   periodStart: string;
   periodEnd: string;
   nextQuarterCode: string;
+  suggestedNextQuarterCode: string;
   notifications15MinEnabled: boolean;
   activeMasterCount: number;
   activeSentCount: number;
+  todayMoscowIso: string;
   archives: QuarterArchiveRecord[];
+  quarters: VksQuarterItem[];
+}
+
+export function periodEndRuToIso(periodEnd: string, fallbackYear = 2026, fallbackQuarter = 4): string {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(periodEnd || '').trim());
+  if (m) {
+    return `${m[3]}-${m[2]}-${m[1]}`;
+  }
+  const defaultEnds: Record<number, string> = {
+    1: `${fallbackYear}-03-31`,
+    2: `${fallbackYear}-06-30`,
+    3: `${fallbackYear}-09-30`,
+    4: `${fallbackYear}-12-31`,
+  };
+  return defaultEnds[fallbackQuarter] || `${fallbackYear}-12-31`;
+}
+
+export function getTodayMoscowIso(now: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const yr = parts.find((p) => p.type === 'year')?.value;
+    const mo = parts.find((p) => p.type === 'month')?.value;
+    const da = parts.find((p) => p.type === 'day')?.value;
+    if (yr && mo && da) {
+      return `${yr}-${mo}-${da}`;
+    }
+  } catch {}
+  const msk = new Date(now.getTime() + 3 * 3600 * 1000);
+  return msk.toISOString().slice(0, 10);
 }
 
 export function parseQuarterCodeInfo(rawCode?: string | null): QuarterPeriodInfo {
   const cleaned = String(rawCode || '2026-4').trim();
-  const match = /^(\d{4})-([1-4])$/.exec(cleaned);
+  const match = /^(\d{4})[-_Q]+([1-4])$/i.exec(cleaned) || /^(\d{4})-([1-4])$/.exec(cleaned);
   const year = match ? Number(match[1]) : 2026;
   const quarter = match ? Number(match[2]) : 4;
 
-  const ranges: Record<number, { start: string; end: string }> = {
-    1: { start: `01.01.${year}`, end: `31.03.${year}` },
-    2: { start: `01.04.${year}`, end: `30.06.${year}` },
-    3: { start: `01.07.${year}`, end: `30.09.${year}` },
-    4: { start: `01.10.${year}`, end: `31.12.${year}` },
+  const ranges: Record<number, { start: string; end: string; endIso: string }> = {
+    1: { start: `01.01.${year}`, end: `31.03.${year}`, endIso: `${year}-03-31` },
+    2: { start: `01.04.${year}`, end: `30.06.${year}`, endIso: `${year}-06-30` },
+    3: { start: `01.07.${year}`, end: `30.09.${year}`, endIso: `${year}-09-30` },
+    4: { start: `01.10.${year}`, end: `31.12.${year}`, endIso: `${year}-12-31` },
   };
 
   const range = ranges[quarter] || ranges[4];
@@ -71,6 +133,7 @@ export function parseQuarterCodeInfo(rawCode?: string | null): QuarterPeriodInfo
     shortLabelRu: `${quarter} Кв. ${year}`,
     periodStart: range.start,
     periodEnd: range.end,
+    periodEndIso: range.endIso,
     nextQuarterCode: `${nextYear}-${nextQ}`,
   };
 }
@@ -156,6 +219,21 @@ function ensureBaseAndArchiveTables(db: any) {
       pdf_filename TEXT DEFAULT '',
       submitted_at TEXT DEFAULT '',
       event_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS gosuslugi_quarters (
+      quarter_code TEXT PRIMARY KEY,
+      year INTEGER NOT NULL,
+      quarter INTEGER NOT NULL,
+      quarter_label_tr TEXT NOT NULL,
+      quarter_label_ru TEXT NOT NULL,
+      short_label_tr TEXT NOT NULL,
+      short_label_ru TEXT NOT NULL,
+      period_start TEXT NOT NULL,
+      period_end TEXT NOT NULL,
+      period_end_iso TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by TEXT DEFAULT 'system'
     );
 
     CREATE TABLE IF NOT EXISTS gosuslugi_quarter_archives (
@@ -248,6 +326,51 @@ function ensureBaseAndArchiveTables(db: any) {
   } catch {}
 }
 
+function upsertQuarterCatalogRow(
+  db: any,
+  quarterCode: string,
+  customPeriodStart?: string,
+  customPeriodEnd?: string,
+  actor = 'system'
+) {
+  const info = parseQuarterCodeInfo(quarterCode);
+  const pStart = (customPeriodStart || info.periodStart).trim();
+  const pEnd = (customPeriodEnd || info.periodEnd).trim();
+  const pEndIso = periodEndRuToIso(pEnd, info.year, info.quarter);
+  const labelTr = `${info.year} ${info.quarter}. Çeyrek (${pStart} – ${pEnd})`;
+  const labelRu = `${info.quarter} Квартал ${info.year} (${pStart} – ${pEnd})`;
+  const nowMsk = new Date(Date.now() + 3 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+
+  db.prepare(`
+    INSERT INTO gosuslugi_quarters (
+      quarter_code, year, quarter, quarter_label_tr, quarter_label_ru,
+      short_label_tr, short_label_ru, period_start, period_end, period_end_iso,
+      created_at, created_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(quarter_code) DO UPDATE SET
+      quarter_label_tr = excluded.quarter_label_tr,
+      quarter_label_ru = excluded.quarter_label_ru,
+      short_label_tr = excluded.short_label_tr,
+      short_label_ru = excluded.short_label_ru,
+      period_start = excluded.period_start,
+      period_end = excluded.period_end,
+      period_end_iso = excluded.period_end_iso
+  `).run(
+    info.quarterCode,
+    info.year,
+    info.quarter,
+    labelTr,
+    labelRu,
+    info.shortLabelTr,
+    info.shortLabelRu,
+    pStart,
+    pEnd,
+    pEndIso,
+    nowMsk,
+    actor
+  );
+}
+
 function summarizeSubmissionsForArchive(rows: Array<{
   sicil_no: string;
   application_no: string;
@@ -306,6 +429,12 @@ function performQuarterArchiveTx(
   const fromInfo = parseQuarterCodeInfo(fromQuarterCode);
   const toInfo = parseQuarterCodeInfo(toQuarterCode);
   const nowMsk = new Date(Date.now() + 3 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+
+  const existingTargetRow = db
+    .prepare('SELECT period_start, period_end FROM gosuslugi_quarters WHERE quarter_code = ?')
+    .get(toInfo.quarterCode) as { period_start?: string; period_end?: string } | undefined;
+  const targetStart = existingTargetRow?.period_start || toInfo.periodStart;
+  const targetEnd = existingTargetRow?.period_end || toInfo.periodEnd;
 
   const masterRows = db
     .prepare(
@@ -458,6 +587,9 @@ function performQuarterArchiveTx(
       actor
     );
 
+    upsertQuarterCatalogRow(db, fromInfo.quarterCode, fromInfo.periodStart, fromInfo.periodEnd, actor);
+    upsertQuarterCatalogRow(db, toInfo.quarterCode, targetStart, targetEnd, actor);
+
     // Clear active VKS salary tables so the new quarter starts with a clean slate
     db.prepare(`DELETE FROM gosuslugi_vks_master_list`).run();
     db.prepare(
@@ -476,8 +608,8 @@ function performQuarterArchiveTx(
 
     // Advance active quarter metadata & pause 15-min VKS notifications until next reporting window
     setSysVal(db, 'vks_active_quarter', toInfo.quarterCode);
-    setSysVal(db, 'vks_active_period_start', toInfo.periodStart);
-    setSysVal(db, 'vks_active_period_end', toInfo.periodEnd);
+    setSysVal(db, 'vks_active_period_start', targetStart);
+    setSysVal(db, 'vks_active_period_end', targetEnd);
     setSysVal(db, 'vks_15min_notifications_enabled', '0');
 
     db.exec('COMMIT');
@@ -505,6 +637,39 @@ function performQuarterArchiveTx(
   };
 }
 
+function seedQuarterCatalogIfNeeded(db: any): void {
+  const archives = db
+    .prepare('SELECT quarter_code, period_start, period_end FROM gosuslugi_quarter_archives')
+    .all() as Array<{ quarter_code: string; period_start: string; period_end: string }>;
+
+  for (const arch of archives) {
+    const existing = db
+      .prepare('SELECT quarter_code FROM gosuslugi_quarters WHERE quarter_code = ?')
+      .get(arch.quarter_code);
+    if (!existing) {
+      upsertQuarterCatalogRow(db, arch.quarter_code, arch.period_start, arch.period_end, 'seed');
+    }
+  }
+
+  const rawActive = getSysVal(db, 'vks_active_quarter') || '2026-4';
+  const activeInfo = parseQuarterCodeInfo(rawActive);
+  const existingActive = db
+    .prepare('SELECT quarter_code FROM gosuslugi_quarters WHERE quarter_code = ?')
+    .get(activeInfo.quarterCode);
+  if (!existingActive) {
+    const pStart = getSysVal(db, 'vks_active_period_start') || activeInfo.periodStart;
+    const pEnd = getSysVal(db, 'vks_active_period_end') || activeInfo.periodEnd;
+    upsertQuarterCatalogRow(db, activeInfo.quarterCode, pStart, pEnd, 'seed');
+  }
+
+  const existingQ3 = db
+    .prepare('SELECT quarter_code FROM gosuslugi_quarters WHERE quarter_code = ?')
+    .get('2026-3');
+  if (!existingQ3) {
+    upsertQuarterCatalogRow(db, '2026-3', undefined, undefined, 'seed');
+  }
+}
+
 /**
  * Ensures quarterly archive tables exist and performs the one-time automatic
  * 2026 Q3 ('2026-3') -> 2026 Q4 ('2026-4') archive + 15-min notification stop.
@@ -513,48 +678,49 @@ export function ensureVksQuarterlyArchiveAndState(db: any): void {
   const gState = globalThis as unknown as { __ponderaVksQuarterEnsured?: boolean };
   ensureBaseAndArchiveTables(db);
 
-  if (gState.__ponderaVksQuarterEnsured) {
-    return;
-  }
+  if (!gState.__ponderaVksQuarterEnsured) {
+    const migrated = getSysVal(db, 'vks_q3_2026_archived_to_q4_v1');
+    if (migrated !== '1') {
+      const existingMasterCnt = (
+        db.prepare('SELECT COUNT(*) AS cnt FROM gosuslugi_vks_master_list').get() as { cnt: number }
+      ).cnt;
+      const existingSubCnt = (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS cnt FROM gosuslugi_submissions
+             WHERE LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'`
+          )
+          .get() as { cnt: number }
+      ).cnt;
 
-  const migrated = getSysVal(db, 'vks_q3_2026_archived_to_q4_v1');
-  if (migrated !== '1') {
-    const existingMasterCnt = (
-      db.prepare('SELECT COUNT(*) AS cnt FROM gosuslugi_vks_master_list').get() as { cnt: number }
-    ).cnt;
-    const existingSubCnt = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS cnt FROM gosuslugi_submissions
-           WHERE LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'`
-        )
-        .get() as { cnt: number }
-    ).cnt;
+      if (existingMasterCnt > 0 || existingSubCnt > 0) {
+        try {
+          createPreActionBackup(
+            'vks_q3_2026_archive',
+            `VKS 2026 3. Çeyrek Otomatik Arşivleme (${existingMasterCnt} Ana Liste / ${existingSubCnt} Başvuru)`,
+            `Автоархивация ВКС 3 Кв. 2026 (${existingMasterCnt} записей)`
+          );
+        } catch {}
+        performQuarterArchiveTx(db, '2026-3', '2026-4', 'auto_migration_v2.8.26');
+      } else {
+        const q4 = parseQuarterCodeInfo('2026-4');
+        setSysVal(db, 'vks_active_quarter', q4.quarterCode);
+        setSysVal(db, 'vks_active_period_start', q4.periodStart);
+        setSysVal(db, 'vks_active_period_end', q4.periodEnd);
+        setSysVal(db, 'vks_15min_notifications_enabled', '0');
+        try {
+          db.prepare(`UPDATE telegram_outbox SET delivered = 1 WHERE report_type = 'vks' AND delivered = 0`).run();
+        } catch {}
+      }
 
-    if (existingMasterCnt > 0 || existingSubCnt > 0) {
-      try {
-        createPreActionBackup(
-          'vks_q3_2026_archive',
-          `VKS 2026 3. Çeyrek Otomatik Arşivleme (${existingMasterCnt} Ana Liste / ${existingSubCnt} Başvuru)`,
-          `Автоархивация ВКС 3 Кв. 2026 (${existingMasterCnt} записей)`
-        );
-      } catch {}
-      performQuarterArchiveTx(db, '2026-3', '2026-4', 'auto_migration_v2.8.26');
-    } else {
-      const q4 = parseQuarterCodeInfo('2026-4');
-      setSysVal(db, 'vks_active_quarter', q4.quarterCode);
-      setSysVal(db, 'vks_active_period_start', q4.periodStart);
-      setSysVal(db, 'vks_active_period_end', q4.periodEnd);
-      setSysVal(db, 'vks_15min_notifications_enabled', '0');
-      try {
-        db.prepare(`UPDATE telegram_outbox SET delivered = 1 WHERE report_type = 'vks' AND delivered = 0`).run();
-      } catch {}
+      setSysVal(db, 'vks_q3_2026_archived_to_q4_v1', '1');
     }
 
-    setSysVal(db, 'vks_q3_2026_archived_to_q4_v1', '1');
+    seedQuarterCatalogIfNeeded(db);
+    gState.__ponderaVksQuarterEnsured = true;
+  } else {
+    seedQuarterCatalogIfNeeded(db);
   }
-
-  gState.__ponderaVksQuarterEnsured = true;
 }
 
 export function isVks15MinNotificationEnabled(db: any): boolean {
@@ -573,8 +739,9 @@ export function setVks15MinNotificationEnabled(db: any, enabled: boolean): boole
   return enabled;
 }
 
-export function getVksQuarterOverview(db: any): VksQuarterOverview {
+export function getVksQuarterOverview(db: any, nowOverride?: Date): VksQuarterOverview {
   ensureVksQuarterlyArchiveAndState(db);
+  const todayMoscowIso = getTodayMoscowIso(nowOverride);
   const rawActive = getSysVal(db, 'vks_active_quarter') || '2026-4';
   const info = parseQuarterCodeInfo(rawActive);
   const periodStart = getSysVal(db, 'vks_active_period_start') || info.periodStart;
@@ -598,17 +765,21 @@ export function getVksQuarterOverview(db: any): VksQuarterOverview {
     }
   }
 
-  const activeSentCount = (
-    db
-      .prepare(
-        `SELECT COUNT(DISTINCT sicil_no) AS cnt
-         FROM gosuslugi_submissions
-         WHERE LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'
-           AND gosuslugi_status NOT LIKE 'Ошибка%'
-           AND gosuslugi_status NOT LIKE '%не найдены в базе МВД%'`
-      )
-      .get() as { cnt: number }
-  ).cnt;
+  const activeSubRows = db
+    .prepare(
+      `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, status_pdf_filename
+       FROM gosuslugi_submissions
+       WHERE LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'`
+    )
+    .all() as Array<{
+    sicil_no: string;
+    application_no: string;
+    gosuslugi_status: string;
+    pdf_filename?: string;
+    status_pdf_filename?: string;
+  }>;
+  const activeStats = summarizeSubmissionsForArchive(activeSubRows);
+  const activeSentCount = activeStats.sent;
 
   const archives = db
     .prepare(
@@ -619,9 +790,86 @@ export function getVksQuarterOverview(db: any): VksQuarterOverview {
        ORDER BY quarter_code DESC`
     )
     .all() as QuarterArchiveRecord[];
+  const archiveByCode = new Map<string, QuarterArchiveRecord>();
+  for (const a of archives) {
+    archiveByCode.set(a.quarter_code, a);
+  }
+
+  const catalogRows = db
+    .prepare(
+      `SELECT quarter_code, year, quarter, quarter_label_tr, quarter_label_ru,
+              short_label_tr, short_label_ru, period_start, period_end, period_end_iso
+       FROM gosuslugi_quarters
+       ORDER BY year DESC, quarter DESC`
+    )
+    .all() as Array<{
+    quarter_code: string;
+    year: number;
+    quarter: number;
+    quarter_label_tr: string;
+    quarter_label_ru: string;
+    short_label_tr: string;
+    short_label_ru: string;
+    period_start: string;
+    period_end: string;
+    period_end_iso: string;
+  }>;
+
+  const quarters: VksQuarterItem[] = catalogRows.map((row) => {
+    const isActive = row.quarter_code === info.quarterCode;
+    const arch = archiveByCode.get(row.quarter_code);
+    const isArchived = !isActive && Boolean(arch);
+    const pStart = isActive ? periodStart : arch?.period_start || row.period_start;
+    const pEnd = isActive ? periodEnd : arch?.period_end || row.period_end;
+    const pEndIso = periodEndRuToIso(pEnd, row.year, row.quarter);
+    const hasEnded = todayMoscowIso > pEndIso;
+
+    return {
+      quarter_code: row.quarter_code,
+      year: row.year,
+      quarter: row.quarter,
+      quarter_label: `${row.year} ${row.quarter}. Çeyrek (${pStart} – ${pEnd})`,
+      quarter_label_ru: `${row.quarter} Квартал ${row.year} (${pStart} – ${pEnd})`,
+      short_label_tr: row.short_label_tr,
+      short_label_ru: row.short_label_ru,
+      period_start: pStart,
+      period_end: pEnd,
+      period_end_iso: pEndIso,
+      has_ended: hasEnded,
+      is_active: isActive,
+      is_archived: isArchived,
+      status: isActive ? 'active' : isArchived ? 'archived' : 'planned',
+      master_count: isActive ? activeMasterCount : arch?.master_count || 0,
+      sent_count: isActive ? activeSentCount : arch?.sent_count || 0,
+      completed_count: isActive ? activeStats.completed : arch?.completed_count || 0,
+      refused_count: isActive ? activeStats.refused : arch?.refused_count || 0,
+      error_count: isActive ? activeStats.errors : arch?.error_count || 0,
+    };
+  });
+
+  // Sort strictly descending by year then quarter
+  quarters.sort((a, b) => b.year - a.year || b.quarter - a.quarter);
+
+  // Rule: Until a quarter's last day passes (todayMoscowIso > period_end_iso),
+  // default to the most recently ended quarter (e.g. 2026-3 until 31.12.2026 passes,
+  // then automatically 2026-4 starting 01.01.2027, then 2027-1 starting 01.04.2027).
+  const latestEndedQuarter = quarters.find((q) => q.has_ended);
+  const defaultItem =
+    latestEndedQuarter ||
+    quarters.find((q) => q.is_active) ||
+    quarters[0] || {
+      quarter_code: info.quarterCode,
+      quarter_label: `${info.year} ${info.quarter}. Çeyrek (${periodStart} – ${periodEnd})`,
+      quarter_label_ru: `${info.quarter} Квартал ${info.year} (${periodStart} – ${periodEnd})`,
+    };
+
+  const highestQuarter = quarters[0] ? parseQuarterCodeInfo(quarters[0].quarter_code) : info;
 
   return {
     activeQuarter: info.quarterCode,
+    defaultQuarter: defaultItem.quarter_code,
+    defaultLabelTr: defaultItem.quarter_label,
+    defaultLabelRu: defaultItem.quarter_label_ru,
     activeLabelTr: `${info.year} ${info.quarter}. Çeyrek (${periodStart} – ${periodEnd})`,
     activeLabelRu: `${info.quarter} Квартал ${info.year} (${periodStart} – ${periodEnd})`,
     shortLabelTr: info.shortLabelTr,
@@ -629,11 +877,137 @@ export function getVksQuarterOverview(db: any): VksQuarterOverview {
     periodStart,
     periodEnd,
     nextQuarterCode: info.nextQuarterCode,
+    suggestedNextQuarterCode: highestQuarter.nextQuarterCode,
     notifications15MinEnabled,
     activeMasterCount,
     activeSentCount,
+    todayMoscowIso,
     archives,
+    quarters,
   };
+}
+
+export function resolveRequestedVksQuarter(
+  requestedQuarter: string | null | undefined,
+  overview: VksQuarterOverview
+): string {
+  const cleaned = String(requestedQuarter || '').trim();
+  if (!cleaned || cleaned.toLowerCase() === 'default') {
+    return overview.defaultQuarter;
+  }
+  if (cleaned.toLowerCase() === 'active') {
+    return overview.activeQuarter;
+  }
+  return parseQuarterCodeInfo(cleaned).quarterCode;
+}
+
+export function addVksQuarter(
+  db: any,
+  input: {
+    year?: number;
+    quarter?: number;
+    quarterCode?: string;
+    periodStart?: string;
+    periodEnd?: string;
+    makeActive?: boolean;
+  },
+  actor = 'admin'
+): { quarterCode: string; overview: VksQuarterOverview; alreadyExisted: boolean } {
+  ensureVksQuarterlyArchiveAndState(db);
+
+  let targetCode = String(input.quarterCode || '').trim();
+  if (!targetCode && input.year && input.quarter) {
+    const yr = Number(input.year);
+    const q = Number(input.quarter);
+    if (!Number.isInteger(yr) || yr < 2024 || yr > 2035) {
+      throw new Error('Geçerli bir yıl giriniz (2024 – 2035).');
+    }
+    if (![1, 2, 3, 4].includes(q)) {
+      throw new Error('Geçerli bir çeyrek seçiniz (1 – 4).');
+    }
+    targetCode = `${yr}-${q}`;
+  }
+
+  const parsed = parseQuarterCodeInfo(targetCode);
+  const existing = db
+    .prepare('SELECT quarter_code FROM gosuslugi_quarters WHERE quarter_code = ?')
+    .get(parsed.quarterCode);
+
+  const pStart = String(input.periodStart || parsed.periodStart).trim();
+  const pEnd = String(input.periodEnd || parsed.periodEnd).trim();
+  if (!/^\d{2}\.\d{2}\.\d{4}$/.test(pStart) || !/^\d{2}\.\d{2}\.\d{4}$/.test(pEnd)) {
+    throw new Error('Dönem başlangıç ve bitiş tarihleri GG.AA.YYYY formatında olmalıdır.');
+  }
+
+  upsertQuarterCatalogRow(db, parsed.quarterCode, pStart, pEnd, actor);
+
+  if (input.makeActive) {
+    const switched = switchActiveVksQuarter(db, parsed.quarterCode, actor);
+    return {
+      quarterCode: parsed.quarterCode,
+      overview: switched.overview,
+      alreadyExisted: Boolean(existing),
+    };
+  }
+
+  invalidateGosuslugiAnalyticsCache();
+  return {
+    quarterCode: parsed.quarterCode,
+    overview: getVksQuarterOverview(db),
+    alreadyExisted: Boolean(existing),
+  };
+}
+
+export function switchActiveVksQuarter(
+  db: any,
+  targetQuarterCode: string,
+  actor = 'admin'
+): { archived?: QuarterArchiveRecord; overview: VksQuarterOverview } {
+  ensureVksQuarterlyArchiveAndState(db);
+  const currentOverview = getVksQuarterOverview(db);
+  const targetInfo = parseQuarterCodeInfo(targetQuarterCode);
+
+  if (targetInfo.quarterCode === currentOverview.activeQuarter) {
+    return { overview: currentOverview };
+  }
+
+  const existingArchive = db
+    .prepare('SELECT master_count, sent_count FROM gosuslugi_quarter_archives WHERE quarter_code = ?')
+    .get(targetInfo.quarterCode) as { master_count?: number; sent_count?: number } | undefined;
+  if (existingArchive && ((existingArchive.master_count || 0) > 0 || (existingArchive.sent_count || 0) > 0)) {
+    throw new Error(
+      `${targetInfo.shortLabelTr} dönemi tamamlanmış arşiv verisi içerdiği için tekrar boş aktif kuyruğa alınamaz; arşiv görünümünden inceleyebilirsiniz.`
+    );
+  }
+
+  // Ensure target is in catalog
+  const existingCatalog = db
+    .prepare('SELECT period_start, period_end FROM gosuslugi_quarters WHERE quarter_code = ?')
+    .get(targetInfo.quarterCode) as { period_start?: string; period_end?: string } | undefined;
+  const targetStart = existingCatalog?.period_start || targetInfo.periodStart;
+  const targetEnd = existingCatalog?.period_end || targetInfo.periodEnd;
+  upsertQuarterCatalogRow(db, targetInfo.quarterCode, targetStart, targetEnd, actor);
+
+  // If current active quarter has data, archive it safely; if empty, just switch pointers cleanly
+  if (currentOverview.activeMasterCount > 0 || currentOverview.activeSentCount > 0) {
+    try {
+      createPreActionBackup(
+        `vks_archive_${currentOverview.activeQuarter}`,
+        `VKS Dönem Arşivleme (${currentOverview.activeQuarter} ➔ ${targetInfo.quarterCode})`,
+        `Архивация квартала ВКС (${currentOverview.activeQuarter} ➔ ${targetInfo.quarterCode})`
+      );
+    } catch {}
+    const archived = performQuarterArchiveTx(db, currentOverview.activeQuarter, targetInfo.quarterCode, actor);
+    return { archived, overview: getVksQuarterOverview(db) };
+  }
+
+  setSysVal(db, 'vks_active_quarter', targetInfo.quarterCode);
+  setSysVal(db, 'vks_active_period_start', targetStart);
+  setSysVal(db, 'vks_active_period_end', targetEnd);
+  setSysVal(db, 'vks_15min_notifications_enabled', '0');
+  invalidateGosuslugiAnalyticsCache();
+
+  return { overview: getVksQuarterOverview(db) };
 }
 
 export function archiveActiveQuarterAndAdvance(
@@ -675,4 +1049,3 @@ export function getAllArchivedGosuslugiAppNos(db: any): string[] {
     .all() as Array<{ application_no: string }>;
   return rows.map((r) => r.application_no);
 }
-

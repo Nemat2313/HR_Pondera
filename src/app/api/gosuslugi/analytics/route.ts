@@ -6,6 +6,7 @@ import { resolveEffectiveRegion, matchesEffectiveRegion } from '@/lib/regionSite
 import {
   ensureVksQuarterlyArchiveAndState,
   getVksQuarterOverview,
+  resolveRequestedVksQuarter,
 } from '@/lib/vksQuarterManager';
 import {
   getStatusPdfMaps,
@@ -420,11 +421,12 @@ export async function GET(request: Request) {
 
     ensureVksQuarterlyArchiveAndState(db);
     const quarterOverview = getVksQuarterOverview(db);
-    const selectedQuarter =
-      requestedQuarter && requestedQuarter !== 'active'
-        ? requestedQuarter
-        : quarterOverview.activeQuarter;
+    const selectedQuarter = resolveRequestedVksQuarter(requestedQuarter, quarterOverview);
     const isArchivedQuarter = selectedQuarter !== quarterOverview.activeQuarter;
+    const matchedQuarterItem = quarterOverview.quarters.find((q) => q.quarter_code === selectedQuarter);
+    const selectedQuarterStatus: 'active' | 'archived' | 'planned' = !isArchivedQuarter
+      ? 'active'
+      : matchedQuarterItem?.status || 'archived';
     const respCacheKey = `${scopeType}:${scopeValue}:${selectedQuarter}:${quarterOverview.notifications15MinEnabled ? '1' : '0'}`;
 
     if (!forceFresh) {
@@ -1503,6 +1505,7 @@ export async function GET(request: Request) {
     const responsePayload = {
       success: true,
       selectedQuarter,
+      selectedQuarterStatus,
       isArchivedQuarter,
       quarterOverview,
       moscowTime: `${msk.dateDisplay} ${msk.timeDisplay}`,

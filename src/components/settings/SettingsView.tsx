@@ -167,6 +167,9 @@ Desteğiniz için şimdiden teşekkür eder, iyi çalışmalar dilerim.
 
 Saygılarımla,`;
 
+// Zahid Bey sürüm özeti ve Barış Bey kurumsal IT mail şablonları korunur, ancak Ayarlar ekranında gizli tutulur.
+const SHOW_EXECUTIVE_EMAIL_TEMPLATES: boolean = false;
+
 export default function SettingsView({
   stats,
   onOpenUpload,
@@ -611,7 +614,8 @@ export default function SettingsView({
             </div>
           )}
 
-          {/* SECTION 0: EXECUTIVE HR DIRECTOR RELEASE SUMMARY EMAIL (ikbildirim@pondera.ru -> Zahid Bey) */}
+          {/* SECTION 0: EXECUTIVE HR DIRECTOR RELEASE SUMMARY EMAIL (ikbildirim@pondera.ru -> Zahid Bey) - HIDDEN IN UI, TEMPLATE PRESERVED */}
+          {SHOW_EXECUTIVE_EMAIL_TEMPLATES && (
           <div className="p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-emerald-300/80 dark:border-teal-500/40 shadow-sm space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="space-y-1">
@@ -835,6 +839,7 @@ export default function SettingsView({
               </div>
             )}
           </div>
+          )}
 
           {/* SECTION A: SMTP CONNECTION & 1C ZUP AUTO-SYNC SETTINGS */}
           <form
@@ -1303,7 +1308,8 @@ export default function SettingsView({
             )}
           </div>
 
-          {/* SECTION C: READY-TO-SEND CORPORATE EMAIL FOR IT DIRECTOR BARIŞ BEY */}
+          {/* SECTION C: READY-TO-SEND CORPORATE EMAIL FOR IT DIRECTOR BARIŞ BEY - HIDDEN IN UI, TEMPLATE PRESERVED */}
+          {SHOW_EXECUTIVE_EMAIL_TEMPLATES && (
           <div className="p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-indigo-200 dark:border-indigo-900/60 shadow-2xs space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -1343,11 +1349,12 @@ export default function SettingsView({
               </div>
             )}
           </div>
+          )}
 
           {/* SECTION D: EMAIL DELIVERY LOGS / OUTBOX */}
           <div className="p-5 rounded-3xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              4. E-Posta Gönderim Geçmişi & Kuyruk (Outbox) Kayıtları
+              {SHOW_EXECUTIVE_EMAIL_TEMPLATES ? '4.' : '3.'} E-Posta Gönderim Geçmişi & Kuyruk (Outbox) Kayıtları
             </h3>
             {logs.length === 0 ? (
               <div className="text-xs text-slate-400 py-4 text-center">

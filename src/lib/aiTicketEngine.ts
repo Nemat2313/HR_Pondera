@@ -119,11 +119,98 @@ export interface AiProviderSettingsRow {
   updated_at: string;
 }
 
-let tablesEnsured = false;
+const REQUIRED_TRAVEL_GUEST_COLUMNS: Array<[string, string]> = [
+  ['full_name_ru', "TEXT NOT NULL DEFAULT ''"],
+  ['passport_no', "TEXT NOT NULL DEFAULT ''"],
+  ['citizenship', "TEXT NOT NULL DEFAULT ''"],
+  ['company_or_org', "TEXT NOT NULL DEFAULT 'Misafir / Dış Katılımcı'"],
+  ['assigned_region', "TEXT NOT NULL DEFAULT ''"],
+  ['assigned_project', "TEXT NOT NULL DEFAULT ''"],
+  ['phone', "TEXT NOT NULL DEFAULT ''"],
+  ['notes', "TEXT NOT NULL DEFAULT ''"],
+  ['linked_sicil_no', "TEXT NOT NULL DEFAULT ''"],
+  ['status', "TEXT NOT NULL DEFAULT 'active'"],
+];
+
+const REQUIRED_TRAVEL_TICKET_COLUMNS: Array<[string, string]> = [
+  ['eba_doc_id', "TEXT NOT NULL DEFAULT ''"],
+  ['transport_type', "TEXT NOT NULL DEFAULT 'flight'"],
+  ['person_type', "TEXT NOT NULL DEFAULT 'employee'"],
+  ['sicil_no', "TEXT NOT NULL DEFAULT ''"],
+  ['guest_id', 'INTEGER'],
+  ['passenger_name_ru', "TEXT NOT NULL DEFAULT ''"],
+  ['passport_no', "TEXT NOT NULL DEFAULT ''"],
+  ['citizenship', "TEXT NOT NULL DEFAULT ''"],
+  ['flight_purpose', "TEXT NOT NULL DEFAULT 'Transfer'"],
+  ['ticket_agent', "TEXT NOT NULL DEFAULT 'One Two Trip'"],
+  ['payment_company', "TEXT NOT NULL DEFAULT 'PONDERA-INDUSTRY'"],
+  ['carrier', "TEXT NOT NULL DEFAULT ''"],
+  ['flight_or_train_no', "TEXT NOT NULL DEFAULT ''"],
+  ['booking_ref', "TEXT NOT NULL DEFAULT ''"],
+  ['ticket_number', "TEXT NOT NULL DEFAULT ''"],
+  ['departure_city', "TEXT NOT NULL DEFAULT ''"],
+  ['arrival_city', "TEXT NOT NULL DEFAULT ''"],
+  ['departure_station_or_airport', "TEXT NOT NULL DEFAULT ''"],
+  ['arrival_station_or_airport', "TEXT NOT NULL DEFAULT ''"],
+  ['departure_date', "TEXT NOT NULL DEFAULT ''"],
+  ['departure_time', "TEXT NOT NULL DEFAULT ''"],
+  ['arrival_or_return_date', "TEXT NOT NULL DEFAULT ''"],
+  ['arrival_date', "TEXT NOT NULL DEFAULT ''"],
+  ['arrival_time', "TEXT NOT NULL DEFAULT ''"],
+  ['seat_or_wagon', "TEXT NOT NULL DEFAULT ''"],
+  ['ticket_class', "TEXT NOT NULL DEFAULT 'economy'"],
+  ['ticket_price', 'REAL NOT NULL DEFAULT 0'],
+  ['currency', "TEXT NOT NULL DEFAULT 'RUB'"],
+  ['doc_status', "TEXT NOT NULL DEFAULT 'Uploaded'"],
+  ['contact_phone', "TEXT NOT NULL DEFAULT ''"],
+  ['job_title', "TEXT NOT NULL DEFAULT ''"],
+  ['region', "TEXT NOT NULL DEFAULT ''"],
+  ['project_name', "TEXT NOT NULL DEFAULT ''"],
+  ['ticket_status', "TEXT NOT NULL DEFAULT ''"],
+  ['detail_reason', "TEXT NOT NULL DEFAULT '0'"],
+  ['trip_type', "TEXT NOT NULL DEFAULT 'One Way'"],
+  ['notes', "TEXT NOT NULL DEFAULT ''"],
+  ['updated_by', "TEXT NOT NULL DEFAULT ''"],
+  ['updated_at', "TEXT NOT NULL DEFAULT ''"],
+  ['deduct_from_salary', "TEXT NOT NULL DEFAULT 'No'"],
+  ['reception_status', "TEXT NOT NULL DEFAULT 'pending'"],
+  ['reception_driver_note', "TEXT NOT NULL DEFAULT ''"],
+  ['ai_provider_used', "TEXT NOT NULL DEFAULT ''"],
+  ['match_confidence', 'INTEGER NOT NULL DEFAULT 0'],
+  ['source_filename', "TEXT NOT NULL DEFAULT ''"],
+  ['status', "TEXT NOT NULL DEFAULT 'confirmed'"],
+];
+
+function getTableColumnSet(db: any, tableName: string): Set<string> {
+  try {
+    return new Set(
+      (db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+  } catch {
+    return new Set();
+  }
+}
 
 export function ensureAiTicketTables() {
   const db = getDb();
-  if (tablesEnsured) return db;
+  const gState = globalThis as unknown as {
+    __ponderaAiTicketTablesEnsured?: boolean;
+  };
+
+  if (gState.__ponderaAiTicketTablesEnsured) {
+    // Ultra-fast (~0.02ms) SQLite metadata guard in case pondera_hr.db was replaced externally
+    const ticketCols = getTableColumnSet(db, 'travel_tickets');
+    if (ticketCols.has('eba_doc_id') && ticketCols.has('reception_driver_note')) {
+      return db;
+    }
+    gState.__ponderaAiTicketTablesEnsured = false;
+  }
+
+  try {
+    db.exec('PRAGMA busy_timeout = 5000;');
+  } catch {}
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS ai_provider_settings (
@@ -232,13 +319,18 @@ export function ensureAiTicketTables() {
     CREATE TABLE IF NOT EXISTS travel_tickets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ticket_code TEXT NOT NULL,
+      eba_doc_id TEXT NOT NULL DEFAULT '',
       transport_type TEXT NOT NULL DEFAULT 'flight',
       person_type TEXT NOT NULL DEFAULT 'employee',
       sicil_no TEXT NOT NULL DEFAULT '',
       guest_id INTEGER,
       passenger_name TEXT NOT NULL,
+      passenger_name_ru TEXT NOT NULL DEFAULT '',
       passport_no TEXT NOT NULL DEFAULT '',
       citizenship TEXT NOT NULL DEFAULT '',
+      flight_purpose TEXT NOT NULL DEFAULT 'Transfer',
+      ticket_agent TEXT NOT NULL DEFAULT 'One Two Trip',
+      payment_company TEXT NOT NULL DEFAULT 'PONDERA-INDUSTRY',
       carrier TEXT NOT NULL DEFAULT '',
       flight_or_train_no TEXT NOT NULL DEFAULT '',
       booking_ref TEXT NOT NULL DEFAULT '',
@@ -248,13 +340,28 @@ export function ensureAiTicketTables() {
       departure_station_or_airport TEXT NOT NULL DEFAULT '',
       arrival_station_or_airport TEXT NOT NULL DEFAULT '',
       departure_date TEXT NOT NULL DEFAULT '',
+      departure_time TEXT NOT NULL DEFAULT '',
       arrival_or_return_date TEXT NOT NULL DEFAULT '',
+      arrival_date TEXT NOT NULL DEFAULT '',
+      arrival_time TEXT NOT NULL DEFAULT '',
       seat_or_wagon TEXT NOT NULL DEFAULT '',
       ticket_class TEXT NOT NULL DEFAULT 'economy',
       ticket_price REAL NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'RUB',
+      doc_status TEXT NOT NULL DEFAULT 'Uploaded',
+      contact_phone TEXT NOT NULL DEFAULT '',
+      job_title TEXT NOT NULL DEFAULT '',
       region TEXT NOT NULL DEFAULT '',
       project_name TEXT NOT NULL DEFAULT '',
+      ticket_status TEXT NOT NULL DEFAULT '',
+      detail_reason TEXT NOT NULL DEFAULT '0',
+      trip_type TEXT NOT NULL DEFAULT 'One Way',
+      notes TEXT NOT NULL DEFAULT '',
+      updated_by TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '',
+      deduct_from_salary TEXT NOT NULL DEFAULT 'No',
+      reception_status TEXT NOT NULL DEFAULT 'pending',
+      reception_driver_note TEXT NOT NULL DEFAULT '',
       ai_provider_used TEXT NOT NULL DEFAULT '',
       match_confidence INTEGER NOT NULL DEFAULT 0,
       source_filename TEXT NOT NULL DEFAULT '',
@@ -269,42 +376,35 @@ export function ensureAiTicketTables() {
     CREATE INDEX IF NOT EXISTS idx_travel_tickets_created ON travel_tickets(created_at);
   `);
 
-  // Idempotent migration for Pondera 29-column eBA ticket archive + Airport TV reception board
-  try {
-    const existingCols = new Set(
-      (db.prepare('PRAGMA table_info(travel_tickets)').all() as Array<{ name: string }>).map(
-        (c) => c.name
-      )
-    );
-    const addCols: Array<[string, string]> = [
-      ['eba_doc_id', "TEXT NOT NULL DEFAULT ''"],
-      ['passenger_name_ru', "TEXT NOT NULL DEFAULT ''"],
-      ['flight_purpose', "TEXT NOT NULL DEFAULT 'Transfer'"],
-      ['ticket_agent', "TEXT NOT NULL DEFAULT 'One Two Trip'"],
-      ['payment_company', "TEXT NOT NULL DEFAULT 'PONDERA-INDUSTRY'"],
-      ['departure_time', "TEXT NOT NULL DEFAULT ''"],
-      ['arrival_date', "TEXT NOT NULL DEFAULT ''"],
-      ['arrival_time', "TEXT NOT NULL DEFAULT ''"],
-      ['doc_status', "TEXT NOT NULL DEFAULT 'Uploaded'"],
-      ['contact_phone', "TEXT NOT NULL DEFAULT ''"],
-      ['job_title', "TEXT NOT NULL DEFAULT ''"],
-      ['ticket_status', "TEXT NOT NULL DEFAULT ''"],
-      ['detail_reason', "TEXT NOT NULL DEFAULT '0'"],
-      ['trip_type', "TEXT NOT NULL DEFAULT 'One Way'"],
-      ['notes', "TEXT NOT NULL DEFAULT ''"],
-      ['updated_by', "TEXT NOT NULL DEFAULT ''"],
-      ['updated_at', "TEXT NOT NULL DEFAULT ''"],
-      ['deduct_from_salary', "TEXT NOT NULL DEFAULT 'No'"],
-      ['reception_status', "TEXT NOT NULL DEFAULT 'pending'"],
-      ['reception_driver_note', "TEXT NOT NULL DEFAULT ''"],
-    ];
-    for (const [colName, colDef] of addCols) {
-      if (!existingCols.has(colName)) {
-        db.exec(`ALTER TABLE travel_tickets ADD COLUMN ${colName} ${colDef};`);
+  // Step 1 (Critical & isolated): Idempotent schema column migration for legacy backups / older DBs
+  const existingGuestCols = getTableColumnSet(db, 'travel_guests');
+  for (const [colName, colDef] of REQUIRED_TRAVEL_GUEST_COLUMNS) {
+    if (!existingGuestCols.has(colName)) {
+      try {
+        db.exec(`ALTER TABLE travel_guests ADD COLUMN ${colName} ${colDef};`);
+      } catch {
+        // Ignore only if a concurrent request added the column at the exact same instant
       }
     }
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_travel_tickets_ebaid ON travel_tickets(eba_doc_id);`);
+  }
 
+  const existingTicketCols = getTableColumnSet(db, 'travel_tickets');
+  for (const [colName, colDef] of REQUIRED_TRAVEL_TICKET_COLUMNS) {
+    if (!existingTicketCols.has(colName)) {
+      try {
+        db.exec(`ALTER TABLE travel_tickets ADD COLUMN ${colName} ${colDef};`);
+      } catch {
+        // Ignore only if a concurrent request added the column at the exact same instant
+      }
+    }
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_travel_tickets_ebaid ON travel_tickets(eba_doc_id);`);
+  } catch {}
+
+  // Step 2 (Non-blocking): Data normalization + one-time upcoming ticket seed
+  try {
     // Ensure deduct_from_salary defaults to 'No' if blank, and split lumped 'Kazan' into site breakdown
     db.exec(`
       UPDATE travel_tickets
@@ -475,7 +575,10 @@ export function ensureAiTicketTables() {
     // Non-blocking if read-only fs
   }
 
-  tablesEnsured = true;
+  const verifiedCols = getTableColumnSet(db, 'travel_tickets');
+  if (verifiedCols.has('eba_doc_id') && verifiedCols.has('reception_driver_note')) {
+    gState.__ponderaAiTicketTablesEnsured = true;
+  }
   return db;
 }
 

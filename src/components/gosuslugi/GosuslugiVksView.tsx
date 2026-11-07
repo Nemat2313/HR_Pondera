@@ -45,6 +45,7 @@ import {
   Bell,
   BellOff,
   Archive,
+  Plus,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -54,6 +55,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import GosuslugiDismissalPanel from './GosuslugiDismissalPanel';
+import VksAddQuarterModal from './VksAddQuarterModal';
 
 export interface GosuslugiSubmissionEntry {
   sicil_no?: string;
@@ -981,17 +983,23 @@ export default function GosuslugiVksView() {
     logs: [],
   });
 
-  // Global PAD Form Configuration (Active Quarter default: 2026 Q4 — 01.10.2026 – 31.12.2026)
-  const [periodStart, setPeriodStart] = useState('01.10.2026');
-  const [periodEnd, setPeriodEnd] = useState('31.12.2026');
-  const [periodCode, setPeriodCode] = useState('2026-4');
-  const [selectedQuarter, setSelectedQuarter] = useState<string>('active');
-  const selectedQuarterRef = useRef<string>('active');
+  // Global PAD Form Configuration (Default view resolves to last completed quarter, e.g. 2026 Q3 until 31.12.2026 passes)
+  const [periodStart, setPeriodStart] = useState('01.07.2026');
+  const [periodEnd, setPeriodEnd] = useState('30.09.2026');
+  const [periodCode, setPeriodCode] = useState('2026-3');
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('');
+  const selectedQuarterRef = useRef<string>('');
+  const [selectedQuarterStatus, setSelectedQuarterStatus] = useState<'active' | 'archived' | 'planned'>('archived');
   const [isArchivedQuarter, setIsArchivedQuarter] = useState<boolean>(false);
   const [isToggling15Min, setIsToggling15Min] = useState<boolean>(false);
   const [isArchivingQuarter, setIsArchivingQuarter] = useState<boolean>(false);
+  const [isActivatingQuarter, setIsActivatingQuarter] = useState<boolean>(false);
+  const [showAddQuarterModal, setShowAddQuarterModal] = useState<boolean>(false);
   const [quarterOverview, setQuarterOverview] = useState<{
     activeQuarter: string;
+    defaultQuarter: string;
+    defaultLabelTr: string;
+    defaultLabelRu: string;
     activeLabelTr: string;
     activeLabelRu: string;
     shortLabelTr: string;
@@ -999,6 +1007,7 @@ export default function GosuslugiVksView() {
     periodStart: string;
     periodEnd: string;
     nextQuarterCode: string;
+    suggestedNextQuarterCode?: string;
     notifications15MinEnabled: boolean;
     activeMasterCount: number;
     activeSentCount: number;
@@ -1007,6 +1016,24 @@ export default function GosuslugiVksView() {
       quarter_label: string;
       period_start: string;
       period_end: string;
+      master_count: number;
+      sent_count: number;
+      completed_count: number;
+    }>;
+    quarters?: Array<{
+      quarter_code: string;
+      year: number;
+      quarter: number;
+      quarter_label: string;
+      quarter_label_ru: string;
+      short_label_tr: string;
+      short_label_ru: string;
+      period_start: string;
+      period_end: string;
+      has_ended: boolean;
+      is_active: boolean;
+      is_archived: boolean;
+      status: 'active' | 'archived' | 'planned';
       master_count: number;
       sent_count: number;
       completed_count: number;
@@ -1131,7 +1158,7 @@ export default function GosuslugiVksView() {
   ): Promise<Record<string, GosuslugiSubmissionEntry>> => {
     try {
       const qVal = quarterOverride ?? selectedQuarterRef.current;
-      const qQuery = qVal && qVal !== 'active' ? `&quarter=${encodeURIComponent(qVal)}` : '';
+      const qQuery = qVal ? `&quarter=${encodeURIComponent(qVal)}` : '';
       const res = await fetch(`/api/gosuslugi/submissions?type=VKS_SALARY${qQuery}`);
       if (!res.ok) return savedSubmissions;
       const json = await res.json();
@@ -1273,7 +1300,7 @@ export default function GosuslugiVksView() {
   const refreshMasterListSummary = async (quarterOverride?: string) => {
     try {
       const qVal = quarterOverride ?? selectedQuarterRef.current;
-      const qQuery = qVal && qVal !== 'active' ? `&quarter=${encodeURIComponent(qVal)}` : '';
+      const qQuery = qVal ? `&quarter=${encodeURIComponent(qVal)}` : '';
       const res = await fetch(`/api/gosuslugi/master-list?summaryOnly=1${qQuery}`);
       if (!res.ok) return;
       const json = await res.json();
@@ -2095,11 +2122,12 @@ export default function GosuslugiVksView() {
       });
       const json = await res.json();
       if (json?.success) {
-        selectedQuarterRef.current = 'active';
-        setSelectedQuarter('active');
+        const nextAct = json.overview?.activeQuarter || 'active';
+        selectedQuarterRef.current = nextAct;
+        setSelectedQuarter(nextAct);
         if (json.overview) setQuarterOverview(json.overview);
         showNotice('success', json.message || 'Mevcut çeyrek başarıyla arşivlendi.');
-        await handleLoadFromMasterList('all', 'all', true, 'active');
+        await handleLoadFromMasterList('all', 'all', true, nextAct);
       } else {
         showNotice('error', json?.message || 'Arşivleme işlemi başarısız oldu.');
       }
@@ -2107,6 +2135,40 @@ export default function GosuslugiVksView() {
       showNotice('error', 'Arşivleme sırasında bağlantı hatası oluştu.');
     } finally {
       setIsArchivingQuarter(false);
+    }
+  };
+
+  const handleActivateSelectedQuarter = async (targetQuarterCode: string) => {
+    if (!targetQuarterCode) return;
+    const activeCount =
+      (quarterOverview?.activeMasterCount || 0) + (quarterOverview?.activeSentCount || 0);
+    if (activeCount > 0) {
+      const ok = window.confirm(
+        `Mevcut aktif dönemde (${quarterOverview?.shortLabelTr}) kayıtlar bulunuyor. Bu kayıtlar arşivlenerek ${targetQuarterCode} aktif çalışma dönemi yapılacaktır. Onaylıyor musunuz?`
+      );
+      if (!ok) return;
+    }
+    setIsActivatingQuarter(true);
+    try {
+      const res = await fetch('/api/gosuslugi/quarters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate_quarter', quarterCode: targetQuarterCode }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        selectedQuarterRef.current = targetQuarterCode;
+        setSelectedQuarter(targetQuarterCode);
+        if (json.overview) setQuarterOverview(json.overview);
+        showNotice('success', json.message || `${targetQuarterCode} aktif çalışma dönemi yapıldı.`);
+        await handleLoadFromMasterList('all', 'all', true, targetQuarterCode);
+      } else {
+        showNotice('error', json?.message || 'Dönem aktif edilemedi.');
+      }
+    } catch {
+      showNotice('error', 'Dönem değiştirilirken bağlantı hatası oluştu.');
+    } finally {
+      setIsActivatingQuarter(false);
     }
   };
 
@@ -2118,7 +2180,7 @@ export default function GosuslugiVksView() {
     quarterOverride?: string
   ) => {
     const qVal = quarterOverride ?? selectedQuarterRef.current;
-    const qQuery = qVal && qVal !== 'active' ? `&quarter=${encodeURIComponent(qVal)}` : '';
+    const qQuery = qVal ? `&quarter=${encodeURIComponent(qVal)}` : '';
     setIsLoadingMaster(true);
     setActiveComputerFilter(computerFilter);
     setTablePage(1);
@@ -2128,6 +2190,13 @@ export default function GosuslugiVksView() {
         fetch(`/api/gosuslugi/master-list?computer=${computerFilter}&status=${statusFilter}${qQuery}`),
       ]);
       const json = await res.json();
+      if (json.selectedQuarter && (!selectedQuarterRef.current || quarterOverride !== undefined)) {
+        selectedQuarterRef.current = json.selectedQuarter;
+        setSelectedQuarter(json.selectedQuarter);
+      }
+      if (json.selectedQuarterStatus) {
+        setSelectedQuarterStatus(json.selectedQuarterStatus);
+      }
       if (json.quarterOverview) {
         setQuarterOverview(json.quarterOverview);
         setIsArchivedQuarter(Boolean(json.isArchivedQuarter));
@@ -2136,13 +2205,17 @@ export default function GosuslugiVksView() {
           setPeriodEnd(json.quarterOverview.periodEnd || '31.12.2026');
           setPeriodCode(json.quarterOverview.activeQuarter || '2026-4');
         } else {
-          const archMatch = (json.quarterOverview.archives || []).find(
-            (a: any) => a.quarter_code === json.selectedQuarter
-          );
-          if (archMatch) {
-            setPeriodStart(archMatch.period_start);
-            setPeriodEnd(archMatch.period_end);
-            setPeriodCode(archMatch.quarter_code);
+          const qMatch =
+            (json.quarterOverview.quarters || []).find(
+              (q: any) => q.quarter_code === json.selectedQuarter
+            ) ||
+            (json.quarterOverview.archives || []).find(
+              (a: any) => a.quarter_code === json.selectedQuarter
+            );
+          if (qMatch) {
+            setPeriodStart(qMatch.period_start);
+            setPeriodEnd(qMatch.period_end);
+            setPeriodCode(qMatch.quarter_code);
           }
         }
       }
@@ -4602,25 +4675,63 @@ export default function GosuslugiVksView() {
             <div className="h-8 px-2.5 rounded-lg border border-indigo-300 dark:border-indigo-500/40 bg-indigo-50/90 dark:bg-indigo-950/60 inline-flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
               <select
-                value={selectedQuarter}
+                value={selectedQuarter || quarterOverview?.defaultQuarter || '2026-3'}
                 onChange={(e) => handleSwitchQuarterView(e.target.value)}
                 className="bg-transparent text-xs font-semibold text-indigo-950 dark:text-indigo-100 focus:outline-none cursor-pointer pr-1"
-                title="Aktif çeyrek veya arşivlenmiş geçmiş çeyrek verilerini seçin"
+                title="Çeyrek dönem verilerini seçin (bitmeyen çeyreklerde tamamlanan bir önceki çeyrek varsayılan seçilidir)"
               >
-                <option value="active" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                  🟢 Aktif: {quarterOverview?.shortLabelTr || '2026 4. Çeyrek'} ({quarterOverview?.periodStart || '01.10.2026'}–{quarterOverview?.periodEnd || '31.12.2026'})
-                </option>
-                {(quarterOverview?.archives || []).map((arch) => (
-                  <option
-                    key={arch.quarter_code}
-                    value={arch.quarter_code}
-                    className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                  >
-                    📦 Arşiv: {arch.quarter_code} ({arch.master_count} VKS / {arch.completed_count} Onay)
-                  </option>
-                ))}
+                {quarterOverview?.quarters && quarterOverview.quarters.length > 0 ? (
+                  quarterOverview.quarters.map((q) => (
+                    <option
+                      key={q.quarter_code}
+                      value={q.quarter_code}
+                      className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                    >
+                      {q.is_active
+                        ? `🟢 ${lang === 'ru' ? `Активный: ${q.short_label_ru}` : `Aktif: ${q.short_label_tr}`} (${q.period_start}–${q.period_end})`
+                        : q.is_archived
+                        ? `📦 ${lang === 'ru' ? q.short_label_ru : q.short_label_tr} (${q.master_count} VKS / ${q.completed_count} ${lang === 'ru' ? 'Оказ.' : 'Onay'})`
+                        : `🗓️ ${lang === 'ru' ? `План: ${q.short_label_ru}` : `Planlanan: ${q.short_label_tr}`} (${q.period_start}–${q.period_end})`}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option
+                      value={quarterOverview?.activeQuarter || '2026-4'}
+                      className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                    >
+                      🟢 Aktif: {quarterOverview?.shortLabelTr || '2026 4. Çeyrek'} ({quarterOverview?.periodStart || '01.10.2026'}–{quarterOverview?.periodEnd || '31.12.2026'})
+                    </option>
+                    {(quarterOverview?.archives || []).map((arch) => (
+                      <option
+                        key={arch.quarter_code}
+                        value={arch.quarter_code}
+                        className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      >
+                        📦 {arch.quarter_code} ({arch.master_count} VKS / {arch.completed_count} Onay)
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
+
+            {/* Add New Quarter Button (e.g. 2027 Q1) */}
+            {(!user || (user.role !== 'viewer' && user.role !== 'idari_isler')) && (
+              <button
+                type="button"
+                onClick={() => setShowAddQuarterModal(true)}
+                className="h-8 px-2.5 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                title={
+                  lang === 'ru'
+                    ? 'Добавить новый квартал ВКС (например, 1 Квартал 2027)'
+                    : 'Uygulamaya yeni çeyrek dönemi ekle (örn: 2027 1. Çeyrek)'
+                }
+              >
+                <Plus className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
+                <span>{lang === 'ru' ? 'Новый квартал' : 'Yeni Çeyrek'}</span>
+              </button>
+            )}
 
             {/* 15-Minute VKS Notification Stop / Enable Toggle Button */}
             {user?.role !== 'viewer' && (
@@ -4718,7 +4829,7 @@ export default function GosuslugiVksView() {
             </button>
 
             <a
-              href={`/api/gosuslugi/master-list/export-errors?mode=only_data_errors&computer=${activeComputerFilter}${selectedQuarter !== 'active' ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
+              href={`/api/gosuslugi/master-list/export-errors?mode=only_data_errors&computer=${activeComputerFilter}${selectedQuarter ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
               download
               title="SADECE bizim eksik/hatalı girdiğimiz veri hatalarını (ИНН, РНР, Blank, Sözleşme Tarihi) açıklamalı ve renkli şablon formatında indir"
               className="h-8 px-2.5 rounded-lg border border-amber-300/90 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
@@ -4728,7 +4839,7 @@ export default function GosuslugiVksView() {
             </a>
 
             <a
-              href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}${selectedQuarter !== 'active' ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
+              href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}${selectedQuarter ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
               download
               title="Tüm Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında indir"
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
@@ -4738,7 +4849,7 @@ export default function GosuslugiVksView() {
             </a>
 
             <a
-              href={`/api/gosuslugi/master-list/export-errors?mode=refused&computer=${activeComputerFilter}${selectedQuarter !== 'active' ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
+              href={`/api/gosuslugi/master-list/export-errors?mode=refused&computer=${activeComputerFilter}${selectedQuarter ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
               download
               title="Услуга отказана (МВД Red) alan kayıtları şablon formatında indir"
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
@@ -4801,21 +4912,69 @@ export default function GosuslugiVksView() {
           </div>
         </div>
 
-        {/* Archive Read-Only or Active Q4 Upload Readiness Banner */}
-        {isArchivedQuarter ? (
-          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-amber-50/95 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 dark:text-amber-200">
+        {/* Archive / Planned / Active Quarter Readiness Banner */}
+        {selectedQuarterStatus === 'planned' ? (
+          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-indigo-50/95 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-indigo-950 dark:text-indigo-200">
             <div className="flex items-center gap-2">
-              <Archive className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
               <span>
-                <strong>📦 Arşiv Görünümü ({periodCode}):</strong> Arşivlenmiş çeyrek verilerini görüntülüyorsunuz (Salt Okunur). Yeni çeyrek listesi yüklemek için Aktif Döneme geçin.
+                <strong>
+                  🗓️ {lang === 'ru' ? 'Планируемый квартал' : 'Planlanan Yeni Dönem'} ({periodCode} • {periodStart}–{periodEnd}):
+                </strong>{' '}
+                {lang === 'ru'
+                  ? 'Период добавлен в список. Когда начнется подача уведомлений, сделайте его активным рабочим периодом для загрузки Excel.'
+                  : 'Bu çeyrek dönem listesine eklendi. Bildirim zamanı geldiğinde aktif çalışma dönemine alarak Excel listesini yükleyebilirsiniz.'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(!user || user.role === 'admin') && (
+                <button
+                  type="button"
+                  disabled={isActivatingQuarter}
+                  onClick={() => handleActivateSelectedQuarter(periodCode)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition disabled:opacity-50"
+                >
+                  {isActivatingQuarter
+                    ? '...'
+                    : lang === 'ru'
+                    ? '🟢 Сделать активным периодом'
+                    : '🟢 Bu Çeyreği Aktif Dönem Yap'}
+                </button>
+              )}
+              {quarterOverview?.defaultQuarter && quarterOverview.defaultQuarter !== periodCode && (
+                <button
+                  type="button"
+                  onClick={() => handleSwitchQuarterView(quarterOverview.defaultQuarter)}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
+                >
+                  📊 {quarterOverview.defaultQuarter} {lang === 'ru' ? 'Данные' : 'Verilerine Dön'}
+                </button>
+              )}
+            </div>
+          </div>
+        ) : isArchivedQuarter ? (
+          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-sky-50/95 dark:bg-sky-950/35 border border-sky-200 dark:border-sky-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-sky-950 dark:text-sky-200">
+            <div className="flex items-center gap-2">
+              <Archive className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+              <span>
+                <strong>
+                  📊 {periodCode} ({periodStart} – {periodEnd}):
+                </strong>{' '}
+                {periodCode === quarterOverview?.defaultQuarter
+                  ? lang === 'ru'
+                    ? `Текущий квартал (${quarterOverview?.shortLabelRu || '4 Кв. 2026'}) еще не завершен (до ${quarterOverview?.periodEnd || '31.12.2026'}), поэтому по умолчанию открыты данные завершенного квартала.`
+                    : `${quarterOverview?.shortLabelTr || '2026 4. Çeyrek'} son günü (${quarterOverview?.periodEnd || '31.12.2026'}) henüz dolmadığı için tamamlanan bu çeyrek varsayılan olarak gösterilmektedir. Yeni liste yüklemek için Aktif Döneme geçebilirsiniz.`
+                  : lang === 'ru'
+                  ? 'Просмотр архивных данных квартала (только чтение).'
+                  : 'Tamamlanmış çeyrek arşiv verilerini görüntülüyorsunuz (Salt Okunur).'}
               </span>
             </div>
             <button
               type="button"
-              onClick={() => handleSwitchQuarterView('active')}
+              onClick={() => handleSwitchQuarterView(quarterOverview?.activeQuarter || 'active')}
               className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition"
             >
-              🟢 Aktif Döneme Geç ({quarterOverview?.shortLabelTr || '2026 4. Çeyrek'})
+              🟢 {lang === 'ru' ? 'К активному периоду' : 'Aktif Döneme Geç'} ({quarterOverview?.shortLabelTr || '2026 4. Çeyrek'})
             </button>
           </div>
         ) : (
@@ -4826,18 +4985,19 @@ export default function GosuslugiVksView() {
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>
                   <strong>{quarterOverview?.activeLabelTr || '2026 4. Çeyrek (01.10.2026 – 31.12.2026)'} Liste Yüklemeye Hazır:</strong>{' '}
-                  2026 3. Çeyrek verileri arşivlendi ve 15 dk VKS bildirimleri durduruldu. 4. Çeyrek VKS maaş listesini <strong>Excel Yükle</strong> butonuyla yükleyebilirsiniz.
+                  {quarterOverview?.periodEnd || '31.12.2026'} son gününden sonra bu dönem otomatik varsayılan olarak açılacaktır. Yeni dönem VKS maaş listesini <strong>Excel Yükle</strong> butonuyla yükleyebilirsiniz.
                 </span>
               </div>
-              {(quarterOverview?.archives?.length || 0) > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleSwitchQuarterView(quarterOverview!.archives[0].quarter_code)}
-                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
-                >
-                  📦 {quarterOverview!.archives[0].quarter_code} (3. Çeyrek) Arşivini Görüntüle
-                </button>
-              )}
+              {quarterOverview?.defaultQuarter &&
+                quarterOverview.defaultQuarter !== quarterOverview.activeQuarter && (
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchQuarterView(quarterOverview.defaultQuarter)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
+                  >
+                    📊 {quarterOverview.defaultQuarter} Verilerine Dön
+                  </button>
+                )}
             </div>
           )
         )}
@@ -7706,6 +7866,25 @@ export default function GosuslugiVksView() {
           </div>
         </div>
       )}
+
+      <VksAddQuarterModal
+        open={showAddQuarterModal}
+        onClose={() => setShowAddQuarterModal(false)}
+        suggestedNextQuarterCode={quarterOverview?.suggestedNextQuarterCode || '2027-1'}
+        activeQuarterLabel={quarterOverview?.activeLabelTr}
+        existingQuarters={quarterOverview?.quarters || []}
+        canMakeActive={!user || user.role === 'admin'}
+        lang={lang}
+        onSuccess={({ quarterCode, makeActive, overview, message }) => {
+          if (overview) setQuarterOverview(overview);
+          showNotice('success', message);
+          if (makeActive) {
+            handleSwitchQuarterView(quarterCode);
+          } else {
+            refreshMasterListSummary();
+          }
+        }}
+      />
     </div>
   );
 }

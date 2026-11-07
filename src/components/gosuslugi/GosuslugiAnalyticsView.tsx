@@ -27,6 +27,7 @@ import {
   BellOff,
   Archive,
   Calendar,
+  Plus,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -38,6 +39,7 @@ import {
 import * as XLSX from 'xlsx';
 import { useAuth } from '@/context/AuthContext';
 import GosuslugiWaterfallChart from './GosuslugiWaterfallChart';
+import VksAddQuarterModal from './VksAddQuarterModal';
 
 interface ErrorCategoryItem {
   id: string;
@@ -196,8 +198,33 @@ interface QuarterArchiveMeta {
   archived_at: string;
 }
 
+interface VksQuarterItemMeta {
+  quarter_code: string;
+  year: number;
+  quarter: number;
+  quarter_label: string;
+  quarter_label_ru: string;
+  short_label_tr: string;
+  short_label_ru: string;
+  period_start: string;
+  period_end: string;
+  period_end_iso: string;
+  has_ended: boolean;
+  is_active: boolean;
+  is_archived: boolean;
+  status: 'active' | 'archived' | 'planned';
+  master_count: number;
+  sent_count: number;
+  completed_count: number;
+  refused_count: number;
+  error_count: number;
+}
+
 interface VksQuarterOverviewInfo {
   activeQuarter: string;
+  defaultQuarter: string;
+  defaultLabelTr: string;
+  defaultLabelRu: string;
   activeLabelTr: string;
   activeLabelRu: string;
   shortLabelTr: string;
@@ -205,15 +232,18 @@ interface VksQuarterOverviewInfo {
   periodStart: string;
   periodEnd: string;
   nextQuarterCode: string;
+  suggestedNextQuarterCode?: string;
   notifications15MinEnabled: boolean;
   activeMasterCount: number;
   activeSentCount: number;
   archives: QuarterArchiveMeta[];
+  quarters?: VksQuarterItemMeta[];
 }
 
 interface AnalyticsResponse {
   success: boolean;
   selectedQuarter?: string;
+  selectedQuarterStatus?: 'active' | 'archived' | 'planned';
   isArchivedQuarter?: boolean;
   quarterOverview?: VksQuarterOverviewInfo;
   moscowTime: string;
@@ -264,9 +294,11 @@ export default function GosuslugiAnalyticsView() {
   const [reopeningError, setReopeningError] = useState<string | null>(null);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
   const [showRefusalFindings, setShowRefusalFindings] = useState<boolean>(false);
-  const [selectedQuarter, setSelectedQuarter] = useState<string>('active');
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('');
   const [toggling15Min, setToggling15Min] = useState<boolean>(false);
   const [archivingQuarter, setArchivingQuarter] = useState<boolean>(false);
+  const [activatingQuarter, setActivatingQuarter] = useState<boolean>(false);
+  const [showAddQuarterModal, setShowAddQuarterModal] = useState<boolean>(false);
 
   // 4 Equal-Width Window Tabs: 'analytics' | 'master3088' | 'refusals' | 'errors'
   const [activeMainTab, setActiveMainTab] = useState<MainTabType>('analytics');
@@ -313,7 +345,7 @@ export default function GosuslugiAnalyticsView() {
         params.set('scopeType', user.scope_type);
         params.set('scopeValue', user.scope_value);
       }
-      if (selectedQuarter && selectedQuarter !== 'active') {
+      if (selectedQuarter) {
         params.set('quarter', selectedQuarter);
       }
       if (forceFresh) {
@@ -398,7 +430,7 @@ export default function GosuslugiAnalyticsView() {
       });
       const json = await res.json();
       if (json?.success) {
-        setSelectedQuarter('active');
+        setSelectedQuarter(json.overview?.activeQuarter || '');
         setTelegramFeedback(json.message || 'Dönem başarıyla arşivlendi.');
         await fetchAnalytics(false, true);
       } else {
@@ -409,6 +441,39 @@ export default function GosuslugiAnalyticsView() {
     } finally {
       setArchivingQuarter(false);
       setTimeout(() => setTelegramFeedback(null), 6000);
+    }
+  };
+
+  const handleActivateSelectedQuarter = async (targetQuarterCode: string) => {
+    if (!targetQuarterCode) return;
+    const activeCount = (data?.quarterOverview?.activeMasterCount || 0) + (data?.quarterOverview?.activeSentCount || 0);
+    if (activeCount > 0) {
+      const ok = window.confirm(
+        `Mevcut aktif dönemde (${data?.quarterOverview?.shortLabelTr}) kayıtlar bulunuyor. Bu kayıtlar arşivlenerek ${targetQuarterCode} aktif çalışma dönemi yapılacaktır. Onaylıyor musunuz?`
+      );
+      if (!ok) return;
+    }
+    setActivatingQuarter(true);
+    setTelegramFeedback(null);
+    try {
+      const res = await fetch('/api/gosuslugi/quarters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate_quarter', quarterCode: targetQuarterCode }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        setSelectedQuarter(targetQuarterCode);
+        setTelegramFeedback(json.message || `${targetQuarterCode} aktif çalışma dönemi yapıldı.`);
+        await fetchAnalytics(false, true);
+      } else {
+        setTelegramFeedback(json?.message || 'Dönem aktif edilemedi.');
+      }
+    } catch {
+      setTelegramFeedback('Dönem değiştirilirken bağlantı hatası oluştu.');
+    } finally {
+      setActivatingQuarter(false);
+      setTimeout(() => setTelegramFeedback(null), 5000);
     }
   };
 
@@ -851,6 +916,7 @@ export default function GosuslugiAnalyticsView() {
           action: 'reopen_refused',
           scope: 'selected',
           sicils: sicilList,
+          quarter: data?.selectedQuarter,
         }),
       });
       const json = await res.json();
@@ -889,6 +955,7 @@ export default function GosuslugiAnalyticsView() {
           scope: 'selected',
           clearFromDb: true,
           sicils: sicilList,
+          quarter: data?.selectedQuarter,
         }),
       });
       const json = await res.json();
@@ -926,6 +993,7 @@ export default function GosuslugiAnalyticsView() {
           action: 'reopen_registered',
           scope: 'selected',
           sicils: sicilList,
+          quarter: data?.selectedQuarter,
         }),
       });
       const json = await res.json();
@@ -985,33 +1053,36 @@ export default function GosuslugiAnalyticsView() {
     [data?.submissions]
   );
 
+  const effectiveSelectedQuarter =
+    selectedQuarter || data?.selectedQuarter || data?.quarterOverview?.defaultQuarter || '2026-3';
+
   const errorTemplateExportUrl = useMemo(() => {
     const params = new URLSearchParams();
     params.set('computer', 'all');
     params.set('mode', 'only_oshibka');
-    if (selectedQuarter && selectedQuarter !== 'active') {
-      params.set('quarter', selectedQuarter);
+    if (effectiveSelectedQuarter) {
+      params.set('quarter', effectiveSelectedQuarter);
     }
     if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
       params.set('scopeType', user.scope_type);
       params.set('scopeValue', user.scope_value);
     }
     return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
-  }, [user?.scope_type, user?.scope_value, selectedQuarter]);
+  }, [user?.scope_type, user?.scope_value, effectiveSelectedQuarter]);
 
   const dataErrorTemplateExportUrl = useMemo(() => {
     const params = new URLSearchParams();
     params.set('computer', 'all');
     params.set('mode', 'only_data_errors');
-    if (selectedQuarter && selectedQuarter !== 'active') {
-      params.set('quarter', selectedQuarter);
+    if (effectiveSelectedQuarter) {
+      params.set('quarter', effectiveSelectedQuarter);
     }
     if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
       params.set('scopeType', user.scope_type);
       params.set('scopeValue', user.scope_value);
     }
     return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
-  }, [user?.scope_type, user?.scope_value, selectedQuarter]);
+  }, [user?.scope_type, user?.scope_value, effectiveSelectedQuarter]);
 
   const filteredMasterPdfItems = useMemo(
     () => filteredMaster3088.filter((item) => item.hasPdf && item.pdf_filename),
@@ -1304,25 +1375,63 @@ export default function GosuslugiAnalyticsView() {
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40">
               <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
               <select
-                value={selectedQuarter}
+                value={effectiveSelectedQuarter}
                 onChange={(e) => setSelectedQuarter(e.target.value)}
                 className="bg-transparent text-xs font-semibold text-indigo-950 dark:text-indigo-100 focus:outline-none cursor-pointer pr-1"
-                title="Aktif çeyrek veya arşivlenmiş geçmiş çeyrek verilerini seçin"
+                title="Çeyrek dönem verilerini seçin (bitmeyen çeyreklerde tamamlanan bir önceki çeyrek varsayılan seçilidir)"
               >
-                <option value="active" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                  🟢 Aktif: {data?.quarterOverview?.activeLabelTr || '2026 4. Çeyrek (01.10.2026 – 31.12.2026)'}
-                </option>
-                {(data?.quarterOverview?.archives || []).map((arch) => (
-                  <option
-                    key={arch.quarter_code}
-                    value={arch.quarter_code}
-                    className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                  >
-                    📦 Arşiv: {arch.quarter_label} ({arch.completed_count.toLocaleString('tr-TR')}/{arch.master_count.toLocaleString('tr-TR')} Onay)
-                  </option>
-                ))}
+                {data?.quarterOverview?.quarters && data.quarterOverview.quarters.length > 0 ? (
+                  data.quarterOverview.quarters.map((q) => (
+                    <option
+                      key={q.quarter_code}
+                      value={q.quarter_code}
+                      className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                    >
+                      {q.is_active
+                        ? `🟢 Aktif: ${q.quarter_label}${
+                            q.master_count > 0
+                              ? ` (${q.completed_count.toLocaleString('tr-TR')}/${q.master_count.toLocaleString('tr-TR')} Onay)`
+                              : ' (Hazır)'
+                          }`
+                        : q.is_archived
+                        ? `📦 ${q.quarter_label} (${q.completed_count.toLocaleString('tr-TR')}/${q.master_count.toLocaleString('tr-TR')} Onay)`
+                        : `🗓️ Planlanan: ${q.quarter_label}`}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option
+                      value={data?.quarterOverview?.activeQuarter || '2026-4'}
+                      className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                    >
+                      🟢 Aktif: {data?.quarterOverview?.activeLabelTr || '2026 4. Çeyrek (01.10.2026 – 31.12.2026)'}
+                    </option>
+                    {(data?.quarterOverview?.archives || []).map((arch) => (
+                      <option
+                        key={arch.quarter_code}
+                        value={arch.quarter_code}
+                        className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      >
+                        📦 {arch.quarter_label} ({arch.completed_count.toLocaleString('tr-TR')}/{arch.master_count.toLocaleString('tr-TR')} Onay)
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
+
+            {/* Add New Quarter Button (e.g. 2027 Q1) */}
+            {(!user || (user.role !== 'viewer' && user.role !== 'idari_isler')) && (
+              <button
+                type="button"
+                onClick={() => setShowAddQuarterModal(true)}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-indigo-300 dark:border-indigo-500/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                title="Uygulamaya yeni çeyrek dönemi ekle (örn: 2027 1. Çeyrek)"
+              >
+                <Plus className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
+                <span>Yeni Çeyrek</span>
+              </button>
+            )}
 
             {/* 15-Minute VKS Notification Stop / Enable Toggle Button */}
             {user?.role !== 'viewer' && (
@@ -1416,22 +1525,69 @@ export default function GosuslugiAnalyticsView() {
           </div>
         )}
 
-        {/* Quarter Archive / Active Q4 Readiness Banner */}
-        {data?.isArchivedQuarter ? (
-          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 dark:text-amber-200">
+        {/* Quarter Archive / Planned / Active Readiness Banner */}
+        {data?.selectedQuarterStatus === 'planned' ? (
+          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-indigo-950 dark:text-indigo-200">
             <div className="flex items-center gap-2">
-              <Archive className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
               <span>
-                <strong>📦 Arşiv Görünümü ({data.selectedQuarter}):</strong> Geçmiş çeyrek arşiv kayıtlarını inceliyorsunuz (Salt Okunur).
+                <strong>
+                  🗓️ Planlanan Yeni Dönem (
+                  {data.quarterOverview?.quarters?.find((q) => q.quarter_code === data.selectedQuarter)
+                    ?.quarter_label || data.selectedQuarter}
+                  ):
+                </strong>{' '}
+                Bu çeyrek dönem listesine eklendi. Bildirim dönemi başladığında aktif çalışma dönemine alarak listeyi yükleyebilirsiniz.
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setSelectedQuarter('active')}
-              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition"
-            >
-              🟢 Aktif Döneme Dön ({data.quarterOverview?.shortLabelTr || '2026 4. Çeyrek'})
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(!user || user.role === 'admin') && data.selectedQuarter && (
+                <button
+                  type="button"
+                  disabled={activatingQuarter}
+                  onClick={() => handleActivateSelectedQuarter(data.selectedQuarter!)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition disabled:opacity-50"
+                >
+                  {activatingQuarter ? 'Aktif Ediliyor...' : '🟢 Bu Çeyreği Aktif Dönem Yap'}
+                </button>
+              )}
+              {data.quarterOverview?.defaultQuarter &&
+                data.quarterOverview.defaultQuarter !== data.selectedQuarter && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedQuarter(data.quarterOverview!.defaultQuarter)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
+                  >
+                    📊 Varsayılan Döneme Dön ({data.quarterOverview.defaultQuarter})
+                  </button>
+                )}
+            </div>
+          </div>
+        ) : data?.isArchivedQuarter ? (
+          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-sky-50/90 dark:bg-sky-950/35 border border-sky-200 dark:border-sky-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-sky-950 dark:text-sky-200">
+            <div className="flex items-center gap-2">
+              <Archive className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+              <span>
+                <strong>
+                  📊{' '}
+                  {data.quarterOverview?.quarters?.find((q) => q.quarter_code === data.selectedQuarter)
+                    ?.quarter_label || data.selectedQuarter}{' '}
+                  Verileri:
+                </strong>{' '}
+                {data.selectedQuarter === data.quarterOverview?.defaultQuarter
+                  ? `${data.quarterOverview?.shortLabelTr || '2026 4. Çeyrek'} son günü (${data.quarterOverview?.periodEnd || '31.12.2026'}) henüz dolmadığı için tamamlanan bu çeyrek varsayılan olarak gösterilmektedir.`
+                  : 'Tamamlanmış çeyrek arşiv kayıtlarını inceliyorsunuz (Salt Okunur).'}
+              </span>
+            </div>
+            {data.quarterOverview?.activeQuarter && (
+              <button
+                type="button"
+                onClick={() => setSelectedQuarter(data.quarterOverview!.activeQuarter)}
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition"
+              >
+                🟢 Aktif Çalışma Dönemine Geç ({data.quarterOverview?.shortLabelTr || '2026 4. Çeyrek'})
+              </button>
+            )}
           </div>
         ) : (
           (data?.quarterOverview?.activeMasterCount || 0) === 0 &&
@@ -1441,18 +1597,19 @@ export default function GosuslugiAnalyticsView() {
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>
                   <strong>{data?.quarterOverview?.activeLabelTr || '2026 4. Çeyrek (01.10.2026 – 31.12.2026)'} Hazır:</strong>{' '}
-                  2026 3. Çeyrek verileri arşivlendi ve 15 dk VKS bildirimleri durduruldu. 4. Çeyrek listesi yüklendiğinde canlı takip buradan başlayacaktır.
+                  Bu dönem aktif çalışma dönemidir ({data?.quarterOverview?.periodEnd || '31.12.2026'} son gününden sonra varsayılan görünüm olacaktır).
                 </span>
               </div>
-              {(data?.quarterOverview?.archives?.length || 0) > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedQuarter(data!.quarterOverview!.archives[0].quarter_code)}
-                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
-                >
-                  📦 {data!.quarterOverview!.archives[0].quarter_code} (3. Çeyrek) Arşivini Aç
-                </button>
-              )}
+              {data?.quarterOverview?.defaultQuarter &&
+                data.quarterOverview.defaultQuarter !== data.quarterOverview.activeQuarter && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedQuarter(data.quarterOverview!.defaultQuarter)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
+                  >
+                    📊 {data.quarterOverview.defaultQuarter} Verilerine Dön
+                  </button>
+                )}
             </div>
           )
         )}
@@ -3237,6 +3394,24 @@ export default function GosuslugiAnalyticsView() {
           )}
         </div>
       </div>
+
+      <VksAddQuarterModal
+        open={showAddQuarterModal}
+        onClose={() => setShowAddQuarterModal(false)}
+        suggestedNextQuarterCode={data?.quarterOverview?.suggestedNextQuarterCode || '2027-1'}
+        activeQuarterLabel={data?.quarterOverview?.activeLabelTr}
+        existingQuarters={data?.quarterOverview?.quarters || []}
+        canMakeActive={!user || user.role === 'admin'}
+        lang="tr"
+        onSuccess={({ quarterCode, makeActive, message }) => {
+          setTelegramFeedback(`✅ ${message}`);
+          if (makeActive) {
+            setSelectedQuarter(quarterCode);
+          }
+          fetchAnalytics(false, true);
+          setTimeout(() => setTelegramFeedback(null), 5000);
+        }}
+      />
     </div>
   );
 }

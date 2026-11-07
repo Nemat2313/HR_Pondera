@@ -108,6 +108,7 @@ function ensureUsersTable(db: any) {
 
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = NORMAL;
+      PRAGMA busy_timeout = 5000;
       PRAGMA cache_size = -16000;
 
       CREATE INDEX IF NOT EXISTS idx_personnel_sicil ON personnel(sicil_no);
@@ -164,5 +165,12 @@ export function resetDb() {
   delete gState.__ponderaMasterTablesEnsured;
   delete gState.__ponderaColumnsClassified;
   delete gState.__ponderaUpcomingTicketsSeeded;
+  delete gState.__ponderaAiTicketTablesEnsured;
+  delete gState.__ponderaEmployeeMatchIndex;
+  delete gState.__ponderaStatusPdfCache;
+  if (gState.__ponderaAnalyticsResponseCache?.clear) {
+    gState.__ponderaAnalyticsResponseCache.clear();
+  }
+  delete gState.__ponderaZupReconciliationCache;
 }
 

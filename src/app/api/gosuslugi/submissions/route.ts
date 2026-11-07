@@ -12,6 +12,7 @@ import {
   getVksQuarterOverview,
   getAllArchivedGosuslugiAppNos,
   isVks15MinNotificationEnabled,
+  resolveRequestedVksQuarter,
 } from '@/lib/vksQuarterManager';
 
 export const runtime = 'nodejs';
@@ -449,10 +450,7 @@ export async function GET(request: Request) {
     const db = getDb();
     ensureTable(db);
     const quarterOverview = getVksQuarterOverview(db);
-    const selectedQuarter =
-      requestedQuarter && requestedQuarter !== 'active'
-        ? requestedQuarter
-        : quarterOverview.activeQuarter;
+    const selectedQuarter = resolveRequestedVksQuarter(requestedQuarter, quarterOverview);
     const isArchivedQuarter = selectedQuarter !== quarterOverview.activeQuarter;
 
     const conditions: string[] = [];

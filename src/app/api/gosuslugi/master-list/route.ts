@@ -6,6 +6,7 @@ import {
   ensureVksQuarterlyArchiveAndState,
   getVksQuarterOverview,
   getAllArchivedGosuslugiAppNos,
+  resolveRequestedVksQuarter,
 } from '@/lib/vksQuarterManager';
 
 export const runtime = 'nodejs';
@@ -359,11 +360,12 @@ export async function GET(request: Request) {
     const db = getDb();
     ensureTables(db);
     const quarterOverview = getVksQuarterOverview(db);
-    const selectedQuarter =
-      requestedQuarter && requestedQuarter !== 'active'
-        ? requestedQuarter
-        : quarterOverview.activeQuarter;
+    const selectedQuarter = resolveRequestedVksQuarter(requestedQuarter, quarterOverview);
     const isArchivedQuarter = selectedQuarter !== quarterOverview.activeQuarter;
+    const matchedQuarterItem = quarterOverview.quarters.find((q) => q.quarter_code === selectedQuarter);
+    const selectedQuarterStatus: 'active' | 'archived' | 'planned' = !isArchivedQuarter
+      ? 'active'
+      : matchedQuarterItem?.status || 'archived';
 
     const masterRows = isArchivedQuarter
       ? summaryOnly
@@ -609,6 +611,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       selectedQuarter,
+      selectedQuarterStatus,
       isArchivedQuarter,
       quarterOverview,
       totalMaster: masterRows.length,
@@ -673,7 +676,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Arşivlenmiş çeyrek verisi salt okunurdur. Lütfen aktif döneme (2026 4. Çeyrek) geçerek yükleme yapın.',
+          message: `Bu dönem salt okunurdur. Lütfen aktif çalışma dönemine (${quarterOverview.shortLabelTr}) geçerek işlem yapın.`,
         },
         { status: 400 }
       );
@@ -1100,7 +1103,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Arşivlenmiş çeyrek verisi salt okunurdur. Lütfen aktif döneme (2026 4. Çeyrek) geçerek yükleme yapın.',
+          message: `Bu dönem salt okunurdur. Lütfen aktif çalışma dönemine (${quarterOverview.shortLabelTr}) geçerek işlem yapın.`,
         },
         { status: 400 }
       );
