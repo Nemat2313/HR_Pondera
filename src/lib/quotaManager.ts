@@ -503,6 +503,121 @@ export function ensureQuotaTables(dbArg?: any) {
         } catch {}
       }
     }
+
+    // Also seed Zahid Şef's initial ИРС(РНП) certificate № 2600030066 & 4 sample rows from tablo kota kullanim.xlsx once
+    const irsSeedFlag = db
+      .prepare("SELECT value FROM system_info WHERE key = 'pondera_quota_irs_2600030066_seeded'")
+      .get() as { value?: string } | undefined;
+    if (irsSeedFlag?.value !== '1') {
+      const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      db.exec('BEGIN');
+      try {
+        db.prepare(`
+          INSERT OR IGNORE INTO quota_irs_certificates (
+            certificate_no, tranche_label, quota_year, region_code, project_name,
+            issue_date, valid_from, valid_until, state_duty_per_person, status, notes,
+            created_by, created_at, updated_at
+          ) VALUES (
+            '2600030066', 'ИРС(РНП)1', 2026, 'MURMANSK', 'MURMANSK',
+            '2026-11-01', '2026-12-15', '2027-03-31', 15000, 'active',
+            '2026 onaylanan 1.351 kotadan 2027 ilk 3 ay (Q1) için alınan 160 kişilik 1. dilim ИРС(РНП) sertifikası',
+            'Zahid Şef Excel Seed', ?, ?
+          )
+        `).run(nowIso, nowIso);
+
+        const certRow = db
+          .prepare("SELECT id FROM quota_irs_certificates WHERE certificate_no = '2600030066'")
+          .get() as { id?: number } | undefined;
+
+        if (certRow?.id) {
+          const existingLines = db
+            .prepare("SELECT COUNT(*) as cnt FROM quota_irs_lines WHERE certificate_no = '2600030066'")
+            .get() as { cnt?: number } | undefined;
+          if (!existingLines?.cnt) {
+            db.prepare(`
+              INSERT INTO quota_irs_lines (
+                certificate_id, certificate_no, quota_record_code, country_code, country_tr,
+                occupation_code, occupation_tr, occupation_ru, allocated_qty
+              ) VALUES (?, '2600030066', '', '356', 'HİNDİSTAN', ?, ?, ?, ?)
+            `).run(
+              certRow.id,
+              '102660',
+              'BORUCU (MONTAJCI)',
+              'МОНТАЖНИК ТЕХНОЛОГИЧЕСКИХ ТРУБОПРОВОДОВ',
+              112
+            );
+            db.prepare(`
+              INSERT INTO quota_irs_lines (
+                certificate_id, certificate_no, quota_record_code, country_code, country_tr,
+                occupation_code, occupation_tr, occupation_ru, allocated_qty
+              ) VALUES (?, '2600030066', '', '356', 'HİNDİSTAN', ?, ?, ?, ?)
+            `).run(certRow.id, '101435', 'İZOLASYONCU', 'ИЗОЛИРОВЩИК НА ТЕРМОИЗОЛЯЦИИ', 48);
+          }
+
+          const existingWorkers = db
+            .prepare(
+              "SELECT COUNT(*) as cnt FROM quota_worker_applications WHERE certificate_no = '2600030066'"
+            )
+            .get() as { cnt?: number } | undefined;
+          if (!existingWorkers?.cnt) {
+            const insertW = db.prepare(`
+              INSERT INTO quota_worker_applications (
+                certificate_no, quota_record_code, sicil_no, full_name, passport_no,
+                country_code, country_tr, occupation_code, occupation_tr, occupation_ru,
+                region_code, project_name, usage_type, application_status, application_date,
+                rnr_number, notes, created_by, created_at, updated_at
+              ) VALUES (
+                '2600030066', '', '', ?, '',
+                '356', 'HİNDİSTAN', ?, ?, ?,
+                'MURMANSK', 'MURMANSK', 'new_rnr', 'applied', '2026-11-07',
+                '', '', 'Zahid Şef Excel Seed', ?, ?
+              )
+            `);
+            insertW.run(
+              'Rahimov Zahid',
+              '102660',
+              'BORUCU (MONTAJCI)',
+              'МОНТАЖНИК ТЕХНОЛОГИЧЕСКИХ ТРУБОПРОВОДОВ',
+              nowIso,
+              nowIso
+            );
+            insertW.run(
+              'Nematjon',
+              '102660',
+              'BORUCU (MONTAJCI)',
+              'МОНТАЖНИК ТЕХНОЛОГИЧЕСКИХ ТРУБОПРОВОДОВ',
+              nowIso,
+              nowIso
+            );
+            insertW.run(
+              'Ihtiyar',
+              '101435',
+              'İZOLASYONCU',
+              'ИЗОЛИРОВЩИК НА ТЕРМОИЗОЛЯЦИИ',
+              nowIso,
+              nowIso
+            );
+            insertW.run(
+              'Abdullah',
+              '101435',
+              'İZOLASYONCU',
+              'ИЗОЛИРОВЩИК НА ТЕРМОИЗОЛЯЦИИ',
+              nowIso,
+              nowIso
+            );
+          }
+        }
+
+        db.prepare(
+          "INSERT OR REPLACE INTO system_info (key, value) VALUES ('pondera_quota_irs_2600030066_seeded', '1')"
+        ).run();
+        db.exec('COMMIT');
+      } catch {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+      }
+    }
   } catch {}
 
   const verifiedCols = getTableCols(db, 'quota_worker_applications');
