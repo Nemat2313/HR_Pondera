@@ -202,11 +202,18 @@ export default function AISettingsTab() {
       if (Array.isArray(json?.availableVisionModels) && json.availableVisionModels.length > 0) {
         setDiscoveredVisionModels(json.availableVisionModels);
       }
-      if (provider === 'deepseek_ocr' && json?.ok && json?.resolvedModel) {
-        setForm((prev) => ({ ...prev, deepseekOcrModel: String(json.resolvedModel) }));
-      }
-      if (provider === 'gemini' && json?.ok && json?.resolvedModel) {
-        setForm((prev) => ({ ...prev, geminiModel: String(json.resolvedModel) }));
+      if (json?.ok && json?.settings) {
+        setForm((prev) => ({ ...prev, ...json.settings }));
+      } else {
+        if (provider === 'deepseek' && json?.ok && json?.resolvedModel) {
+          setForm((prev) => ({ ...prev, deepseekModel: String(json.resolvedModel) }));
+        }
+        if (provider === 'deepseek_ocr' && json?.ok && json?.resolvedModel) {
+          setForm((prev) => ({ ...prev, deepseekOcrModel: String(json.resolvedModel) }));
+        }
+        if (provider === 'gemini' && json?.ok && json?.resolvedModel) {
+          setForm((prev) => ({ ...prev, geminiModel: String(json.resolvedModel) }));
+        }
       }
       setTestResults((prev) => ({
         ...prev,
@@ -489,9 +496,24 @@ export default function AISettingsTab() {
                     Anahtar Kayıtlı
                   </span>
                 )}
+                {form.hasDeepseekKey &&
+                  form.deepseekApiKey &&
+                  !form.deepseekApiKey.startsWith('sk-') && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300/70 dark:border-amber-700/70">
+                      sk- Öneki Eksik ({form.deepseekApiKey})
+                    </span>
+                  )}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                platform.deepseek.com — Evrak içeriğini insan gibi yorumlayan ana semantik model
+                <a
+                  href="https://platform.deepseek.com/api_keys"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-600 dark:text-indigo-400 underline font-medium"
+                >
+                  platform.deepseek.com/api_keys
+                </a>{' '}
+                — <code>sk-...</code> ile başlayan anahtarınızı yapıştırıp <strong>Kaydet & Test Et</strong>’e basın
               </p>
             </div>
             <button
@@ -505,7 +527,7 @@ export default function AISettingsTab() {
               ) : (
                 <Zap className="w-3.5 h-3.5" />
               )}
-              <span>Test Et</span>
+              <span>Kaydet & Test Et</span>
             </button>
           </div>
 
@@ -532,20 +554,42 @@ export default function AISettingsTab() {
                 className="w-full px-3 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
               >
                 <option value="deepseek-flash">deepseek-flash (Multimodal Görsel + Hızlı)</option>
-                <option value="deepseek-chat">deepseek-chat (DeepSeek-V3 Derin Anlama)</option>
+                <option value="deepseek-chat">deepseek-chat (DeepSeek Derin Anlama — Önerilen)</option>
                 <option value="deepseek-reasoner">deepseek-reasoner (R1 Muhakeme)</option>
+                {!['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'].includes(
+                  form.deepseekModel
+                ) &&
+                  form.deepseekModel && (
+                    <option value={form.deepseekModel}>{form.deepseekModel}</option>
+                  )}
               </select>
             </div>
           </div>
 
           <div>
-            <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-              DeepSeek API Key (<code>sk-...</code>)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                DeepSeek API Key (<code>sk-...</code> ile başlamalıdır)
+              </label>
+              {form.deepseekApiKey && (
+                <button
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, deepseekApiKey: '' }))}
+                  className="text-[10.5px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  Kutuyu Temizle / Yeni Key Yapıştır
+                </button>
+              )}
+            </div>
             <div className="relative">
               <input
                 type={showKeys.deepseek ? 'text' : 'password'}
                 value={form.deepseekApiKey}
+                onFocus={(e) => {
+                  if (e.currentTarget.value.includes('••••')) {
+                    e.currentTarget.select();
+                  }
+                }}
                 onChange={(e) => setForm((p) => ({ ...p, deepseekApiKey: e.target.value }))}
                 placeholder="sk-..."
                 className="w-full pl-3 pr-9 py-1.5 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"

@@ -203,6 +203,13 @@ export function ensureAiTicketTables() {
     SET fallback_provider = ''
     WHERE id = 1 AND fallback_provider != '';
 
+    UPDATE ai_provider_settings
+    SET deepseek_api_key = 'sk-' || TRIM(deepseek_api_key)
+    WHERE id = 1
+      AND LENGTH(TRIM(deepseek_api_key)) = 32
+      AND TRIM(deepseek_api_key) NOT LIKE 'sk-%'
+      AND TRIM(deepseek_api_key) GLOB '[0-9a-fA-F]*';
+
     CREATE TABLE IF NOT EXISTS travel_guests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       guest_code TEXT UNIQUE NOT NULL,
@@ -308,7 +315,63 @@ export function maskSecretKey(secret: string): string {
 
 export function isMaskedPlaceholder(val: string | undefined | null): boolean {
   if (!val) return false;
-  return val.includes('••••');
+  const trimmed = val.trim();
+  return /^.{0,4}•{4,}.{0,4}$/.test(trimmed);
+}
+
+export function normalizeSecretKeyInput(
+  incomingVal: string | undefined | null,
+  existingVal: string,
+  options?: { isOfficialDeepseek?: boolean }
+): string {
+  if (incomingVal === undefined || incomingVal === null) return existingVal;
+  const raw = String(incomingVal).trim();
+  if (isMaskedPlaceholder(raw)) return existingVal;
+
+  let cleaned = raw;
+  // If user pasted a new key into a masked input without clearing the existing masked placeholder first
+  if (cleaned.includes('•')) {
+    const existingMask = maskSecretKey(existingVal);
+    if (existingMask && cleaned.includes(existingMask)) {
+      cleaned = cleaned.replace(existingMask, '').trim();
+    }
+    if (cleaned.includes('•')) {
+      const tokenMatch = cleaned.match(/(sk-[A-Za-z0-9_-]{16,}|AQ\.[A-Za-z0-9._-]{16,}|AIza[A-Za-z0-9_-]{16,})/);
+      if (tokenMatch) {
+        cleaned = tokenMatch[1];
+      } else {
+        const parts = cleaned
+          .split(/•+/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+        cleaned = parts.sort((a, b) => b.length - a.length)[0] || '';
+      }
+    }
+  }
+
+  cleaned = cleaned
+    .replace(/^["']+|["']+$/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+
+  if (options?.isOfficialDeepseek && /^[0-9a-f]{32}$/i.test(cleaned)) {
+    cleaned = `sk-${cleaned}`;
+  }
+
+  return cleaned;
+}
+
+export function normalizeDeepseekApiKey(rawKey: string, baseUrl?: string): string {
+  const clean = (rawKey || '')
+    .trim()
+    .replace(/^["']+|["']+$/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+  const isOfficial = !baseUrl || baseUrl.includes('api.deepseek.com');
+  if (isOfficial && /^[0-9a-f]{32}$/i.test(clean)) {
+    return `sk-${clean}`;
+  }
+  return clean;
 }
 
 // ---------------- CYRILLIC <-> LATIN TRANSLITERATION & PASSPORT NORMALIZATION ----------------
@@ -922,6 +985,19 @@ function humanizeProviderApiError(err: any, providerTitle: string): Error {
     );
   }
   if (
+    msg.includes('401') ||
+    /Authentication Fails|authentication_error|invalid_api_key/i.test(msg)
+  ) {
+    if (/deepseek/i.test(providerTitle)) {
+      return new Error(
+        `DeepSeek API Anahtarı Geçersiz (HTTP 401): Girilen anahtar "sk-" ile başlamıyor, eksik kopyalanmış veya iptal edilmiş. Lütfen https://platform.deepseek.com/api_keys sayfasından "Create new API key" ile yeni bir "sk-..." anahtarı oluşturup kopyalama ikonuyla kopyalayın, kutuya yapıştırıp "Kaydet & Test Et" butonuna basın.`
+      );
+    }
+    return new Error(
+      `${providerTitle} API Anahtarı Geçersiz (HTTP 401): Lütfen anahtarın tam kopyalandığını kontrol edip kaydedin. (${msg.slice(0, 160)})`
+    );
+  }
+  if (
     msg.includes('402') ||
     msg.includes('30001') ||
     /insufficient[_\s]balance/i.test(msg) ||
@@ -1416,51 +1492,70 @@ async function executeSingleProviderTicketParse(
     : `Analyze this travel ticket/itinerary scan ("${input.fileName}") like a human travel specialist and return ONLY valid JSON.`;
 
   if (provider === 'deepseek') {
-    const apiKey = settings.deepseek_api_key.trim();
+    const baseUrl = settings.deepseek_base_url.trim() || 'https://api.deepseek.com/v1';
+    const apiKey = normalizeDeepseekApiKey(settings.deepseek_api_key, baseUrl);
     if (!apiKey) {
       throw new Error(
         'DeepSeek API anahtarı henüz girilmemiş. Ayarlar > 4. Yapay Zeka (AI) & Evrak Okuma sekmesinden DeepSeek API Key ekleyin.'
       );
     }
     const configuredModel = settings.deepseek_model.trim() || 'deepseek-chat';
-    const baseUrl = settings.deepseek_base_url.trim() || 'https://api.deepseek.com/v1';
     const isOfficialDeepseek = baseUrl.includes('api.deepseek.com');
 
-    // Check live /models on custom or official DeepSeek endpoint to avoid 400 Model Not Exist if 'deepseek-flash' isn't hosted
+    // Check live /models on custom or official DeepSeek endpoint (supports V3, R1, V4/V4.1 Flash, etc.)
     const { models: dsModels } = await fetchOpenAiEndpointModels(baseUrl, apiKey);
-    const hasConfiguredInCatalog =
-      dsModels.length === 0 ||
-      dsModels.some((m) => m.toLowerCase() === configuredModel.toLowerCase());
-    const effectiveModel = hasConfiguredInCatalog ? configuredModel : 'deepseek-chat';
+    const exactCatalogMatch = dsModels.find(
+      (m) => m.toLowerCase() === configuredModel.toLowerCase()
+    );
+    const flashCatalogMatch = /flash/i.test(configuredModel)
+      ? dsModels.find((m) => /flash/i.test(m))
+      : undefined;
+    const effectiveModel =
+      exactCatalogMatch ||
+      flashCatalogMatch ||
+      (dsModels.length === 0 ? configuredModel : 'deepseek-chat');
 
     const looksMultimodalModel =
-      effectiveModel !== 'deepseek-chat' &&
-      effectiveModel !== 'deepseek-reasoner' &&
-      (!isOfficialDeepseek || dsModels.some((m) => m.toLowerCase() === effectiveModel.toLowerCase()));
+      /flash|vl|vision|ocr|v4/i.test(effectiveModel) ||
+      (!isOfficialDeepseek &&
+        effectiveModel !== 'deepseek-chat' &&
+        effectiveModel !== 'deepseek-reasoner');
 
-    if (images.length > 0 && looksMultimodalModel) {
-      const raw = await callOpenAiCompatibleVisionOrText({
-        baseUrl,
-        apiKey,
-        model: effectiveModel,
-        systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
-        userInstruction: baseUserInstruction,
-        imagesDataUrls: images.slice(0, 2),
-      });
-      return {
-        parsed: extractJsonFromModelOutput(raw),
-        providerLabel: `DeepSeek AI (${effectiveModel})`,
-      };
+    if (images.length > 0 && (looksMultimodalModel || pdfTextContext.length < 20)) {
+      try {
+        const rawVision = await callOpenAiCompatibleVisionOrText({
+          baseUrl,
+          apiKey,
+          model: effectiveModel,
+          systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
+          userInstruction: baseUserInstruction,
+          imagesDataUrls: images.slice(0, 2),
+        });
+        return {
+          parsed: extractJsonFromModelOutput(rawVision),
+          providerLabel: `DeepSeek AI (${effectiveModel})`,
+        };
+      } catch (visionErr: any) {
+        const vMsg = String(visionErr?.message || '');
+        if (vMsg.includes('API 401') || vMsg.includes('API 402') || vMsg.includes('API 429')) {
+          throw visionErr;
+        }
+        // If image_url is not supported by this DeepSeek text model and we have digital PDF text, fall through cleanly
+      }
     }
 
     if (pdfTextContext.length < 20) {
       throw new Error(
-        'Bu dosya metin katmanı olmayan taranmış bir görüntü (Scan). Resmi DeepSeek metin modeli (deepseek-chat) görsel kabul etmez; lütfen Oku butonunun yanından "DeepSeek-OCR / VL2 (SiliconFlow)" veya "Yandex Vision + YandexGPT" seçin.'
+        'Bu dosya metin katmanı olmayan taranmış bir görüntü (Scan). Resmi DeepSeek metin modeli görsel kabul etmedi; lütfen Oku butonunun yanından görsel (Vision) destekli bir motor seçin.'
       );
     }
 
     const semanticModel =
-      effectiveModel === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat';
+      effectiveModel === 'deepseek-reasoner'
+        ? 'deepseek-reasoner'
+        : dsModels.includes(effectiveModel)
+        ? effectiveModel
+        : 'deepseek-chat';
     const raw = await callOpenAiCompatibleVisionOrText({
       baseUrl,
       apiKey,
@@ -1912,30 +2007,47 @@ export async function testAiProviderConnection(
 
   try {
     if (provider === 'deepseek') {
-      if (!s.deepseek_api_key.trim()) {
+      const base = s.deepseek_base_url || 'https://api.deepseek.com/v1';
+      const cleanDsKey = normalizeDeepseekApiKey(s.deepseek_api_key, base);
+      if (!cleanDsKey) {
         return { ok: false, latencyMs: 0, message: 'DeepSeek API Key girilmedi.' };
       }
-      const base = s.deepseek_base_url || 'https://api.deepseek.com/v1';
-      const { models: dsModels } = await fetchOpenAiEndpointModels(base, s.deepseek_api_key);
+      const { models: dsModels } = await fetchOpenAiEndpointModels(base, cleanDsKey);
       const requested = s.deepseek_model.trim() || 'deepseek-chat';
+      const exactMatch = dsModels.find((m) => m.toLowerCase() === requested.toLowerCase());
+      const flashMatch = /flash/i.test(requested)
+        ? dsModels.find((m) => /flash/i.test(m))
+        : undefined;
       const usedModel =
-        dsModels.length === 0 || dsModels.some((m) => m.toLowerCase() === requested.toLowerCase())
-          ? requested
-          : 'deepseek-chat';
+        exactMatch || flashMatch || (dsModels.length === 0 ? requested : 'deepseek-chat');
 
       const reply = await callOpenAiCompatibleVisionOrText({
         baseUrl: base,
-        apiKey: s.deepseek_api_key,
+        apiKey: cleanDsKey,
         model: usedModel,
         systemPrompt: 'Reply concisely.',
         userInstruction: 'Reply with: DEEPSEEK_PONDERA_OK',
         imagesDataUrls: [],
         maxTokens: 32,
       });
+
+      if (cleanDsKey !== saved.deepseek_api_key && saved.deepseek_api_key) {
+        try {
+          const db = ensureAiTicketTables();
+          db.prepare('UPDATE ai_provider_settings SET deepseek_api_key = ? WHERE id = 1').run(
+            cleanDsKey
+          );
+        } catch {
+          // ignore
+        }
+      }
+
       return {
         ok: true,
         latencyMs: Date.now() - start,
-        message: `DeepSeek AI canlı bağlantısı başarılı (${usedModel}).`,
+        message: `DeepSeek AI canlı bağlantısı başarılı! Aktif model: ${usedModel}${
+          dsModels.length > 0 ? ` (Erişilebilir modeller: ${dsModels.join(', ')})` : ''
+        }`,
         modelReply: reply.slice(0, 80),
         resolvedModel: usedModel,
       };

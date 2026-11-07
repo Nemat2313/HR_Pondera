@@ -6,8 +6,8 @@ import {
   ensureAiTicketTables,
   getAiProviderSettings,
   hasProviderCredentials,
-  isMaskedPlaceholder,
   maskSecretKey,
+  normalizeSecretKeyInput,
   testAiProviderConnection,
 } from '@/lib/aiTicketEngine';
 
@@ -102,11 +102,15 @@ export async function POST(request: Request) {
     const action = body?.action || 'save';
     const incoming = body?.settings || {};
 
-    const resolveSecret = (incomingVal: string | undefined, existingVal: string) => {
-      if (incomingVal === undefined || incomingVal === null) return existingVal;
-      if (isMaskedPlaceholder(incomingVal)) return existingVal;
-      return String(incomingVal).trim();
-    };
+    const effectiveDsBase = String(
+      incoming.deepseekBaseUrl ?? current.deepseek_base_url ?? 'https://api.deepseek.com/v1'
+    ).trim();
+
+    const resolveSecret = (
+      incomingVal: string | undefined,
+      existingVal: string,
+      isOfficialDeepseek = false
+    ) => normalizeSecretKeyInput(incomingVal, existingVal, { isOfficialDeepseek });
 
     const merged: AiProviderSettingsRow = {
       id: 1,
@@ -121,10 +125,12 @@ export async function POST(request: Request) {
             ? 1
             : 0
           : current.hybrid_ocr_enabled,
-      deepseek_api_key: resolveSecret(incoming.deepseekApiKey, current.deepseek_api_key),
-      deepseek_base_url: String(
-        incoming.deepseekBaseUrl ?? current.deepseek_base_url ?? 'https://api.deepseek.com/v1'
-      ).trim(),
+      deepseek_api_key: resolveSecret(
+        incoming.deepseekApiKey,
+        current.deepseek_api_key,
+        !effectiveDsBase || effectiveDsBase.includes('api.deepseek.com')
+      ),
+      deepseek_base_url: effectiveDsBase,
       deepseek_model: String(
         incoming.deepseekModel ?? current.deepseek_model ?? 'deepseek-flash'
       ).trim(),
@@ -178,9 +184,76 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
 
+    const persistMergedSettings = (rowToSave: AiProviderSettingsRow) => {
+      db.prepare(
+        `UPDATE ai_provider_settings SET
+          active_provider = ?,
+          fallback_provider = ?,
+          hybrid_ocr_enabled = ?,
+          deepseek_api_key = ?,
+          deepseek_base_url = ?,
+          deepseek_model = ?,
+          deepseek_ocr_base_url = ?,
+          deepseek_ocr_api_key = ?,
+          deepseek_ocr_model = ?,
+          yandex_folder_id = ?,
+          yandex_api_key = ?,
+          yandex_model = ?,
+          gigachat_auth_key = ?,
+          gigachat_scope = ?,
+          gigachat_model = ?,
+          gemini_api_key = ?,
+          gemini_base_url = ?,
+          gemini_model = ?,
+          openrouter_api_key = ?,
+          openrouter_model = ?,
+          ru_docs_ocr_url = ?,
+          ru_docs_ocr_key = ?,
+          updated_at = ?
+         WHERE id = 1`
+      ).run(
+        rowToSave.active_provider,
+        rowToSave.fallback_provider,
+        rowToSave.hybrid_ocr_enabled,
+        rowToSave.deepseek_api_key,
+        rowToSave.deepseek_base_url,
+        rowToSave.deepseek_model,
+        rowToSave.deepseek_ocr_base_url,
+        rowToSave.deepseek_ocr_api_key,
+        rowToSave.deepseek_ocr_model,
+        rowToSave.yandex_folder_id,
+        rowToSave.yandex_api_key,
+        rowToSave.yandex_model,
+        rowToSave.gigachat_auth_key,
+        rowToSave.gigachat_scope,
+        rowToSave.gigachat_model,
+        rowToSave.gemini_api_key,
+        rowToSave.gemini_base_url,
+        rowToSave.gemini_model,
+        rowToSave.openrouter_api_key,
+        rowToSave.openrouter_model,
+        rowToSave.ru_docs_ocr_url,
+        rowToSave.ru_docs_ocr_key,
+        rowToSave.updated_at
+      );
+    };
+
     if (action === 'test_connection') {
       const targetProvider = (body?.provider || merged.active_provider || 'deepseek') as AiProviderId;
       const result = await testAiProviderConnection(targetProvider, merged);
+      if (result.ok) {
+        if (targetProvider === 'deepseek' && result.resolvedModel) {
+          merged.deepseek_model = result.resolvedModel;
+        }
+        if (targetProvider === 'deepseek_ocr' && result.resolvedModel) {
+          merged.deepseek_ocr_model = result.resolvedModel;
+        }
+        if (targetProvider === 'gemini' && result.resolvedModel) {
+          merged.gemini_model = result.resolvedModel;
+        }
+        persistMergedSettings(merged);
+      }
+      const latestAfterTest = getAiProviderSettings();
       return NextResponse.json({
         success: result.ok,
         ok: result.ok,
@@ -189,60 +262,11 @@ export async function POST(request: Request) {
         modelReply: result.modelReply || '',
         resolvedModel: result.resolvedModel || '',
         availableVisionModels: result.availableVisionModels || [],
+        settings: formatSettingsResponse(latestAfterTest),
       });
     }
 
-    db.prepare(
-      `UPDATE ai_provider_settings SET
-        active_provider = ?,
-        fallback_provider = ?,
-        hybrid_ocr_enabled = ?,
-        deepseek_api_key = ?,
-        deepseek_base_url = ?,
-        deepseek_model = ?,
-        deepseek_ocr_base_url = ?,
-        deepseek_ocr_api_key = ?,
-        deepseek_ocr_model = ?,
-        yandex_folder_id = ?,
-        yandex_api_key = ?,
-        yandex_model = ?,
-        gigachat_auth_key = ?,
-        gigachat_scope = ?,
-        gigachat_model = ?,
-        gemini_api_key = ?,
-        gemini_base_url = ?,
-        gemini_model = ?,
-        openrouter_api_key = ?,
-        openrouter_model = ?,
-        ru_docs_ocr_url = ?,
-        ru_docs_ocr_key = ?,
-        updated_at = ?
-       WHERE id = 1`
-    ).run(
-      merged.active_provider,
-      merged.fallback_provider,
-      merged.hybrid_ocr_enabled,
-      merged.deepseek_api_key,
-      merged.deepseek_base_url,
-      merged.deepseek_model,
-      merged.deepseek_ocr_base_url,
-      merged.deepseek_ocr_api_key,
-      merged.deepseek_ocr_model,
-      merged.yandex_folder_id,
-      merged.yandex_api_key,
-      merged.yandex_model,
-      merged.gigachat_auth_key,
-      merged.gigachat_scope,
-      merged.gigachat_model,
-      merged.gemini_api_key,
-      merged.gemini_base_url,
-      merged.gemini_model,
-      merged.openrouter_api_key,
-      merged.openrouter_model,
-      merged.ru_docs_ocr_url,
-      merged.ru_docs_ocr_key,
-      merged.updated_at
-    );
+    persistMergedSettings(merged);
 
     const updated = getAiProviderSettings();
     return NextResponse.json({
