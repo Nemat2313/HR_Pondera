@@ -1310,49 +1310,70 @@ async function callOpenAiCompatibleVisionOrText(params: {
 
   const isShort4kContextModel = /deepseek-vl/i.test(params.model);
   const safeMaxTokens =
-    params.maxTokens ?? (isShort4kContextModel ? 1000 : 1400);
+    params.maxTokens ?? (isShort4kContextModel ? 1100 : 2200);
 
-  const basePayload: Record<string, unknown> = {
+  const isOfficialDeepseekNonReasoner =
+    params.baseUrl.includes('api.deepseek.com') &&
+    !/reasoner/i.test(params.model);
+
+  const corePayload: Record<string, unknown> = {
     model: params.model.trim(),
     messages,
     temperature: 0.0,
     max_tokens: safeMaxTokens,
   };
 
-  if (params.jsonMode) {
-    const withJsonFormat = {
-      ...basePayload,
+  // Official DeepSeek V4 / V4.1 (deepseek-flash, deepseek-v4-pro) enables chain-of-thought thinking by default!
+  // Disabling thinking cuts latency from ~16s down to ~1.5s and prevents reasoning_content from exhausting max_tokens.
+  const payloadVariants: Array<Record<string, unknown>> = [];
+  if (isOfficialDeepseekNonReasoner && params.jsonMode) {
+    payloadVariants.push({
+      ...corePayload,
+      thinking: { type: 'disabled' },
       response_format: { type: 'json_object' },
-    };
-    const respJson = await fetch(endpoint, {
+    });
+  }
+  if (isOfficialDeepseekNonReasoner) {
+    payloadVariants.push({
+      ...corePayload,
+      thinking: { type: 'disabled' },
+    });
+  }
+  if (params.jsonMode) {
+    payloadVariants.push({
+      ...corePayload,
+      response_format: { type: 'json_object' },
+    });
+  }
+  payloadVariants.push(corePayload);
+
+  let lastHttpErr = '';
+  for (let i = 0; i < payloadVariants.length; i++) {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify(withJsonFormat),
+      body: JSON.stringify(payloadVariants[i]),
     });
-    if (respJson.ok) {
-      const json = await respJson.json();
-      return String(json?.choices?.[0]?.message?.content || '');
-    }
-    // Only fall back to plain call if this model/endpoint rejected response_format (HTTP 400)
-    if (respJson.status !== 400) {
-      const errText = await respJson.text();
-      throw new Error(`API ${respJson.status}: ${errText.slice(0, 280)}`);
-    }
-  }
 
-  const resp = await fetch(endpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(basePayload),
-  });
+    if (resp.ok) {
+      const json = await resp.json();
+      const msgObj = json?.choices?.[0]?.message;
+      const contentStr = String(msgObj?.content || '').trim();
+      if (contentStr) return contentStr;
+      // Fallback if reasoning model placed output in reasoning_content
+      const reasoningStr = String(msgObj?.reasoning_content || '').trim();
+      return reasoningStr;
+    }
 
-  if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`API ${resp.status}: ${errText.slice(0, 280)}`);
+    lastHttpErr = `API ${resp.status}: ${errText.slice(0, 280)}`;
+    // Only fall back to next payload variant on HTTP 400 parameter incompatibility
+    if (resp.status !== 400) {
+      throw new Error(lastHttpErr);
+    }
   }
 
-  const json = await resp.json();
-  return String(json?.choices?.[0]?.message?.content || '');
+  throw new Error(lastHttpErr || 'API isteği başarısız oldu.');
 }
 
 async function callGigaChatVisionOrText(params: {
@@ -1688,7 +1709,7 @@ async function executeSingleProviderTicketParse(
         userInstruction: baseUserInstruction,
         imagesDataUrls: [],
         jsonMode: true,
-        maxTokens: 1100,
+        maxTokens: 2000,
       });
       return {
         parsed: extractJsonFromModelOutput(rawFast),
