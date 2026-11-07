@@ -89,8 +89,8 @@ const DEFAULT_FORM: AiSettingsFormState = {
   gigachatScope: 'GIGACHAT_API_PERS',
   gigachatModel: 'GigaChat-Pro',
   gigachatAuthKey: '',
-  geminiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  geminiModel: 'gemini-2.0-flash',
+  geminiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+  geminiModel: 'gemini-flash-latest',
   geminiApiKey: '',
   openrouterModel: 'deepseek/deepseek-chat-v3-0324',
   openrouterApiKey: '',
@@ -205,6 +205,9 @@ export default function AISettingsTab() {
       if (provider === 'deepseek_ocr' && json?.ok && json?.resolvedModel) {
         setForm((prev) => ({ ...prev, deepseekOcrModel: String(json.resolvedModel) }));
       }
+      if (provider === 'gemini' && json?.ok && json?.resolvedModel) {
+        setForm((prev) => ({ ...prev, geminiModel: String(json.resolvedModel) }));
+      }
       setTestResults((prev) => ({
         ...prev,
         [provider]: {
@@ -262,8 +265,8 @@ export default function AISettingsTab() {
     },
     {
       id: 'gemini',
-      label: 'Google Gemini 2.0 Flash Vision',
-      tag: 'Alternatif',
+      label: 'Google Gemini Flash (Native Vision & PDF — AI Studio)',
+      tag: 'Vision & PDF',
     },
     {
       id: 'openrouter',
@@ -936,21 +939,54 @@ export default function AISettingsTab() {
 
         {/* CARD 5: GOOGLE GEMINI & OPENROUTER */}
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 space-y-3.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-sky-500" />
-              <span className="text-sm font-bold text-slate-900 dark:text-white">
-                5. Google Gemini & OpenRouter (Ek Yedek Sağlayıcılar)
-              </span>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Cpu className="w-4 h-4 text-sky-500" />
+                <span className="text-sm font-bold text-slate-900 dark:text-white">
+                  5. Google Gemini Flash (Native Vision & PDF) & OpenRouter
+                </span>
+                {form.hasGeminiKey && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    Gemini Anahtar Kayıtlı
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Resmi <code className="font-mono">:generateContent</code> (`X-goog-api-key`) ile hem `AQ....` hem `AIza...` anahtarlarını ve doğrudan PDF/görsel okumayı destekler. Ücretsiz kota için{' '}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-600 dark:text-sky-400 underline font-medium"
+                >
+                  aistudio.google.com/apikey
+                </a>{' '}
+                üzerinden <strong>Create API key in new project</strong> (Billing/Prepay bağlamadan) seçin ve <strong>Kaydet</strong>’e basın.
+              </p>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {form.activeProvider !== 'gemini' ? (
+                <button
+                  type="button"
+                  disabled={!isAdmin || saving}
+                  onClick={() => handleMakePrimary('gemini')}
+                  className="px-2.5 py-1 rounded-lg text-[10.5px] font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer"
+                >
+                  Gemini Ana Motor Yap & Kaydet
+                </button>
+              ) : (
+                <span className="px-2.5 py-1 rounded-lg text-[10.5px] font-semibold bg-indigo-50 dark:bg-indigo-500/25 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-500/40">
+                  Aktif Ana Motor: Gemini
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => handleTestProvider('gemini')}
                 disabled={testingProvider === 'gemini'}
                 className="px-2.5 py-1 rounded-lg text-[10.5px] font-semibold bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/20 text-sky-900 dark:text-sky-200 border border-sky-200 dark:border-sky-500/40 cursor-pointer"
               >
-                Gemini Test
+                {testingProvider === 'gemini' ? 'Test Ediliyor...' : 'Gemini Test'}
               </button>
               <button
                 type="button"
@@ -966,39 +1002,81 @@ export default function AISettingsTab() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-                Google Gemini API Key
+                Google Gemini API Key (`AQ....` veya `AIzaSy...`)
               </label>
-              <input
-                type="password"
-                value={form.geminiApiKey}
-                onChange={(e) => setForm((p) => ({ ...p, geminiApiKey: e.target.value }))}
-                placeholder="AIzaSy..."
-                className="w-full px-3 py-1.5 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
-              />
+              <div className="relative">
+                <input
+                  type={showKeys.gemini ? 'text' : 'password'}
+                  value={form.geminiApiKey}
+                  onChange={(e) => setForm((p) => ({ ...p, geminiApiKey: e.target.value }))}
+                  placeholder="AQ.... veya AIzaSy..."
+                  className="w-full pl-3 pr-9 py-1.5 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleKeyVis('gemini')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  {showKeys.gemini ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-                Gemini Modeli
+                Gemini Modeli (Resmi AI Studio)
               </label>
-              <input
-                type="text"
-                value={form.geminiModel}
+              <select
+                value={form.geminiModel || 'gemini-flash-latest'}
                 onChange={(e) => setForm((p) => ({ ...p, geminiModel: e.target.value }))}
-                placeholder="gemini-2.0-flash"
                 className="w-full px-3 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
-              />
+              >
+                <option value="gemini-flash-latest">
+                  gemini-flash-latest (Varsayılan — Güncel Flash Vision & PDF)
+                </option>
+                <option value="gemini-2.5-flash">
+                  gemini-2.5-flash (Yüksek Doğruluk — Vision & PDF)
+                </option>
+                <option value="gemini-2.5-flash-lite">
+                  gemini-2.5-flash-lite (En Yüksek Ücretsiz Kota & Hızlı)
+                </option>
+                <option value="gemini-3-flash-preview">
+                  gemini-3-flash-preview (Yeni Nesil Flash Önizleme)
+                </option>
+                {![
+                  'gemini-flash-latest',
+                  'gemini-2.5-flash',
+                  'gemini-2.5-flash-lite',
+                  'gemini-3-flash-preview',
+                ].includes(form.geminiModel) &&
+                  form.geminiModel && (
+                    <option value={form.geminiModel}>{form.geminiModel}</option>
+                  )}
+              </select>
             </div>
             <div>
               <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
                 OpenRouter API Key
               </label>
-              <input
-                type="password"
-                value={form.openrouterApiKey}
-                onChange={(e) => setForm((p) => ({ ...p, openrouterApiKey: e.target.value }))}
-                placeholder="sk-or-v1-..."
-                className="w-full px-3 py-1.5 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
-              />
+              <div className="relative">
+                <input
+                  type={showKeys.openrouter ? 'text' : 'password'}
+                  value={form.openrouterApiKey}
+                  onChange={(e) => setForm((p) => ({ ...p, openrouterApiKey: e.target.value }))}
+                  placeholder="sk-or-v1-..."
+                  className="w-full pl-3 pr-9 py-1.5 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleKeyVis('openrouter')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  {showKeys.openrouter ? (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
@@ -1017,13 +1095,35 @@ export default function AISettingsTab() {
           {(testResults.gemini || testResults.openrouter) && (
             <div className="space-y-1.5">
               {testResults.gemini && (
-                <div className="p-2 rounded-lg text-[11px] bg-slate-100 dark:bg-slate-800/80">
-                  Gemini: {testResults.gemini.message}
+                <div
+                  className={`p-2.5 rounded-lg text-[11px] flex items-center justify-between gap-2 ${
+                    testResults.gemini.ok
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200/70 dark:border-emerald-800/60'
+                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200/70 dark:border-rose-800/60'
+                  }`}
+                >
+                  <span>Gemini: {testResults.gemini.message}</span>
+                  {testResults.gemini.latencyMs > 0 && (
+                    <span className="font-mono text-[10px] opacity-80 shrink-0">
+                      {testResults.gemini.latencyMs} ms
+                    </span>
+                  )}
                 </div>
               )}
               {testResults.openrouter && (
-                <div className="p-2 rounded-lg text-[11px] bg-slate-100 dark:bg-slate-800/80">
-                  OpenRouter: {testResults.openrouter.message}
+                <div
+                  className={`p-2.5 rounded-lg text-[11px] flex items-center justify-between gap-2 ${
+                    testResults.openrouter.ok
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200/70 dark:border-emerald-800/60'
+                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200/70 dark:border-rose-800/60'
+                  }`}
+                >
+                  <span>OpenRouter: {testResults.openrouter.message}</span>
+                  {testResults.openrouter.latencyMs > 0 && (
+                    <span className="font-mono text-[10px] opacity-80 shrink-0">
+                      {testResults.openrouter.latencyMs} ms
+                    </span>
+                  )}
                 </div>
               )}
             </div>

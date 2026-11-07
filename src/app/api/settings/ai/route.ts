@@ -42,8 +42,11 @@ function formatSettingsResponse(s: AiProviderSettingsRow) {
     hasGigachatKey: Boolean(s.gigachat_auth_key && s.gigachat_auth_key.trim().length > 0),
 
     geminiBaseUrl:
-      s.gemini_base_url || 'https://generativelanguage.googleapis.com/v1beta/openai',
-    geminiModel: s.gemini_model || 'gemini-2.0-flash',
+      s.gemini_base_url || 'https://generativelanguage.googleapis.com/v1beta',
+    geminiModel:
+      !s.gemini_model || s.gemini_model === 'gemini-2.0-flash'
+        ? 'gemini-flash-latest'
+        : s.gemini_model,
     geminiApiKey: maskSecretKey(s.gemini_api_key),
     hasGeminiKey: Boolean(s.gemini_api_key && s.gemini_api_key.trim().length > 0),
 
@@ -155,11 +158,14 @@ export async function POST(request: Request) {
       gemini_base_url: String(
         incoming.geminiBaseUrl ??
           current.gemini_base_url ??
-          'https://generativelanguage.googleapis.com/v1beta/openai'
+          'https://generativelanguage.googleapis.com/v1beta'
       ).trim(),
-      gemini_model: String(
-        incoming.geminiModel ?? current.gemini_model ?? 'gemini-2.0-flash'
-      ).trim(),
+      gemini_model: (() => {
+        const rawModel = String(
+          incoming.geminiModel ?? current.gemini_model ?? 'gemini-flash-latest'
+        ).trim();
+        return !rawModel || rawModel === 'gemini-2.0-flash' ? 'gemini-flash-latest' : rawModel;
+      })(),
       openrouter_api_key: resolveSecret(incoming.openrouterApiKey, current.openrouter_api_key),
       openrouter_model: String(
         incoming.openrouter_model ??

@@ -142,8 +142,8 @@ export function ensureAiTicketTables() {
       gigachat_scope TEXT NOT NULL DEFAULT 'GIGACHAT_API_PERS',
       gigachat_model TEXT NOT NULL DEFAULT 'GigaChat-Pro',
       gemini_api_key TEXT NOT NULL DEFAULT '',
-      gemini_base_url TEXT NOT NULL DEFAULT 'https://generativelanguage.googleapis.com/v1beta/openai',
-      gemini_model TEXT NOT NULL DEFAULT 'gemini-2.0-flash',
+      gemini_base_url TEXT NOT NULL DEFAULT 'https://generativelanguage.googleapis.com/v1beta',
+      gemini_model TEXT NOT NULL DEFAULT 'gemini-flash-latest',
       openrouter_api_key TEXT NOT NULL DEFAULT '',
       openrouter_model TEXT NOT NULL DEFAULT 'deepseek/deepseek-chat-v3-0324',
       ru_docs_ocr_url TEXT NOT NULL DEFAULT '',
@@ -179,11 +179,16 @@ export function ensureAiTicketTables() {
       'yandexgpt/latest',
       'GIGACHAT_API_PERS',
       'GigaChat-Pro',
-      'https://generativelanguage.googleapis.com/v1beta/openai',
-      'gemini-2.0-flash',
+      'https://generativelanguage.googleapis.com/v1beta',
+      'gemini-flash-latest',
       'deepseek/deepseek-chat-v3-0324',
       datetime('now')
     );
+
+    UPDATE ai_provider_settings
+    SET gemini_model = 'gemini-flash-latest'
+    WHERE id = 1
+      AND (gemini_model = 'gemini-2.0-flash' OR gemini_model = '');
 
     UPDATE ai_provider_settings
     SET deepseek_ocr_model = 'deepseek-ai/deepseek-vl2'
@@ -283,8 +288,8 @@ export function getAiProviderSettings(): AiProviderSettingsRow {
       gigachat_scope: 'GIGACHAT_API_PERS',
       gigachat_model: 'GigaChat-Pro',
       gemini_api_key: process.env.GEMINI_API_KEY || '',
-      gemini_base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      gemini_model: 'gemini-2.0-flash',
+      gemini_base_url: 'https://generativelanguage.googleapis.com/v1beta',
+      gemini_model: 'gemini-flash-latest',
       openrouter_api_key: process.env.OPENROUTER_API_KEY || '',
       openrouter_model: 'deepseek/deepseek-chat-v3-0324',
       ru_docs_ocr_url: '',
@@ -911,6 +916,11 @@ async function fetchOpenAiEndpointModels(
 
 function humanizeProviderApiError(err: any, providerTitle: string): Error {
   const msg = String(err?.message || 'Bilinmeyen AI hatası.');
+  if (/prepayment credits are depleted|billing#prepay/i.test(msg)) {
+    return new Error(
+      'Google AI Studio Ön Ödeme (Prepay) Bakiyesi Sıfır (HTTP 402): Bu anahtarın bağlı olduğu proje daha önce ücretli Prepay katmanına alındığı için ücretsiz katmana düşmüyor. Ücretsiz kullanmak için https://aistudio.google.com/apikey sayfasında "Create API key" -> "Create API key in new project" (Yeni projede — Billing bağlamadan) seçerek yeni anahtar alın veya https://ai.studio/projects üzerinden mevcut projenin Billing bağlantısını kaldırıp Free katmana düşürün.'
+    );
+  }
   if (
     msg.includes('402') ||
     msg.includes('30001') ||
@@ -918,10 +928,110 @@ function humanizeProviderApiError(err: any, providerTitle: string): Error {
     /balance is insufficient/i.test(msg)
   ) {
     return new Error(
-      `Bakiye Yetersiz (API 402): Seçtiğiniz ${providerTitle} hesabındaki başlangıç kredisi / bakiye bitti. Sağlayıcı panelinden bakiye yükleyebilir (1$ ≈ 400+ bilet) veya Oku butonunun yanından anahtarı hazır başka bir AI (örn. ücretsiz Google Gemini / Rusya AI) seçebilirsiniz.`
+      `Bakiye Yetersiz (API 402): Seçtiğiniz ${providerTitle} hesabındaki başlangıç kredisi / bakiye bitti. Sağlayıcı panelinden bakiye yükleyebilir (1$ ≈ 400+ bilet) veya Oku butonunun yanından anahtarı hazır başka bir AI seçebilirsiniz.`
     );
   }
   return err instanceof Error ? err : new Error(msg);
+}
+
+// Official Native Google Gemini REST caller (/v1beta/models/{model}:generateContent with X-goog-api-key)
+// Supports both AQ.... auth keys and AIza... keys, plus native inline_data for images and PDFs
+async function callGeminiNativeGenerateContent(params: {
+  apiKey: string;
+  preferredModel: string;
+  systemPrompt?: string;
+  userInstruction: string;
+  imagesDataUrls: string[];
+  rawPdfBase64?: string;
+  jsonMode?: boolean;
+  maxTokens?: number;
+}): Promise<{ text: string; modelUsed: string }> {
+  const requested = (params.preferredModel || 'gemini-flash-latest')
+    .trim()
+    .replace(/^models\//, '');
+  const normalizedPrimary =
+    requested === 'gemini-2.0-flash' || !requested ? 'gemini-flash-latest' : requested;
+
+  const candidateModels: string[] = [];
+  for (const m of [
+    normalizedPrimary,
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+  ]) {
+    if (m && !candidateModels.includes(m)) candidateModels.push(m);
+  }
+
+  const parts: Array<Record<string, unknown>> = [];
+  if (params.imagesDataUrls.length > 0) {
+    for (const dataUrl of params.imagesDataUrls.slice(0, 2)) {
+      const { mimeType, base64 } = splitDataUrl(dataUrl);
+      if (base64) {
+        parts.push({
+          inline_data: {
+            mime_type: mimeType || 'image/jpeg',
+            data: base64,
+          },
+        });
+      }
+    }
+  } else if (params.rawPdfBase64) {
+    parts.push({
+      inline_data: {
+        mime_type: 'application/pdf',
+        data: params.rawPdfBase64,
+      },
+    });
+  }
+
+  const combinedText = params.systemPrompt
+    ? `${params.systemPrompt}\n\n${params.userInstruction}`
+    : params.userInstruction;
+  parts.push({ text: combinedText });
+
+  const payload: Record<string, unknown> = {
+    contents: [{ parts }],
+    generationConfig: {
+      temperature: 0.05,
+      maxOutputTokens: params.maxTokens ?? 2800,
+      ...(params.jsonMode ? { responseMimeType: 'application/json' } : {}),
+    },
+  };
+
+  let lastErr: any = null;
+  for (const modelName of candidateModels) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      modelName
+    )}:generateContent`;
+
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': params.apiKey.trim(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const errTxt = await resp.text();
+      lastErr = new Error(`Gemini API ${resp.status} (${modelName}): ${errTxt.slice(0, 340)}`);
+      // Retry next model ONLY if model ID was retired/not found (404); stop immediately on 401/402/403/429
+      if (resp.status === 404) {
+        continue;
+      }
+      throw lastErr;
+    }
+
+    const json = await resp.json();
+    const outParts = json?.candidates?.[0]?.content?.parts;
+    const text = Array.isArray(outParts)
+      ? outParts.map((p: any) => String(p?.text || '')).join('\n').trim()
+      : '';
+    return { text, modelUsed: modelName };
+  }
+
+  throw lastErr || new Error('Google Gemini yanıt döndürmedi.');
 }
 
 function resolveEndpointModels(configuredModel: string, availableModels: string[]): {
@@ -1658,19 +1768,19 @@ async function executeSingleProviderTicketParse(
     if (!apiKey) {
       throw new Error('Google Gemini API Key eksik. Ayarlar > AI sekmesinden tanımlayın.');
     }
-    const raw = await callOpenAiCompatibleVisionOrText({
-      baseUrl:
-        settings.gemini_base_url.trim() ||
-        'https://generativelanguage.googleapis.com/v1beta/openai',
+    const { text, modelUsed } = await callGeminiNativeGenerateContent({
       apiKey,
-      model: settings.gemini_model.trim() || 'gemini-2.0-flash',
+      preferredModel: settings.gemini_model.trim() || 'gemini-flash-latest',
       systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
       userInstruction: baseUserInstruction,
       imagesDataUrls: images,
+      rawPdfBase64: images.length === 0 ? input.rawFileBase64 : undefined,
+      jsonMode: true,
+      maxTokens: 2800,
     });
     return {
-      parsed: extractJsonFromModelOutput(raw),
-      providerLabel: `Google Gemini (${settings.gemini_model || 'gemini-2.0-flash'})`,
+      parsed: extractJsonFromModelOutput(text),
+      providerLabel: `Google Gemini (${modelUsed})`,
     };
   }
 
@@ -1986,19 +2096,31 @@ export async function testAiProviderConnection(
       if (!s.gemini_api_key.trim()) {
         return { ok: false, latencyMs: 0, message: 'Gemini API Key girilmedi.' };
       }
-      const reply = await callOpenAiCompatibleVisionOrText({
-        baseUrl: s.gemini_base_url || 'https://generativelanguage.googleapis.com/v1beta/openai',
+      const { text, modelUsed } = await callGeminiNativeGenerateContent({
         apiKey: s.gemini_api_key,
-        model: s.gemini_model || 'gemini-2.0-flash',
+        preferredModel: s.gemini_model || 'gemini-flash-latest',
         systemPrompt: 'Reply concisely.',
         userInstruction: 'Reply with: GEMINI_OK',
         imagesDataUrls: [],
+        jsonMode: false,
+        maxTokens: 32,
       });
+      if (modelUsed !== saved.gemini_model) {
+        try {
+          const db = ensureAiTicketTables();
+          db.prepare('UPDATE ai_provider_settings SET gemini_model = ? WHERE id = 1').run(
+            modelUsed
+          );
+        } catch {
+          // ignore
+        }
+      }
       return {
         ok: true,
         latencyMs: Date.now() - start,
-        message: `Google Gemini (${s.gemini_model}) bağlantısı başarılı!`,
-        modelReply: reply.slice(0, 80),
+        message: `Google Gemini (${modelUsed}) canlı bağlantısı başarılı!`,
+        modelReply: text.slice(0, 80),
+        resolvedModel: modelUsed,
       };
     }
 
@@ -2040,10 +2162,20 @@ export async function testAiProviderConnection(
 
     return { ok: false, latencyMs: 0, message: 'Bilinmeyen sağlayıcı.' };
   } catch (err: any) {
+    const providerLabels: Record<AiProviderId, string> = {
+      deepseek: 'DeepSeek Resmi API',
+      deepseek_ocr: 'SiliconFlow / DeepSeek-OCR',
+      yandex: 'Yandex Cloud AI',
+      gigachat: 'Sber GigaChat',
+      gemini: 'Google Gemini',
+      openrouter: 'OpenRouter',
+      ru_docs_ocr: 'RussianDocsOCR',
+    };
+    const humanized = humanizeProviderApiError(err, providerLabels[provider] || provider);
     return {
       ok: false,
       latencyMs: Date.now() - start,
-      message: String(err?.message || 'Bağlantı kurulamadı.'),
+      message: String(humanized.message || 'Bağlantı kurulamadı.'),
     };
   }
 }

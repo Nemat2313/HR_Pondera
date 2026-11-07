@@ -283,7 +283,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   deepseek_ocr: 'DeepSeek-OCR / VL2 (Görsel Scan Akışı)',
   yandex: 'Yandex Vision + YandexGPT (Rusya AI)',
   gigachat: 'Sber GigaChat-Pro Vision (Rusya AI)',
-  gemini: 'Google Gemini 2.0 Flash',
+  gemini: 'Google Gemini Flash (Vision & PDF)',
   openrouter: 'OpenRouter',
   ru_docs_ocr: 'RussianDocsOCR + DeepSeek',
 };
@@ -1098,7 +1098,7 @@ export default function LiveTicketScannerSystem({
                         {aiStatus?.readiness?.gigachat ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
                       </option>
                       <option value="gemini">
-                        5. Google Gemini 2.0 Flash{' '}
+                        5. Google Gemini Flash (Vision & PDF){' '}
                         {aiStatus?.readiness?.gemini ? '— ✓ Anahtar Hazır' : '— Anahtar Yok'}
                       </option>
                       <option value="openrouter">
