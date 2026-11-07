@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import {
+  ensureVksQuarterlyArchiveAndState,
+  getVksQuarterOverview,
+  parseQuarterCodeInfo,
+} from '@/lib/vksQuarterManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -637,31 +642,75 @@ export async function GET(request: Request) {
     }
 
     const db = getDb();
+    ensureVksQuarterlyArchiveAndState(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    const requestedQuarter = (searchParams.get('quarter') || '').trim();
+    const selectedQuarter =
+      requestedQuarter && requestedQuarter !== 'active'
+        ? requestedQuarter
+        : quarterOverview.activeQuarter;
+    const isArchivedQuarter = selectedQuarter !== quarterOverview.activeQuarter;
+    const qInfo = parseQuarterCodeInfo(selectedQuarter);
+    const effectivePeriodStart = isArchivedQuarter ? qInfo.periodStart : quarterOverview.periodStart;
+    const effectivePeriodEnd = isArchivedQuarter ? qInfo.periodEnd : quarterOverview.periodEnd;
 
-    const masterRows = db
-      .prepare('SELECT row_key, sicil_no, row_order, assigned_computer, worker_json FROM gosuslugi_vks_master_list ORDER BY row_order ASC')
-      .all() as Array<{
-      row_key: string;
-      sicil_no: string;
-      row_order: number;
-      assigned_computer: number;
-      worker_json: string;
-    }>;
+    const masterRows = isArchivedQuarter
+      ? (db
+          .prepare(
+            `SELECT row_key, sicil_no, row_order, assigned_computer, worker_json
+             FROM gosuslugi_vks_master_archive
+             WHERE archive_quarter = ?
+             ORDER BY row_order ASC`
+          )
+          .all(selectedQuarter) as Array<{
+          row_key: string;
+          sicil_no: string;
+          row_order: number;
+          assigned_computer: number;
+          worker_json: string;
+        }>)
+      : (db
+          .prepare('SELECT row_key, sicil_no, row_order, assigned_computer, worker_json FROM gosuslugi_vks_master_list ORDER BY row_order ASC')
+          .all() as Array<{
+          row_key: string;
+          sicil_no: string;
+          row_order: number;
+          assigned_computer: number;
+          worker_json: string;
+        }>);
 
-    const subRows = db
-      .prepare(
-        `SELECT sicil_no, worker_name, citizenship, application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
-      )
-      .all() as Array<{
-      sicil_no: string;
-      worker_name: string;
-      citizenship: string;
-      application_no: string;
-      gosuslugi_status: string;
-      status_detail: string;
-      pdf_filename: string;
-      submitted_at: string;
-    }>;
+    const subRows = isArchivedQuarter
+      ? (db
+          .prepare(
+            `SELECT sicil_no, worker_name, citizenship, application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at
+             FROM gosuslugi_submissions_archive
+             WHERE archive_quarter = ? AND LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'
+             ORDER BY id DESC`
+          )
+          .all(selectedQuarter) as Array<{
+          sicil_no: string;
+          worker_name: string;
+          citizenship: string;
+          application_no: string;
+          gosuslugi_status: string;
+          status_detail: string;
+          pdf_filename: string;
+          submitted_at: string;
+        }>)
+      : (db
+          .prepare(
+            `SELECT sicil_no, worker_name, citizenship, application_no, gosuslugi_status, status_detail, pdf_filename, submitted_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
+          )
+          .all() as Array<{
+          sicil_no: string;
+          worker_name: string;
+          citizenship: string;
+          application_no: string;
+          gosuslugi_status: string;
+          status_detail: string;
+          pdf_filename: string;
+          submitted_at: string;
+        }>);
 
     // Load HR database info for passport numbers, region, project, citizenship, and fallback fields
     const hrPassportBySicil = new Map<string, string>();
@@ -770,8 +819,8 @@ export async function GET(request: Request) {
         contractDate: String(rj['Sözleşme Tarihi'] || rj['İşe Giriş Tarihi'] || '').trim(),
         contractStartDate: String(rj['Sözleşme Başlangıç Tarihi'] || rj['İşe Giriş Tarihi'] || '').trim(),
         contractEndDate: String(rj['İşten Çıkış Tarihi'] || '').trim(),
-        periodStart: '01.07.2026',
-        periodEnd: '30.09.2026',
+        periodStart: effectivePeriodStart,
+        periodEnd: effectivePeriodEnd,
         month1Salary: '',
         month2Salary: '',
         month3Salary: '',
@@ -1025,8 +1074,8 @@ export async function GET(request: Request) {
           getField('contractDate', 'ДатаЗаключения'),
           getField('contractStartDate', 'ДатаНачалаДействия'),
           getField('contractEndDate', 'ДатаОканчанияДействия'),
-          getField('periodStart', 'НачалоПериода', '01.07.2026'),
-          getField('periodEnd', 'КонецПериода', '30.09.2026'),
+          getField('periodStart', 'НачалоПериода', effectivePeriodStart),
+          getField('periodEnd', 'КонецПериода', effectivePeriodEnd),
           getField('month1Salary', '1-месяц'),
           getField('month2Salary', '2-месяц'),
           getField('month3Salary', '3-месяц'),
@@ -1101,8 +1150,8 @@ export async function GET(request: Request) {
         getField('contractDate', 'ДатаЗаключения'), // 19: ДатаЗаключения
         getField('contractStartDate', 'ДатаНачалаДействия'), // 20: ДатаНачалаДействия
         getField('contractEndDate', 'ДатаОканчанияДействия'), // 21: ДатаОканчанияДействия
-        getField('periodStart', 'НачалоПериода', '01.07.2026'), // 22: НачалоПериода
-        getField('periodEnd', 'КонецПериода', '30.09.2026'), // 23: КонецПериода
+        getField('periodStart', 'НачалоПериода', effectivePeriodStart), // 22: НачалоПериода
+        getField('periodEnd', 'КонецПериода', effectivePeriodEnd), // 23: КонецПериода
         getField('month1Salary', '1-месяц'), // 24: 1-месяц
         getField('month2Salary', '2-месяц'), // 25: 2-месяц
         getField('month3Salary', '3-месяц'), // 26: 3-месяц

@@ -176,6 +176,10 @@ export default function Home() {
 
   // Fetch stats from backend with user RLS scope
   const fetchStats = useCallback(() => {
+    if (user?.role === 'idari_isler') {
+      setLoadingStats(false);
+      return;
+    }
     setLoadingStats(true);
     const params = new URLSearchParams();
     if (includeExits) params.set('includeExits', 'true');
@@ -328,12 +332,19 @@ export default function Home() {
     );
   }
 
+  const isIdariOnly = user?.role === 'idari_isler';
+  const effectiveTab = isIdariOnly ? 'travel_tickets' : activeTab;
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Sidebar with Mobile Support */}
       <Sidebar
-        activeTab={activeTab}
+        activeTab={effectiveTab}
         setActiveTab={(tab) => {
+          if (user?.role === 'idari_isler') {
+            setActiveTab('travel_tickets');
+            return;
+          }
           if (user?.role === 'viewer' && (tab === 'gosuslugi' || tab === 'database' || tab === 'admin')) {
             setActiveTab('overview');
             return;
@@ -364,7 +375,7 @@ export default function Home() {
         setIncludeExits={setIncludeExits}
         dataFreshness={stats?.systemInfo?.data_freshness || '03.10.2026'}
         onOpenUpload={() => {
-          if (user?.role !== 'viewer') setIsUploadModalOpen(true);
+          if (user?.role !== 'viewer' && user?.role !== 'idari_isler') setIsUploadModalOpen(true);
         }}
         onOpenLogin={() => setIsLoginModalOpen(true)}
         activeFilterCount={activeFilterCount}
@@ -377,8 +388,8 @@ export default function Home() {
           collapsed ? 'lg:pl-20' : 'lg:pl-60'
         }`}
       >
-        {(activeTab === 'overview' ||
-          (user?.role === 'viewer' && (activeTab === 'gosuslugi' || activeTab === 'database'))) && (
+        {(effectiveTab === 'overview' ||
+          (user?.role === 'viewer' && (effectiveTab === 'gosuslugi' || effectiveTab === 'database'))) && (
           <OverviewView
             stats={stats}
             loading={loadingStats}
@@ -413,59 +424,59 @@ export default function Home() {
           />
         )}
 
-        {activeTab === 'gosuslugi' && user?.role !== 'viewer' && <GosuslugiVksView />}
+        {effectiveTab === 'gosuslugi' && user?.role !== 'viewer' && <GosuslugiVksView />}
 
-        {activeTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
+        {effectiveTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
 
-        {activeTab === 'powerise_tech' && <PoweriseInnovationView />}
+        {effectiveTab === 'powerise_tech' && <PoweriseInnovationView />}
 
-        {activeTab === 'official_real' && <OfficialVsRealView />}
+        {effectiveTab === 'official_real' && <OfficialVsRealView />}
 
-        {activeTab === 'quotas' && <QuotaTrackingView />}
+        {effectiveTab === 'quotas' && <QuotaTrackingView />}
 
-        {activeTab === 'invitations' && <InvitationsTrackingView />}
+        {effectiveTab === 'invitations' && <InvitationsTrackingView />}
 
-        {activeTab === 'travel_tickets' && (
+        {effectiveTab === 'travel_tickets' && (
           <TravelTicketsAdminView
             onOpenAiSettings={() => {
-              if (user?.role !== 'viewer') {
+              if (user?.role !== 'viewer' && user?.role !== 'idari_isler') {
                 setSettingsInitialSubTab('ai_settings');
                 setActiveTab('settings');
               }
             }}
-            onNavigateToPersonnel={handleNavigateToPersonnel}
+            onNavigateToPersonnel={isIdariOnly ? undefined : handleNavigateToPersonnel}
           />
         )}
 
-        {activeTab === 'camp_management' && <CampManagementView />}
+        {effectiveTab === 'camp_management' && <CampManagementView />}
 
-        {activeTab === 'compliance' && (
+        {effectiveTab === 'compliance' && (
           <ComplianceAnalyticsView
             onNavigateToPersonnel={handleNavigateToPersonnel}
             initialSubTab={complianceInitialSubTab}
           />
         )}
 
-        {activeTab === 'personnel' && (
+        {effectiveTab === 'personnel' && (
           <PersonnelListView
             initialFilter={initialFilterForPersonnel}
             onClearInitialFilter={() => setInitialFilterForPersonnel(null)}
           />
         )}
 
-        {activeTab === 'sites' && (
+        {effectiveTab === 'sites' && (
           <SitesView stats={stats} onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
 
-        {activeTab === 'demographics' && (
+        {effectiveTab === 'demographics' && (
           <DemographicsView stats={stats} onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
 
-        {activeTab === 'turnover' && (
+        {effectiveTab === 'turnover' && (
           <ManagementReportsView stats={stats} onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
 
-        {activeTab === 'settings' && user?.role !== 'viewer' && (
+        {effectiveTab === 'settings' && user?.role !== 'viewer' && !isIdariOnly && (
           <SettingsView
             stats={stats}
             onOpenUpload={() => setIsUploadModalOpen(true)}
@@ -474,7 +485,7 @@ export default function Home() {
           />
         )}
 
-        {activeTab === 'database' && user?.role !== 'viewer' && (
+        {effectiveTab === 'database' && user?.role !== 'viewer' && !isIdariOnly && (
           <SettingsView
             stats={stats}
             onOpenUpload={() => setIsUploadModalOpen(true)}
@@ -483,7 +494,7 @@ export default function Home() {
           />
         )}
 
-        {activeTab === 'admin' && user?.role === 'admin' && (
+        {effectiveTab === 'admin' && user?.role === 'admin' && (
           <SettingsView
             stats={stats}
             onOpenUpload={() => setIsUploadModalOpen(true)}
@@ -493,8 +504,8 @@ export default function Home() {
         )}
       </main>
 
-      {/* Excel Upload Modal (disabled for viewer role) */}
-      {user?.role !== 'viewer' && (
+      {/* Excel Upload Modal (disabled for viewer & idari_isler roles) */}
+      {user?.role !== 'viewer' && !isIdariOnly && (
         <ExcelUploadModal
           isOpen={isUploadModalOpen}
           onClose={() => setIsUploadModalOpen(false)}

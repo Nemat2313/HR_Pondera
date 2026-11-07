@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getMoscowTimeParts } from '@/lib/telegramNotifier';
 import { WORK_PERMIT_CASE_SQL } from '@/lib/workPermits';
+import { resolveEffectiveRegion, matchesEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  ensureVksQuarterlyArchiveAndState,
+  getVksQuarterOverview,
+} from '@/lib/vksQuarterManager';
 import {
   getStatusPdfMaps,
   getCachedAnalyticsResponse,
@@ -220,20 +225,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const scopeType = (searchParams.get('scopeType') || 'all').trim();
     const scopeValue = (searchParams.get('scopeValue') || 'all').trim();
+    const requestedQuarter = (searchParams.get('quarter') || '').trim();
     const forceFresh = searchParams.get('fresh') === '1';
-    const respCacheKey = `${scopeType}:${scopeValue}`;
-
-    if (!forceFresh) {
-      const cachedPayload = getCachedAnalyticsResponse(respCacheKey);
-      if (cachedPayload) {
-        return NextResponse.json(cachedPayload);
-      }
-    }
-
-    const hasRlsFilter =
-      (scopeType === 'region' || scopeType === 'project') &&
-      Boolean(scopeValue) &&
-      scopeValue.toLowerCase() !== 'all';
 
     const db = getDb();
     const msk = getMoscowTimeParts();
@@ -425,6 +418,27 @@ export async function GET(request: Request) {
     } catch {}
     }
 
+    ensureVksQuarterlyArchiveAndState(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    const selectedQuarter =
+      requestedQuarter && requestedQuarter !== 'active'
+        ? requestedQuarter
+        : quarterOverview.activeQuarter;
+    const isArchivedQuarter = selectedQuarter !== quarterOverview.activeQuarter;
+    const respCacheKey = `${scopeType}:${scopeValue}:${selectedQuarter}:${quarterOverview.notifications15MinEnabled ? '1' : '0'}`;
+
+    if (!forceFresh) {
+      const cachedPayload = getCachedAnalyticsResponse(respCacheKey);
+      if (cachedPayload) {
+        return NextResponse.json(cachedPayload);
+      }
+    }
+
+    const hasRlsFilter =
+      (scopeType === 'region' || scopeType === 'project') &&
+      Boolean(scopeValue) &&
+      scopeValue.toLowerCase() !== 'all';
+
     // 1. Load & cache active VKS personnel from personnel table using SQLite C-engine json_extract
     // (avoids reading & JSON.parsing ~50MB of all_data_json across 32,725 rows in V8)
     const pVersionRow = db
@@ -498,7 +512,7 @@ export async function GET(request: Request) {
         const guncelLower = String(p.guncel_durum || '').trim().toLowerCase();
         const isActive = ACTIVE_STATUS_SET.has(guncelLower);
         const isVksActive = isVks && isActive;
-        const reg = String(p.region || 'Belirtilmemiş').trim() || 'Belirtilmemiş';
+        const reg = resolveEffectiveRegion(p.region, p.proje_adi, 'Belirtilmemiş');
 
         if (isVksActive) {
           builtTotalTarget++;
@@ -534,9 +548,18 @@ export async function GET(request: Request) {
     const masterWorkerBySicil: Record<string, any> = {};
     const orderedMasterList: Array<{ row_index: number; computer_no: number; sicil_no: string; worker: any }> = [];
     try {
-      const masterRows = db
-        .prepare('SELECT row_order, assigned_computer, sicil_no, worker_json FROM gosuslugi_vks_master_list ORDER BY row_order ASC')
-        .all() as Array<{ row_order: number; assigned_computer: number; sicil_no: string; worker_json: string }>;
+      const masterRows = isArchivedQuarter
+        ? (db
+            .prepare(
+              `SELECT row_order, assigned_computer, sicil_no, worker_json
+               FROM gosuslugi_vks_master_archive
+               WHERE archive_quarter = ?
+               ORDER BY row_order ASC`
+            )
+            .all(selectedQuarter) as Array<{ row_order: number; assigned_computer: number; sicil_no: string; worker_json: string }>)
+        : (db
+            .prepare('SELECT row_order, assigned_computer, sicil_no, worker_json FROM gosuslugi_vks_master_list ORDER BY row_order ASC')
+            .all() as Array<{ row_order: number; assigned_computer: number; sicil_no: string; worker_json: string }>);
       if (masterRows.length > 0) {
         totalTargetVksPersonnel = masterRows.length;
         for (let idx = 0; idx < masterRows.length; idx++) {
@@ -581,13 +604,22 @@ export async function GET(request: Request) {
     };
 
     try {
-      const archRows = db
-        .prepare(
-          `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, archived_at
-           FROM gosuslugi_refused_archive
-           ORDER BY COALESCE(NULLIF(submitted_at, ''), archived_at) ASC, id ASC`
-        )
-        .all() as any[];
+      const archRows = isArchivedQuarter
+        ? (db
+            .prepare(
+              `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, archived_at
+               FROM gosuslugi_refused_quarter_archive
+               WHERE archive_quarter = ?
+               ORDER BY COALESCE(NULLIF(submitted_at, ''), archived_at) ASC, id ASC`
+            )
+            .all(selectedQuarter) as any[])
+        : (db
+            .prepare(
+              `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, archived_at
+               FROM gosuslugi_refused_archive
+               ORDER BY COALESCE(NULLIF(submitted_at, ''), archived_at) ASC, id ASC`
+            )
+            .all() as any[]);
       for (const ar of archRows) {
         const sNo = String(ar.sicil_no || '').trim();
         if (!sNo) continue;
@@ -607,13 +639,22 @@ export async function GET(request: Request) {
     } catch {}
 
     try {
-      const histRows = db
-        .prepare(
-          `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, event_at
-           FROM gosuslugi_submission_history
-           ORDER BY event_at ASC, id ASC`
-        )
-        .all() as any[];
+      const histRows = isArchivedQuarter
+        ? (db
+            .prepare(
+              `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, event_at
+               FROM gosuslugi_history_quarter_archive
+               WHERE archive_quarter = ?
+               ORDER BY event_at ASC, id ASC`
+            )
+            .all(selectedQuarter) as any[])
+        : (db
+            .prepare(
+              `SELECT sicil_no, application_no, gosuslugi_status, status_detail, submitted_at, event_at
+               FROM gosuslugi_submission_history
+               ORDER BY event_at ASC, id ASC`
+            )
+            .all() as any[]);
       for (const hr of histRows) {
         const sNo = String(hr.sicil_no || '').trim();
         if (!sNo) continue;
@@ -648,7 +689,11 @@ export async function GET(request: Request) {
       if (!hasRlsFilter) return true;
       if (!pInfo) return false;
       if (scopeType === 'region') {
-        return pInfo.region.toLowerCase() === scopeValue.toLowerCase();
+        return matchesEffectiveRegion(
+          pInfo.region,
+          pInfo.proje_adi,
+          scopeValue
+        );
       }
       if (scopeType === 'project') {
         return pInfo.proje_adi.toLowerCase() === scopeValue.toLowerCase();
@@ -694,20 +739,35 @@ export async function GET(request: Request) {
     }
 
     // 2. Load all Gosuslugi submissions and deduplicate by sicil_no (preferring Услуга оказана -> non-empty application_no -> latest)
-    const allRawSubs = db
-      .prepare(
-        `SELECT
-          id, sicil_no, worker_name, citizenship, notification_type,
-          period_code, application_no, gosuslugi_status, status_detail,
-          pdf_filename, status_pdf_filename, submitted_at, checked_at, updated_at
-        FROM gosuslugi_submissions
-        WHERE LOWER(notification_type) = 'vks_salary'
-        ORDER BY
-          CASE WHEN gosuslugi_status LIKE '%оказана%' THEN 0 WHEN application_no != '' THEN 1 ELSE 2 END ASC,
-          submitted_at DESC,
-          id DESC`
-      )
-      .all() as any[];
+    const allRawSubs = isArchivedQuarter
+      ? (db
+          .prepare(
+            `SELECT
+              id, sicil_no, worker_name, citizenship, notification_type,
+              period_code, application_no, gosuslugi_status, status_detail,
+              pdf_filename, status_pdf_filename, submitted_at, checked_at, updated_at
+            FROM gosuslugi_submissions_archive
+            WHERE archive_quarter = ? AND LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'
+            ORDER BY
+              CASE WHEN gosuslugi_status LIKE '%оказана%' THEN 0 WHEN application_no != '' THEN 1 ELSE 2 END ASC,
+              submitted_at DESC,
+              id DESC`
+          )
+          .all(selectedQuarter) as any[])
+      : (db
+          .prepare(
+            `SELECT
+              id, sicil_no, worker_name, citizenship, notification_type,
+              period_code, application_no, gosuslugi_status, status_detail,
+              pdf_filename, status_pdf_filename, submitted_at, checked_at, updated_at
+            FROM gosuslugi_submissions
+            WHERE LOWER(notification_type) = 'vks_salary'
+            ORDER BY
+              CASE WHEN gosuslugi_status LIKE '%оказана%' THEN 0 WHEN application_no != '' THEN 1 ELSE 2 END ASC,
+              submitted_at DESC,
+              id DESC`
+          )
+          .all() as any[]);
 
     const { statusPdfByAppNo, statusPdfBySicil, receiptPdfByAppNo, receiptPdfBySicil } = getStatusPdfMaps();
 
@@ -1442,6 +1502,9 @@ export async function GET(request: Request) {
 
     const responsePayload = {
       success: true,
+      selectedQuarter,
+      isArchivedQuarter,
+      quarterOverview,
       moscowTime: `${msk.dateDisplay} ${msk.timeDisplay}`,
       summary: {
         totalTargetVksPersonnel,

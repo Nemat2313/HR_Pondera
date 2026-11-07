@@ -14,7 +14,7 @@ export interface SessionUser {
   id: number;
   name: string;
   email: string;
-  role: 'admin' | 'user' | 'viewer';
+  role: 'admin' | 'user' | 'viewer' | 'idari_isler';
   scope_type: 'all' | 'region' | 'project';
   scope_value: string;
   exp?: number;

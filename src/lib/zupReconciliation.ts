@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { classifyWorkPermitFromRow, buildNormalizedDateSql } from '@/lib/workPermits';
+import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
 
 export interface ZupOfficialRecord {
   id?: number;
@@ -1071,7 +1072,7 @@ export function computeZupVsRealReconciliation(db: any) {
       name: matchedEba.ad_soyad || zr.fio_kiril,
       kiril_name: zr.fio_kiril || matchedEba.tam_adi_kiril || '',
       uyruk: matchedEba.uyruk || zr.citizenship_tr || '—',
-      region: matchedEba.region || 'Belirtilmemiş',
+      region: resolveEffectiveRegion(matchedEba.region, matchedEba.proje_adi, 'Belirtilmemiş'),
       proje_adi: matchedEba.proje_adi || 'Belirtilmemiş',
       firma: matchedEba.firma || 'PONDERA',
       gorev: matchedEba.gorevi || zr.position_ru,
@@ -1137,7 +1138,7 @@ export function computeZupVsRealReconciliation(db: any) {
   > = {};
 
   for (const r of ebaRows) {
-    const reg = r.region || 'Diğer';
+    const reg = resolveEffectiveRegion(r.region, r.proje_adi, 'Diğer');
     const prj = r.proje_adi || reg;
     if (!regionStatsMap[reg]) {
       regionStatsMap[reg] = {
@@ -1223,7 +1224,7 @@ export function computeZupVsRealReconciliation(db: any) {
           name: r.ad_soyad || '—',
           kiril_name: r.tam_adi_kiril || '—',
           uyruk: r.uyruk || '—',
-          region: r.region || '—',
+          region: resolveEffectiveRegion(r.region, r.proje_adi, '—'),
           proje_adi: r.proje_adi || '—',
           firma: r.firma || '—',
           gorev: r.gorevi || '—',

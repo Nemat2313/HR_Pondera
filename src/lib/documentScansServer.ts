@@ -9,6 +9,7 @@ import {
   resolveDocScanColumnIndex,
 } from '@/lib/documentScanDefinitions';
 import { WORK_PERMIT_CASE_SQL, WorkPermitCategoryKey } from '@/lib/workPermits';
+import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
 
 const EMPTY_MASK = '0'.repeat(TOTAL_DOC_SCAN_COLS);
 
@@ -432,8 +433,9 @@ export function getDocumentScansDataset(
   const rlsConditions: string[] = [];
   const rlsParams: any[] = [];
   if (scopeType === 'region' && scopeVal && scopeVal !== 'all') {
-    rlsConditions.push('region = ?');
-    rlsParams.push(scopeVal);
+    const regCond = buildEffectiveRegionSqlCondition(scopeVal);
+    rlsConditions.push(regCond.sql);
+    rlsParams.push(...regCond.params);
   } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
     rlsConditions.push('proje_adi = ?');
     rlsParams.push(scopeVal);
@@ -518,7 +520,7 @@ export function getDocumentScansDataset(
       departman: String(p.departman || '').trim() || '-',
       firma: firmaStr || 'Diğer',
       isMainFirm,
-      region: String(p.region || '').trim() || 'Diğer',
+      region: resolveEffectiveRegion(p.region, p.proje_adi, 'Diğer'),
       projeAdi: String(p.proje_adi || '').trim() || 'Genel',
       uyruk: String(p.uyruk || '').trim().toUpperCase() || 'BELIRTILMEMIS',
       genelDurum: String(p.genel_durum || '').trim() || 'Mevcut',

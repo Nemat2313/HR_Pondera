@@ -64,7 +64,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const validRole = role === 'admin' ? 'admin' : role === 'viewer' ? 'viewer' : 'user';
+    const validRole =
+      role === 'admin'
+        ? 'admin'
+        : role === 'viewer'
+        ? 'viewer'
+        : role === 'idari_isler'
+        ? 'idari_isler'
+        : 'user';
     const validScopeType =
       scope_type === 'all' || scope_type === 'region' || scope_type === 'project'
         ? scope_type
@@ -136,6 +143,8 @@ export async function PATCH(request: Request) {
         ? 'admin'
         : role === 'viewer'
         ? 'viewer'
+        : role === 'idari_isler'
+        ? 'idari_isler'
         : role === 'user'
         ? 'user'
         : existing.role;

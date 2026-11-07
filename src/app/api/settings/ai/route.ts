@@ -89,9 +89,16 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const sessionUser = getSessionUserFromRequest(request);
-    if (sessionUser && sessionUser.role !== 'admin') {
+    if (
+      sessionUser &&
+      sessionUser.role !== 'admin' &&
+      sessionUser.role !== 'idari_isler'
+    ) {
       return NextResponse.json(
-        { success: false, message: 'Bu işlem için Sistem Yöneticisi (Admin) yetkisi gereklidir.' },
+        {
+          success: false,
+          message: 'Bu işlem için Sistem Yöneticisi (Admin) veya İdari İşler yetkisi gereklidir.',
+        },
         { status: 403 }
       );
     }

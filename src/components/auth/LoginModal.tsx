@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import PonderaLogo from '@/components/common/PonderaLogo';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -308,8 +309,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
             {/* Card Header */}
             <div className="relative px-8 pt-8 pb-5 text-center border-b border-slate-200/60">
-              <div className="w-14 h-14 mx-auto mb-3.5 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20">
-                <HardHat className="w-7 h-7" />
+              <div className="flex justify-center mb-3.5">
+                <PonderaLogo variant="full" tone="light-bg" size="lg" />
               </div>
 
               <h2 className="text-xl sm:text-2xl font-normal tracking-tight text-slate-900">
@@ -402,7 +403,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
                   {lang === 'ru' ? 'Защита RLS активна' : 'RLS Güvenlik Katmanı Aktif'}
                 </span>
-                <span className="text-slate-800 font-normal">Pondera v2.6</span>
+                <span className="text-slate-800 font-normal">Pondera v2.8.26</span>
               </div>
             </div>
 

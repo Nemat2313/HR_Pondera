@@ -64,6 +64,7 @@ export default function Topbar({
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (user?.role === 'idari_isler') return;
     fetch('/api/notifications')
       .then((res) => res.json())
       .then((data) => {
@@ -83,7 +84,7 @@ export default function Topbar({
     checkTelegramCron();
     const timer = setInterval(checkTelegramCron, 30000);
     return () => clearInterval(timer);
-  }, []);
+  }, [user?.role]);
 
   // Close menus on outside click
   useEffect(() => {
@@ -122,46 +123,59 @@ export default function Topbar({
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Global Search Input */}
-        <div className="relative w-full max-w-sm sm:max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t('search_placeholder')}
-            className="w-full pl-9 pr-16 sm:pr-20 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                onSearchSubmit('');
-              }}
-              className="absolute right-9 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-          <button
-            onClick={() => onSearchSubmit(searchQuery)}
-            title={t('btn_find')}
-            aria-label={t('btn_find')}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/90 hover:bg-emerald-200/85 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200 rounded-lg transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
-          >
-            <Search className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        {/* Global Search Input (hidden for idari_isler role) */}
+        {user?.role === 'idari_isler' ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sky-50/90 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800/70 text-xs font-semibold text-sky-900 dark:text-sky-200">
+            <span>✈️</span>
+            <span className="truncate">
+              {lang === 'ru'
+                ? 'АХО • Центр авиабилетов и встреч в аэропорту (Табло ТВ)'
+                : 'İdari İşler • Uçuş Biletleri & Havalimanı Karşılama Merkezi'}
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className="relative w-full max-w-sm sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t('search_placeholder')}
+                className="w-full pl-9 pr-16 sm:pr-20 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    onSearchSubmit('');
+                  }}
+                  className="absolute right-9 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                onClick={() => onSearchSubmit(searchQuery)}
+                title={t('btn_find')}
+                aria-label={t('btn_find')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/90 hover:bg-emerald-200/85 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200 rounded-lg transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-        {activeFilterCount > 0 && (
-          <button
-            onClick={onResetFilters}
-            className="hidden md:flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors shrink-0"
-          >
-            <X className="w-3 h-3" />
-            <span>{t('btn_filter')} ({activeFilterCount})</span>
-          </button>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={onResetFilters}
+                className="hidden md:flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors shrink-0"
+              >
+                <X className="w-3 h-3" />
+                <span>{t('btn_filter')} ({activeFilterCount})</span>
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -242,6 +256,7 @@ export default function Topbar({
         )}
 
         {/* Turn Over / Include Exits Toggle */}
+        {user?.role !== 'idari_isler' && (
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-normal">
           <span className={`font-medium ${!includeExits ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-400'}`}>
             {t('status_active')}
@@ -263,8 +278,10 @@ export default function Topbar({
             {t('status_exited')}
           </span>
         </div>
+        )}
 
         {/* Data Freshness Badge */}
+        {user?.role !== 'idari_isler' && (
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-300 rounded-xl text-xs font-medium">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -273,9 +290,10 @@ export default function Topbar({
           <span className="font-medium text-emerald-950 dark:text-emerald-200">{t('label_data_date')}</span>
           <span>{dataFreshness || '03.10.2026'}</span>
         </div>
+        )}
 
-        {/* Excel Upload Button (hidden for viewer role) */}
-        {user?.role !== 'viewer' && (
+        {/* Excel Upload Button (hidden for viewer & idari_isler roles) */}
+        {user?.role !== 'viewer' && user?.role !== 'idari_isler' && (
           <button
             onClick={onOpenUpload}
             className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
@@ -287,6 +305,7 @@ export default function Topbar({
         )}
 
         {/* Notifications Popover */}
+        {user?.role !== 'idari_isler' && (
         <div className="relative" ref={notificationRef}>
           <button
             onClick={() => setShowNotifications(!showNotifications)}
@@ -342,6 +361,7 @@ export default function Topbar({
             </div>
           )}
         </div>
+        )}
 
         {/* User Profile Menu */}
         <div className="relative" ref={profileRef}>
@@ -361,6 +381,10 @@ export default function Topbar({
                   ? lang === 'ru'
                     ? '🛡️ Администратор'
                     : '🛡️ Yönetici'
+                  : user?.role === 'idari_isler'
+                  ? lang === 'ru'
+                    ? '✈️ АХО и Билеты'
+                    : '✈️ İdari İşler'
                   : user?.role === 'viewer'
                   ? lang === 'ru'
                     ? '👁️ Наблюдатель'

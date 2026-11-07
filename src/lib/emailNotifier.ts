@@ -11,6 +11,11 @@ import {
   parseZupWorksheetRows,
   saveZupRecordsToDb,
 } from './zupReconciliation';
+import { resolveEffectiveRegion } from './regionSiteHelper';
+import {
+  ensureVksQuarterlyArchiveAndState,
+  isVks15MinNotificationEnabled,
+} from './vksQuarterManager';
 
 export interface SmtpConfig {
   enabled: boolean;
@@ -691,7 +696,7 @@ function computeLiveComplianceSummary(db: any) {
   try {
     rows = db
       .prepare(
-        `SELECT id, region, uyruk, guncel_durum, pasaport_gecerlilik, vize_bitis_tarihi, propusk_bitis_tarihi, patent_bitis_tarihi, all_data_json
+        `SELECT id, region, proje_adi, uyruk, guncel_durum, pasaport_gecerlilik, vize_bitis_tarihi, propusk_bitis_tarihi, patent_bitis_tarihi, all_data_json
          FROM personnel WHERE guncel_durum IN (${placeholders}) ORDER BY id ASC`
       )
       .all(...activeStatuses) as any[];
@@ -772,7 +777,7 @@ function computeLiveComplianceSummary(db: any) {
         rawJson = JSON.parse(r.all_data_json);
       } catch {}
     }
-    const reg = r.region || 'Diğer';
+    const reg = resolveEffectiveRegion(r.region, r.proje_adi, 'Diğer');
     if (!regionBreakdown[reg]) {
       regionBreakdown[reg] = {
         region: reg,
@@ -1067,7 +1072,7 @@ export function renderCorporateEmailShell(opts: {
             <td bgcolor="${opts.headerBgHex}" style="background-color: ${opts.headerBgHex}; padding: 22px 28px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td>
+                  <td valign="middle">
                     <span style="display: inline-block; padding: 3px 10px; background-color: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22); border-radius: 999px; color: #e2e8f0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;">
                       ${opts.badgeText}
                     </span>
@@ -1077,6 +1082,9 @@ export function renderCorporateEmailShell(opts: {
                     <p style="margin: 0; font-size: 12.5px; color: #cbd5e1; line-height: 1.45;">
                       ${opts.subtitle}
                     </p>
+                  </td>
+                  <td align="right" valign="top" width="150" style="padding-left: 14px;">
+                    <img src="https://hr.pondera.network/pondera-logo-white.png" alt="PONDERA INDUSTRY" width="136" style="display: block; border: 0; max-width: 136px; height: auto;" />
                   </td>
                 </tr>
               </table>
@@ -1430,11 +1438,11 @@ export function buildReportEmailHtml(
         <tbody>${permitRowsHtml}</tbody>
       </table>
 
-      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 3. Bölge Bazlı Resmi (1C ZUP) Çalışma Oranları</h3>
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 3. Şantiye / Bölge Bazlı Resmi (1C ZUP) Çalışma Oranları</h3>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px; font-size: 12px; border: 1px solid #cbd5e1;">
         <thead>
           <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
-            <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Bölge</th>
+            <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Şantiye / Bölge</th>
             <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Real Aktif</th>
             <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Resmide (ZUP)</th>
             <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Ana Eksik</th>
@@ -1599,11 +1607,11 @@ export function buildReportEmailHtml(
         </tbody>
       </table>
 
-      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 2. Bölge / Şantiye Bazlı Evrak Özeti</h3>
+      <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 2. Şantiye / Bölge Bazlı Evrak Özeti</h3>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
         <thead>
           <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
-            <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Bölge</th>
+            <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Şantiye / Bölge</th>
             <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Aktif Kişi</th>
             <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #b91c1c;">Süresi Geçmiş</th>
             <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #c2410c;">Kritik</th>
@@ -1796,11 +1804,11 @@ export function buildReportEmailHtml(
 
   const bodyHtml = `
     ${kpiHtml}
-    <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 Bölge Bazlı Aktif Kadro Dağılımı</h3>
+    <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">🏗 Şantiye / Bölge Bazlı Aktif Kadro Dağılımı</h3>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
       <thead>
         <tr bgcolor="#f1f5f9" style="background-color: #f1f5f9;">
-          <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Bölge</th>
+          <th align="left" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Şantiye / Bölge</th>
           <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">Aktif Personel</th>
           <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">1C ZUP Resmi</th>
           <th align="right" style="padding: 8px 10px; border-bottom: 2px solid #cbd5e1; color: #334155;">İç Transfer</th>
@@ -1929,6 +1937,7 @@ export async function runScheduledEmailReports(force = false): Promise<{
   triggered: Array<{ id: string; ok: boolean; status: string; message: string }>;
 }> {
   const db = getDb();
+  ensureVksQuarterlyArchiveAndState(db);
   const msk = getMoscowClock();
   const smtp = getSmtpConfig(db);
   const triggered: Array<{ id: string; ok: boolean; status: string; message: string }> = [];
@@ -1939,10 +1948,12 @@ export async function runScheduledEmailReports(force = false): Promise<{
 
   const rules = getEmailReportRules(db);
   const currentMinutes = msk.hour * 60 + msk.minute;
+  const vksReportingActive = isVks15MinNotificationEnabled(db);
 
   for (const rule of rules) {
     if (!rule.enabled) continue;
     if (!force && rule.frequency === 'on_upload') continue;
+    if (!force && rule.id === 'vks_gosuslugi' && !vksReportingActive) continue;
 
     if (!force) {
       if (rule.frequency === 'weekdays' && (msk.weekday === 0 || msk.weekday === 6)) {

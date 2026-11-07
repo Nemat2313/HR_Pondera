@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { createPreActionBackup } from '@/lib/backup';
 import { getStatusPdfMaps, invalidateGosuslugiAnalyticsCache } from '@/lib/gosuslugiPdfCache';
+import {
+  ensureVksQuarterlyArchiveAndState,
+  getVksQuarterOverview,
+  getAllArchivedGosuslugiAppNos,
+} from '@/lib/vksQuarterManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -233,6 +238,8 @@ function ensureTables(db: any) {
       } catch {}
     }
   }
+
+  ensureVksQuarterlyArchiveAndState(db);
 }
 
 function isSentSubmission(sub: any): boolean {
@@ -260,7 +267,12 @@ function isErrorSubmission(sub: any): boolean {
   return /^ошибк/i.test(status);
 }
 
-function normalizeIncomingWorker(raw: any, fallbackOrder: number): {
+function normalizeIncomingWorker(
+  raw: any,
+  fallbackOrder: number,
+  defaultPeriodStart = '01.10.2026',
+  defaultPeriodEnd = '31.12.2026'
+): {
   sicilNo: string;
   rowKey: string;
   rowOrder: number;
@@ -307,8 +319,8 @@ function normalizeIncomingWorker(raw: any, fallbackOrder: number): {
     contractDate: String(raw.contractDate ?? raw['ДатаЗаключения'] ?? '').trim(),
     contractStartDate: String(raw.contractStartDate ?? raw['ДатаНачалаДействия'] ?? raw['ДатаНачала действия'] ?? '').trim(),
     contractEndDate: String(raw.contractEndDate ?? raw['ДатаОканчанияДействия'] ?? raw['ДатаОканчания действия'] ?? '').trim(),
-    periodStart: String(raw.periodStart ?? raw['НачалоПериода'] ?? '01.07.2026').trim() || '01.07.2026',
-    periodEnd: String(raw.periodEnd ?? raw['КонецПериода'] ?? '30.09.2026').trim() || '30.09.2026',
+    periodStart: String(raw.periodStart ?? raw['НачалоПериода'] ?? defaultPeriodStart).trim() || defaultPeriodStart,
+    periodEnd: String(raw.periodEnd ?? raw['КонецПериода'] ?? defaultPeriodEnd).trim() || defaultPeriodEnd,
     month1Salary: String(raw.month1Salary ?? raw['1-месяц'] ?? raw['Июль'] ?? '').trim(),
     month2Salary: String(raw.month2Salary ?? raw['2-месяц'] ?? raw['август'] ?? '').trim(),
     month3Salary: String(raw.month3Salary ?? raw['3-месяц'] ?? raw['сентябрь'] ?? '').trim(),
@@ -342,11 +354,52 @@ export async function GET(request: Request) {
     const computerFilter = searchParams.get('computer') || 'all';
     const statusFilter = searchParams.get('status') || 'all';
     const summaryOnly = searchParams.get('summaryOnly') === '1';
+    const requestedQuarter = (searchParams.get('quarter') || '').trim();
 
     const db = getDb();
     ensureTables(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    const selectedQuarter =
+      requestedQuarter && requestedQuarter !== 'active'
+        ? requestedQuarter
+        : quarterOverview.activeQuarter;
+    const isArchivedQuarter = selectedQuarter !== quarterOverview.activeQuarter;
 
-    const masterRows = summaryOnly
+    const masterRows = isArchivedQuarter
+      ? summaryOnly
+        ? (db
+            .prepare(
+              `SELECT row_key, sicil_no, row_order, assigned_computer
+               FROM gosuslugi_vks_master_archive
+               WHERE archive_quarter = ?
+               ORDER BY row_order ASC, row_key ASC`
+            )
+            .all(selectedQuarter) as Array<{
+            row_key: string;
+            sicil_no: string;
+            row_order: number;
+            assigned_computer: number;
+            worker_json?: string;
+            source_tag?: string;
+            updated_at?: string;
+          }>)
+        : (db
+            .prepare(
+              `SELECT row_key, sicil_no, row_order, assigned_computer, worker_json, source_tag, updated_at
+               FROM gosuslugi_vks_master_archive
+               WHERE archive_quarter = ?
+               ORDER BY row_order ASC, row_key ASC`
+            )
+            .all(selectedQuarter) as Array<{
+            row_key: string;
+            sicil_no: string;
+            row_order: number;
+            assigned_computer: number;
+            worker_json: string;
+            source_tag: string;
+            updated_at: string;
+          }>)
+      : summaryOnly
       ? (db
           .prepare(
             'SELECT row_key, sicil_no, row_order, assigned_computer FROM gosuslugi_vks_master_list ORDER BY row_order ASC, row_key ASC'
@@ -372,11 +425,23 @@ export async function GET(request: Request) {
           updated_at: string;
         }>);
 
-    const subRows = db
-      .prepare(
-        `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, status_pdf_filename, submitted_at, checked_at FROM gosuslugi_submissions WHERE LOWER(notification_type) = 'vks_salary' ORDER BY id DESC`
-      )
-      .all() as Array<any>;
+    const subRows = isArchivedQuarter
+      ? (db
+          .prepare(
+            `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, status_pdf_filename, submitted_at, checked_at
+             FROM gosuslugi_submissions_archive
+             WHERE archive_quarter = ? AND LOWER(COALESCE(notification_type, 'vks_salary')) = 'vks_salary'
+             ORDER BY id DESC`
+          )
+          .all(selectedQuarter) as Array<any>)
+      : (db
+          .prepare(
+            `SELECT sicil_no, application_no, gosuslugi_status, pdf_filename, status_pdf_filename, submitted_at, checked_at
+             FROM gosuslugi_submissions
+             WHERE LOWER(notification_type) = 'vks_salary'
+             ORDER BY id DESC`
+          )
+          .all() as Array<any>);
 
     const { statusPdfByAppNo, statusPdfBySicil, receiptPdfByAppNo, receiptPdfBySicil } = getStatusPdfMaps();
 
@@ -539,15 +604,16 @@ export async function GET(request: Request) {
       });
     }
 
-    const archivedRows = db
-      .prepare(`SELECT DISTINCT application_no FROM gosuslugi_refused_archive WHERE application_no != ''`)
-      .all() as Array<{ application_no: string }>;
+    const archivedAppNos = getAllArchivedGosuslugiAppNos(db);
 
     return NextResponse.json({
       success: true,
+      selectedQuarter,
+      isArchivedQuarter,
+      quarterOverview,
       totalMaster: masterRows.length,
       computers: computersSummary,
-      archivedAppNos: archivedRows.map((r) => r.application_no),
+      archivedAppNos,
       summary: {
         total: masterRows.length,
         sent: totalSent,
@@ -602,6 +668,16 @@ export async function POST(request: Request) {
 
     const db = getDb();
     ensureTables(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    if (body?.quarter && String(body.quarter).trim() !== quarterOverview.activeQuarter) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Arşivlenmiş çeyrek verisi salt okunurdur. Lütfen aktif döneme (2026 4. Çeyrek) geçerek yükleme yapın.',
+        },
+        { status: 400 }
+      );
+    }
     invalidateGosuslugiAnalyticsCache();
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
@@ -784,7 +860,12 @@ export async function POST(request: Request) {
     db.exec('BEGIN');
     try {
       rawRecords.forEach((raw: any, idx: number) => {
-        const norm = normalizeIncomingWorker(raw, maxRowOrder + idx + 1);
+        const norm = normalizeIncomingWorker(
+          raw,
+          maxRowOrder + idx + 1,
+          quarterOverview.periodStart,
+          quarterOverview.periodEnd
+        );
         if (!norm) return;
 
         const countForSicil = (seenSicilCounts.get(norm.sicilNo) || 0) + 1;
@@ -1014,6 +1095,16 @@ export async function PATCH(request: Request) {
 
     const db = getDb();
     ensureTables(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    if (body?.quarter && String(body.quarter).trim() !== quarterOverview.activeQuarter) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Arşivlenmiş çeyrek verisi salt okunurdur. Lütfen aktif döneme (2026 4. Çeyrek) geçerek yükleme yapın.',
+        },
+        { status: 400 }
+      );
+    }
     invalidateGosuslugiAnalyticsCache();
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 

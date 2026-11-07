@@ -7,6 +7,11 @@ import {
 } from '@/lib/telegramNotifier';
 import { sendCustomAlertEmail } from '@/lib/emailNotifier';
 import { getStatusPdfMaps, invalidateGosuslugiAnalyticsCache } from '@/lib/gosuslugiPdfCache';
+import {
+  ensureVksQuarterlyArchiveAndState,
+  getVksQuarterOverview,
+  getAllArchivedGosuslugiAppNos,
+} from '@/lib/vksQuarterManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -428,6 +433,7 @@ function ensureTable(db: any) {
   `);
   healSubmissionTimestamps(db);
   reconcileAudit2810(db);
+  ensureVksQuarterlyArchiveAndState(db);
   gState.__ponderaSubmissionsEnsured = true;
 }
 
@@ -437,18 +443,29 @@ export async function GET(request: Request) {
     const notificationType = searchParams.get('type') || '';
     const periodCode = searchParams.get('periodCode') || '';
     const sicilNo = searchParams.get('sicil') || '';
+    const requestedQuarter = (searchParams.get('quarter') || '').trim();
 
     const db = getDb();
     ensureTable(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    const selectedQuarter =
+      requestedQuarter && requestedQuarter !== 'active'
+        ? requestedQuarter
+        : quarterOverview.activeQuarter;
+    const isArchivedQuarter = selectedQuarter !== quarterOverview.activeQuarter;
 
     const conditions: string[] = [];
     const params: any[] = [];
 
+    if (isArchivedQuarter) {
+      conditions.push('archive_quarter = ?');
+      params.push(selectedQuarter);
+    }
     if (notificationType) {
       conditions.push('LOWER(notification_type) = LOWER(?)');
       params.push(notificationType);
     }
-    if (periodCode) {
+    if (periodCode && !isArchivedQuarter) {
       conditions.push('(period_code = ? OR period_code = "")');
       params.push(periodCode);
     }
@@ -458,8 +475,9 @@ export async function GET(request: Request) {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const tableName = isArchivedQuarter ? 'gosuslugi_submissions_archive' : 'gosuslugi_submissions';
     const rows = db
-      .prepare(`SELECT * FROM gosuslugi_submissions ${whereClause} ORDER BY submitted_at DESC, id DESC`)
+      .prepare(`SELECT * FROM ${tableName} ${whereClause} ORDER BY submitted_at DESC, id DESC`)
       .all(...params) as any[];
 
     const { statusPdfByAppNo, statusPdfBySicil, receiptPdfByAppNo, receiptPdfBySicil } = getStatusPdfMaps();
@@ -499,14 +517,15 @@ export async function GET(request: Request) {
         ].find((cand) => Boolean(cand) && doesPdfMatchApp(cand, appNo)) || '';
     }
 
-    const archivedRows = db
-      .prepare(`SELECT DISTINCT application_no FROM gosuslugi_refused_archive WHERE application_no != ''`)
-      .all() as Array<{ application_no: string }>;
+    const archivedAppNos = getAllArchivedGosuslugiAppNos(db);
 
     return NextResponse.json({
       success: true,
+      selectedQuarter,
+      isArchivedQuarter,
+      quarterOverview,
       data: rows,
-      archivedAppNos: archivedRows.map((r) => r.application_no),
+      archivedAppNos,
     });
   } catch {
     return NextResponse.json(
@@ -533,6 +552,19 @@ export async function POST(request: Request) {
 
     const db = getDb();
     ensureTable(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    const archivedQuarterCodes = new Set(quarterOverview.archives.map((a) => a.quarter_code));
+    const checkQuarterArchiveByAppStmt = db.prepare(
+      `SELECT id, gosuslugi_status FROM gosuslugi_submissions_archive WHERE application_no = ? AND application_no != '' LIMIT 1`
+    );
+    const updateQuarterArchiveByAppStmt = db.prepare(
+      `UPDATE gosuslugi_submissions_archive
+       SET gosuslugi_status = CASE WHEN ? = 'Услуга оказана' THEN 'Услуга оказана' ELSE gosuslugi_status END,
+           pdf_filename = COALESCE(NULLIF(?, ''), pdf_filename),
+           status_pdf_filename = COALESCE(NULLIF(?, ''), status_pdf_filename),
+           checked_at = COALESCE(NULLIF(?, ''), checked_at)
+       WHERE application_no = ? AND application_no != ''`
+    );
     invalidateGosuslugiAnalyticsCache();
 
     const nowStr = getMoscowNowIso();
@@ -812,7 +844,8 @@ export async function POST(request: Request) {
       }
 
       const notifType = String(item.notification_type || item.notificationType || 'vks_salary').trim().toLowerCase();
-      const periodCode = String(item.period_code || item.periodCode || '2026-3').trim() || '2026-3';
+      const rawItemPeriod = String(item.period_code || item.periodCode || '').trim();
+      const periodCode = rawItemPeriod || quarterOverview.activeQuarter;
       const workerName = String(item.worker_name || item.workerName || '')
         .replace(/^\d+[а-яА-Яa-zA-Z]?\s+/, '')
         .trim();
@@ -821,6 +854,33 @@ export async function POST(request: Request) {
 
       if (appNo === '8324568212' || (sicil && appNo && BLOCKED_MISMATCHED_APP_BY_SICIL[sicil] === appNo)) {
         continue;
+      }
+
+      // Guard against stale local RPA bridge / Mail.ru re-posting archived quarter (e.g. 2026-3) records into active 2026-4
+      if (notifType === 'vks_salary') {
+        const archivedQMatch = appNo
+          ? (checkQuarterArchiveByAppStmt.get(appNo) as { id: number; gosuslugi_status: string } | undefined)
+          : undefined;
+        if (archivedQMatch || (rawItemPeriod && archivedQuarterCodes.has(rawItemPeriod))) {
+          if (archivedQMatch && appNo) {
+            const incomingReceiptPdf =
+              rawPdfCheck && !rawPdfCheck.toUpperCase().includes('_STATUS_A4') ? rawPdfCheck : '';
+            const incomingStatusPdf = String(
+              item.status_pdf_filename ||
+                item.statusPdfFilename ||
+                (rawPdfCheck.toUpperCase().includes('_STATUS_A4') ? rawPdfCheck : '')
+            ).trim();
+            const incomingChk = String(item.checked_at || item.checkedAt || '').trim();
+            updateQuarterArchiveByAppStmt.run(
+              normalizedStatus,
+              incomingReceiptPdf,
+              incomingStatusPdf,
+              incomingChk,
+              appNo
+            );
+          }
+          continue;
+        }
       }
 
       const existingRow = sicil
@@ -1350,7 +1410,6 @@ export async function PATCH(request: Request) {
     const db = getDb();
     ensureTable(db);
     invalidateGosuslugiAnalyticsCache();
-    invalidateGosuslugiAnalyticsCache();
 
     const nowStr = getMoscowNowIso();
 
@@ -1393,6 +1452,15 @@ export async function PATCH(request: Request) {
       WHERE application_no = ? AND application_no != ''
       LIMIT 1
     `);
+    const checkQuarterArchiveByAppStmt = db.prepare(
+      `SELECT id FROM gosuslugi_submissions_archive WHERE application_no = ? AND application_no != '' LIMIT 1`
+    );
+    const updateQuarterArchiveByAppStmt = db.prepare(
+      `UPDATE gosuslugi_submissions_archive
+       SET gosuslugi_status = CASE WHEN ? = 'Услуга оказана' THEN 'Услуга оказана' ELSE gosuslugi_status END,
+           checked_at = COALESCE(NULLIF(?, ''), checked_at)
+       WHERE application_no = ? AND application_no != ''`
+    );
 
     const checkArchivedSicilStmt = db.prepare(`
       SELECT MAX(archived_at) AS max_archived_at,
@@ -1416,6 +1484,11 @@ export async function PATCH(request: Request) {
         const res = byAppNoStmt.run(status, status, detail, nowStr, appNo);
         if (res.changes > 0) {
           updated += res.changes;
+          continue;
+        }
+        if (checkQuarterArchiveByAppStmt.get(appNo)) {
+          updateQuarterArchiveByAppStmt.run(status, nowStr, appNo);
+          updated += 1;
           continue;
         }
       }
@@ -1451,6 +1524,19 @@ export async function DELETE(request: Request) {
 
     const db = getDb();
     ensureTable(db);
+    const quarterOverview = getVksQuarterOverview(db);
+    const archivedQuarterCodes = new Set(quarterOverview.archives.map((a) => a.quarter_code));
+    const checkQuarterArchiveByAppStmt = db.prepare(
+      `SELECT id, gosuslugi_status FROM gosuslugi_submissions_archive WHERE application_no = ? AND application_no != '' LIMIT 1`
+    );
+    const updateQuarterArchiveByAppStmt = db.prepare(
+      `UPDATE gosuslugi_submissions_archive
+       SET gosuslugi_status = CASE WHEN ? = 'Услуга оказана' THEN 'Услуга оказана' ELSE gosuslugi_status END,
+           pdf_filename = COALESCE(NULLIF(?, ''), pdf_filename),
+           status_pdf_filename = COALESCE(NULLIF(?, ''), status_pdf_filename),
+           checked_at = COALESCE(NULLIF(?, ''), checked_at)
+       WHERE application_no = ? AND application_no != ''`
+    );
     invalidateGosuslugiAnalyticsCache();
     const nowStr = getMoscowNowIso();
 

@@ -41,7 +41,7 @@ interface SitesViewProps {
 export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewProps) {
   const { lang, t, translateVal } = useLanguage();
   const [viewMode, setViewMode] = useState<'treemap' | 'stacked'>('treemap');
-  const [activeRegionKey, setActiveRegionKey] = useState<string>('Kazan');
+  const [activeRegionKey, setActiveRegionKey] = useState<string>('NHNK mPE-300');
   const [drillModal, setDrillModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -57,7 +57,7 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
   const regions = stats?.regionDistribution || [];
   const total = stats?.totalCount || 0;
 
-  // Rich metadata for all regions and connected industrial projects
+  // Rich metadata for all sites and industrial regions (Kazan broken down into individual sites)
   const siteCatalog: Record<
     string,
     {
@@ -71,22 +71,94 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
       projects: { name: string; count: number; desc: string }[];
     }
   > = {
-    Kazan: {
-      city: lang === 'ru' ? 'Республика Татарстан, Россия' : 'Tataristan Cumhuriyeti, Rusya',
+    'NHNK mPE-300': {
+      city: lang === 'ru' ? 'Нижнекамск, Республика Татарстан' : 'Nijnekamsk, Tataristan Cumhuriyeti',
       desc:
         lang === 'ru'
-          ? 'Казанский катализатор и Нижнекамский нефтехимический кластер промышленного строительства.'
-          : 'Kazan Katalizör & Nizhnekamsk Petrokimya mega inşaat ve mekanik montaj kümesi.',
+          ? 'Основной блок установки полиэтилена 300 KTA Нижнекамскнефтехим — строительно-монтажные работы.'
+          : 'Nizhnekamskneftekhim 300 KTA Polietilen Tesisi Ana Ünite mekanik, borulama ve inşaat sahası.',
       collarWhitePct: 14,
       collarBluePct: 86,
-      expatPct: 58,
+      expatPct: 60,
       color: '#0d9488',
       gradient: 'from-teal-600 to-emerald-600',
       projects: [
-        { name: 'NHNK mPE-300', count: 1420, desc: lang === 'ru' ? 'Основной блок установки полиэтилена 300 KTA' : '300 KTA Polietilen Tesisi Ana Ünite' },
-        { name: 'Kazan Katalizor', count: 480, desc: lang === 'ru' ? 'Завод по производству нефтехимических катализаторов' : 'Petrokimyasal Katalizör Üretim Tesisi' },
-        { name: 'Nizhnekamsk Polisterol', count: 250, desc: lang === 'ru' ? 'Проект расширения полистирола' : 'Polistiren Genişleme Projesi' },
-        { name: 'NHNK SKLAD PROPILEN', count: 108, desc: lang === 'ru' ? 'Логистический комплекс хранения пропилена' : 'Propilen Depolama ve Lojistik Sahası' },
+        { name: 'NHNK mPE-300', count: 1622, desc: lang === 'ru' ? 'Основной блок установки полиэтилена 300 KTA' : '300 KTA Polietilen Tesisi Ana Ünite' },
+      ],
+    },
+    'Kazan Katalizor': {
+      city: lang === 'ru' ? 'г. Казань, Республика Татарстан' : 'Kazan, Tataristan Cumhuriyeti',
+      desc:
+        lang === 'ru'
+          ? 'Казанский завод по производству нефтехимических катализаторов СИБУР.'
+          : 'Kazan SIBUR Petrokimyasal Katalizör Üretim Tesisi mega inşaat projesi.',
+      collarWhitePct: 15,
+      collarBluePct: 85,
+      expatPct: 56,
+      color: '#059669',
+      gradient: 'from-emerald-600 to-teal-600',
+      projects: [
+        { name: 'Kazan Katalizor', count: 841, desc: lang === 'ru' ? 'Завод по производству нефтехимических катализаторов' : 'Petrokimyasal Katalizör Üretim Tesisi' },
+      ],
+    },
+    'Nizhnekamsk Polisterol': {
+      city: lang === 'ru' ? 'Нижнекамск, Республика Татарстан' : 'Nijnekamsk, Tataristan Cumhuriyeti',
+      desc:
+        lang === 'ru'
+          ? 'Проект расширения производства полистирола и технологических эстакад в Нижнекамске.'
+          : 'Nijnekamsk Polistiren Üretim Genişleme ve Endüstriyel Boru Köprüsü Projesi.',
+      collarWhitePct: 13,
+      collarBluePct: 87,
+      expatPct: 58,
+      color: '#0f766e',
+      gradient: 'from-teal-700 to-cyan-600',
+      projects: [
+        { name: 'Nizhnekamsk Polisterol', count: 804, desc: lang === 'ru' ? 'Проект расширения полистирола' : 'Polistiren Genişleme Projesi' },
+      ],
+    },
+    'NHNK SKLAD PROPILEN': {
+      city: lang === 'ru' ? 'Нижнекамск, Республика Татарстан' : 'Nijnekamsk, Tataristan Cumhuriyeti',
+      desc:
+        lang === 'ru'
+          ? 'Логистический и резервуарный комплекс хранения пропилена НКНХ.'
+          : 'NKNH Propilen Depolama Tankları ve Lojistik Kompleksi.',
+      collarWhitePct: 12,
+      collarBluePct: 88,
+      expatPct: 55,
+      color: '#0891b2',
+      gradient: 'from-cyan-600 to-teal-600',
+      projects: [
+        { name: 'NHNK SKLAD PROPILEN', count: 556, desc: lang === 'ru' ? 'Логистический комплекс хранения пропилена' : 'Propilen Depolama ve Lojistik Sahası' },
+      ],
+    },
+    'SIBUR Nijnekamsk': {
+      city: lang === 'ru' ? 'Нижнекамск, Республика Татарстан' : 'Nijnekamsk, Tataristan Cumhuriyeti',
+      desc:
+        lang === 'ru'
+          ? 'Промышленные объекты СИБУР Нижнекамск — общезаводское хозяйство и монтаж.'
+          : 'SIBUR Nijnekamsk Endüstriyel Tesis ve Yardımcı Üniteler Sahası.',
+      collarWhitePct: 18,
+      collarBluePct: 82,
+      expatPct: 52,
+      color: '#0284c7',
+      gradient: 'from-sky-600 to-cyan-600',
+      projects: [
+        { name: 'SIBUR Nijnekamsk', count: 101, desc: lang === 'ru' ? 'Площадка СИБУР Нижнекамск' : 'SIBUR Nijnekamsk Sahası' },
+      ],
+    },
+    'Kazan (Merkez)': {
+      city: lang === 'ru' ? 'г. Казань, Республика Татарстан' : 'Kazan Bölge Koordinasyon, Tataristan',
+      desc:
+        lang === 'ru'
+          ? 'Региональный координационный и административный центр проектов Татарстана.'
+          : 'Tataristan şantiyeleri idari, lojistik ve bölge koordinasyon kadrosu.',
+      collarWhitePct: 42,
+      collarBluePct: 58,
+      expatPct: 48,
+      color: '#14b8a6',
+      gradient: 'from-teal-500 to-emerald-500',
+      projects: [
+        { name: 'Kazan', count: 120, desc: lang === 'ru' ? 'Координационный офис Казань' : 'Kazan Bölge Koordinasyon' },
       ],
     },
     'Svobodny-AGHK': {

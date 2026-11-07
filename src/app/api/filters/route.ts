@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { EFFECTIVE_REGION_SQL } from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,11 +9,16 @@ export async function GET() {
   try {
     const db = getDb();
 
-    // Distinct regions
+    // Distinct regions (with Kazan split into individual sites)
     const regions = db
-      .prepare(`SELECT DISTINCT region FROM personnel WHERE region != '' ORDER BY region ASC`)
+      .prepare(
+        `SELECT DISTINCT (${EFFECTIVE_REGION_SQL}) AS eff_region
+         FROM personnel
+         WHERE COALESCE(TRIM(region), '') != ''
+         ORDER BY eff_region ASC`
+      )
       .all()
-      .map((r: any) => r.region);
+      .map((r: any) => r.eff_region);
 
     // Distinct projects
     const projects = db

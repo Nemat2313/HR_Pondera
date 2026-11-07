@@ -36,22 +36,31 @@ export default function UserManagementView() {
     statuses: [],
   });
 
+  const IDARI_HUB_OPTIONS = [
+    'Moskova',
+    'Kazan',
+    'Svobodny-AGHK',
+    'Tobolsk',
+    'Ust Luga',
+    'Nijniy Novgorod',
+  ];
+
   // Form State
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
-    role: 'viewer' as 'admin' | 'user' | 'viewer',
+    role: 'viewer' as 'admin' | 'user' | 'viewer' | 'idari_isler',
     scope_type: 'region' as 'all' | 'region' | 'project',
-    scope_value: 'Kazan',
+    scope_value: 'NHNK mPE-300',
   });
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editFormData, setEditFormData] = useState({
     name: '',
     password: '',
-    role: 'viewer' as 'admin' | 'user' | 'viewer',
+    role: 'viewer' as 'admin' | 'user' | 'viewer' | 'idari_isler',
     scope_type: 'region' as 'all' | 'region' | 'project',
-    scope_value: 'Kazan',
+    scope_value: 'NHNK mPE-300',
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -355,22 +364,28 @@ export default function UserManagementView() {
                       <span
                         className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${u.role === 'admin'
                           ? 'bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
-                          : u.role === 'viewer'
-                            ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                          : u.role === 'idari_isler'
+                            ? 'bg-sky-50 dark:bg-sky-500/20 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-500/30'
+                            : u.role === 'viewer'
+                              ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                           }`}
                       >
                         {u.role === 'admin'
                           ? lang === 'ru'
                             ? '🛡️ Администратор'
                             : '🛡️ Admin'
-                          : u.role === 'viewer'
+                          : u.role === 'idari_isler'
                             ? lang === 'ru'
-                              ? '👁️ Наблюдатель (Viewer)'
-                              : '👁️ Gözlemci (Viewer)'
-                            : lang === 'ru'
-                              ? '👤 Пользователь'
-                              : '👤 Kullanıcı'}
+                              ? '✈️ АХО и Билеты (TV)'
+                              : '✈️ İdari İşler & AI Bilet'
+                            : u.role === 'viewer'
+                              ? lang === 'ru'
+                                ? '👁️ Наблюдатель (Viewer)'
+                                : '👁️ Gözlemci (Viewer)'
+                              : lang === 'ru'
+                                ? '👤 Пользователь'
+                                : '👤 Kullanıcı'}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -512,15 +527,24 @@ export default function UserManagementView() {
                   <select
                     value={formData.role}
                     onChange={(e) => {
-                      const newRole = e.target.value as 'admin' | 'user' | 'viewer';
+                      const newRole = e.target.value as 'admin' | 'user' | 'viewer' | 'idari_isler';
                       setFormData({
                         ...formData,
                         role: newRole,
-                        scope_type: newRole === 'admin' ? 'all' : formData.scope_type,
+                        scope_type: newRole === 'admin' ? 'all' : newRole === 'idari_isler' ? 'region' : formData.scope_type,
+                        scope_value:
+                          newRole === 'admin'
+                            ? 'all'
+                            : newRole === 'idari_isler'
+                              ? 'Moskova'
+                              : formData.scope_value,
                       });
                     }}
                     className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
+                    <option value="idari_isler" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '✈️ АХО и ИИ-Билеты (Табло ТВ)' : '✈️ İdari İşler & AI Bilet'}
+                    </option>
                     <option value="viewer" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? '👁️ Наблюдатель (Viewer)' : '👁️ Gözlemci (Viewer)'}
                     </option>
@@ -545,7 +569,9 @@ export default function UserManagementView() {
                         scope_type: e.target.value as any,
                         scope_value:
                           e.target.value === 'region'
-                            ? filterOptions.regions[0] || 'Kazan'
+                            ? formData.role === 'idari_isler'
+                              ? 'Moskova'
+                              : filterOptions.regions[0] || 'NHNK mPE-300'
                             : e.target.value === 'project'
                               ? filterOptions.projects[0] || 'DGP-02'
                               : 'all',
@@ -555,7 +581,13 @@ export default function UserManagementView() {
                     className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60"
                   >
                     <option value="region" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {lang === 'ru' ? 'По региону / участку' : 'Bölge / Şantiye Bazlı'}
+                      {formData.role === 'idari_isler'
+                        ? lang === 'ru'
+                          ? 'По хабу / городу (Москва / Казань)'
+                          : 'Karşılama Merkezi / Şehir Bazlı'
+                        : lang === 'ru'
+                          ? 'По региону / участку'
+                          : 'Bölge / Şantiye Bazlı'}
                     </option>
                     <option value="project" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? 'По проекту' : 'Proje Bazlı'}
@@ -566,6 +598,48 @@ export default function UserManagementView() {
                   </select>
                 </div>
               </div>
+
+              {formData.role === 'idari_isler' && (
+                <div className="p-3 rounded-xl bg-sky-50/90 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800/70 text-[11px] text-sky-950 dark:text-sky-200 space-y-1.5 leading-relaxed">
+                  <p className="font-bold">✈️ İdari İşler & AI Bilet Rolü Yetkileri:</p>
+                  <p>
+                    • Yalnızca <strong>İdari İşler & AI Bilet</strong>, <strong>29 Kolonlu Bilet Tablosu</strong> ve <strong>Havalimanı Karşılama TV Panosu</strong> ekranlarına erişir.
+                  </p>
+                  <p>
+                    • İK personel listesi, maaş/bordro, Gosuslugi RPA ve sistem ayarları ekranlarını <strong>kesinlikle göremez</strong>.
+                  </p>
+                  <div className="pt-1 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          name: formData.name || 'Moskova İdari İşler',
+                          scope_type: 'region',
+                          scope_value: 'Moskova',
+                        })
+                      }
+                      className="px-2 py-1 rounded-lg bg-sky-600 text-white font-semibold text-[10px] cursor-pointer hover:bg-sky-700"
+                    >
+                      Hızlı Seç: Moskova Karşılama
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          name: formData.name || 'Kazan İdari İşler (TV)',
+                          scope_type: 'region',
+                          scope_value: 'Kazan',
+                        })
+                      }
+                      className="px-2 py-1 rounded-lg bg-emerald-600 text-white font-semibold text-[10px] cursor-pointer hover:bg-emerald-700"
+                    >
+                      Hızlı Seç: Kazan Karşılama (TV)
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {formData.role === 'viewer' && (
                 <div className="p-3 rounded-xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 text-[11px] text-amber-900 dark:text-amber-200 space-y-1 leading-relaxed">
@@ -587,9 +661,11 @@ export default function UserManagementView() {
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
                     {formData.scope_type === 'region'
-                      ? lang === 'ru'
-                        ? 'Назначаемый регион'
-                        : 'Atanacak Bölge (Region)'
+                      ? formData.role === 'idari_isler'
+                        ? 'Varsayılan Karşılama Merkezi / Bölge'
+                        : lang === 'ru'
+                          ? 'Назначаемый участок / регион'
+                          : 'Atanacak Şantiye / Bölge'
                       : lang === 'ru'
                         ? 'Назначаемый проект'
                         : 'Atanacak Proje'}
@@ -600,16 +676,21 @@ export default function UserManagementView() {
                     className="w-full px-3 py-2 text-xs bg-indigo-50/70 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-500/40 rounded-xl font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
                     {formData.scope_type === 'region'
-                      ? filterOptions.regions.map((r) => (
-                        <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                          {r}
-                        </option>
-                      ))
+                      ? Array.from(
+                          new Set([
+                            ...(formData.role === 'idari_isler' ? IDARI_HUB_OPTIONS : []),
+                            ...filterOptions.regions,
+                          ])
+                        ).map((r) => (
+                          <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {r}
+                          </option>
+                        ))
                       : filterOptions.projects.map((p) => (
-                        <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                          {p}
-                        </option>
-                      ))}
+                          <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {p}
+                          </option>
+                        ))}
                   </select>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
                     {lang === 'ru'
@@ -723,15 +804,24 @@ export default function UserManagementView() {
                   <select
                     value={editFormData.role}
                     onChange={(e) => {
-                      const newRole = e.target.value as 'admin' | 'user' | 'viewer';
+                      const newRole = e.target.value as 'admin' | 'user' | 'viewer' | 'idari_isler';
                       setEditFormData({
                         ...editFormData,
                         role: newRole,
-                        scope_type: newRole === 'admin' ? 'all' : editFormData.scope_type,
+                        scope_type: newRole === 'admin' ? 'all' : newRole === 'idari_isler' ? 'region' : editFormData.scope_type,
+                        scope_value:
+                          newRole === 'admin'
+                            ? 'all'
+                            : newRole === 'idari_isler' && !IDARI_HUB_OPTIONS.includes(editFormData.scope_value)
+                              ? 'Moskova'
+                              : editFormData.scope_value,
                       });
                     }}
                     className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
+                    <option value="idari_isler" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '✈️ АХО и ИИ-Билеты (Табло ТВ)' : '✈️ İdari İşler & AI Bilet'}
+                    </option>
                     <option value="viewer" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? '👁️ Наблюдатель (Viewer)' : '👁️ Gözlemci (Viewer)'}
                     </option>
@@ -756,7 +846,9 @@ export default function UserManagementView() {
                         scope_type: e.target.value as any,
                         scope_value:
                           e.target.value === 'region'
-                            ? filterOptions.regions[0] || 'Kazan'
+                            ? editFormData.role === 'idari_isler'
+                              ? 'Moskova'
+                              : filterOptions.regions[0] || 'NHNK mPE-300'
                             : e.target.value === 'project'
                               ? filterOptions.projects[0] || 'DGP-02'
                               : 'all',
@@ -766,7 +858,11 @@ export default function UserManagementView() {
                     className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60"
                   >
                     <option value="region" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {lang === 'ru' ? 'По региону / участку' : 'Bölge / Şantiye Bazlı'}
+                      {editFormData.role === 'idari_isler'
+                        ? 'Karşılama Merkezi / Şehir Bazlı'
+                        : lang === 'ru'
+                          ? 'По региону / участку'
+                          : 'Bölge / Şantiye Bazlı'}
                     </option>
                     <option value="project" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? 'По проекту' : 'Proje Bazlı'}
@@ -777,6 +873,15 @@ export default function UserManagementView() {
                   </select>
                 </div>
               </div>
+
+              {editFormData.role === 'idari_isler' && (
+                <div className="p-3 rounded-xl bg-sky-50/90 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800/70 text-[11px] text-sky-950 dark:text-sky-200 space-y-1 leading-relaxed">
+                  <p className="font-bold">✈️ İdari İşler & AI Bilet Rolü Yetkileri:</p>
+                  <p>
+                    • Sadece <strong>İdari İşler & AI Bilet</strong> ve <strong>Havalimanı Karşılama TV Panosu</strong> modülüne erişir; İK modülleri tamamen gizlidir.
+                  </p>
+                </div>
+              )}
 
               {editFormData.role === 'viewer' && (
                 <div className="p-3 rounded-xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 text-[11px] text-amber-900 dark:text-amber-200 space-y-1 leading-relaxed">
@@ -797,9 +902,11 @@ export default function UserManagementView() {
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
                     {editFormData.scope_type === 'region'
-                      ? lang === 'ru'
-                        ? 'Назначаемый регион'
-                        : 'Atanacak Bölge (Region)'
+                      ? editFormData.role === 'idari_isler'
+                        ? 'Varsayılan Karşılama Merkezi / Bölge'
+                        : lang === 'ru'
+                          ? 'Назначаемый участок / регион'
+                          : 'Atanacak Şantiye / Bölge'
                       : lang === 'ru'
                         ? 'Назначаемый проект'
                         : 'Atanacak Proje'}
@@ -810,16 +917,21 @@ export default function UserManagementView() {
                     className="w-full px-3 py-2 text-xs bg-indigo-50/70 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-500/40 rounded-xl font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
                     {editFormData.scope_type === 'region'
-                      ? filterOptions.regions.map((r) => (
-                        <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                          {r}
-                        </option>
-                      ))
+                      ? Array.from(
+                          new Set([
+                            ...(editFormData.role === 'idari_isler' ? IDARI_HUB_OPTIONS : []),
+                            ...filterOptions.regions,
+                          ])
+                        ).map((r) => (
+                          <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {r}
+                          </option>
+                        ))
                       : filterOptions.projects.map((p) => (
-                        <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                          {p}
-                        </option>
-                      ))}
+                          <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {p}
+                          </option>
+                        ))}
                   </select>
                 </div>
               )}

@@ -56,7 +56,7 @@ export default function PowerBIRankedRegionBars({
           <div className="flex items-center gap-2">
             <MapPin className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             <h3 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white">
-              {lang === 'ru' ? 'Распределение сотрудников по регионам' : 'Bölgelere Göre Çalışan Dağılımı'}
+              {lang === 'ru' ? 'Распределение сотрудников по объектам и регионам' : 'Şantiye & Bölgelere Göre Çalışan Dağılımı'}
             </h3>
           </div>
           <div className="flex items-center gap-2">
@@ -81,17 +81,17 @@ export default function PowerBIRankedRegionBars({
           </div>
         </div>
 
-        <div className="h-64 w-full">
+        <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={regionData} margin={{ top: 25, right: 15, left: -20, bottom: 25 }}>
+            <BarChart data={regionData} margin={{ top: 24, right: 15, left: -20, bottom: 42 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#94A3B8" strokeOpacity={0.2} vertical={false} />
               <XAxis
                 dataKey="label"
                 stroke="#64748B"
-                fontSize={10}
+                fontSize={9.5}
                 tickLine={false}
                 interval={0}
-                angle={-15}
+                angle={-26}
                 textAnchor="end"
               />
               <YAxis stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} />
@@ -243,9 +243,9 @@ export default function PowerBIRankedRegionBars({
         )}
 
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-          <span>{lang === 'ru' ? 'Казань и Свободный — крупнейшие стройплощадки' : 'Kazan (4 şantiye) ve Svobodny en büyük bölgelerdir'}</span>
+          <span>{lang === 'ru' ? 'NHNK mPE-300, Свободный и Тобольск — крупнейшие объекты' : 'NHNK mPE-300, Svobodny ve Tobolsk en büyük sahalardır'}</span>
           <span className="text-teal-600 dark:text-teal-400 font-semibold">
-            {regionData.length} {lang === 'ru' ? 'активных регионов' : 'Aktif Bölge'}
+            {regionData.length} {lang === 'ru' ? 'активных объектов' : 'Aktif Şantiye & Bölge'}
           </span>
         </div>
       </div>

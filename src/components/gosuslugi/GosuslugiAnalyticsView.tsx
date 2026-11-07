@@ -23,6 +23,10 @@ import {
   Users,
   Info,
   ArrowRight,
+  Bell,
+  BellOff,
+  Archive,
+  Calendar,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -179,8 +183,39 @@ interface EnrichedSubmission {
   errorStepLabel: string | null;
 }
 
+interface QuarterArchiveMeta {
+  quarter_code: string;
+  quarter_label: string;
+  period_start: string;
+  period_end: string;
+  master_count: number;
+  sent_count: number;
+  completed_count: number;
+  refused_count: number;
+  error_count: number;
+  archived_at: string;
+}
+
+interface VksQuarterOverviewInfo {
+  activeQuarter: string;
+  activeLabelTr: string;
+  activeLabelRu: string;
+  shortLabelTr: string;
+  shortLabelRu: string;
+  periodStart: string;
+  periodEnd: string;
+  nextQuarterCode: string;
+  notifications15MinEnabled: boolean;
+  activeMasterCount: number;
+  activeSentCount: number;
+  archives: QuarterArchiveMeta[];
+}
+
 interface AnalyticsResponse {
   success: boolean;
+  selectedQuarter?: string;
+  isArchivedQuarter?: boolean;
+  quarterOverview?: VksQuarterOverviewInfo;
   moscowTime: string;
   summary: {
     totalTargetVksPersonnel: number;
@@ -229,6 +264,9 @@ export default function GosuslugiAnalyticsView() {
   const [reopeningError, setReopeningError] = useState<string | null>(null);
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null);
   const [showRefusalFindings, setShowRefusalFindings] = useState<boolean>(false);
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('active');
+  const [toggling15Min, setToggling15Min] = useState<boolean>(false);
+  const [archivingQuarter, setArchivingQuarter] = useState<boolean>(false);
 
   // 4 Equal-Width Window Tabs: 'analytics' | 'master3088' | 'refusals' | 'errors'
   const [activeMainTab, setActiveMainTab] = useState<MainTabType>('analytics');
@@ -275,6 +313,9 @@ export default function GosuslugiAnalyticsView() {
         params.set('scopeType', user.scope_type);
         params.set('scopeValue', user.scope_value);
       }
+      if (selectedQuarter && selectedQuarter !== 'active') {
+        params.set('quarter', selectedQuarter);
+      }
       if (forceFresh) {
         params.set('fresh', '1');
       }
@@ -290,7 +331,7 @@ export default function GosuslugiAnalyticsView() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.scope_type, user?.scope_value]);
+  }, [user?.scope_type, user?.scope_value, selectedQuarter]);
 
   useEffect(() => {
     fetchAnalytics(false);
@@ -309,6 +350,66 @@ export default function GosuslugiAnalyticsView() {
     navigator.clipboard.writeText(text);
     setCopiedId(key);
     setTimeout(() => setCopiedId(null), 1800);
+  };
+
+  const handleToggle15MinNotifications = async () => {
+    const currentlyEnabled = Boolean(data?.quarterOverview?.notifications15MinEnabled);
+    setToggling15Min(true);
+    setTelegramFeedback(null);
+    try {
+      const res = await fetch('/api/gosuslugi/quarters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'toggle_15min_notifications',
+          enabled: !currentlyEnabled,
+        }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        setTelegramFeedback(json.message || '15 dk bildirim ayarı güncellendi.');
+        await fetchAnalytics(true, true);
+      } else {
+        setTelegramFeedback(json?.message || '15 dk bildirim ayarı değiştirilemedi.');
+      }
+    } catch {
+      setTelegramFeedback('15 dk bildirim ayarı güncellenirken bağlantı hatası oluştu.');
+    } finally {
+      setToggling15Min(false);
+      setTimeout(() => setTelegramFeedback(null), 4500);
+    }
+  };
+
+  const handleArchiveCurrentQuarter = async () => {
+    const qOv = data?.quarterOverview;
+    if (!qOv) return;
+    const confirmed = window.confirm(
+      `${qOv.activeLabelTr} dönemindeki tüm VKS ana listesi (${qOv.activeMasterCount} kayıt) ve başvurular (${qOv.activeSentCount} gönderim) arşivlenerek yeni aktif döneme (${qOv.nextQuarterCode}) geçilecek ve 15 dk bildirimleri durdurulacak.\n\nOnaylıyor musunuz?`
+    );
+    if (!confirmed) return;
+
+    setArchivingQuarter(true);
+    setTelegramFeedback(null);
+    try {
+      const res = await fetch('/api/gosuslugi/quarters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'archive_and_advance' }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        setSelectedQuarter('active');
+        setTelegramFeedback(json.message || 'Dönem başarıyla arşivlendi.');
+        await fetchAnalytics(false, true);
+      } else {
+        setTelegramFeedback(json?.message || 'Arşivleme işlemi başarısız oldu.');
+      }
+    } catch {
+      setTelegramFeedback('Arşivleme sırasında bağlantı hatası oluştu.');
+    } finally {
+      setArchivingQuarter(false);
+      setTimeout(() => setTelegramFeedback(null), 6000);
+    }
   };
 
   const handleTriggerTelegramNow = async () => {
@@ -888,23 +989,29 @@ export default function GosuslugiAnalyticsView() {
     const params = new URLSearchParams();
     params.set('computer', 'all');
     params.set('mode', 'only_oshibka');
+    if (selectedQuarter && selectedQuarter !== 'active') {
+      params.set('quarter', selectedQuarter);
+    }
     if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
       params.set('scopeType', user.scope_type);
       params.set('scopeValue', user.scope_value);
     }
     return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
-  }, [user?.scope_type, user?.scope_value]);
+  }, [user?.scope_type, user?.scope_value, selectedQuarter]);
 
   const dataErrorTemplateExportUrl = useMemo(() => {
     const params = new URLSearchParams();
     params.set('computer', 'all');
     params.set('mode', 'only_data_errors');
+    if (selectedQuarter && selectedQuarter !== 'active') {
+      params.set('quarter', selectedQuarter);
+    }
     if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
       params.set('scopeType', user.scope_type);
       params.set('scopeValue', user.scope_value);
     }
     return `/api/gosuslugi/master-list/export-errors?${params.toString()}`;
-  }, [user?.scope_type, user?.scope_value]);
+  }, [user?.scope_type, user?.scope_value, selectedQuarter]);
 
   const filteredMasterPdfItems = useMemo(
     () => filteredMaster3088.filter((item) => item.hasPdf && item.pdf_filename),
@@ -1193,6 +1300,78 @@ export default function GosuslugiAnalyticsView() {
 
           {/* Clean Neutral Utility Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Quarter / Archive Selector */}
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <select
+                value={selectedQuarter}
+                onChange={(e) => setSelectedQuarter(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-indigo-950 dark:text-indigo-100 focus:outline-none cursor-pointer pr-1"
+                title="Aktif çeyrek veya arşivlenmiş geçmiş çeyrek verilerini seçin"
+              >
+                <option value="active" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                  🟢 Aktif: {data?.quarterOverview?.activeLabelTr || '2026 4. Çeyrek (01.10.2026 – 31.12.2026)'}
+                </option>
+                {(data?.quarterOverview?.archives || []).map((arch) => (
+                  <option
+                    key={arch.quarter_code}
+                    value={arch.quarter_code}
+                    className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                  >
+                    📦 Arşiv: {arch.quarter_label} ({arch.completed_count.toLocaleString('tr-TR')}/{arch.master_count.toLocaleString('tr-TR')} Onay)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 15-Minute VKS Notification Stop / Enable Toggle Button */}
+            {user?.role !== 'viewer' && (
+              <button
+                type="button"
+                onClick={handleToggle15MinNotifications}
+                disabled={toggling15Min}
+                title={
+                  data?.quarterOverview?.notifications15MinEnabled
+                    ? '15 dakikalık VKS Telegram & E-posta bildirimlerini durdurmak için tıklayın'
+                    : 'VKS bildirim döneminde 15 dakikalık otomatik Telegram & E-posta özetini tekrar başlatmak için tıklayın'
+                }
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                  data?.quarterOverview?.notifications15MinEnabled
+                    ? 'bg-emerald-100/90 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-200'
+                    : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/50 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+                }`}
+              >
+                {data?.quarterOverview?.notifications15MinEnabled ? (
+                  <>
+                    <Bell className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 animate-pulse" />
+                    <span>{toggling15Min ? 'Güncelleniyor...' : '15 Dk Bildirimi: Aktif (Durdur)'}</span>
+                  </>
+                ) : (
+                  <>
+                    <BellOff className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                    <span>{toggling15Min ? 'Güncelleniyor...' : '15 Dk Bildirimi: Durduruldu (Aktif Et)'}</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Admin-Only Archive Active Quarter & Advance Button */}
+            {user?.role === 'admin' &&
+              !data?.isArchivedQuarter &&
+              ((data?.quarterOverview?.activeMasterCount || 0) > 0 ||
+                (data?.quarterOverview?.activeSentCount || 0) > 0) && (
+                <button
+                  type="button"
+                  onClick={handleArchiveCurrentQuarter}
+                  disabled={archivingQuarter}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/50 text-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Mevcut çeyrek verilerini arşivleyip bir sonraki çeyreğe temiz kuyrukla geç"
+                >
+                  <Archive className="w-3.5 h-3.5 text-purple-700 dark:text-purple-300" />
+                  <span>{archivingQuarter ? 'Arşivleniyor...' : 'Dönemi Arşivle & Yeni Çeyreğe Geç'}</span>
+                </button>
+              )}
+
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
               className={`px-3 py-1.5 rounded-xl text-xs font-normal border transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -1235,6 +1414,47 @@ export default function GosuslugiAnalyticsView() {
           <div className="mt-3 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 font-normal">
             {telegramFeedback}
           </div>
+        )}
+
+        {/* Quarter Archive / Active Q4 Readiness Banner */}
+        {data?.isArchivedQuarter ? (
+          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <Archive className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                <strong>📦 Arşiv Görünümü ({data.selectedQuarter}):</strong> Geçmiş çeyrek arşiv kayıtlarını inceliyorsunuz (Salt Okunur).
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedQuarter('active')}
+              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition"
+            >
+              🟢 Aktif Döneme Dön ({data.quarterOverview?.shortLabelTr || '2026 4. Çeyrek'})
+            </button>
+          </div>
+        ) : (
+          (data?.quarterOverview?.activeMasterCount || 0) === 0 &&
+          (data?.quarterOverview?.activeSentCount || 0) === 0 && (
+            <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/35 border border-emerald-200 dark:border-emerald-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-950 dark:text-emerald-200">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>
+                  <strong>{data?.quarterOverview?.activeLabelTr || '2026 4. Çeyrek (01.10.2026 – 31.12.2026)'} Hazır:</strong>{' '}
+                  2026 3. Çeyrek verileri arşivlendi ve 15 dk VKS bildirimleri durduruldu. 4. Çeyrek listesi yüklendiğinde canlı takip buradan başlayacaktır.
+                </span>
+              </div>
+              {(data?.quarterOverview?.archives?.length || 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedQuarter(data!.quarterOverview!.archives[0].quarter_code)}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
+                >
+                  📦 {data!.quarterOverview!.archives[0].quarter_code} (3. Çeyrek) Arşivini Aç
+                </button>
+              )}
+            </div>
+          )
         )}
 
         {/* Slim Overall Progress Bar */}

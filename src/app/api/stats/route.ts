@@ -6,6 +6,11 @@ import {
   buildNormalizedDateSql,
   getDatasetReferenceDates,
 } from '@/lib/workPermits';
+import {
+  EFFECTIVE_REGION_SQL,
+  buildEffectiveRegionSqlCondition,
+  resolveEffectiveRegion,
+} from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,14 +63,21 @@ export async function GET(request: Request) {
     }
 
     // Build filter map for Power BI cross-highlighting
-    const filterMap: Record<string, { col: string; op: string; val: any }> = {};
+    const filterMap: Record<string, { col: string; op: string; val: any; rawSql?: string; rawParams?: any[] }> = {};
 
     if (!includeExits) {
       filterMap['status'] = { col: 'genel_durum', op: '=', val: 'Mevcut' };
     }
 
     if (region && region !== 'all') {
-      filterMap['region'] = { col: 'region', op: '=', val: region };
+      const regCond = buildEffectiveRegionSqlCondition(region);
+      filterMap['region'] = {
+        col: 'region',
+        op: '=',
+        val: null,
+        rawSql: regCond.sql,
+        rawParams: regCond.params,
+      };
     }
 
     if (project && project !== 'all') {
@@ -123,7 +135,12 @@ export async function GET(request: Request) {
       const p: any[] = [];
       for (const [key, f] of Object.entries(filterMap)) {
         if (excluded.includes(key)) continue;
-        if (f.val === null) {
+        if (f.rawSql) {
+          conds.push(f.rawSql);
+          if (f.rawParams && f.rawParams.length > 0) {
+            p.push(...f.rawParams);
+          }
+        } else if (f.val === null) {
           conds.push(`${f.col} ${f.op}`);
         } else {
           conds.push(`${f.col} ${f.op} ?`);
@@ -173,15 +190,15 @@ export async function GET(request: Request) {
     `);
     const categoryDistribution = categoryQuery.all(...categoryWhere.params);
 
-    // 4. Region Distribution - Excludes region filter so all regions stay visible
+    // 4. Region / Site Distribution - Kazan split directly into individual sites (proje_adi)
     const regionWhere = buildWhere('region');
     const regionQuery = db.prepare(`
       SELECT 
-        COALESCE(NULLIF(region, ''), 'Diğer') as label,
+        (${EFFECTIVE_REGION_SQL}) as label,
         COUNT(*) as count
       FROM personnel
       ${regionWhere.clause}
-      GROUP BY region
+      GROUP BY label
       ORDER BY count DESC
     `);
     const regionDistribution = regionQuery.all(...regionWhere.params);
@@ -434,11 +451,11 @@ export async function GET(request: Request) {
     `);
     const treeFlatRows = treeDataQuery.all(...overallWhere.params) as any[];
 
-    // Structure tree hierarchy
+    // Structure tree hierarchy (Kazan split into individual sites)
     const treeHierarchy: Record<string, { total: number; projects: Record<string, { total: number; depts: { name: string; count: number }[] }> }> = {};
     for (const row of treeFlatRows) {
-      const reg = row.region || 'Diğer';
-      const prj = row.proje_adi || 'Genel Proje';
+      const reg = resolveEffectiveRegion(row.region, row.proje_adi, 'Diğer');
+      const prj = row.proje_adi || reg;
       const dpt = row.departman || 'Genel';
       const c = row.count;
 

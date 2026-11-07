@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import AiApiKeyGuideModal, { GuideProviderKey } from '@/components/settings/AiApiKeyGuideModal';
 
 export type ProviderKey =
   | 'deepseek'
@@ -101,13 +102,14 @@ const DEFAULT_FORM: AiSettingsFormState = {
 export default function AISettingsTab() {
   const { user } = useAuth();
   const { lang } = useLanguage();
-  const isAdmin = !user || user.role === 'admin';
+  const isAdmin = !user || user.role === 'admin' || user.role === 'idari_isler';
 
   const [form, setForm] = useState<AiSettingsFormState>(DEFAULT_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingProvider, setTestingProvider] = useState<ProviderKey | null>(null);
   const [guideOpen, setGuideOpen] = useState(true);
+  const [keyModalProvider, setKeyModalProvider] = useState<GuideProviderKey | null>(null);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<{
     type: 'success' | 'error' | 'info';
@@ -516,19 +518,29 @@ export default function AISettingsTab() {
                 — <code>sk-...</code> ile başlayan anahtarınızı yapıştırıp <strong>Kaydet & Test Et</strong>’e basın
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => handleTestProvider('deepseek')}
-              disabled={testingProvider === 'deepseek'}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              {testingProvider === 'deepseek' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Zap className="w-3.5 h-3.5" />
-              )}
-              <span>Kaydet & Test Et</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setKeyModalProvider('deepseek')}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer flex items-center gap-1"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Yeni API Key Nasıl Alınır?</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTestProvider('deepseek')}
+                disabled={testingProvider === 'deepseek'}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                {testingProvider === 'deepseek' ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                <span>Kaydet & Test Et</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -659,19 +671,29 @@ export default function AISettingsTab() {
                 SiliconFlow bulut veya şirket içi vLLM üzerinde gerçek DeepSeek-OCR / DeepSeek-VL2 modeli
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => handleTestProvider('deepseek_ocr')}
-              disabled={testingProvider === 'deepseek_ocr'}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              {testingProvider === 'deepseek_ocr' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Zap className="w-3.5 h-3.5" />
-              )}
-              <span>Test Et</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setKeyModalProvider('deepseek_ocr')}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer flex items-center gap-1"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Yeni API Key Nasıl Alınır?</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTestProvider('deepseek_ocr')}
+                disabled={testingProvider === 'deepseek_ocr'}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                {testingProvider === 'deepseek_ocr' ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                <span>Test Et</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -783,19 +805,29 @@ export default function AISettingsTab() {
                 Rusça RZD tren biletleri, pasaportlar ve tablo OCR okumada yüksek doğruluk (Powerise uyumlu)
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => handleTestProvider('yandex')}
-              disabled={testingProvider === 'yandex'}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              {testingProvider === 'yandex' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Zap className="w-3.5 h-3.5" />
-              )}
-              <span>Test Et</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setKeyModalProvider('yandex')}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer flex items-center gap-1"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Yeni API Key Nasıl Alınır?</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTestProvider('yandex')}
+                disabled={testingProvider === 'yandex'}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                {testingProvider === 'yandex' ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                <span>Test Et</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -895,19 +927,29 @@ export default function AISettingsTab() {
                 Sberbank kurumsal görsel evrak okuma servisi — Rusya içinde VPN olmadan doğrudan çalışır
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => handleTestProvider('gigachat')}
-              disabled={testingProvider === 'gigachat'}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              {testingProvider === 'gigachat' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Zap className="w-3.5 h-3.5" />
-              )}
-              <span>Test Et</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setKeyModalProvider('gigachat')}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer flex items-center gap-1"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Yeni API Key Nasıl Alınır?</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTestProvider('gigachat')}
+                disabled={testingProvider === 'gigachat'}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                {testingProvider === 'gigachat' ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                <span>Test Et</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1010,6 +1052,22 @@ export default function AISettingsTab() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setKeyModalProvider('gemini')}
+                className="px-2.5 py-1 rounded-lg text-[10.5px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer flex items-center gap-1"
+              >
+                <KeyRound className="w-3 h-3" />
+                <span>Gemini Key Rehberi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setKeyModalProvider('openrouter')}
+                className="px-2.5 py-1 rounded-lg text-[10.5px] font-semibold bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/15 dark:hover:bg-purple-500/25 text-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-500/40 cursor-pointer flex items-center gap-1"
+              >
+                <KeyRound className="w-3 h-3" />
+                <span>OpenRouter Key Rehberi</span>
+              </button>
               {form.activeProvider !== 'gemini' ? (
                 <button
                   type="button"
@@ -1239,6 +1297,12 @@ export default function AISettingsTab() {
           )}
         </div>
       </div>
+
+      <AiApiKeyGuideModal
+        isOpen={keyModalProvider !== null}
+        initialProvider={keyModalProvider || 'deepseek'}
+        onClose={() => setKeyModalProvider(null)}
+      />
     </div>
   );
 }

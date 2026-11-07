@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import {
   Plane,
   Train,
+  Bus,
   Sparkles,
   UploadCloud,
   FileText,
@@ -16,18 +17,30 @@ import {
   UserCheck,
   Search,
   Download,
+  Upload,
   Settings,
   Trash2,
   Link2,
   X,
   Check,
-  Building2,
-  Calendar,
-  CreditCard,
+  Plus,
+  Edit3,
+  KeyRound,
+  Tv,
+  BarChart3,
   ArrowRight,
   ShieldAlert,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
+import AirportReceptionBoard from '@/components/powerise/AirportReceptionBoard';
+import TicketAnalyticsView from '@/components/powerise/TicketAnalyticsView';
+import PonderaTicketFormModal, {
+  PonderaTicketFormData,
+} from '@/components/powerise/PonderaTicketFormModal';
+import AiApiKeyGuideModal, {
+  GuideProviderKey,
+} from '@/components/settings/AiApiKeyGuideModal';
 
 type ActiveAiProviderId =
   | 'deepseek'
@@ -67,7 +80,7 @@ interface ParsedPassengerItem {
   citizenship: string;
   ticketNumber: string;
   seatOrWagon: string;
-  transportType: 'flight' | 'train';
+  transportType: 'flight' | 'train' | 'bus';
   bookingReference: string;
   carrier: string;
   flightOrTrainNumber: string;
@@ -76,10 +89,24 @@ interface ParsedPassengerItem {
   departureAirportOrStation: string;
   arrivalAirportOrStation: string;
   departureDate: string;
+  departureTime: string;
   returnOrArrivalDate: string;
+  arrivalDate: string;
+  arrivalTime: string;
   ticketClass: string;
   ticketPrice: number;
   currency: string;
+  flightPurpose: string;
+  ticketAgent: string;
+  paymentCompany: string;
+  contactPhone: string;
+  jobTitle: string;
+  ticketStatus: string;
+  detailReason: string;
+  tripType: string;
+  notes: string;
+  deductFromSalary: 'No' | 'Yes';
+  employeeStatus: string;
   personType: 'employee' | 'guest';
   sicilNo: string;
   guestId: number | null;
@@ -318,11 +345,20 @@ export default function LiveTicketScannerSystem({
   onNavigateToPersonnel,
 }: LiveTicketScannerProps) {
   const { lang } = useLanguage();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [subView, setSubView] = useState<'scanner' | 'ledger' | 'guests'>('scanner');
+  const [subView, setSubView] = useState<
+    'scanner' | 'ledger' | 'reception_board' | 'analytics' | 'guests'
+  >('scanner');
   const [selectedProvider, setSelectedProvider] = useState<ActiveAiProviderId>('deepseek');
   const providerInitializedRef = useRef(false);
+  const [guideModalOpen, setGuideModalOpen] = useState(false);
+  const [ticketFormModal, setTicketFormModal] = useState<{
+    open: boolean;
+    initialData: PonderaTicketFormData | null;
+  }>({ open: false, initialData: null });
 
   // Server ledger & AI readiness state
   const [savedTickets, setSavedTickets] = useState<Array<Record<string, any>>>([]);
@@ -333,8 +369,10 @@ export default function LiveTicketScannerSystem({
     totalTickets: 0,
     flightCount: 0,
     trainCount: 0,
+    busCount: 0,
     employeeTickets: 0,
     guestTickets: 0,
+    deductYesCount: 0,
     activeGuestsCount: 0,
     estimatedTotalRub: 0,
   });
@@ -357,10 +395,15 @@ export default function LiveTicketScannerSystem({
     text: string;
   } | null>(null);
 
-  // Ledger filters
+  // Ledger filters & pagination
   const [ledgerSearch, setLedgerSearch] = useState('');
-  const [ledgerTransportFilter, setLedgerTransportFilter] = useState<'all' | 'flight' | 'train'>('all');
+  const [ledgerTransportFilter, setLedgerTransportFilter] = useState<
+    'all' | 'flight' | 'train' | 'bus'
+  >('all');
   const [ledgerPersonFilter, setLedgerPersonFilter] = useState<'all' | 'employee' | 'guest'>('all');
+  const [ledgerDeductFilter, setLedgerDeductFilter] = useState<'all' | 'No' | 'Yes'>('all');
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [importingExcel, setImportingExcel] = useState(false);
 
   // Person Linker / Guest Conversion Modal
   const [linkerModal, setLinkerModal] = useState<{
@@ -539,7 +582,12 @@ export default function LiveTicketScannerSystem({
               citizenship: p.citizenship || '',
               ticketNumber: p.ticketNumber || '',
               seatOrWagon: p.seatOrWagon || '',
-              transportType: p.transportType === 'train' ? 'train' : 'flight',
+              transportType:
+                p.transportType === 'bus'
+                  ? 'bus'
+                  : p.transportType === 'train'
+                  ? 'train'
+                  : 'flight',
               bookingReference: p.bookingReference || '',
               carrier: p.carrier || '',
               flightOrTrainNumber: p.flightOrTrainNumber || '',
@@ -548,10 +596,24 @@ export default function LiveTicketScannerSystem({
               departureAirportOrStation: p.departureAirportOrStation || '',
               arrivalAirportOrStation: p.arrivalAirportOrStation || '',
               departureDate: p.departureDate || '',
+              departureTime: p.departureTime || '',
               returnOrArrivalDate: p.returnOrArrivalDate || '',
+              arrivalDate: p.arrivalDate || '',
+              arrivalTime: p.arrivalTime || '',
               ticketClass: p.ticketClass || 'economy',
               ticketPrice: Number(p.ticketPrice || 0),
               currency: p.currency || 'RUB',
+              flightPurpose: p.flightPurpose || 'Transfer',
+              ticketAgent: p.ticketAgent || 'One Two Trip',
+              paymentCompany: p.paymentCompany || 'PONDERA-INDUSTRY',
+              contactPhone: p.contactPhone || '',
+              jobTitle: p.jobTitle || '',
+              ticketStatus: p.ticketStatus || '',
+              detailReason: p.detailReason || '0',
+              tripType: p.tripType || 'One Way',
+              notes: p.notes || '',
+              deductFromSalary: p.deductFromSalary === 'Yes' ? 'Yes' : 'No',
+              employeeStatus: String(mp?.status || ''),
               personType: isEmp ? 'employee' : 'guest',
               sicilNo: isEmp ? String(mp?.sicilNo || '') : '',
               guestId: isExistingGuest ? Number(mp?.guestId) : null,
@@ -803,6 +865,32 @@ export default function LiveTicketScannerSystem({
     loadTicketsAndGuests();
   };
 
+  const handleToggleDeduct = async (ticketRow: Record<string, any>) => {
+    if (user?.role === 'viewer') return;
+    const nextVal = ticketRow.deduct_from_salary === 'Yes' ? 'No' : 'Yes';
+    setSavedTickets((prev) =>
+      prev.map((x) => (x.id === ticketRow.id ? { ...x, deduct_from_salary: nextVal } : x))
+    );
+    await fetch('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'toggle_deduct',
+        ticketId: ticketRow.id,
+        deductFromSalary: nextVal,
+      }),
+    });
+  };
+
+  const handleUpdateTicketLocal = useCallback(
+    (ticketId: number, patch: Record<string, any>) => {
+      setSavedTickets((prev) =>
+        prev.map((t) => (t.id === ticketId ? { ...t, ...patch } : t))
+      );
+    },
+    []
+  );
+
   const filteredSavedTickets = savedTickets.filter((t) => {
     if (ledgerTransportFilter !== 'all' && t.transport_type !== ledgerTransportFilter) {
       return false;
@@ -810,45 +898,199 @@ export default function LiveTicketScannerSystem({
     if (ledgerPersonFilter !== 'all' && t.person_type !== ledgerPersonFilter) {
       return false;
     }
+    if (ledgerDeductFilter !== 'all') {
+      const dv = t.deduct_from_salary === 'Yes' ? 'Yes' : 'No';
+      if (dv !== ledgerDeductFilter) return false;
+    }
     if (ledgerSearch.trim()) {
       const q = ledgerSearch.toLowerCase();
-      const hay = `${t.passenger_name || ''} ${t.passport_no || ''} ${t.sicil_no || ''} ${
-        t.guest_code || ''
-      } ${t.departure_city || ''} ${t.arrival_city || ''} ${t.carrier || ''} ${
-        t.project_name || ''
-      }`.toLowerCase();
+      const hay = `${t.passenger_name || ''} ${t.passenger_name_ru || ''} ${t.eba_doc_id || ''} ${
+        t.passport_no || ''
+      } ${t.sicil_no || ''} ${t.guest_code || ''} ${t.departure_city || ''} ${
+        t.arrival_city || ''
+      } ${t.carrier || ''} ${t.ticket_agent || ''} ${t.project_name || ''} ${
+        t.region || ''
+      } ${t.flight_purpose || ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
 
+  const LEDGER_PAGE_SIZE = 50;
+  const totalLedgerPages = Math.max(1, Math.ceil(filteredSavedTickets.length / LEDGER_PAGE_SIZE));
+  const safeLedgerPage = Math.min(ledgerPage, totalLedgerPages);
+  const pagedSavedTickets = filteredSavedTickets.slice(
+    (safeLedgerPage - 1) * LEDGER_PAGE_SIZE,
+    safeLedgerPage * LEDGER_PAGE_SIZE
+  );
+
+  // Exact 29-column Pondera 'eBA Doküman Arşivi' positional export (matching bilet alinan toplu liste.xlsx)
   const handleExportExcel = () => {
-    const rows = filteredSavedTickets.map((t) => ({
-      'Bilet Kodu': t.ticket_code,
-      'Ulaşım Türü': t.transport_type === 'train' ? 'RZD Tren' : 'Uçak',
-      'Kişi Statüsü': t.person_type === 'employee' ? 'Pondera Çalışanı' : 'Misafir (Guest)',
-      'Sicil No / Misafir Kodu':
-        t.person_type === 'employee' ? t.sicil_no : t.guest_code || 'GUEST',
-      'Yolcu Adı': t.passenger_name,
-      'Pasaport No': t.passport_no,
-      Uyruk: t.citizenship,
-      'Taşıyıcı / Sefer': `${t.carrier || ''} ${t.flight_or_train_no || ''}`.trim(),
-      Kalkış: `${t.departure_city || ''} (${t.departure_station_or_airport || ''})`,
-      Varış: `${t.arrival_city || ''} (${t.arrival_station_or_airport || ''})`,
-      'Uçuş / Sefer Tarihi': t.departure_date,
-      PNR: t.booking_ref,
-      'Bilet Numarası': t.ticket_number,
-      Tutar: t.ticket_price,
-      Döviz: t.currency,
-      Bölge: t.region,
-      Şantiye: t.project_name,
-      'Okuyan AI': t.ai_provider_used,
-      'Kayıt Tarihi': t.created_at,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const headerRow = [
+      'Doküman ID',
+      'Personel No',
+      'Ad Soyad',
+      'Tam Adı (Kiril)',
+      'Uyruğu',
+      'Uçuş Tipi',
+      'Ticket Agent',
+      'Payment Company',
+      '', // Col 8: Uçak / Tren / Otobüs
+      'Uçuş Tarihi',
+      '', // Col 10: Kalkış Saati
+      'Kalkış Şehri',
+      'Varış Tarihi',
+      '', // Col 13: Varış Saati
+      'Varış Şehri',
+      'Fiyat',
+      'Para Birimi',
+      'Doküman Durumu',
+      'İletişim Bilgisi(Ev)',
+      'Resmi Görevi',
+      'Proje Bölgesi',
+      'Proje Adı',
+      'Bilet Durumu',
+      'Detail / Reason',
+      'Gidiş Dönüş mü',
+      'Aciklama',
+      'Guncelleyen',
+      'Guncelleme Tarihi',
+      'Personelden Mi Kesilcek?',
+    ];
+
+    const dataRows = filteredSavedTickets.map((t) => {
+      const depParts = String(t.departure_date || '').trim().split(/\s+/);
+      const depDateOnly = depParts[0] || '';
+      const depTimeOnly = t.departure_time || depParts[1] || '';
+      const transportLabel =
+        t.transport_type === 'bus'
+          ? 'Otobüs'
+          : t.transport_type === 'train'
+          ? 'Tren'
+          : 'Uçak';
+      return [
+        t.eba_doc_id || t.ticket_code || '',
+        t.sicil_no || t.guest_code || '',
+        t.passenger_name || '',
+        t.passenger_name_ru || '',
+        t.citizenship || '',
+        t.flight_purpose || 'Transfer',
+        t.ticket_agent || 'One Two Trip',
+        t.payment_company || 'PONDERA-INDUSTRY',
+        transportLabel,
+        depDateOnly,
+        depTimeOnly,
+        t.departure_city || '',
+        t.arrival_date || '',
+        t.arrival_time || '',
+        t.arrival_city || '',
+        Number(t.ticket_price || 0) || 0,
+        t.currency || 'RUB',
+        t.doc_status || 'Uploaded',
+        t.contact_phone || '',
+        t.job_title || '',
+        t.region || '',
+        t.project_name || '',
+        t.ticket_status || '',
+        t.detail_reason || '0',
+        t.trip_type || 'One Way',
+        t.notes || '',
+        t.updated_by || 'Pondera HR',
+        t.updated_at || t.created_at || '',
+        t.deduct_from_salary === 'Yes' ? 'Yes' : 'No',
+      ];
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'AI_Bilet_Kayitlari');
-    XLSX.writeFile(wb, `Pondera_AI_Bilet_ve_Misafir_Raporu.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'eBA Doküman Arşivi');
+    XLSX.writeFile(wb, `Pondera_Bilet_Alinan_Toplu_Liste.xlsx`);
+  };
+
+  // Import Pondera 29-column 'bilet alinan toplu liste.xlsx' (imports latest/upcoming rows fast)
+  const handleImportPonderaExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImportingExcel(true);
+    setBannerMsg(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as string[][];
+      if (aoa.length <= 1) {
+        setBannerMsg({ type: 'error', text: 'Excel dosyasında veri satırı bulunamadı.' });
+        setImportingExcel(false);
+        return;
+      }
+
+      // Take up to latest 600 rows (or all if <=600) so 42K archive files import cleanly without timeout
+      const bodyRows = aoa.slice(1).filter((r) => String(r[2] || '').trim() !== '');
+      const sliceRows = bodyRows.length > 600 ? bodyRows.slice(-600) : bodyRows;
+
+      const mapped = sliceRows.map((r) => {
+        const rawMode = String(r[8] || '').trim().toLowerCase();
+        const tType = rawMode.includes('otob') || rawMode.includes('bus')
+          ? 'bus'
+          : rawMode.includes('tren') || rawMode.includes('rzd')
+          ? 'train'
+          : 'flight';
+        return {
+          eba_doc_id: String(r[0] || '').trim(),
+          sicil_no: String(r[1] || '').trim(),
+          passenger_name: String(r[2] || '').trim(),
+          passenger_name_ru: String(r[3] || '').trim(),
+          citizenship: String(r[4] || '').trim(),
+          flight_purpose: String(r[5] || 'Transfer').trim(),
+          ticket_agent: String(r[6] || 'One Two Trip').trim(),
+          payment_company: String(r[7] || 'PONDERA-INDUSTRY').trim(),
+          transport_type: tType,
+          departure_date: String(r[9] || '').trim(),
+          departure_time: String(r[10] || '').trim(),
+          departure_city: String(r[11] || '').trim(),
+          arrival_date: String(r[12] || '').trim(),
+          arrival_time: String(r[13] || '').trim(),
+          arrival_city: String(r[14] || '').trim(),
+          ticket_price: Number(String(r[15] || '0').replace(/[^\d.,-]/g, '').replace(',', '.')) || 0,
+          currency: String(r[16] || 'RUB').trim() || 'RUB',
+          doc_status: String(r[17] || 'Uploaded').trim(),
+          contact_phone: String(r[18] || '').trim(),
+          job_title: String(r[19] || '').trim(),
+          region: String(r[20] || '').trim(),
+          project_name: String(r[21] || '').trim(),
+          ticket_status: String(r[22] || '').trim(),
+          detail_reason: String(r[23] || '0').trim(),
+          trip_type: String(r[24] || 'One Way').trim(),
+          notes: String(r[25] || '').trim(),
+          updated_by: String(r[26] || '').trim(),
+          updated_at: String(r[27] || '').trim(),
+          deduct_from_salary: String(r[28] || 'No').trim() === 'Yes' ? 'Yes' : 'No',
+        };
+      });
+
+      const res = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'import_excel_rows',
+          sourceFilename: file.name,
+          rows: mapped,
+        }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        setBannerMsg({ type: 'success', text: json.message });
+        loadTicketsAndGuests();
+      } else {
+        setBannerMsg({ type: 'error', text: json?.message || 'Excel aktarım hatası.' });
+      }
+    } catch {
+      setBannerMsg({ type: 'error', text: 'Excel dosyası okunurken hata oluştu.' });
+    } finally {
+      setImportingExcel(false);
+    }
   };
 
   const matchedEmpCount = parsedPassengers.filter((p) => p.personType === 'employee').length;
@@ -892,6 +1134,15 @@ export default function LiveTicketScannerSystem({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setGuideModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer transition-colors"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Yeni API Key Nasıl Oluşturulur?</span>
+          </button>
+
           {onOpenAiSettings && (
             <button
               type="button"
@@ -955,13 +1206,13 @@ export default function LiveTicketScannerSystem({
         </div>
       )}
 
-      {/* 3 WORKSPACE SUB-TABS */}
+      {/* 5 WORKSPACE SUB-TABS */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800">
           <button
             type="button"
             onClick={() => setSubView('scanner')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
               subView === 'scanner'
                 ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -979,38 +1230,75 @@ export default function LiveTicketScannerSystem({
           <button
             type="button"
             onClick={() => setSubView('ledger')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
               subView === 'ledger'
                 ? 'bg-emerald-100/95 dark:bg-emerald-500/25 border border-emerald-300 dark:border-emerald-400/40 text-emerald-950 dark:text-emerald-100'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             <Plane className="w-3.5 h-3.5" />
-            <span>2. Kayıtlı Biletler Listesi ({ledgerStats.totalTickets})</span>
+            <span>2. Alınan Biletler Tablosu ({ledgerStats.totalTickets})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSubView('reception_board')}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              subView === 'reception_board'
+                ? 'bg-sky-100/95 dark:bg-sky-500/25 border border-sky-300 dark:border-sky-400/40 text-sky-950 dark:text-sky-100'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Tv className="w-3.5 h-3.5" />
+            <span>3. Karşılama & Ulaşım TV Panosu</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSubView('analytics')}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              subView === 'analytics'
+                ? 'bg-teal-100/95 dark:bg-teal-500/25 border border-teal-300 dark:border-teal-400/40 text-teal-950 dark:text-teal-100'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>4. Bilet Fiyat & Güzergah Analitiği</span>
           </button>
 
           <button
             type="button"
             onClick={() => setSubView('guests')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
               subView === 'guests'
                 ? 'bg-amber-100/95 dark:bg-amber-500/25 border border-amber-300 dark:border-amber-400/40 text-amber-950 dark:text-amber-100'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>3. Misafir (Guest) Takip Listesi ({savedGuests.length})</span>
+            <span>5. Misafir (Guest) Takip ({savedGuests.length})</span>
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setAddGuestOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer"
-        >
-          <UserPlus className="w-3.5 h-3.5" />
-          <span>+ Manuel Misafir (Guest) Ekle</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTicketFormModal({ open: true, initialData: null })}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ Manuel Bilet Ekle</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAddGuestOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-500/40 cursor-pointer"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>+ Manuel Misafir Ekle</span>
+          </button>
+        </div>
       </div>
 
       {/* ==================== SUB-VIEW 1: AI BULK TICKET SCANNER ==================== */}
@@ -1094,10 +1382,10 @@ export default function LiveTicketScannerSystem({
                 <UploadCloud className="w-5 h-5" />
               </div>
               <div className="text-sm font-bold text-slate-900 dark:text-white">
-                Uçak veya RZD Tren Biletlerini Buraya Sürükleyin (PDF, JPG, PNG)
+                Uçak, RZD Tren veya Otobüs Biletlerini Buraya Sürükleyin (PDF, JPG, PNG)
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
-                Tek veya çok yolculu (grup) bilet PDF’lerini, WhatsApp ekran görüntülerini ve kamera taramalarını topluca yükleyebilirsiniz.
+                Okutulan yolcular 35.000+ kişilik tam Pondera listesinde (Mevcut, Beklenen Yeni Giriş ve Geri Dönen Eski Siciller dahil) otomatik eşleştirilir.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
@@ -1150,6 +1438,15 @@ export default function LiveTicketScannerSystem({
                         {aiStatus?.readiness?.ru_docs_ocr ? '— ✓ Hazır' : '— Kurulu Değil'}
                       </option>
                     </select>
+                    <button
+                      type="button"
+                      onClick={() => setGuideModalOpen(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-100 hover:bg-amber-200 dark:bg-amber-500/20 text-amber-950 dark:text-amber-200 border border-amber-300/80 dark:border-amber-500/40 cursor-pointer whitespace-nowrap"
+                      title="Seçili AI sağlayıcısı için Yeni API Key nasıl oluşturulur?"
+                    >
+                      <KeyRound className="w-3 h-3" />
+                      <span>Yeni API Key?</span>
+                    </button>
                   </div>
 
                   <button
@@ -1308,25 +1605,41 @@ export default function LiveTicketScannerSystem({
                               }
                               className="w-4 h-4 accent-indigo-600 rounded"
                             />
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold ${
-                                row.transportType === 'train'
-                                  ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
-                                  : 'bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300'
+                            <select
+                              value={row.transportType}
+                              onChange={(e) =>
+                                setParsedPassengers((prev) =>
+                                  prev.map((r) =>
+                                    r.uid === row.uid
+                                      ? {
+                                          ...r,
+                                          transportType: e.target.value as
+                                            | 'flight'
+                                            | 'train'
+                                            | 'bus',
+                                        }
+                                      : r
+                                  )
+                                )
+                              }
+                              className={`px-2 py-0.5 rounded-md text-[10.5px] font-bold border cursor-pointer ${
+                                row.transportType === 'bus'
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-300/60'
+                                  : row.transportType === 'train'
+                                  ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-300/60'
+                                  : 'bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border-sky-300/60'
                               }`}
                             >
-                              {row.transportType === 'train' ? (
-                                <Train className="w-3 h-3" />
-                              ) : (
-                                <Plane className="w-3 h-3" />
-                              )}
-                              {row.transportType === 'train' ? 'RZD Tren' : 'Uçak Bileti'}
-                            </span>
+                              <option value="flight">✈️ Uçak Bileti</option>
+                              <option value="train">🚆 RZD Tren</option>
+                              <option value="bus">🚌 Otobüs</option>
+                            </select>
 
                             {row.personType === 'employee' ? (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300/70 dark:border-emerald-700">
                                 <UserCheck className="w-3 h-3" />
-                                Pondera Çalışanı: #{row.sicilNo} {row.matchedDisplayName} (%{row.confidence})
+                                Pondera #{row.sicilNo} {row.matchedDisplayName} (%{row.confidence}
+                                {row.employeeStatus ? ` • ${row.employeeStatus}` : ''})
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300/70 dark:border-amber-700">
@@ -1552,6 +1865,101 @@ export default function LiveTicketScannerSystem({
                               className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
                             />
                           </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">
+                              Uçuş Tipi (Amaç)
+                            </label>
+                            <select
+                              value={row.flightPurpose}
+                              onChange={(e) =>
+                                setParsedPassengers((prev) =>
+                                  prev.map((r) =>
+                                    r.uid === row.uid
+                                      ? { ...r, flightPurpose: e.target.value }
+                                      : r
+                                  )
+                                )
+                              }
+                              className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                            >
+                              <option value="Transfer">Transfer</option>
+                              <option value="İşe Giriş">İşe Giriş</option>
+                              <option value="İşten Çıkış">İşten Çıkış</option>
+                              <option value="İzne Gidiş">İzne Gidiş</option>
+                              <option value="İzinden Dönüş">İzinden Dönüş</option>
+                              <option value="Is Gezisi">İş Gezisi</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">
+                              Ticket Agent (Acente)
+                            </label>
+                            <input
+                              type="text"
+                              value={row.ticketAgent}
+                              onChange={(e) =>
+                                setParsedPassengers((prev) =>
+                                  prev.map((r) =>
+                                    r.uid === row.uid
+                                      ? { ...r, ticketAgent: e.target.value }
+                                      : r
+                                  )
+                                )
+                              }
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">
+                              Personelden Mi Kesilcek? (Default: No)
+                            </label>
+                            <select
+                              value={row.deductFromSalary}
+                              onChange={(e) =>
+                                setParsedPassengers((prev) =>
+                                  prev.map((r) =>
+                                    r.uid === row.uid
+                                      ? {
+                                          ...r,
+                                          deductFromSalary:
+                                            e.target.value === 'Yes' ? 'Yes' : 'No',
+                                        }
+                                      : r
+                                  )
+                                )
+                              }
+                              className={`w-full px-2 py-1.5 rounded-lg border font-bold ${
+                                row.deductFromSalary === 'Yes'
+                                  ? 'bg-rose-50 border-rose-300 text-rose-700'
+                                  : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                              }`}
+                            >
+                              <option value="No">No</option>
+                              <option value="Yes">Yes</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">
+                              Açıklama / Karşılama Notu
+                            </label>
+                            <input
+                              type="text"
+                              value={row.notes}
+                              onChange={(e) =>
+                                setParsedPassengers((prev) =>
+                                  prev.map((r) =>
+                                    r.uid === row.uid ? { ...r, notes: e.target.value } : r
+                                  )
+                                )
+                              }
+                              placeholder="Opsiyonel not..."
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1563,7 +1971,7 @@ export default function LiveTicketScannerSystem({
         </div>
       )}
 
-      {/* ==================== SUB-VIEW 2: SAVED TICKETS LEDGER ==================== */}
+      {/* ==================== SUB-VIEW 2: PONDERA 29-COLUMN PURCHASED TICKETS TABLE ==================== */}
       {subView === 'ledger' && (
         <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1573,160 +1981,375 @@ export default function LiveTicketScannerSystem({
                 <input
                   type="text"
                   value={ledgerSearch}
-                  onChange={(e) => setLedgerSearch(e.target.value)}
-                  placeholder="Yolcu, pasaport, sicil, GUEST kodu, şehir..."
+                  onChange={(e) => {
+                    setLedgerSearch(e.target.value);
+                    setLedgerPage(1);
+                  }}
+                  placeholder="Doküman ID, sicil, ad soyad, şehir, şantiye..."
                   className="pl-8 pr-3 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 w-64"
                 />
               </div>
 
               <select
                 value={ledgerPersonFilter}
-                onChange={(e) => setLedgerPersonFilter(e.target.value as any)}
-                className="px-3 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                onChange={(e) => {
+                  setLedgerPersonFilter(e.target.value as any);
+                  setLedgerPage(1);
+                }}
+                className="px-2.5 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
               >
                 <option value="all">Tüm Yolcular ({savedTickets.length})</option>
                 <option value="employee">Pondera Çalışanları ({ledgerStats.employeeTickets})</option>
-                <option value="guest">Misafir / Guest Yolcular ({ledgerStats.guestTickets})</option>
+                <option value="guest">Misafir / Guest ({ledgerStats.guestTickets})</option>
               </select>
 
               <select
                 value={ledgerTransportFilter}
-                onChange={(e) => setLedgerTransportFilter(e.target.value as any)}
-                className="px-3 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                onChange={(e) => {
+                  setLedgerTransportFilter(e.target.value as any);
+                  setLedgerPage(1);
+                }}
+                className="px-2.5 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
               >
-                <option value="all">Uçak + RZD Tren</option>
-                <option value="flight">Sadece Uçak ({ledgerStats.flightCount})</option>
-                <option value="train">Sadece RZD Tren ({ledgerStats.trainCount})</option>
+                <option value="all">Uçak + Tren + Otobüs</option>
+                <option value="flight">✈️ Uçak ({ledgerStats.flightCount})</option>
+                <option value="train">🚆 RZD Tren ({ledgerStats.trainCount})</option>
+                <option value="bus">🚌 Otobüs ({ledgerStats.busCount || 0})</option>
+              </select>
+
+              <select
+                value={ledgerDeductFilter}
+                onChange={(e) => {
+                  setLedgerDeductFilter(e.target.value as any);
+                  setLedgerPage(1);
+                }}
+                className="px-2.5 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+              >
+                <option value="all">Kesinti: Tümü (Default: No)</option>
+                <option value="No">Personelden Kesilmeyecek (No)</option>
+                <option value="Yes">Personelden Kesilecek (Yes: {ledgerStats.deductYesCount || 0})</option>
               </select>
             </div>
 
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              disabled={filteredSavedTickets.length === 0}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Excel İndir (.xlsx)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={excelInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportPonderaExcel}
+                className="hidden"
+              />
+              <button
+                type="button"
+                disabled={importingExcel}
+                onClick={() => excelInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/20 text-sky-900 dark:text-sky-200 border border-sky-200 dark:border-sky-500/40 cursor-pointer disabled:opacity-50"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{importingExcel ? 'Excel Yükleniyor...' : 'Toplu Liste Excel Yükle'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={filteredSavedTickets.length === 0}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Pondera Formatında Excel İndir (29 Kolon)</span>
+              </button>
+            </div>
           </div>
 
           {filteredSavedTickets.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-400">
-              Henüz kayıtlı bilet bulunmuyor. 1. Sekmeden AI ile bilet okutup kaydedebilirsiniz.
+              Seçili kriterlere uygun bilet kaydı bulunmuyor.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="text-[11px] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                  <tr>
-                    <th className="py-2.5 pr-3">Yolcu & Pasaport</th>
-                    <th className="py-2.5 px-2">Çalışan / Misafir</th>
-                    <th className="py-2.5 px-2">Güzergah & Sefer</th>
-                    <th className="py-2.5 px-2">Tarih</th>
-                    <th className="py-2.5 px-2">Şantiye Zimmeti</th>
-                    <th className="py-2.5 px-2">Tutar</th>
-                    <th className="py-2.5 px-2">AI Motoru</th>
-                    <th className="py-2.5 pl-2 text-right">İşlem</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredSavedTickets.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/40">
-                      <td className="py-2.5 pr-3">
-                        <div className="font-semibold text-slate-900 dark:text-white">
-                          {t.passenger_name}
-                        </div>
-                        <div className="text-[10.5px] text-slate-500 font-mono">
-                          {t.passport_no || '-'} {t.booking_ref ? `• PNR: ${t.booking_ref}` : ''}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-2">
-                        {t.person_type === 'employee' ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onNavigateToPersonnel?.('search', String(t.sicil_no || ''))
-                            }
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 cursor-pointer hover:underline"
-                          >
-                            <UserCheck className="w-3 h-3" />
-                            <span>#{t.sicil_no} Çalışan</span>
-                          </button>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300">
-                            <UserPlus className="w-3 h-3" />
-                            <span>{t.guest_code || 'Misafir (Guest)'}</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-2">
-                        <div className="flex items-center gap-1 font-medium text-slate-800 dark:text-slate-200">
-                          {t.transport_type === 'train' ? (
-                            <Train className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          ) : (
-                            <Plane className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                          )}
-                          <span>
-                            {t.departure_city || '?'} → {t.arrival_city || '?'}
-                          </span>
-                        </div>
-                        <div className="text-[10.5px] text-slate-500">
-                          {t.carrier} {t.flight_or_train_no}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-2 whitespace-nowrap text-slate-700 dark:text-slate-300">
-                        {t.departure_date || '-'}
-                      </td>
-                      <td className="py-2.5 px-2 text-[11px] text-slate-600 dark:text-slate-300">
-                        <div>{t.region || '-'}</div>
-                        {t.project_name && (
-                          <div className="text-[10px] text-slate-400">{t.project_name}</div>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-2 whitespace-nowrap font-mono font-semibold text-slate-900 dark:text-white">
-                        {Number(t.ticket_price || 0) > 0
-                          ? `${Number(t.ticket_price).toLocaleString('tr-TR')} ${t.currency}`
-                          : '-'}
-                      </td>
-                      <td className="py-2.5 px-2 text-[10.5px] text-slate-500">
-                        {t.ai_provider_used}
-                      </td>
-                      <td className="py-2.5 pl-2 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setLinkerModal({
-                                mode: 'relink_saved_ticket',
-                                ticketId: t.id,
-                                title: `${t.passenger_name} — Bilet Kişi Bağlantısını Güncelle`,
-                                candidates: [],
-                              })
-                            }
-                            className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer"
-                            title="Çalışan veya Misafire Bağla"
-                          >
-                            <Link2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSavedTicket(t.id)}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
-                            title="Sil"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+            <>
+              <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
+                <table className="w-full text-left text-[11px] whitespace-nowrap border-collapse">
+                  <thead className="bg-slate-50 dark:bg-slate-900/90 text-[10.5px] font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="py-2.5 px-2.5 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10 border-r border-slate-200 dark:border-slate-800">
+                        İşlem
+                      </th>
+                      <th className="py-2.5 px-2.5">Personelden Mi Kesilcek?</th>
+                      <th className="py-2.5 px-2.5">Doküman ID</th>
+                      <th className="py-2.5 px-2.5">Personel No</th>
+                      <th className="py-2.5 px-2.5">Ad Soyad</th>
+                      <th className="py-2.5 px-2.5">Tam Adı (Kiril)</th>
+                      <th className="py-2.5 px-2.5">Uyruğu</th>
+                      <th className="py-2.5 px-2.5">Uçuş Tipi</th>
+                      <th className="py-2.5 px-2.5">Ticket Agent</th>
+                      <th className="py-2.5 px-2.5">Payment Company</th>
+                      <th className="py-2.5 px-2.5">Ulaşım</th>
+                      <th className="py-2.5 px-2.5">Uçuş Tarihi</th>
+                      <th className="py-2.5 px-2.5">Kalkış Saati</th>
+                      <th className="py-2.5 px-2.5">Kalkış Şehri</th>
+                      <th className="py-2.5 px-2.5">Varış Tarihi</th>
+                      <th className="py-2.5 px-2.5">Varış Saati</th>
+                      <th className="py-2.5 px-2.5">Varış Şehri</th>
+                      <th className="py-2.5 px-2.5 text-right">Fiyat</th>
+                      <th className="py-2.5 px-2.5">Para Birimi</th>
+                      <th className="py-2.5 px-2.5">Doküman Durumu</th>
+                      <th className="py-2.5 px-2.5">İletişim Bilgisi(Ev)</th>
+                      <th className="py-2.5 px-2.5">Resmi Görevi</th>
+                      <th className="py-2.5 px-2.5">Proje Bölgesi</th>
+                      <th className="py-2.5 px-2.5">Proje Adı</th>
+                      <th className="py-2.5 px-2.5">Bilet Durumu</th>
+                      <th className="py-2.5 px-2.5">Detail / Reason</th>
+                      <th className="py-2.5 px-2.5">Gidiş Dönüş mü</th>
+                      <th className="py-2.5 px-2.5">Açıklama</th>
+                      <th className="py-2.5 px-2.5">Güncelleyen</th>
+                      <th className="py-2.5 px-2.5">Güncelleme Tarihi</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {pagedSavedTickets.map((t) => {
+                      const depParts = String(t.departure_date || '').trim().split(/\s+/);
+                      const depDateOnly = depParts[0] || '-';
+                      const depTimeOnly = t.departure_time || depParts[1] || '-';
+                      const isDeductYes = t.deduct_from_salary === 'Yes';
+
+                      return (
+                        <tr
+                          key={t.id}
+                          className="hover:bg-slate-50/90 dark:hover:bg-slate-800/40 transition-colors"
+                        >
+                          <td className="py-2 px-2 sticky left-0 bg-white dark:bg-[#131C31] z-10 border-r border-slate-100 dark:border-slate-800">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setTicketFormModal({
+                                    open: true,
+                                    initialData: {
+                                      id: t.id,
+                                      eba_doc_id: t.eba_doc_id || '',
+                                      sicil_no: t.sicil_no || '',
+                                      person_type: t.person_type === 'guest' ? 'guest' : 'employee',
+                                      passenger_name: t.passenger_name || '',
+                                      passenger_name_ru: t.passenger_name_ru || '',
+                                      passport_no: t.passport_no || '',
+                                      citizenship: t.citizenship || '',
+                                      flight_purpose: t.flight_purpose || 'Transfer',
+                                      ticket_agent: t.ticket_agent || 'One Two Trip',
+                                      payment_company: t.payment_company || 'PONDERA-INDUSTRY',
+                                      transport_type:
+                                        t.transport_type === 'bus'
+                                          ? 'bus'
+                                          : t.transport_type === 'train'
+                                          ? 'train'
+                                          : 'flight',
+                                      flight_or_train_no: t.flight_or_train_no || '',
+                                      booking_ref: t.booking_ref || '',
+                                      ticket_number: t.ticket_number || '',
+                                      departure_date: depDateOnly === '-' ? '' : depDateOnly,
+                                      departure_time: depTimeOnly === '-' ? '' : depTimeOnly,
+                                      departure_city: t.departure_city || '',
+                                      arrival_date: t.arrival_date || '',
+                                      arrival_time: t.arrival_time || '',
+                                      arrival_city: t.arrival_city || '',
+                                      ticket_price: Number(t.ticket_price || 0),
+                                      currency: t.currency || 'RUB',
+                                      doc_status: t.doc_status || 'Uploaded',
+                                      contact_phone: t.contact_phone || '',
+                                      job_title: t.job_title || '',
+                                      region: t.region || '',
+                                      project_name: t.project_name || '',
+                                      ticket_status: t.ticket_status || '',
+                                      detail_reason: t.detail_reason || '0',
+                                      trip_type: t.trip_type || 'One Way',
+                                      notes: t.notes || '',
+                                      deduct_from_salary: isDeductYes ? 'Yes' : 'No',
+                                    },
+                                  })
+                                }
+                                className="p-1 rounded text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/50 cursor-pointer"
+                                title="29 Sütun Bilgilerini Düzenle"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLinkerModal({
+                                    mode: 'relink_saved_ticket',
+                                    ticketId: t.id,
+                                    title: `${t.passenger_name} — 35K Personel / Misafir Bağlantısı`,
+                                    candidates: [],
+                                  })
+                                }
+                                className="p-1 rounded text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer"
+                                title="Çalışan veya Misafire Bağla"
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSavedTicket(t.id)}
+                                className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
+                                title="Sil"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="py-2 px-2.5">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleDeduct(t)}
+                              title="Tıklayarak No / Yes değiştirin"
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer ${
+                                isDeductYes
+                                  ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              }`}
+                            >
+                              {isDeductYes ? 'Yes' : 'No'}
+                            </button>
+                          </td>
+
+                          <td className="py-2 px-2.5 font-mono text-slate-500">
+                            {t.eba_doc_id || t.ticket_code}
+                          </td>
+
+                          <td className="py-2 px-2.5 font-mono">
+                            {t.sicil_no ? (
+                              <button
+                                type="button"
+                                onClick={() => onNavigateToPersonnel?.('search', String(t.sicil_no))}
+                                className="font-bold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+                              >
+                                {t.sicil_no}
+                              </button>
+                            ) : (
+                              <span className="text-amber-600 dark:text-amber-300 font-semibold">
+                                {t.guest_code || 'GUEST'}
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-2 px-2.5 font-bold text-slate-900 dark:text-white">
+                            {t.passenger_name}
+                          </td>
+                          <td className="py-2 px-2.5 text-slate-600 dark:text-slate-300">
+                            {t.passenger_name_ru || '-'}
+                          </td>
+                          <td className="py-2 px-2.5">{t.citizenship || '-'}</td>
+                          <td className="py-2 px-2.5 font-medium text-teal-700 dark:text-teal-300">
+                            {t.flight_purpose || 'Transfer'}
+                          </td>
+                          <td className="py-2 px-2.5">{t.ticket_agent || 'One Two Trip'}</td>
+                          <td className="py-2 px-2.5">{t.payment_company || 'PONDERA-INDUSTRY'}</td>
+                          <td className="py-2 px-2.5">
+                            {t.transport_type === 'bus' ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                                <Bus className="w-3 h-3" /> Otobüs
+                              </span>
+                            ) : t.transport_type === 'train' ? (
+                              <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                                <Train className="w-3 h-3" /> Tren
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400 font-semibold">
+                                <Plane className="w-3 h-3" /> Uçak
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-2.5 font-mono">{depDateOnly}</td>
+                          <td className="py-2 px-2.5 font-mono">{depTimeOnly}</td>
+                          <td className="py-2 px-2.5 font-semibold">{t.departure_city || '-'}</td>
+                          <td className="py-2 px-2.5 font-mono">{t.arrival_date || '-'}</td>
+                          <td className="py-2 px-2.5 font-mono">{t.arrival_time || '-'}</td>
+                          <td className="py-2 px-2.5 font-semibold">{t.arrival_city || '-'}</td>
+                          <td className="py-2 px-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                            {Number(t.ticket_price || 0) > 0
+                              ? Number(t.ticket_price).toLocaleString('tr-TR')
+                              : '0'}
+                          </td>
+                          <td className="py-2 px-2.5 font-mono">{t.currency || 'RUB'}</td>
+                          <td className="py-2 px-2.5">{t.doc_status || 'Uploaded'}</td>
+                          <td className="py-2 px-2.5 font-mono">{t.contact_phone || '-'}</td>
+                          <td className="py-2 px-2.5">{t.job_title || '-'}</td>
+                          <td className="py-2 px-2.5 font-semibold text-teal-700 dark:text-teal-300">
+                            {t.region || '-'}
+                          </td>
+                          <td className="py-2 px-2.5">{t.project_name || '-'}</td>
+                          <td className="py-2 px-2.5">
+                            {t.ticket_status ? (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-semibold">
+                                {t.ticket_status}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="py-2 px-2.5">{t.detail_reason || '0'}</td>
+                          <td className="py-2 px-2.5">{t.trip_type || 'One Way'}</td>
+                          <td className="py-2 px-2.5 max-w-[200px] truncate">{t.notes || '-'}</td>
+                          <td className="py-2 px-2.5 text-slate-500">{t.updated_by || '-'}</td>
+                          <td className="py-2 px-2.5 font-mono text-slate-500">
+                            {t.updated_at || t.created_at || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PAGINATION */}
+              {totalLedgerPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                  <span>
+                    Toplam <b>{filteredSavedTickets.length}</b> kayıttan{' '}
+                    <b>{(safeLedgerPage - 1) * LEDGER_PAGE_SIZE + 1}</b>–
+                    <b>{Math.min(safeLedgerPage * LEDGER_PAGE_SIZE, filteredSavedTickets.length)}</b>{' '}
+                    arası gösteriliyor
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={safeLedgerPage <= 1}
+                      onClick={() => setLedgerPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                    >
+                      ← Önceki
+                    </button>
+                    <span className="px-2 font-semibold">
+                      Sayfa {safeLedgerPage} / {totalLedgerPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={safeLedgerPage >= totalLedgerPages}
+                      onClick={() => setLedgerPage((p) => Math.min(totalLedgerPages, p + 1))}
+                      className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                    >
+                      Sonraki →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
+
+      {/* ==================== SUB-VIEW 3: MULTI-MODAL RECEPTION & TRAVEL TV BOARD ==================== */}
+      {subView === 'reception_board' && (
+        <AirportReceptionBoard
+          tickets={savedTickets as any}
+          onRefresh={loadTicketsAndGuests}
+          onUpdateTicketLocal={handleUpdateTicketLocal}
+          canEdit={user?.role !== 'viewer'}
+        />
+      )}
+
+      {/* ==================== SUB-VIEW 4: TICKET PRICE & ROUTE ANALYTICS ==================== */}
+      {subView === 'analytics' && <TicketAnalyticsView tickets={savedTickets as any} />}
 
       {/* ==================== SUB-VIEW 3: GUEST (MİSAFİR) TRACKING SYSTEM ==================== */}
       {subView === 'guests' && (
@@ -2103,6 +2726,30 @@ export default function LiveTicketScannerSystem({
           </div>
         </div>
       )}
+
+      {/* ==================== MODAL 3: PONDERA 29-COLUMN MANUAL / EDIT TICKET ==================== */}
+      <PonderaTicketFormModal
+        isOpen={ticketFormModal.open}
+        initialData={ticketFormModal.initialData}
+        regions={regions}
+        projects={projects}
+        onClose={() => setTicketFormModal({ open: false, initialData: null })}
+        onSaved={(msg) => {
+          setBannerMsg({ type: 'success', text: msg });
+          loadTicketsAndGuests();
+        }}
+      />
+
+      {/* ==================== MODAL 4: CREATE NEW API KEY STEP-BY-STEP GUIDE ==================== */}
+      <AiApiKeyGuideModal
+        isOpen={guideModalOpen}
+        initialProvider={
+          selectedProvider === 'ru_docs_ocr'
+            ? 'deepseek'
+            : (selectedProvider as GuideProviderKey)
+        }
+        onClose={() => setGuideModalOpen(false)}
+      />
     </div>
   );
 }

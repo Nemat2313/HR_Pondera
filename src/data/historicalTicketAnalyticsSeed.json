@@ -1,0 +1,4399 @@
+{
+  "sourceLabel": "Pondera eBA Bilet Doküman Arşivi (2024–2026)",
+  "totalHistoricalRows": 42159,
+  "analyzedModernRows": 24216,
+  "totalSpendRub": 722458994,
+  "transportBreakdown": [
+    {
+      "type": "flight",
+      "label": "Uçak Bileti",
+      "count": 22739,
+      "totalRub": 715180909,
+      "avgRub": 31452
+    },
+    {
+      "type": "train",
+      "label": "Tren (RZD)",
+      "count": 1477,
+      "totalRub": 7278085,
+      "avgRub": 4928
+    },
+    {
+      "type": "bus",
+      "label": "Otobüs / Kara Ulaşımı",
+      "count": 0,
+      "totalRub": 0,
+      "avgRub": 0
+    }
+  ],
+  "monthlyTrend": [
+    {
+      "month": "2024-12",
+      "count": 429,
+      "flightCount": 384,
+      "trainCount": 45,
+      "busCount": 0,
+      "totalRub": 10631062,
+      "avgRub": 24781
+    },
+    {
+      "month": "2025-01",
+      "count": 685,
+      "flightCount": 636,
+      "trainCount": 49,
+      "busCount": 0,
+      "totalRub": 17677959,
+      "avgRub": 25807
+    },
+    {
+      "month": "2025-02",
+      "count": 338,
+      "flightCount": 326,
+      "trainCount": 12,
+      "busCount": 0,
+      "totalRub": 8177744,
+      "avgRub": 24195
+    },
+    {
+      "month": "2025-03",
+      "count": 489,
+      "flightCount": 429,
+      "trainCount": 60,
+      "busCount": 0,
+      "totalRub": 11028076,
+      "avgRub": 22552
+    },
+    {
+      "month": "2025-04",
+      "count": 730,
+      "flightCount": 659,
+      "trainCount": 71,
+      "busCount": 0,
+      "totalRub": 16253629,
+      "avgRub": 22265
+    },
+    {
+      "month": "2025-05",
+      "count": 773,
+      "flightCount": 734,
+      "trainCount": 39,
+      "busCount": 0,
+      "totalRub": 18903190,
+      "avgRub": 24454
+    },
+    {
+      "month": "2025-06",
+      "count": 776,
+      "flightCount": 691,
+      "trainCount": 85,
+      "busCount": 0,
+      "totalRub": 20778742,
+      "avgRub": 26811
+    },
+    {
+      "month": "2025-07",
+      "count": 827,
+      "flightCount": 807,
+      "trainCount": 20,
+      "busCount": 0,
+      "totalRub": 20399164,
+      "avgRub": 24666
+    },
+    {
+      "month": "2025-08",
+      "count": 813,
+      "flightCount": 802,
+      "trainCount": 11,
+      "busCount": 0,
+      "totalRub": 23697371,
+      "avgRub": 29148
+    },
+    {
+      "month": "2025-09",
+      "count": 838,
+      "flightCount": 751,
+      "trainCount": 87,
+      "busCount": 0,
+      "totalRub": 18923044,
+      "avgRub": 22581
+    },
+    {
+      "month": "2025-10",
+      "count": 1536,
+      "flightCount": 1421,
+      "trainCount": 115,
+      "busCount": 0,
+      "totalRub": 39256207,
+      "avgRub": 25557
+    },
+    {
+      "month": "2025-11",
+      "count": 1144,
+      "flightCount": 1135,
+      "trainCount": 9,
+      "busCount": 0,
+      "totalRub": 36947233,
+      "avgRub": 32297
+    },
+    {
+      "month": "2025-12",
+      "count": 1085,
+      "flightCount": 1035,
+      "trainCount": 50,
+      "busCount": 0,
+      "totalRub": 36510342,
+      "avgRub": 33650
+    },
+    {
+      "month": "2026-01",
+      "count": 1029,
+      "flightCount": 1027,
+      "trainCount": 2,
+      "busCount": 0,
+      "totalRub": 28590359,
+      "avgRub": 27785
+    },
+    {
+      "month": "2026-02",
+      "count": 952,
+      "flightCount": 929,
+      "trainCount": 23,
+      "busCount": 0,
+      "totalRub": 26741329,
+      "avgRub": 28149
+    },
+    {
+      "month": "2026-03",
+      "count": 814,
+      "flightCount": 772,
+      "trainCount": 42,
+      "busCount": 0,
+      "totalRub": 25205652,
+      "avgRub": 30965
+    },
+    {
+      "month": "2026-04",
+      "count": 1106,
+      "flightCount": 1071,
+      "trainCount": 35,
+      "busCount": 0,
+      "totalRub": 33325049,
+      "avgRub": 30131
+    },
+    {
+      "month": "2026-05",
+      "count": 1047,
+      "flightCount": 1032,
+      "trainCount": 15,
+      "busCount": 0,
+      "totalRub": 28431624,
+      "avgRub": 27155
+    },
+    {
+      "month": "2026-06",
+      "count": 1038,
+      "flightCount": 1018,
+      "trainCount": 20,
+      "busCount": 0,
+      "totalRub": 36243873,
+      "avgRub": 34917
+    },
+    {
+      "month": "2026-07",
+      "count": 841,
+      "flightCount": 685,
+      "trainCount": 156,
+      "busCount": 0,
+      "totalRub": 24995644,
+      "avgRub": 29721
+    },
+    {
+      "month": "2026-08",
+      "count": 746,
+      "flightCount": 709,
+      "trainCount": 37,
+      "busCount": 0,
+      "totalRub": 35177092,
+      "avgRub": 47154
+    },
+    {
+      "month": "2026-09",
+      "count": 802,
+      "flightCount": 777,
+      "trainCount": 25,
+      "busCount": 0,
+      "totalRub": 32011684,
+      "avgRub": 39915
+    },
+    {
+      "month": "2026-10",
+      "count": 1350,
+      "flightCount": 1329,
+      "trainCount": 21,
+      "busCount": 0,
+      "totalRub": 49416229,
+      "avgRub": 36605
+    },
+    {
+      "month": "2026-11",
+      "count": 59,
+      "flightCount": 59,
+      "trainCount": 0,
+      "busCount": 0,
+      "totalRub": 1514989,
+      "avgRub": 25678
+    }
+  ],
+  "bySite": [
+    {
+      "site": "Tobolsk",
+      "count": 8191,
+      "totalRub": 219686424,
+      "avgRub": 26824
+    },
+    {
+      "site": "Ust Luga",
+      "count": 4236,
+      "totalRub": 146227202,
+      "avgRub": 34520
+    },
+    {
+      "site": "Irkutsk",
+      "count": 2992,
+      "totalRub": 98308291,
+      "avgRub": 32857
+    },
+    {
+      "site": "NHNK mPE-300",
+      "count": 2696,
+      "totalRub": 77010975,
+      "avgRub": 28576
+    },
+    {
+      "site": "Svobodny-AGHK",
+      "count": 1288,
+      "totalRub": 59421280,
+      "avgRub": 46135
+    },
+    {
+      "site": "Kazan Katalizor",
+      "count": 1447,
+      "totalRub": 36286049,
+      "avgRub": 25077
+    },
+    {
+      "site": "NHNK SKLAD PROPILEN",
+      "count": 859,
+      "totalRub": 23956506,
+      "avgRub": 27921
+    },
+    {
+      "site": "SIBUR Nijnekamsk",
+      "count": 877,
+      "totalRub": 22191842,
+      "avgRub": 25304
+    },
+    {
+      "site": "Nizhnekamsk Polisterol",
+      "count": 691,
+      "totalRub": 20341356,
+      "avgRub": 29438
+    },
+    {
+      "site": "Merkez Ofis",
+      "count": 683,
+      "totalRub": 13439491,
+      "avgRub": 19677
+    },
+    {
+      "site": "Kazan (Merkez)",
+      "count": 120,
+      "totalRub": 2580973,
+      "avgRub": 21508
+    },
+    {
+      "site": "Nizhny Novgorod",
+      "count": 47,
+      "totalRub": 1029687,
+      "avgRub": 21908
+    },
+    {
+      "site": "SPS 2520",
+      "count": 49,
+      "totalRub": 720861,
+      "avgRub": 14711
+    },
+    {
+      "site": "Amur",
+      "count": 18,
+      "totalRub": 649172,
+      "avgRub": 36065
+    },
+    {
+      "site": "Murmansk",
+      "count": 21,
+      "totalRub": 560149,
+      "avgRub": 26674
+    },
+    {
+      "site": "Amur-AGHK",
+      "count": 1,
+      "totalRub": 48736,
+      "avgRub": 48736
+    }
+  ],
+  "byPurpose": [
+    {
+      "purpose": "İşe Giriş",
+      "count": 14562,
+      "totalRub": 443135088,
+      "avgRub": 30433
+    },
+    {
+      "purpose": "İşten Çıkış",
+      "count": 3566,
+      "totalRub": 133248897,
+      "avgRub": 37366
+    },
+    {
+      "purpose": "Transfer",
+      "count": 1965,
+      "totalRub": 42428756,
+      "avgRub": 21592
+    },
+    {
+      "purpose": "Is Gezisi",
+      "count": 1639,
+      "totalRub": 24017789,
+      "avgRub": 14654
+    },
+    {
+      "purpose": "İzne Gidiş",
+      "count": 1319,
+      "totalRub": 44255443,
+      "avgRub": 33552
+    },
+    {
+      "purpose": "İzinden Dönüş",
+      "count": 904,
+      "totalRub": 28783229,
+      "avgRub": 31840
+    },
+    {
+      "purpose": "Özel",
+      "count": 229,
+      "totalRub": 6050103,
+      "avgRub": 26536
+    },
+    {
+      "purpose": "Belirtilmemiş",
+      "count": 32,
+      "totalRub": 539689,
+      "avgRub": 17409
+    }
+  ],
+  "byAgent": [
+    {
+      "agent": "One Two Trip",
+      "count": 19932,
+      "totalRub": 592988407,
+      "avgRub": 29755
+    },
+    {
+      "agent": "Belirtilmemiş",
+      "count": 4218,
+      "totalRub": 128557990,
+      "avgRub": 30478
+    },
+    {
+      "agent": "PPR (Smart Smartway)",
+      "count": 66,
+      "totalRub": 912597,
+      "avgRub": 13827
+    }
+  ],
+  "byStatus": [
+    {
+      "status": "Aktif",
+      "count": 23132,
+      "totalRub": 691350248
+    },
+    {
+      "status": "Cancelled",
+      "count": 624,
+      "totalRub": 16303627
+    },
+    {
+      "status": "Changed",
+      "count": 433,
+      "totalRub": 14196414
+    },
+    {
+      "status": "Missed",
+      "count": 27,
+      "totalRub": 608705
+    }
+  ],
+  "byCurrency": [
+    {
+      "currency": "RUB",
+      "count": 24185,
+      "origSum": 715766346,
+      "rubSum": 715766346
+    },
+    {
+      "currency": "USD",
+      "count": 30,
+      "origSum": 72612,
+      "rubSum": 6680344
+    },
+    {
+      "currency": "TRY",
+      "count": 1,
+      "origSum": 4474,
+      "rubSum": 12304
+    }
+  ],
+  "topRoutes": [
+    {
+      "route": "DELHI → MOSKOVA",
+      "from": "DELHI",
+      "to": "MOSKOVA",
+      "transport": "flight",
+      "count": 2343,
+      "pricedCount": 2258,
+      "totalRub": 95556262,
+      "avgRub": 42319,
+      "minRub": 22009,
+      "maxRub": 86192,
+      "lastMonthAvgRub": 33794,
+      "momChangePct": -11.9,
+      "overallChangePct": -2.8,
+      "monthly": [
+        {
+          "month": "2025-04",
+          "count": 145,
+          "avgRub": 34763,
+          "minRub": 31635,
+          "maxRub": 49088
+        },
+        {
+          "month": "2025-05",
+          "count": 49,
+          "avgRub": 37771,
+          "minRub": 31923,
+          "maxRub": 50409
+        },
+        {
+          "month": "2025-06",
+          "count": 121,
+          "avgRub": 44123,
+          "minRub": 26588,
+          "maxRub": 66000
+        },
+        {
+          "month": "2025-07",
+          "count": 181,
+          "avgRub": 36544,
+          "minRub": 24349,
+          "maxRub": 71080
+        },
+        {
+          "month": "2025-08",
+          "count": 213,
+          "avgRub": 40667,
+          "minRub": 30927,
+          "maxRub": 68949
+        },
+        {
+          "month": "2025-09",
+          "count": 131,
+          "avgRub": 41623,
+          "minRub": 27020,
+          "maxRub": 62556
+        },
+        {
+          "month": "2025-10",
+          "count": 86,
+          "avgRub": 39409,
+          "minRub": 34368,
+          "maxRub": 55513
+        },
+        {
+          "month": "2025-11",
+          "count": 206,
+          "avgRub": 44306,
+          "minRub": 30420,
+          "maxRub": 60709
+        },
+        {
+          "month": "2025-12",
+          "count": 271,
+          "avgRub": 52939,
+          "minRub": 23346,
+          "maxRub": 75735
+        },
+        {
+          "month": "2026-01",
+          "count": 68,
+          "avgRub": 44258,
+          "minRub": 31792,
+          "maxRub": 68336
+        },
+        {
+          "month": "2026-02",
+          "count": 72,
+          "avgRub": 38117,
+          "minRub": 29037,
+          "maxRub": 42101
+        },
+        {
+          "month": "2026-03",
+          "count": 18,
+          "avgRub": 50780,
+          "minRub": 46402,
+          "maxRub": 86192
+        },
+        {
+          "month": "2026-04",
+          "count": 120,
+          "avgRub": 55456,
+          "minRub": 37431,
+          "maxRub": 80289
+        },
+        {
+          "month": "2026-05",
+          "count": 177,
+          "avgRub": 41153,
+          "minRub": 22009,
+          "maxRub": 57437
+        },
+        {
+          "month": "2026-06",
+          "count": 108,
+          "avgRub": 37199,
+          "minRub": 28060,
+          "maxRub": 78301
+        },
+        {
+          "month": "2026-07",
+          "count": 1,
+          "avgRub": 37228,
+          "minRub": 37228,
+          "maxRub": 37228
+        },
+        {
+          "month": "2026-09",
+          "count": 1,
+          "avgRub": 38375,
+          "minRub": 38375,
+          "maxRub": 38375
+        },
+        {
+          "month": "2026-10",
+          "count": 1,
+          "avgRub": 33794,
+          "minRub": 33794,
+          "maxRub": 33794
+        }
+      ]
+    },
+    {
+      "route": "MOSKOVA → TYUMEN",
+      "from": "MOSKOVA",
+      "to": "TYUMEN",
+      "transport": "flight",
+      "count": 1650,
+      "pricedCount": 1489,
+      "totalRub": 20892154,
+      "avgRub": 14031,
+      "minRub": 3224,
+      "maxRub": 55511,
+      "lastMonthAvgRub": 9198,
+      "momChangePct": -52,
+      "overallChangePct": -35,
+      "monthly": [
+        {
+          "month": "2025-04",
+          "count": 100,
+          "avgRub": 14140,
+          "minRub": 10289,
+          "maxRub": 18584
+        },
+        {
+          "month": "2025-05",
+          "count": 92,
+          "avgRub": 12993,
+          "minRub": 6824,
+          "maxRub": 22901
+        },
+        {
+          "month": "2025-06",
+          "count": 75,
+          "avgRub": 10112,
+          "minRub": 8018,
+          "maxRub": 13202
+        },
+        {
+          "month": "2025-07",
+          "count": 140,
+          "avgRub": 13375,
+          "minRub": 8295,
+          "maxRub": 50711
+        },
+        {
+          "month": "2025-08",
+          "count": 75,
+          "avgRub": 13019,
+          "minRub": 5831,
+          "maxRub": 15683
+        },
+        {
+          "month": "2025-09",
+          "count": 98,
+          "avgRub": 11474,
+          "minRub": 4466,
+          "maxRub": 14021
+        },
+        {
+          "month": "2025-10",
+          "count": 111,
+          "avgRub": 13178,
+          "minRub": 10013,
+          "maxRub": 17485
+        },
+        {
+          "month": "2025-11",
+          "count": 215,
+          "avgRub": 16838,
+          "minRub": 12446,
+          "maxRub": 55511
+        },
+        {
+          "month": "2025-12",
+          "count": 205,
+          "avgRub": 20617,
+          "minRub": 11918,
+          "maxRub": 50675
+        },
+        {
+          "month": "2026-01",
+          "count": 54,
+          "avgRub": 11537,
+          "minRub": 3836,
+          "maxRub": 16120
+        },
+        {
+          "month": "2026-02",
+          "count": 48,
+          "avgRub": 12383,
+          "minRub": 7511,
+          "maxRub": 20455
+        },
+        {
+          "month": "2026-03",
+          "count": 22,
+          "avgRub": 11733,
+          "minRub": 7225,
+          "maxRub": 25373
+        },
+        {
+          "month": "2026-04",
+          "count": 19,
+          "avgRub": 10532,
+          "minRub": 8800,
+          "maxRub": 14817
+        },
+        {
+          "month": "2026-05",
+          "count": 50,
+          "avgRub": 10596,
+          "minRub": 6907,
+          "maxRub": 13378
+        },
+        {
+          "month": "2026-06",
+          "count": 1,
+          "avgRub": 10037,
+          "minRub": 10037,
+          "maxRub": 10037
+        },
+        {
+          "month": "2026-07",
+          "count": 2,
+          "avgRub": 19276,
+          "minRub": 18135,
+          "maxRub": 20418
+        },
+        {
+          "month": "2026-08",
+          "count": 2,
+          "avgRub": 19152,
+          "minRub": 15153,
+          "maxRub": 23152
+        },
+        {
+          "month": "2026-10",
+          "count": 1,
+          "avgRub": 9198,
+          "minRub": 9198,
+          "maxRub": 9198
+        }
+      ]
+    },
+    {
+      "route": "TASHKENT → KAZAN",
+      "from": "TASHKENT",
+      "to": "KAZAN",
+      "transport": "flight",
+      "count": 835,
+      "pricedCount": 808,
+      "totalRub": 22807445,
+      "avgRub": 28227,
+      "minRub": 12992,
+      "maxRub": 47819,
+      "lastMonthAvgRub": 17656,
+      "momChangePct": 11.3,
+      "overallChangePct": -7.4,
+      "monthly": [
+        {
+          "month": "2025-05",
+          "count": 7,
+          "avgRub": 19072,
+          "minRub": 17510,
+          "maxRub": 27432
+        },
+        {
+          "month": "2025-06",
+          "count": 10,
+          "avgRub": 34887,
+          "minRub": 27030,
+          "maxRub": 35760
+        },
+        {
+          "month": "2025-07",
+          "count": 36,
+          "avgRub": 26808,
+          "minRub": 23074,
+          "maxRub": 31326
+        },
+        {
+          "month": "2025-08",
+          "count": 17,
+          "avgRub": 36287,
+          "minRub": 22555,
+          "maxRub": 40653
+        },
+        {
+          "month": "2025-09",
+          "count": 15,
+          "avgRub": 26996,
+          "minRub": 19276,
+          "maxRub": 29681
+        },
+        {
+          "month": "2025-10",
+          "count": 72,
+          "avgRub": 23341,
+          "minRub": 21467,
+          "maxRub": 25181
+        },
+        {
+          "month": "2025-11",
+          "count": 53,
+          "avgRub": 33656,
+          "minRub": 19801,
+          "maxRub": 43808
+        },
+        {
+          "month": "2025-12",
+          "count": 1,
+          "avgRub": 23313,
+          "minRub": 23313,
+          "maxRub": 23313
+        },
+        {
+          "month": "2026-01",
+          "count": 104,
+          "avgRub": 32792,
+          "minRub": 22411,
+          "maxRub": 42642
+        },
+        {
+          "month": "2026-02",
+          "count": 95,
+          "avgRub": 30963,
+          "minRub": 20911,
+          "maxRub": 47819
+        },
+        {
+          "month": "2026-03",
+          "count": 56,
+          "avgRub": 34008,
+          "minRub": 24446,
+          "maxRub": 44445
+        },
+        {
+          "month": "2026-04",
+          "count": 29,
+          "avgRub": 33228,
+          "minRub": 23509,
+          "maxRub": 43010
+        },
+        {
+          "month": "2026-05",
+          "count": 5,
+          "avgRub": 26180,
+          "minRub": 17556,
+          "maxRub": 30293
+        },
+        {
+          "month": "2026-06",
+          "count": 14,
+          "avgRub": 34767,
+          "minRub": 22140,
+          "maxRub": 40682
+        },
+        {
+          "month": "2026-07",
+          "count": 40,
+          "avgRub": 18623,
+          "minRub": 15986,
+          "maxRub": 23467
+        },
+        {
+          "month": "2026-08",
+          "count": 24,
+          "avgRub": 32471,
+          "minRub": 19320,
+          "maxRub": 37110
+        },
+        {
+          "month": "2026-09",
+          "count": 14,
+          "avgRub": 15870,
+          "minRub": 13683,
+          "maxRub": 19622
+        },
+        {
+          "month": "2026-10",
+          "count": 77,
+          "avgRub": 17656,
+          "minRub": 12992,
+          "maxRub": 32783
+        }
+      ]
+    },
+    {
+      "route": "MOSKOVA → ST PETERSBURG",
+      "from": "MOSKOVA",
+      "to": "ST PETERSBURG",
+      "transport": "flight",
+      "count": 777,
+      "pricedCount": 709,
+      "totalRub": 7311123,
+      "avgRub": 10312,
+      "minRub": 2424,
+      "maxRub": 40561,
+      "lastMonthAvgRub": 8035,
+      "momChangePct": -59.7,
+      "overallChangePct": -9.6,
+      "monthly": [
+        {
+          "month": "2025-04",
+          "count": 56,
+          "avgRub": 8891,
+          "minRub": 6461,
+          "maxRub": 11911
+        },
+        {
+          "month": "2025-05",
+          "count": 3,
+          "avgRub": 6010,
+          "minRub": 4068,
+          "maxRub": 8277
+        },
+        {
+          "month": "2025-06",
+          "count": 5,
+          "avgRub": 8602,
+          "minRub": 4210,
+          "maxRub": 12231
+        },
+        {
+          "month": "2025-07",
+          "count": 26,
+          "avgRub": 9098,
+          "minRub": 7983,
+          "maxRub": 10157
+        },
+        {
+          "month": "2025-08",
+          "count": 81,
+          "avgRub": 9327,
+          "minRub": 4801,
+          "maxRub": 10556
+        },
+        {
+          "month": "2025-09",
+          "count": 73,
+          "avgRub": 8772,
+          "minRub": 7825,
+          "maxRub": 10157
+        },
+        {
+          "month": "2025-10",
+          "count": 65,
+          "avgRub": 9203,
+          "minRub": 6876,
+          "maxRub": 16919
+        },
+        {
+          "month": "2025-11",
+          "count": 3,
+          "avgRub": 11598,
+          "minRub": 8771,
+          "maxRub": 15646
+        },
+        {
+          "month": "2025-12",
+          "count": 52,
+          "avgRub": 13032,
+          "minRub": 4161,
+          "maxRub": 20646
+        },
+        {
+          "month": "2026-01",
+          "count": 27,
+          "avgRub": 18092,
+          "minRub": 5304,
+          "maxRub": 40286
+        },
+        {
+          "month": "2026-02",
+          "count": 66,
+          "avgRub": 13933,
+          "minRub": 8403,
+          "maxRub": 40288
+        },
+        {
+          "month": "2026-03",
+          "count": 11,
+          "avgRub": 9663,
+          "minRub": 6814,
+          "maxRub": 14335
+        },
+        {
+          "month": "2026-04",
+          "count": 68,
+          "avgRub": 9296,
+          "minRub": 6360,
+          "maxRub": 10985
+        },
+        {
+          "month": "2026-05",
+          "count": 3,
+          "avgRub": 7999,
+          "minRub": 6583,
+          "maxRub": 8707
+        },
+        {
+          "month": "2026-06",
+          "count": 2,
+          "avgRub": 9470,
+          "minRub": 6572,
+          "maxRub": 12367
+        },
+        {
+          "month": "2026-07",
+          "count": 5,
+          "avgRub": 8049,
+          "minRub": 3847,
+          "maxRub": 16209
+        },
+        {
+          "month": "2026-08",
+          "count": 4,
+          "avgRub": 19941,
+          "minRub": 12518,
+          "maxRub": 40561
+        },
+        {
+          "month": "2026-09",
+          "count": 1,
+          "avgRub": 8035,
+          "minRub": 8035,
+          "maxRub": 8035
+        }
+      ]
+    },
+    {
+      "route": "TASHKENT → TYUMEN",
+      "from": "TASHKENT",
+      "to": "TYUMEN",
+      "transport": "flight",
+      "count": 716,
+      "pricedCount": 713,
+      "totalRub": 18376030,
+      "avgRub": 25773,
+      "minRub": 12609,
+      "maxRub": 40900,
+      "lastMonthAvgRub": 21898,
+      "momChangePct": -2.8,
+      "overallChangePct": -25.9,
+      "monthly": [
+        {
+          "month": "2025-04",
+          "count": 4,
+          "avgRub": 29557,
+          "minRub": 25141,
+          "maxRub": 31785
+        },
+        {
+          "month": "2025-05",
+          "count": 4,
+          "avgRub": 28359,
+          "minRub": 23779,
+          "maxRub": 30682
+        },
+        {
+          "month": "2025-06",
+          "count": 15,
+          "avgRub": 30664,
+          "minRub": 21662,
+          "maxRub": 32901
+        },
+        {
+          "month": "2025-07",
+          "count": 15,
+          "avgRub": 25169,
+          "minRub": 21735,
+          "maxRub": 28638
+        },
+        {
+          "month": "2025-08",
+          "count": 28,
+          "avgRub": 30054,
+          "minRub": 24231,
+          "maxRub": 31884
+        },
+        {
+          "month": "2025-09",
+          "count": 101,
+          "avgRub": 24265,
+          "minRub": 20274,
+          "maxRub": 30702
+        },
+        {
+          "month": "2025-10",
+          "count": 35,
+          "avgRub": 19853,
+          "minRub": 12609,
+          "maxRub": 25123
+        },
+        {
+          "month": "2025-11",
+          "count": 24,
+          "avgRub": 18663,
+          "minRub": 17599,
+          "maxRub": 22652
+        },
+        {
+          "month": "2026-01",
+          "count": 84,
+          "avgRub": 28901,
+          "minRub": 26301,
+          "maxRub": 33801
+        },
+        {
+          "month": "2026-02",
+          "count": 81,
+          "avgRub": 27886,
+          "minRub": 20081,
+          "maxRub": 33705
+        },
+        {
+          "month": "2026-03",
+          "count": 11,
+          "avgRub": 29200,
+          "minRub": 24739,
+          "maxRub": 30251
+        },
+        {
+          "month": "2026-04",
+          "count": 24,
+          "avgRub": 23549,
+          "minRub": 21540,
+          "maxRub": 28850
+        },
+        {
+          "month": "2026-05",
+          "count": 8,
+          "avgRub": 23853,
+          "minRub": 19205,
+          "maxRub": 24795
+        },
+        {
+          "month": "2026-06",
+          "count": 4,
+          "avgRub": 21065,
+          "minRub": 19660,
+          "maxRub": 21756
+        },
+        {
+          "month": "2026-07",
+          "count": 2,
+          "avgRub": 21586,
+          "minRub": 20261,
+          "maxRub": 22911
+        },
+        {
+          "month": "2026-08",
+          "count": 24,
+          "avgRub": 28759,
+          "minRub": 26320,
+          "maxRub": 29828
+        },
+        {
+          "month": "2026-09",
+          "count": 8,
+          "avgRub": 22537,
+          "minRub": 22152,
+          "maxRub": 22789
+        },
+        {
+          "month": "2026-10",
+          "count": 2,
+          "avgRub": 21898,
+          "minRub": 21898,
+          "maxRub": 21898
+        }
+      ]
+    },
+    {
+      "route": "MOSKOVA → NABEREZHNYE CHELNY",
+      "from": "MOSKOVA",
+      "to": "NABEREZHNYE CHELNY",
+      "transport": "flight",
+      "count": 662,
+      "pricedCount": 593,
+      "totalRub": 5826244,
+      "avgRub": 9825,
+      "minRub": 4378,
+      "maxRub": 33049,
+      "lastMonthAvgRub": 8956,
+      "momChangePct": -39.8,
+      "overallChangePct": -13.4,
+      "monthly": [
+        {
+          "month": "2025-05",
+          "count": 2,
+          "avgRub": 10344,
+          "minRub": 9192,
+          "maxRub": 11496
+        },
+        {
+          "month": "2025-06",
+          "count": 3,
+          "avgRub": 15254,
+          "minRub": 9192,
+          "maxRub": 21949
+        },
+        {
+          "month": "2025-07",
+          "count": 2,
+          "avgRub": 13891,
+          "minRub": 10315,
+          "maxRub": 17466
+        },
+        {
+          "month": "2025-08",
+          "count": 8,
+          "avgRub": 8872,
+          "minRub": 8856,
+          "maxRub": 8982
+        },
+        {
+          "month": "2025-09",
+          "count": 2,
+          "avgRub": 11746,
+          "minRub": 6199,
+          "maxRub": 17293
+        },
+        {
+          "month": "2025-10",
+          "count": 7,
+          "avgRub": 9489,
+          "minRub": 7921,
+          "maxRub": 11496
+        },
+        {
+          "month": "2025-11",
+          "count": 7,
+          "avgRub": 10372,
+          "minRub": 9349,
+          "maxRub": 11512
+        },
+        {
+          "month": "2025-12",
+          "count": 2,
+          "avgRub": 17949,
+          "minRub": 13717,
+          "maxRub": 22180
+        },
+        {
+          "month": "2026-01",
+          "count": 1,
+          "avgRub": 7108,
+          "minRub": 7108,
+          "maxRub": 7108
+        },
+        {
+          "month": "2026-02",
+          "count": 33,
+          "avgRub": 6824,
+          "minRub": 5329,
+          "maxRub": 10421
+        },
+        {
+          "month": "2026-03",
+          "count": 2,
+          "avgRub": 9387,
+          "minRub": 8353,
+          "maxRub": 10421
+        },
+        {
+          "month": "2026-04",
+          "count": 165,
+          "avgRub": 10235,
+          "minRub": 7077,
+          "maxRub": 15514
+        },
+        {
+          "month": "2026-05",
+          "count": 177,
+          "avgRub": 9651,
+          "minRub": 6778,
+          "maxRub": 11965
+        },
+        {
+          "month": "2026-06",
+          "count": 103,
+          "avgRub": 9880,
+          "minRub": 7093,
+          "maxRub": 16900
+        },
+        {
+          "month": "2026-07",
+          "count": 6,
+          "avgRub": 12558,
+          "minRub": 10526,
+          "maxRub": 14894
+        },
+        {
+          "month": "2026-08",
+          "count": 2,
+          "avgRub": 12266,
+          "minRub": 11587,
+          "maxRub": 12944
+        },
+        {
+          "month": "2026-09",
+          "count": 1,
+          "avgRub": 14884,
+          "minRub": 14884,
+          "maxRub": 14884
+        },
+        {
+          "month": "2026-10",
+          "count": 3,
+          "avgRub": 8956,
+          "minRub": 7072,
+          "maxRub": 12724
+        }
+      ]
+    },
+    {
+      "route": "MOSKOVA → KAZAN",
+      "from": "MOSKOVA",
+      "to": "KAZAN",
+      "transport": "flight",
+      "count": 644,
+      "pricedCount": 604,
+      "totalRub": 7094989,
+      "avgRub": 11747,
+      "minRub": 3293,
+      "maxRub": 40511,
+      "lastMonthAvgRub": 14573,
+      "momChangePct": 81.3,
+      "overallChangePct": 106.5,
+      "monthly": [
+        {
+          "month": "2025-04",
+          "count": 3,
+          "avgRub": 7058,
+          "minRub": 7058,
+          "maxRub": 7058
+        },
+        {
+          "month": "2025-05",
+          "count": 2,
+          "avgRub": 27668,
+          "minRub": 14824,
+          "maxRub": 40511
+        },
+        {
+          "month": "2025-06",
+          "count": 15,
+          "avgRub": 8005,
+          "minRub": 5472,
+          "maxRub": 11620
+        },
+        {
+          "month": "2025-07",
+          "count": 38,
+          "avgRub": 9930,
+          "minRub": 6842,
+          "maxRub": 13079
+        },
+        {
+          "month": "2025-08",
+          "count": 34,
+          "avgRub": 9232,
+          "minRub": 6107,
+          "maxRub": 16366
+        },
+        {
+          "month": "2025-09",
+          "count": 28,
+          "avgRub": 9842,
+          "minRub": 7514,
+          "maxRub": 23341
+        },
+        {
+          "month": "2025-10",
+          "count": 123,
+          "avgRub": 8736,
+          "minRub": 4686,
+          "maxRub": 19883
+        },
+        {
+          "month": "2025-11",
+          "count": 7,
+          "avgRub": 11559,
+          "minRub": 6039,
+          "maxRub": 19145
+        },
+        {
+          "month": "2025-12",
+          "count": 61,
+          "avgRub": 19450,
+          "minRub": 7819,
+          "maxRub": 36641
+        },
+        {
+          "month": "2026-01",
+          "count": 72,
+          "avgRub": 10831,
+          "minRub": 4913,
+          "maxRub": 20737
+        },
+        {
+          "month": "2026-02",
+          "count": 36,
+          "avgRub": 14411,
+          "minRub": 7243,
+          "maxRub": 20739
+        },
+        {
+          "month": "2026-03",
+          "count": 43,
+          "avgRub": 14745,
+          "minRub": 9393,
+          "maxRub": 37546
+        },
+        {
+          "month": "2026-04",
+          "count": 5,
+          "avgRub": 7079,
+          "minRub": 3842,
+          "maxRub": 9514
+        },
+        {
+          "month": "2026-05",
+          "count": 13,
+          "avgRub": 12315,
+          "minRub": 7173,
+          "maxRub": 19191
+        },
+        {
+          "month": "2026-06",
+          "count": 17,
+          "avgRub": 14118,
+          "minRub": 13515,
+          "maxRub": 14796
+        },
+        {
+          "month": "2026-07",
+          "count": 4,
+          "avgRub": 13899,
+          "minRub": 8263,
+          "maxRub": 29252
+        },
+        {
+          "month": "2026-08",
+          "count": 17,
+          "avgRub": 8040,
+          "minRub": 7353,
+          "maxRub": 10680
+        },
+        {
+          "month": "2026-09",
+          "count": 18,
+          "avgRub": 14573,
+          "minRub": 8535,
+          "maxRub": 18261
+        }
+      ]
+    },
+    {
+      "route": "TASHKENT → EKATERINBURG",
+      "from": "TASHKENT",
+      "to": "EKATERINBURG",
+      "transport": "flight",
+      "count": 616,
+      "pricedCount": 595,
+      "totalRub": 15712529,
+      "avgRub": 26408,
+      "minRub": 13172,
+      "maxRub": 50132,
+      "lastMonthAvgRub": 26966,
+      "momChangePct": -6.1,
+      "overallChangePct": -17.1,
+      "monthly": [
+        {
+          "month": "2025-01",
+          "count": 97,
+          "avgRub": 32515,
+          "minRub": 23435,
+          "maxRub": 50132
+        },
+        {
+          "month": "2025-02",
+          "count": 34,
+          "avgRub": 26615,
+          "minRub": 25649,
+          "maxRub": 30395
+        },
+        {
+          "month": "2025-03",
+          "count": 70,
+          "avgRub": 25723,
+          "minRub": 23671,
+          "maxRub": 31249
+        },
+        {
+          "month": "2025-04",
+          "count": 72,
+          "avgRub": 28422,
+          "minRub": 26344,
+          "maxRub": 31444
+        },
+        {
+          "month": "2025-05",
+          "count": 58,
+          "avgRub": 22516,
+          "minRub": 21111,
+          "maxRub": 27879
+        },
+        {
+          "month": "2025-06",
+          "count": 1,
+          "avgRub": 41744,
+          "minRub": 41744,
+          "maxRub": 41744
+        },
+        {
+          "month": "2025-07",
+          "count": 9,
+          "avgRub": 28084,
+          "minRub": 28084,
+          "maxRub": 28084
+        },
+        {
+          "month": "2025-08",
+          "count": 1,
+          "avgRub": 23751,
+          "minRub": 23751,
+          "maxRub": 23751
+        },
+        {
+          "month": "2025-11",
+          "count": 29,
+          "avgRub": 13588,
+          "minRub": 13172,
+          "maxRub": 14952
+        },
+        {
+          "month": "2025-12",
+          "count": 16,
+          "avgRub": 14085,
+          "minRub": 13945,
+          "maxRub": 14300
+        },
+        {
+          "month": "2026-01",
+          "count": 133,
+          "avgRub": 25709,
+          "minRub": 20130,
+          "maxRub": 35268
+        },
+        {
+          "month": "2026-02",
+          "count": 32,
+          "avgRub": 30623,
+          "minRub": 23055,
+          "maxRub": 42486
+        },
+        {
+          "month": "2026-03",
+          "count": 11,
+          "avgRub": 24485,
+          "minRub": 23343,
+          "maxRub": 35901
+        },
+        {
+          "month": "2026-04",
+          "count": 18,
+          "avgRub": 28720,
+          "minRub": 27709,
+          "maxRub": 29952
+        },
+        {
+          "month": "2026-05",
+          "count": 14,
+          "avgRub": 26966,
+          "minRub": 16993,
+          "maxRub": 28647
+        }
+      ]
+    },
+    {
+      "route": "TASHKENT → IRKUTSK",
+      "from": "TASHKENT",
+      "to": "IRKUTSK",
+      "transport": "flight",
+      "count": 583,
+      "pricedCount": 554,
+      "totalRub": 22384558,
+      "avgRub": 40405,
+      "minRub": 2782,
+      "maxRub": 68131,
+      "lastMonthAvgRub": 29413,
+      "momChangePct": -7.8,
+      "overallChangePct": -33.6,
+      "monthly": [
+        {
+          "month": "2024-01",
+          "count": 223,
+          "avgRub": 44288,
+          "minRub": 24074,
+          "maxRub": 68131
+        },
+        {
+          "month": "2024-02",
+          "count": 90,
+          "avgRub": 57799,
+          "minRub": 34936,
+          "maxRub": 64281
+        },
+        {
+          "month": "2024-03",
+          "count": 5,
+          "avgRub": 43439,
+          "minRub": 33603,
+          "maxRub": 59523
+        },
+        {
+          "month": "2024-04",
+          "count": 28,
+          "avgRub": 34805,
+          "minRub": 32331,
+          "maxRub": 36892
+        },
+        {
+          "month": "2024-05",
+          "count": 15,
+          "avgRub": 32686,
+          "minRub": 27285,
+          "maxRub": 33817
+        },
+        {
+          "month": "2024-07",
+          "count": 34,
+          "avgRub": 28240,
+          "minRub": 20796,
+          "maxRub": 41949
+        },
+        {
+          "month": "2024-08",
+          "count": 5,
+          "avgRub": 32476,
+          "minRub": 2782,
+          "maxRub": 53145
+        },
+        {
+          "month": "2024-09",
+          "count": 1,
+          "avgRub": 30915,
+          "minRub": 30915,
+          "maxRub": 30915
+        },
+        {
+          "month": "2024-10",
+          "count": 1,
+          "avgRub": 31156,
+          "minRub": 31156,
+          "maxRub": 31156
+        },
+        {
+          "month": "2024-11",
+          "count": 45,
+          "avgRub": 20602,
+          "minRub": 12676,
+          "maxRub": 33395
+        },
+        {
+          "month": "2024-12",
+          "count": 1,
+          "avgRub": 13220,
+          "minRub": 13220,
+          "maxRub": 13220
+        },
+        {
+          "month": "2025-01",
+          "count": 56,
+          "avgRub": 35816,
+          "minRub": 29586,
+          "maxRub": 43168
+        },
+        {
+          "month": "2025-02",
+          "count": 14,
+          "avgRub": 28042,
+          "minRub": 26440,
+          "maxRub": 33004
+        },
+        {
+          "month": "2025-03",
+          "count": 16,
+          "avgRub": 31438,
+          "minRub": 27570,
+          "maxRub": 36047
+        },
+        {
+          "month": "2025-04",
+          "count": 4,
+          "avgRub": 31893,
+          "minRub": 31893,
+          "maxRub": 31893
+        },
+        {
+          "month": "2026-05",
+          "count": 16,
+          "avgRub": 29413,
+          "minRub": 28335,
+          "maxRub": 30491
+        }
+      ]
+    },
+    {
+      "route": "TYUMEN → DELHI",
+      "from": "TYUMEN",
+      "to": "DELHI",
+      "transport": "flight",
+      "count": 564,
+      "pricedCount": 562,
+      "totalRub": 26078023,
+      "avgRub": 46402,
+      "minRub": 31146,
+      "maxRub": 87173,
+      "lastMonthAvgRub": 65131,
+      "momChangePct": 64.6,
+      "overallChangePct": 93.9,
+      "monthly": [
+        {
+          "month": "2025-05",
+          "count": 7,
+          "avgRub": 33583,
+          "minRub": 31146,
+          "maxRub": 36332
+        },
+        {
+          "month": "2025-06",
+          "count": 4,
+          "avgRub": 40504,
+          "minRub": 37949,
+          "maxRub": 43059
+        },
+        {
+          "month": "2025-07",
+          "count": 11,
+          "avgRub": 44894,
+          "minRub": 42109,
+          "maxRub": 52146
+        },
+        {
+          "month": "2025-08",
+          "count": 11,
+          "avgRub": 41013,
+          "minRub": 39291,
+          "maxRub": 48931
+        },
+        {
+          "month": "2025-09",
+          "count": 24,
+          "avgRub": 50561,
+          "minRub": 44616,
+          "maxRub": 57942
+        },
+        {
+          "month": "2025-10",
+          "count": 23,
+          "avgRub": 43319,
+          "minRub": 39366,
+          "maxRub": 55381
+        },
+        {
+          "month": "2025-11",
+          "count": 76,
+          "avgRub": 50311,
+          "minRub": 39967,
+          "maxRub": 85276
+        },
+        {
+          "month": "2025-12",
+          "count": 45,
+          "avgRub": 49720,
+          "minRub": 40311,
+          "maxRub": 67971
+        },
+        {
+          "month": "2026-01",
+          "count": 23,
+          "avgRub": 42353,
+          "minRub": 40248,
+          "maxRub": 63325
+        },
+        {
+          "month": "2026-02",
+          "count": 10,
+          "avgRub": 41551,
+          "minRub": 38509,
+          "maxRub": 42993
+        },
+        {
+          "month": "2026-03",
+          "count": 7,
+          "avgRub": 47261,
+          "minRub": 39283,
+          "maxRub": 50809
+        },
+        {
+          "month": "2026-04",
+          "count": 17,
+          "avgRub": 40971,
+          "minRub": 36359,
+          "maxRub": 42656
+        },
+        {
+          "month": "2026-05",
+          "count": 12,
+          "avgRub": 37737,
+          "minRub": 33189,
+          "maxRub": 44648
+        },
+        {
+          "month": "2026-06",
+          "count": 16,
+          "avgRub": 50183,
+          "minRub": 43702,
+          "maxRub": 58523
+        },
+        {
+          "month": "2026-07",
+          "count": 39,
+          "avgRub": 50892,
+          "minRub": 48476,
+          "maxRub": 56206
+        },
+        {
+          "month": "2026-08",
+          "count": 54,
+          "avgRub": 47402,
+          "minRub": 42957,
+          "maxRub": 53121
+        },
+        {
+          "month": "2026-09",
+          "count": 120,
+          "avgRub": 39574,
+          "minRub": 37454,
+          "maxRub": 45184
+        },
+        {
+          "month": "2026-10",
+          "count": 35,
+          "avgRub": 65131,
+          "minRub": 40885,
+          "maxRub": 77389
+        }
+      ]
+    },
+    {
+      "route": "TASHKENT → ST PETERSBURG",
+      "from": "TASHKENT",
+      "to": "ST PETERSBURG",
+      "transport": "flight",
+      "count": 529,
+      "pricedCount": 498,
+      "totalRub": 16783499,
+      "avgRub": 33702,
+      "minRub": 11069,
+      "maxRub": 50906,
+      "lastMonthAvgRub": 30378,
+      "momChangePct": -1.9,
+      "overallChangePct": 15.5,
+      "monthly": [
+        {
+          "month": "2024-11",
+          "count": 13,
+          "avgRub": 26302,
+          "minRub": 26040,
+          "maxRub": 26490
+        },
+        {
+          "month": "2025-01",
+          "count": 12,
+          "avgRub": 42496,
+          "minRub": 41959,
+          "maxRub": 42764
+        },
+        {
+          "month": "2025-02",
+          "count": 9,
+          "avgRub": 39837,
+          "minRub": 39837,
+          "maxRub": 39837
+        },
+        {
+          "month": "2025-04",
+          "count": 4,
+          "avgRub": 42758,
+          "minRub": 42758,
+          "maxRub": 42758
+        },
+        {
+          "month": "2025-05",
+          "count": 10,
+          "avgRub": 42994,
+          "minRub": 37562,
+          "maxRub": 43597
+        },
+        {
+          "month": "2025-06",
+          "count": 2,
+          "avgRub": 50906,
+          "minRub": 50906,
+          "maxRub": 50906
+        },
+        {
+          "month": "2025-07",
+          "count": 27,
+          "avgRub": 24283,
+          "minRub": 23363,
+          "maxRub": 26544
+        },
+        {
+          "month": "2025-08",
+          "count": 4,
+          "avgRub": 34870,
+          "minRub": 28199,
+          "maxRub": 42912
+        },
+        {
+          "month": "2025-09",
+          "count": 21,
+          "avgRub": 24367,
+          "minRub": 18974,
+          "maxRub": 34426
+        },
+        {
+          "month": "2025-10",
+          "count": 9,
+          "avgRub": 23647,
+          "minRub": 18526,
+          "maxRub": 24287
+        },
+        {
+          "month": "2025-11",
+          "count": 12,
+          "avgRub": 16008,
+          "minRub": 11069,
+          "maxRub": 24666
+        },
+        {
+          "month": "2025-12",
+          "count": 2,
+          "avgRub": 29488,
+          "minRub": 12902,
+          "maxRub": 46073
+        },
+        {
+          "month": "2026-01",
+          "count": 59,
+          "avgRub": 37608,
+          "minRub": 26922,
+          "maxRub": 45754
+        },
+        {
+          "month": "2026-02",
+          "count": 64,
+          "avgRub": 31587,
+          "minRub": 23734,
+          "maxRub": 44683
+        },
+        {
+          "month": "2026-03",
+          "count": 49,
+          "avgRub": 34677,
+          "minRub": 23909,
+          "maxRub": 45573
+        },
+        {
+          "month": "2026-04",
+          "count": 83,
+          "avgRub": 39902,
+          "minRub": 32788,
+          "maxRub": 46877
+        },
+        {
+          "month": "2026-05",
+          "count": 42,
+          "avgRub": 30953,
+          "minRub": 22990,
+          "maxRub": 39824
+        },
+        {
+          "month": "2026-07",
+          "count": 1,
+          "avgRub": 30378,
+          "minRub": 30378,
+          "maxRub": 30378
+        }
+      ]
+    },
+    {
+      "route": "ISTANBUL → MOSKOVA",
+      "from": "ISTANBUL",
+      "to": "MOSKOVA",
+      "transport": "flight",
+      "count": 501,
+      "pricedCount": 482,
+      "totalRub": 12066035,
+      "avgRub": 25033,
+      "minRub": 11196,
+      "maxRub": 99126,
+      "lastMonthAvgRub": 50956,
+      "momChangePct": 51.5,
+      "overallChangePct": 194.5,
+      "monthly": [
+        {
+          "month": "2025-04",
+          "count": 10,
+          "avgRub": 17300,
+          "minRub": 16091,
+          "maxRub": 20965
+        },
+        {
+          "month": "2025-05",
+          "count": 4,
+          "avgRub": 31597,
+          "minRub": 11196,
+          "maxRub": 51232
+        },
+        {
+          "month": "2025-06",
+          "count": 14,
+          "avgRub": 30106,
+          "minRub": 23966,
+          "maxRub": 36792
+        },
+        {
+          "month": "2025-07",
+          "count": 46,
+          "avgRub": 30199,
+          "minRub": 20123,
+          "maxRub": 44688
+        },
+        {
+          "month": "2025-08",
+          "count": 14,
+          "avgRub": 33591,
+          "minRub": 30272,
+          "maxRub": 39853
+        },
+        {
+          "month": "2025-09",
+          "count": 40,
+          "avgRub": 26255,
+          "minRub": 20013,
+          "maxRub": 31245
+        },
+        {
+          "month": "2025-10",
+          "count": 24,
+          "avgRub": 23132,
+          "minRub": 19886,
+          "maxRub": 39381
+        },
+        {
+          "month": "2025-11",
+          "count": 9,
+          "avgRub": 28680,
+          "minRub": 16907,
+          "maxRub": 38302
+        },
+        {
+          "month": "2025-12",
+          "count": 6,
+          "avgRub": 26496,
+          "minRub": 16688,
+          "maxRub": 37838
+        },
+        {
+          "month": "2026-01",
+          "count": 78,
+          "avgRub": 20253,
+          "minRub": 13087,
+          "maxRub": 71047
+        },
+        {
+          "month": "2026-02",
+          "count": 51,
+          "avgRub": 17425,
+          "minRub": 17027,
+          "maxRub": 22630
+        },
+        {
+          "month": "2026-03",
+          "count": 45,
+          "avgRub": 29150,
+          "minRub": 15366,
+          "maxRub": 36955
+        },
+        {
+          "month": "2026-04",
+          "count": 25,
+          "avgRub": 27167,
+          "minRub": 23036,
+          "maxRub": 37569
+        },
+        {
+          "month": "2026-05",
+          "count": 14,
+          "avgRub": 27986,
+          "minRub": 22628,
+          "maxRub": 36123
+        },
+        {
+          "month": "2026-06",
+          "count": 5,
+          "avgRub": 22695,
+          "minRub": 20913,
+          "maxRub": 28715
+        },
+        {
+          "month": "2026-07",
+          "count": 9,
+          "avgRub": 26197,
+          "minRub": 19606,
+          "maxRub": 30528
+        },
+        {
+          "month": "2026-08",
+          "count": 4,
+          "avgRub": 33636,
+          "minRub": 26111,
+          "maxRub": 39432
+        },
+        {
+          "month": "2026-09",
+          "count": 3,
+          "avgRub": 50956,
+          "minRub": 26871,
+          "maxRub": 99126
+        }
+      ]
+    },
+    {
+      "route": "ST PETERSBURG → DELHI",
+      "from": "ST PETERSBURG",
+      "to": "DELHI",
+      "transport": "flight",
+      "count": 475,
+      "pricedCount": 474,
+      "totalRub": 21278821,
+      "avgRub": 44892,
+      "minRub": 26509,
+      "maxRub": 83725,
+      "lastMonthAvgRub": 57989,
+      "momChangePct": 49.4,
+      "overallChangePct": 79.4,
+      "monthly": [
+        {
+          "month": "2025-05",
+          "count": 3,
+          "avgRub": 32322,
+          "minRub": 30964,
+          "maxRub": 33984
+        },
+        {
+          "month": "2025-06",
+          "count": 9,
+          "avgRub": 63353,
+          "minRub": 39319,
+          "maxRub": 78021
+        },
+        {
+          "month": "2025-07",
+          "count": 9,
+          "avgRub": 34252,
+          "minRub": 31553,
+          "maxRub": 35023
+        },
+        {
+          "month": "2025-08",
+          "count": 20,
+          "avgRub": 35883,
+          "minRub": 29038,
+          "maxRub": 39519
+        },
+        {
+          "month": "2025-09",
+          "count": 17,
+          "avgRub": 47282,
+          "minRub": 38664,
+          "maxRub": 83725
+        },
+        {
+          "month": "2025-10",
+          "count": 5,
+          "avgRub": 47675,
+          "minRub": 42110,
+          "maxRub": 51278
+        },
+        {
+          "month": "2025-11",
+          "count": 13,
+          "avgRub": 41813,
+          "minRub": 33556,
+          "maxRub": 52689
+        },
+        {
+          "month": "2025-12",
+          "count": 11,
+          "avgRub": 49405,
+          "minRub": 41536,
+          "maxRub": 62865
+        },
+        {
+          "month": "2026-01",
+          "count": 34,
+          "avgRub": 34627,
+          "minRub": 26509,
+          "maxRub": 44084
+        },
+        {
+          "month": "2026-02",
+          "count": 28,
+          "avgRub": 38972,
+          "minRub": 27942,
+          "maxRub": 49314
+        },
+        {
+          "month": "2026-03",
+          "count": 6,
+          "avgRub": 34276,
+          "minRub": 29644,
+          "maxRub": 40201
+        },
+        {
+          "month": "2026-04",
+          "count": 30,
+          "avgRub": 36055,
+          "minRub": 28844,
+          "maxRub": 80679
+        },
+        {
+          "month": "2026-05",
+          "count": 13,
+          "avgRub": 35473,
+          "minRub": 31212,
+          "maxRub": 40913
+        },
+        {
+          "month": "2026-06",
+          "count": 19,
+          "avgRub": 53620,
+          "minRub": 38177,
+          "maxRub": 59342
+        },
+        {
+          "month": "2026-07",
+          "count": 55,
+          "avgRub": 48429,
+          "minRub": 42734,
+          "maxRub": 53999
+        },
+        {
+          "month": "2026-08",
+          "count": 25,
+          "avgRub": 45737,
+          "minRub": 38963,
+          "maxRub": 54812
+        },
+        {
+          "month": "2026-09",
+          "count": 31,
+          "avgRub": 38820,
+          "minRub": 31479,
+          "maxRub": 46969
+        },
+        {
+          "month": "2026-10",
+          "count": 96,
+          "avgRub": 57989,
+          "minRub": 40354,
+          "maxRub": 70295
+        }
+      ]
+    },
+    {
+      "route": "DELHI → ST PETERSBURG",
+      "from": "DELHI",
+      "to": "ST PETERSBURG",
+      "transport": "flight",
+      "count": 453,
+      "pricedCount": 441,
+      "totalRub": 19240055,
+      "avgRub": 43628,
+      "minRub": 9516,
+      "maxRub": 123118,
+      "lastMonthAvgRub": 40277,
+      "momChangePct": -6.1,
+      "overallChangePct": -17.7,
+      "monthly": [
+        {
+          "month": "2024-10",
+          "count": 2,
+          "avgRub": 48928,
+          "minRub": 48928,
+          "maxRub": 48928
+        },
+        {
+          "month": "2024-11",
+          "count": 45,
+          "avgRub": 50992,
+          "minRub": 41799,
+          "maxRub": 66711
+        },
+        {
+          "month": "2025-01",
+          "count": 1,
+          "avgRub": 50204,
+          "minRub": 50204,
+          "maxRub": 50204
+        },
+        {
+          "month": "2025-02",
+          "count": 5,
+          "avgRub": 40967,
+          "minRub": 37971,
+          "maxRub": 42964
+        },
+        {
+          "month": "2025-04",
+          "count": 2,
+          "avgRub": 39649,
+          "minRub": 38197,
+          "maxRub": 41102
+        },
+        {
+          "month": "2025-05",
+          "count": 1,
+          "avgRub": 63411,
+          "minRub": 63411,
+          "maxRub": 63411
+        },
+        {
+          "month": "2025-06",
+          "count": 3,
+          "avgRub": 38070,
+          "minRub": 27353,
+          "maxRub": 47480
+        },
+        {
+          "month": "2025-08",
+          "count": 61,
+          "avgRub": 51828,
+          "minRub": 9516,
+          "maxRub": 65226
+        },
+        {
+          "month": "2025-09",
+          "count": 1,
+          "avgRub": 49764,
+          "minRub": 49764,
+          "maxRub": 49764
+        },
+        {
+          "month": "2025-10",
+          "count": 1,
+          "avgRub": 49414,
+          "minRub": 49414,
+          "maxRub": 49414
+        },
+        {
+          "month": "2025-11",
+          "count": 110,
+          "avgRub": 37649,
+          "minRub": 30420,
+          "maxRub": 50979
+        },
+        {
+          "month": "2025-12",
+          "count": 6,
+          "avgRub": 37243,
+          "minRub": 31595,
+          "maxRub": 50007
+        },
+        {
+          "month": "2026-01",
+          "count": 3,
+          "avgRub": 39210,
+          "minRub": 33918,
+          "maxRub": 46742
+        },
+        {
+          "month": "2026-02",
+          "count": 10,
+          "avgRub": 47009,
+          "minRub": 39780,
+          "maxRub": 63648
+        },
+        {
+          "month": "2026-03",
+          "count": 9,
+          "avgRub": 78234,
+          "minRub": 65065,
+          "maxRub": 123118
+        },
+        {
+          "month": "2026-04",
+          "count": 14,
+          "avgRub": 46469,
+          "minRub": 36410,
+          "maxRub": 67945
+        },
+        {
+          "month": "2026-05",
+          "count": 6,
+          "avgRub": 42890,
+          "minRub": 38141,
+          "maxRub": 48571
+        },
+        {
+          "month": "2026-06",
+          "count": 155,
+          "avgRub": 40277,
+          "minRub": 32099,
+          "maxRub": 51987
+        }
+      ]
+    },
+    {
+      "route": "BAKU → NABEREZHNYE CHELNY",
+      "from": "BAKU",
+      "to": "NABEREZHNYE CHELNY",
+      "transport": "flight",
+      "count": 423,
+      "pricedCount": 418,
+      "totalRub": 13122203,
+      "avgRub": 31393,
+      "minRub": 22129,
+      "maxRub": 63654,
+      "lastMonthAvgRub": 28178,
+      "momChangePct": -20.8,
+      "overallChangePct": 10.1,
+      "monthly": [
+        {
+          "month": "2025-02",
+          "count": 4,
+          "avgRub": 25598,
+          "minRub": 25260,
+          "maxRub": 25710
+        },
+        {
+          "month": "2025-05",
+          "count": 1,
+          "avgRub": 27646,
+          "minRub": 27646,
+          "maxRub": 27646
+        },
+        {
+          "month": "2025-06",
+          "count": 18,
+          "avgRub": 29528,
+          "minRub": 28144,
+          "maxRub": 30949
+        },
+        {
+          "month": "2025-11",
+          "count": 20,
+          "avgRub": 46194,
+          "minRub": 40401,
+          "maxRub": 52506
+        },
+        {
+          "month": "2025-12",
+          "count": 1,
+          "avgRub": 36011,
+          "minRub": 36011,
+          "maxRub": 36011
+        },
+        {
+          "month": "2026-03",
+          "count": 5,
+          "avgRub": 24779,
+          "minRub": 24779,
+          "maxRub": 24779
+        },
+        {
+          "month": "2026-04",
+          "count": 3,
+          "avgRub": 25093,
+          "minRub": 22129,
+          "maxRub": 27234
+        },
+        {
+          "month": "2026-06",
+          "count": 9,
+          "avgRub": 24060,
+          "minRub": 23536,
+          "maxRub": 25731
+        },
+        {
+          "month": "2026-07",
+          "count": 10,
+          "avgRub": 35320,
+          "minRub": 33419,
+          "maxRub": 37525
+        },
+        {
+          "month": "2026-08",
+          "count": 36,
+          "avgRub": 47279,
+          "minRub": 38481,
+          "maxRub": 63654
+        },
+        {
+          "month": "2026-09",
+          "count": 36,
+          "avgRub": 35580,
+          "minRub": 34159,
+          "maxRub": 47105
+        },
+        {
+          "month": "2026-10",
+          "count": 275,
+          "avgRub": 28178,
+          "minRub": 23413,
+          "maxRub": 49517
+        }
+      ]
+    },
+    {
+      "route": "TASHKENT → BLAGOVESHCHENSK",
+      "from": "TASHKENT",
+      "to": "BLAGOVESHCHENSK",
+      "transport": "flight",
+      "count": 356,
+      "pricedCount": 330,
+      "totalRub": 17468713,
+      "avgRub": 52935,
+      "minRub": 29928,
+      "maxRub": 84330,
+      "lastMonthAvgRub": 46820,
+      "momChangePct": 9.3,
+      "overallChangePct": -0.2,
+      "monthly": [
+        {
+          "month": "2026-03",
+          "count": 12,
+          "avgRub": 46920,
+          "minRub": 39645,
+          "maxRub": 58673
+        },
+        {
+          "month": "2026-04",
+          "count": 1,
+          "avgRub": 44261,
+          "minRub": 44261,
+          "maxRub": 44261
+        },
+        {
+          "month": "2026-05",
+          "count": 54,
+          "avgRub": 54048,
+          "minRub": 29928,
+          "maxRub": 63646
+        },
+        {
+          "month": "2026-06",
+          "count": 36,
+          "avgRub": 51462,
+          "minRub": 45272,
+          "maxRub": 56392
+        },
+        {
+          "month": "2026-08",
+          "count": 90,
+          "avgRub": 67059,
+          "minRub": 53689,
+          "maxRub": 84330
+        },
+        {
+          "month": "2026-09",
+          "count": 90,
+          "avgRub": 42826,
+          "minRub": 33009,
+          "maxRub": 71006
+        },
+        {
+          "month": "2026-10",
+          "count": 47,
+          "avgRub": 46820,
+          "minRub": 31690,
+          "maxRub": 56688
+        }
+      ]
+    },
+    {
+      "route": "KAZAN → TOBOLSK",
+      "from": "KAZAN",
+      "to": "TOBOLSK",
+      "transport": "train",
+      "count": 283,
+      "pricedCount": 263,
+      "totalRub": 1533891,
+      "avgRub": 5832,
+      "minRub": 2714,
+      "maxRub": 24429,
+      "lastMonthAvgRub": 11170,
+      "momChangePct": 35.8,
+      "overallChangePct": 99.5,
+      "monthly": [
+        {
+          "month": "2024-05",
+          "count": 8,
+          "avgRub": 5598,
+          "minRub": 3625,
+          "maxRub": 6929
+        },
+        {
+          "month": "2024-06",
+          "count": 31,
+          "avgRub": 5068,
+          "minRub": 3752,
+          "maxRub": 24429
+        },
+        {
+          "month": "2024-11",
+          "count": 8,
+          "avgRub": 3406,
+          "minRub": 2714,
+          "maxRub": 6575
+        },
+        {
+          "month": "2025-01",
+          "count": 23,
+          "avgRub": 4796,
+          "minRub": 3320,
+          "maxRub": 4863
+        },
+        {
+          "month": "2025-02",
+          "count": 1,
+          "avgRub": 5906,
+          "minRub": 5906,
+          "maxRub": 5906
+        },
+        {
+          "month": "2025-03",
+          "count": 43,
+          "avgRub": 4686,
+          "minRub": 3411,
+          "maxRub": 9119
+        },
+        {
+          "month": "2025-04",
+          "count": 52,
+          "avgRub": 5593,
+          "minRub": 3497,
+          "maxRub": 17954
+        },
+        {
+          "month": "2025-05",
+          "count": 16,
+          "avgRub": 5302,
+          "minRub": 4516,
+          "maxRub": 10805
+        },
+        {
+          "month": "2025-06",
+          "count": 1,
+          "avgRub": 6881,
+          "minRub": 6881,
+          "maxRub": 6881
+        },
+        {
+          "month": "2025-07",
+          "count": 2,
+          "avgRub": 7178,
+          "minRub": 7178,
+          "maxRub": 7178
+        },
+        {
+          "month": "2025-08",
+          "count": 2,
+          "avgRub": 10322,
+          "minRub": 10322,
+          "maxRub": 10322
+        },
+        {
+          "month": "2025-09",
+          "count": 23,
+          "avgRub": 5743,
+          "minRub": 5442,
+          "maxRub": 6133
+        },
+        {
+          "month": "2025-11",
+          "count": 3,
+          "avgRub": 8070,
+          "minRub": 6944,
+          "maxRub": 10322
+        },
+        {
+          "month": "2025-12",
+          "count": 13,
+          "avgRub": 8903,
+          "minRub": 6044,
+          "maxRub": 11337
+        },
+        {
+          "month": "2026-01",
+          "count": 1,
+          "avgRub": 6882,
+          "minRub": 6882,
+          "maxRub": 6882
+        },
+        {
+          "month": "2026-06",
+          "count": 12,
+          "avgRub": 7148,
+          "minRub": 4983,
+          "maxRub": 7846
+        },
+        {
+          "month": "2026-08",
+          "count": 2,
+          "avgRub": 8226,
+          "minRub": 8226,
+          "maxRub": 8226
+        },
+        {
+          "month": "2026-09",
+          "count": 8,
+          "avgRub": 11170,
+          "minRub": 10323,
+          "maxRub": 11291
+        }
+      ]
+    },
+    {
+      "route": "TOBOLSK → KAZAN",
+      "from": "TOBOLSK",
+      "to": "KAZAN",
+      "transport": "train",
+      "count": 278,
+      "pricedCount": 253,
+      "totalRub": 1778516,
+      "avgRub": 7030,
+      "minRub": 4400,
+      "maxRub": 11032,
+      "lastMonthAvgRub": 7501,
+      "momChangePct": 4.8,
+      "overallChangePct": 10.5,
+      "monthly": [
+        {
+          "month": "2024-07",
+          "count": 4,
+          "avgRub": 6791,
+          "minRub": 6156,
+          "maxRub": 8696
+        },
+        {
+          "month": "2024-12",
+          "count": 1,
+          "avgRub": 6812,
+          "minRub": 6812,
+          "maxRub": 6812
+        },
+        {
+          "month": "2025-06",
+          "count": 5,
+          "avgRub": 6294,
+          "minRub": 4863,
+          "maxRub": 7249
+        },
+        {
+          "month": "2025-07",
+          "count": 1,
+          "avgRub": 4400,
+          "minRub": 4400,
+          "maxRub": 4400
+        },
+        {
+          "month": "2025-09",
+          "count": 1,
+          "avgRub": 10322,
+          "minRub": 10322,
+          "maxRub": 10322
+        },
+        {
+          "month": "2025-10",
+          "count": 1,
+          "avgRub": 10322,
+          "minRub": 10322,
+          "maxRub": 10322
+        },
+        {
+          "month": "2025-11",
+          "count": 6,
+          "avgRub": 8089,
+          "minRub": 6117,
+          "maxRub": 10322
+        },
+        {
+          "month": "2025-12",
+          "count": 2,
+          "avgRub": 6881,
+          "minRub": 6881,
+          "maxRub": 6881
+        },
+        {
+          "month": "2026-01",
+          "count": 1,
+          "avgRub": 6882,
+          "minRub": 6882,
+          "maxRub": 6882
+        },
+        {
+          "month": "2026-02",
+          "count": 9,
+          "avgRub": 7608,
+          "minRub": 6198,
+          "maxRub": 10323
+        },
+        {
+          "month": "2026-03",
+          "count": 35,
+          "avgRub": 6690,
+          "minRub": 6242,
+          "maxRub": 9088
+        },
+        {
+          "month": "2026-04",
+          "count": 26,
+          "avgRub": 6840,
+          "minRub": 6485,
+          "maxRub": 6971
+        },
+        {
+          "month": "2026-05",
+          "count": 7,
+          "avgRub": 7649,
+          "minRub": 7025,
+          "maxRub": 10357
+        },
+        {
+          "month": "2026-06",
+          "count": 5,
+          "avgRub": 7405,
+          "minRub": 7295,
+          "maxRub": 7846
+        },
+        {
+          "month": "2026-07",
+          "count": 124,
+          "avgRub": 7003,
+          "minRub": 4900,
+          "maxRub": 11032
+        },
+        {
+          "month": "2026-08",
+          "count": 3,
+          "avgRub": 6934,
+          "minRub": 5643,
+          "maxRub": 9065
+        },
+        {
+          "month": "2026-09",
+          "count": 1,
+          "avgRub": 7160,
+          "minRub": 7160,
+          "maxRub": 7160
+        },
+        {
+          "month": "2026-10",
+          "count": 13,
+          "avgRub": 7501,
+          "minRub": 7180,
+          "maxRub": 7840
+        }
+      ]
+    },
+    {
+      "route": "TYUMEN → MOSKOVA",
+      "from": "TYUMEN",
+      "to": "MOSKOVA",
+      "transport": "flight",
+      "count": 263,
+      "pricedCount": 263,
+      "totalRub": 3514481,
+      "avgRub": 13363,
+      "minRub": 5096,
+      "maxRub": 54280,
+      "lastMonthAvgRub": 13643,
+      "momChangePct": -27.1,
+      "overallChangePct": 27.4,
+      "monthly": [
+        {
+          "month": "2025-05",
+          "count": 7,
+          "avgRub": 10709,
+          "minRub": 10709,
+          "maxRub": 10709
+        },
+        {
+          "month": "2025-06",
+          "count": 30,
+          "avgRub": 10962,
+          "minRub": 9987,
+          "maxRub": 19253
+        },
+        {
+          "month": "2025-07",
+          "count": 16,
+          "avgRub": 12435,
+          "minRub": 7931,
+          "maxRub": 35975
+        },
+        {
+          "month": "2025-08",
+          "count": 12,
+          "avgRub": 10925,
+          "minRub": 6881,
+          "maxRub": 14812
+        },
+        {
+          "month": "2025-09",
+          "count": 9,
+          "avgRub": 9392,
+          "minRub": 5096,
+          "maxRub": 10346
+        },
+        {
+          "month": "2025-10",
+          "count": 20,
+          "avgRub": 12724,
+          "minRub": 12075,
+          "maxRub": 13335
+        },
+        {
+          "month": "2025-11",
+          "count": 21,
+          "avgRub": 15251,
+          "minRub": 13800,
+          "maxRub": 30491
+        },
+        {
+          "month": "2025-12",
+          "count": 37,
+          "avgRub": 9361,
+          "minRub": 6458,
+          "maxRub": 31725
+        },
+        {
+          "month": "2026-01",
+          "count": 25,
+          "avgRub": 13880,
+          "minRub": 7549,
+          "maxRub": 20272
+        },
+        {
+          "month": "2026-02",
+          "count": 2,
+          "avgRub": 8559,
+          "minRub": 7511,
+          "maxRub": 9607
+        },
+        {
+          "month": "2026-03",
+          "count": 4,
+          "avgRub": 30521,
+          "minRub": 12967,
+          "maxRub": 46171
+        },
+        {
+          "month": "2026-04",
+          "count": 5,
+          "avgRub": 12757,
+          "minRub": 12022,
+          "maxRub": 15696
+        },
+        {
+          "month": "2026-05",
+          "count": 9,
+          "avgRub": 7873,
+          "minRub": 6153,
+          "maxRub": 21633
+        },
+        {
+          "month": "2026-06",
+          "count": 3,
+          "avgRub": 28446,
+          "minRub": 13210,
+          "maxRub": 54280
+        },
+        {
+          "month": "2026-07",
+          "count": 4,
+          "avgRub": 18274,
+          "minRub": 13210,
+          "maxRub": 19962
+        },
+        {
+          "month": "2026-08",
+          "count": 3,
+          "avgRub": 16741,
+          "minRub": 13945,
+          "maxRub": 19739
+        },
+        {
+          "month": "2026-09",
+          "count": 4,
+          "avgRub": 18710,
+          "minRub": 13945,
+          "maxRub": 23475
+        },
+        {
+          "month": "2026-10",
+          "count": 20,
+          "avgRub": 13643,
+          "minRub": 13118,
+          "maxRub": 19740
+        }
+      ]
+    },
+    {
+      "route": "IRKUTSK → DELHI",
+      "from": "IRKUTSK",
+      "to": "DELHI",
+      "transport": "flight",
+      "count": 255,
+      "pricedCount": 254,
+      "totalRub": 11749457,
+      "avgRub": 46258,
+      "minRub": 28192,
+      "maxRub": 81401,
+      "lastMonthAvgRub": 54254,
+      "momChangePct": 10.8,
+      "overallChangePct": 41.8,
+      "monthly": [
+        {
+          "month": "2024-03",
+          "count": 3,
+          "avgRub": 38250,
+          "minRub": 33356,
+          "maxRub": 47869
+        },
+        {
+          "month": "2024-04",
+          "count": 2,
+          "avgRub": 38452,
+          "minRub": 36404,
+          "maxRub": 40499
+        },
+        {
+          "month": "2024-05",
+          "count": 7,
+          "avgRub": 40647,
+          "minRub": 40504,
+          "maxRub": 41416
+        },
+        {
+          "month": "2024-06",
+          "count": 7,
+          "avgRub": 60745,
+          "minRub": 56357,
+          "maxRub": 65607
+        },
+        {
+          "month": "2024-07",
+          "count": 5,
+          "avgRub": 59162,
+          "minRub": 59162,
+          "maxRub": 59162
+        },
+        {
+          "month": "2024-08",
+          "count": 2,
+          "avgRub": 57734,
+          "minRub": 57734,
+          "maxRub": 57734
+        },
+        {
+          "month": "2024-09",
+          "count": 26,
+          "avgRub": 55384,
+          "minRub": 43112,
+          "maxRub": 59614
+        },
+        {
+          "month": "2024-10",
+          "count": 36,
+          "avgRub": 49663,
+          "minRub": 44899,
+          "maxRub": 55904
+        },
+        {
+          "month": "2024-11",
+          "count": 18,
+          "avgRub": 39330,
+          "minRub": 31864,
+          "maxRub": 53624
+        },
+        {
+          "month": "2024-12",
+          "count": 8,
+          "avgRub": 42720,
+          "minRub": 28712,
+          "maxRub": 46270
+        },
+        {
+          "month": "2025-01",
+          "count": 2,
+          "avgRub": 35725,
+          "minRub": 31545,
+          "maxRub": 39904
+        },
+        {
+          "month": "2025-02",
+          "count": 14,
+          "avgRub": 36763,
+          "minRub": 29388,
+          "maxRub": 38596
+        },
+        {
+          "month": "2025-03",
+          "count": 17,
+          "avgRub": 34265,
+          "minRub": 28192,
+          "maxRub": 35977
+        },
+        {
+          "month": "2025-04",
+          "count": 10,
+          "avgRub": 30568,
+          "minRub": 29299,
+          "maxRub": 32778
+        },
+        {
+          "month": "2025-05",
+          "count": 20,
+          "avgRub": 39351,
+          "minRub": 28523,
+          "maxRub": 41520
+        },
+        {
+          "month": "2025-06",
+          "count": 53,
+          "avgRub": 48977,
+          "minRub": 43014,
+          "maxRub": 54965
+        },
+        {
+          "month": "2026-10",
+          "count": 24,
+          "avgRub": 54254,
+          "minRub": 49652,
+          "maxRub": 81401
+        }
+      ]
+    },
+    {
+      "route": "BAKU → TYUMEN",
+      "from": "BAKU",
+      "to": "TYUMEN",
+      "transport": "flight",
+      "count": 252,
+      "pricedCount": 250,
+      "totalRub": 7283843,
+      "avgRub": 29135,
+      "minRub": 19922,
+      "maxRub": 52642,
+      "lastMonthAvgRub": 30105,
+      "momChangePct": -15.5,
+      "overallChangePct": -42.8,
+      "monthly": [
+        {
+          "month": "2024-08",
+          "count": 1,
+          "avgRub": 52642,
+          "minRub": 52642,
+          "maxRub": 52642
+        },
+        {
+          "month": "2024-10",
+          "count": 2,
+          "avgRub": 34202,
+          "minRub": 33112,
+          "maxRub": 35293
+        },
+        {
+          "month": "2024-11",
+          "count": 8,
+          "avgRub": 33511,
+          "minRub": 27423,
+          "maxRub": 37152
+        },
+        {
+          "month": "2024-12",
+          "count": 1,
+          "avgRub": 27484,
+          "minRub": 27484,
+          "maxRub": 27484
+        },
+        {
+          "month": "2025-01",
+          "count": 14,
+          "avgRub": 27594,
+          "minRub": 27234,
+          "maxRub": 28469
+        },
+        {
+          "month": "2025-02",
+          "count": 7,
+          "avgRub": 23119,
+          "minRub": 22175,
+          "maxRub": 24814
+        },
+        {
+          "month": "2025-03",
+          "count": 2,
+          "avgRub": 38276,
+          "minRub": 35964,
+          "maxRub": 40588
+        },
+        {
+          "month": "2025-05",
+          "count": 38,
+          "avgRub": 33784,
+          "minRub": 26573,
+          "maxRub": 38273
+        },
+        {
+          "month": "2025-07",
+          "count": 29,
+          "avgRub": 27011,
+          "minRub": 23881,
+          "maxRub": 29046
+        },
+        {
+          "month": "2025-08",
+          "count": 2,
+          "avgRub": 48811,
+          "minRub": 48811,
+          "maxRub": 48811
+        },
+        {
+          "month": "2025-09",
+          "count": 4,
+          "avgRub": 25341,
+          "minRub": 23606,
+          "maxRub": 28500
+        },
+        {
+          "month": "2025-10",
+          "count": 71,
+          "avgRub": 27527,
+          "minRub": 22329,
+          "maxRub": 32150
+        },
+        {
+          "month": "2025-11",
+          "count": 2,
+          "avgRub": 31040,
+          "minRub": 22920,
+          "maxRub": 39160
+        },
+        {
+          "month": "2026-02",
+          "count": 8,
+          "avgRub": 27659,
+          "minRub": 24274,
+          "maxRub": 35214
+        },
+        {
+          "month": "2026-05",
+          "count": 2,
+          "avgRub": 21767,
+          "minRub": 19922,
+          "maxRub": 23613
+        },
+        {
+          "month": "2026-07",
+          "count": 21,
+          "avgRub": 28507,
+          "minRub": 26621,
+          "maxRub": 33221
+        },
+        {
+          "month": "2026-09",
+          "count": 2,
+          "avgRub": 35617,
+          "minRub": 34567,
+          "maxRub": 36668
+        },
+        {
+          "month": "2026-10",
+          "count": 21,
+          "avgRub": 30105,
+          "minRub": 29072,
+          "maxRub": 31482
+        }
+      ]
+    },
+    {
+      "route": "KAZAN → ISTANBUL",
+      "from": "KAZAN",
+      "to": "ISTANBUL",
+      "transport": "flight",
+      "count": 251,
+      "pricedCount": 245,
+      "totalRub": 6259376,
+      "avgRub": 25548,
+      "minRub": 8434,
+      "maxRub": 85738,
+      "lastMonthAvgRub": 16991,
+      "momChangePct": -35.2,
+      "overallChangePct": -59,
+      "monthly": [
+        {
+          "month": "2025-05",
+          "count": 1,
+          "avgRub": 41460,
+          "minRub": 41460,
+          "maxRub": 41460
+        },
+        {
+          "month": "2025-06",
+          "count": 2,
+          "avgRub": 26975,
+          "minRub": 26903,
+          "maxRub": 27048
+        },
+        {
+          "month": "2025-07",
+          "count": 2,
+          "avgRub": 38277,
+          "minRub": 31152,
+          "maxRub": 45401
+        },
+        {
+          "month": "2025-08",
+          "count": 4,
+          "avgRub": 33289,
+          "minRub": 22883,
+          "maxRub": 46616
+        },
+        {
+          "month": "2025-09",
+          "count": 5,
+          "avgRub": 46733,
+          "minRub": 27968,
+          "maxRub": 82943
+        },
+        {
+          "month": "2025-10",
+          "count": 3,
+          "avgRub": 27341,
+          "minRub": 20988,
+          "maxRub": 36050
+        },
+        {
+          "month": "2025-11",
+          "count": 5,
+          "avgRub": 27818,
+          "minRub": 16541,
+          "maxRub": 40328
+        },
+        {
+          "month": "2025-12",
+          "count": 9,
+          "avgRub": 28195,
+          "minRub": 19040,
+          "maxRub": 85738
+        },
+        {
+          "month": "2026-01",
+          "count": 6,
+          "avgRub": 20680,
+          "minRub": 11547,
+          "maxRub": 35567
+        },
+        {
+          "month": "2026-02",
+          "count": 5,
+          "avgRub": 18060,
+          "minRub": 15537,
+          "maxRub": 21488
+        },
+        {
+          "month": "2026-03",
+          "count": 15,
+          "avgRub": 21782,
+          "minRub": 16902,
+          "maxRub": 28573
+        },
+        {
+          "month": "2026-04",
+          "count": 22,
+          "avgRub": 30310,
+          "minRub": 19313,
+          "maxRub": 35877
+        },
+        {
+          "month": "2026-05",
+          "count": 28,
+          "avgRub": 15927,
+          "minRub": 8434,
+          "maxRub": 40717
+        },
+        {
+          "month": "2026-06",
+          "count": 27,
+          "avgRub": 27601,
+          "minRub": 14261,
+          "maxRub": 37734
+        },
+        {
+          "month": "2026-07",
+          "count": 34,
+          "avgRub": 26168,
+          "minRub": 18503,
+          "maxRub": 37602
+        },
+        {
+          "month": "2026-08",
+          "count": 15,
+          "avgRub": 26560,
+          "minRub": 16997,
+          "maxRub": 55262
+        },
+        {
+          "month": "2026-09",
+          "count": 10,
+          "avgRub": 26225,
+          "minRub": 21538,
+          "maxRub": 38002
+        },
+        {
+          "month": "2026-10",
+          "count": 12,
+          "avgRub": 16991,
+          "minRub": 11337,
+          "maxRub": 34631
+        }
+      ]
+    },
+    {
+      "route": "ASHGABAT → MOSKOVA",
+      "from": "ASHGABAT",
+      "to": "MOSKOVA",
+      "transport": "flight",
+      "count": 251,
+      "pricedCount": 251,
+      "totalRub": 10672733,
+      "avgRub": 42521,
+      "minRub": 32885,
+      "maxRub": 74541,
+      "lastMonthAvgRub": 54028,
+      "momChangePct": 26.7,
+      "overallChangePct": -6.3,
+      "monthly": [
+        {
+          "month": "2025-02",
+          "count": 1,
+          "avgRub": 57669,
+          "minRub": 57669,
+          "maxRub": 57669
+        },
+        {
+          "month": "2025-07",
+          "count": 1,
+          "avgRub": 48148,
+          "minRub": 48148,
+          "maxRub": 48148
+        },
+        {
+          "month": "2025-09",
+          "count": 1,
+          "avgRub": 51773,
+          "minRub": 51773,
+          "maxRub": 51773
+        },
+        {
+          "month": "2025-10",
+          "count": 1,
+          "avgRub": 59085,
+          "minRub": 59085,
+          "maxRub": 59085
+        },
+        {
+          "month": "2025-12",
+          "count": 1,
+          "avgRub": 48782,
+          "minRub": 48782,
+          "maxRub": 48782
+        },
+        {
+          "month": "2026-01",
+          "count": 11,
+          "avgRub": 52306,
+          "minRub": 49420,
+          "maxRub": 74541
+        },
+        {
+          "month": "2026-02",
+          "count": 26,
+          "avgRub": 37460,
+          "minRub": 32885,
+          "maxRub": 46338
+        },
+        {
+          "month": "2026-03",
+          "count": 2,
+          "avgRub": 54087,
+          "minRub": 40158,
+          "maxRub": 68016
+        },
+        {
+          "month": "2026-04",
+          "count": 126,
+          "avgRub": 41935,
+          "minRub": 40307,
+          "maxRub": 47072
+        },
+        {
+          "month": "2026-05",
+          "count": 80,
+          "avgRub": 42648,
+          "minRub": 41049,
+          "maxRub": 48769
+        },
+        {
+          "month": "2026-10",
+          "count": 1,
+          "avgRub": 54028,
+          "minRub": 54028,
+          "maxRub": 54028
+        }
+      ]
+    },
+    {
+      "route": "UST-KUT → IRKUTSK",
+      "from": "UST-KUT",
+      "to": "IRKUTSK",
+      "transport": "flight",
+      "count": 247,
+      "pricedCount": 227,
+      "totalRub": 2900988,
+      "avgRub": 12780,
+      "minRub": 2622,
+      "maxRub": 28845,
+      "lastMonthAvgRub": 17849,
+      "momChangePct": 30.8,
+      "overallChangePct": -30,
+      "monthly": [
+        {
+          "month": "2024-02",
+          "count": 4,
+          "avgRub": 25495,
+          "minRub": 23445,
+          "maxRub": 28845
+        },
+        {
+          "month": "2024-03",
+          "count": 13,
+          "avgRub": 15775,
+          "minRub": 11775,
+          "maxRub": 24300
+        },
+        {
+          "month": "2024-05",
+          "count": 2,
+          "avgRub": 16228,
+          "minRub": 10565,
+          "maxRub": 21890
+        },
+        {
+          "month": "2024-06",
+          "count": 2,
+          "avgRub": 21305,
+          "minRub": 20680,
+          "maxRub": 21930
+        },
+        {
+          "month": "2024-07",
+          "count": 8,
+          "avgRub": 11802,
+          "minRub": 7730,
+          "maxRub": 23335
+        },
+        {
+          "month": "2024-08",
+          "count": 6,
+          "avgRub": 8965,
+          "minRub": 7765,
+          "maxRub": 11565
+        },
+        {
+          "month": "2024-09",
+          "count": 6,
+          "avgRub": 13461,
+          "minRub": 11830,
+          "maxRub": 18465
+        },
+        {
+          "month": "2024-10",
+          "count": 1,
+          "avgRub": 7735,
+          "minRub": 7735,
+          "maxRub": 7735
+        },
+        {
+          "month": "2024-11",
+          "count": 17,
+          "avgRub": 11771,
+          "minRub": 9150,
+          "maxRub": 27800
+        },
+        {
+          "month": "2024-12",
+          "count": 26,
+          "avgRub": 15451,
+          "minRub": 3279,
+          "maxRub": 27800
+        },
+        {
+          "month": "2025-01",
+          "count": 12,
+          "avgRub": 10630,
+          "minRub": 8550,
+          "maxRub": 13850
+        },
+        {
+          "month": "2025-02",
+          "count": 23,
+          "avgRub": 11584,
+          "minRub": 7650,
+          "maxRub": 18650
+        },
+        {
+          "month": "2025-03",
+          "count": 29,
+          "avgRub": 11556,
+          "minRub": 8550,
+          "maxRub": 13250
+        },
+        {
+          "month": "2025-04",
+          "count": 28,
+          "avgRub": 12498,
+          "minRub": 10550,
+          "maxRub": 21000
+        },
+        {
+          "month": "2025-05",
+          "count": 28,
+          "avgRub": 11414,
+          "minRub": 9250,
+          "maxRub": 14350
+        },
+        {
+          "month": "2025-06",
+          "count": 16,
+          "avgRub": 13828,
+          "minRub": 12450,
+          "maxRub": 17050
+        },
+        {
+          "month": "2025-12",
+          "count": 1,
+          "avgRub": 13650,
+          "minRub": 13650,
+          "maxRub": 13650
+        },
+        {
+          "month": "2026-01",
+          "count": 1,
+          "avgRub": 17849,
+          "minRub": 17849,
+          "maxRub": 17849
+        }
+      ]
+    },
+    {
+      "route": "KAZAN → MOSKOVA",
+      "from": "KAZAN",
+      "to": "MOSKOVA",
+      "transport": "flight",
+      "count": 246,
+      "pricedCount": 238,
+      "totalRub": 1659690,
+      "avgRub": 6973,
+      "minRub": 2353,
+      "maxRub": 41299,
+      "lastMonthAvgRub": 17339,
+      "momChangePct": 120.4,
+      "overallChangePct": 114.5,
+      "monthly": [
+        {
+          "month": "2024-12",
+          "count": 1,
+          "avgRub": 8082,
+          "minRub": 8082,
+          "maxRub": 8082
+        },
+        {
+          "month": "2025-04",
+          "count": 2,
+          "avgRub": 21508,
+          "minRub": 16754,
+          "maxRub": 26261
+        },
+        {
+          "month": "2025-05",
+          "count": 5,
+          "avgRub": 19520,
+          "minRub": 11588,
+          "maxRub": 31418
+        },
+        {
+          "month": "2025-07",
+          "count": 6,
+          "avgRub": 10656,
+          "minRub": 8272,
+          "maxRub": 13079
+        },
+        {
+          "month": "2025-08",
+          "count": 4,
+          "avgRub": 12679,
+          "minRub": 7961,
+          "maxRub": 23341
+        },
+        {
+          "month": "2025-09",
+          "count": 54,
+          "avgRub": 4751,
+          "minRub": 3799,
+          "maxRub": 10349
+        },
+        {
+          "month": "2025-10",
+          "count": 65,
+          "avgRub": 3046,
+          "minRub": 2353,
+          "maxRub": 11420
+        },
+        {
+          "month": "2025-11",
+          "count": 3,
+          "avgRub": 11252,
+          "minRub": 7829,
+          "maxRub": 17342
+        },
+        {
+          "month": "2025-12",
+          "count": 39,
+          "avgRub": 4969,
+          "minRub": 2621,
+          "maxRub": 34383
+        },
+        {
+          "month": "2026-01",
+          "count": 4,
+          "avgRub": 30860,
+          "minRub": 13387,
+          "maxRub": 36684
+        },
+        {
+          "month": "2026-02",
+          "count": 2,
+          "avgRub": 9090,
+          "minRub": 6616,
+          "maxRub": 11564
+        },
+        {
+          "month": "2026-03",
+          "count": 1,
+          "avgRub": 41299,
+          "minRub": 41299,
+          "maxRub": 41299
+        },
+        {
+          "month": "2026-04",
+          "count": 6,
+          "avgRub": 5433,
+          "minRub": 3760,
+          "maxRub": 7719
+        },
+        {
+          "month": "2026-05",
+          "count": 4,
+          "avgRub": 11167,
+          "minRub": 9096,
+          "maxRub": 15324
+        },
+        {
+          "month": "2026-06",
+          "count": 3,
+          "avgRub": 10217,
+          "minRub": 7540,
+          "maxRub": 11847
+        },
+        {
+          "month": "2026-07",
+          "count": 3,
+          "avgRub": 11534,
+          "minRub": 9294,
+          "maxRub": 12654
+        },
+        {
+          "month": "2026-08",
+          "count": 15,
+          "avgRub": 7866,
+          "minRub": 6935,
+          "maxRub": 15216
+        },
+        {
+          "month": "2026-10",
+          "count": 8,
+          "avgRub": 17339,
+          "minRub": 10890,
+          "maxRub": 18261
+        }
+      ]
+    },
+    {
+      "route": "BAKU → EKATERINBURG",
+      "from": "BAKU",
+      "to": "EKATERINBURG",
+      "transport": "flight",
+      "count": 244,
+      "pricedCount": 241,
+      "totalRub": 6437637,
+      "avgRub": 26712,
+      "minRub": 20064,
+      "maxRub": 41177,
+      "lastMonthAvgRub": 27186,
+      "momChangePct": 10.3,
+      "overallChangePct": 26.2,
+      "monthly": [
+        {
+          "month": "2024-05",
+          "count": 4,
+          "avgRub": 21535,
+          "minRub": 21535,
+          "maxRub": 21535
+        },
+        {
+          "month": "2025-01",
+          "count": 2,
+          "avgRub": 21796,
+          "minRub": 21796,
+          "maxRub": 21796
+        },
+        {
+          "month": "2025-03",
+          "count": 11,
+          "avgRub": 24690,
+          "minRub": 23629,
+          "maxRub": 32043
+        },
+        {
+          "month": "2025-04",
+          "count": 7,
+          "avgRub": 29277,
+          "minRub": 29277,
+          "maxRub": 29277
+        },
+        {
+          "month": "2025-05",
+          "count": 78,
+          "avgRub": 27935,
+          "minRub": 21650,
+          "maxRub": 36103
+        },
+        {
+          "month": "2025-10",
+          "count": 92,
+          "avgRub": 26582,
+          "minRub": 20064,
+          "maxRub": 41177
+        },
+        {
+          "month": "2025-11",
+          "count": 28,
+          "avgRub": 24658,
+          "minRub": 23669,
+          "maxRub": 25669
+        },
+        {
+          "month": "2026-01",
+          "count": 19,
+          "avgRub": 27186,
+          "minRub": 25696,
+          "maxRub": 28841
+        }
+      ]
+    },
+    {
+      "route": "DELHI → NABEREZHNYE CHELNY",
+      "from": "DELHI",
+      "to": "NABEREZHNYE CHELNY",
+      "transport": "flight",
+      "count": 232,
+      "pricedCount": 223,
+      "totalRub": 11728320,
+      "avgRub": 52593,
+      "minRub": 34125,
+      "maxRub": 76970,
+      "lastMonthAvgRub": 37966,
+      "momChangePct": -23,
+      "overallChangePct": -18.6,
+      "monthly": [
+        {
+          "month": "2024-02",
+          "count": 7,
+          "avgRub": 46615,
+          "minRub": 46615,
+          "maxRub": 46615
+        },
+        {
+          "month": "2024-03",
+          "count": 28,
+          "avgRub": 69545,
+          "minRub": 40884,
+          "maxRub": 76970
+        },
+        {
+          "month": "2024-04",
+          "count": 14,
+          "avgRub": 54467,
+          "minRub": 48443,
+          "maxRub": 65195
+        },
+        {
+          "month": "2024-06",
+          "count": 11,
+          "avgRub": 39082,
+          "minRub": 34275,
+          "maxRub": 41261
+        },
+        {
+          "month": "2024-07",
+          "count": 1,
+          "avgRub": 44899,
+          "minRub": 44899,
+          "maxRub": 44899
+        },
+        {
+          "month": "2024-09",
+          "count": 14,
+          "avgRub": 45388,
+          "minRub": 44760,
+          "maxRub": 46518
+        },
+        {
+          "month": "2024-10",
+          "count": 1,
+          "avgRub": 66229,
+          "minRub": 66229,
+          "maxRub": 66229
+        },
+        {
+          "month": "2025-05",
+          "count": 1,
+          "avgRub": 40314,
+          "minRub": 40314,
+          "maxRub": 40314
+        },
+        {
+          "month": "2025-10",
+          "count": 1,
+          "avgRub": 47674,
+          "minRub": 47674,
+          "maxRub": 47674
+        },
+        {
+          "month": "2025-11",
+          "count": 4,
+          "avgRub": 47797,
+          "minRub": 47797,
+          "maxRub": 47797
+        },
+        {
+          "month": "2025-12",
+          "count": 2,
+          "avgRub": 43567,
+          "minRub": 43567,
+          "maxRub": 43567
+        },
+        {
+          "month": "2026-02",
+          "count": 3,
+          "avgRub": 54677,
+          "minRub": 38241,
+          "maxRub": 62895
+        },
+        {
+          "month": "2026-04",
+          "count": 7,
+          "avgRub": 53637,
+          "minRub": 43200,
+          "maxRub": 59846
+        },
+        {
+          "month": "2026-06",
+          "count": 8,
+          "avgRub": 47614,
+          "minRub": 42797,
+          "maxRub": 52646
+        },
+        {
+          "month": "2026-07",
+          "count": 4,
+          "avgRub": 50274,
+          "minRub": 46459,
+          "maxRub": 55582
+        },
+        {
+          "month": "2026-08",
+          "count": 58,
+          "avgRub": 56709,
+          "minRub": 52968,
+          "maxRub": 64945
+        },
+        {
+          "month": "2026-09",
+          "count": 44,
+          "avgRub": 49304,
+          "minRub": 47148,
+          "maxRub": 50654
+        },
+        {
+          "month": "2026-10",
+          "count": 15,
+          "avgRub": 37966,
+          "minRub": 34125,
+          "maxRub": 47804
+        }
+      ]
+    },
+    {
+      "route": "BAKU → ST PETERSBURG",
+      "from": "BAKU",
+      "to": "ST PETERSBURG",
+      "transport": "flight",
+      "count": 218,
+      "pricedCount": 215,
+      "totalRub": 5679134,
+      "avgRub": 26415,
+      "minRub": 14149,
+      "maxRub": 36999,
+      "lastMonthAvgRub": 29208,
+      "momChangePct": -2.3,
+      "overallChangePct": 6.7,
+      "monthly": [
+        {
+          "month": "2025-02",
+          "count": 1,
+          "avgRub": 27373,
+          "minRub": 27373,
+          "maxRub": 27373
+        },
+        {
+          "month": "2025-03",
+          "count": 4,
+          "avgRub": 19350,
+          "minRub": 18900,
+          "maxRub": 20699
+        },
+        {
+          "month": "2025-04",
+          "count": 2,
+          "avgRub": 33534,
+          "minRub": 30729,
+          "maxRub": 36339
+        },
+        {
+          "month": "2025-05",
+          "count": 14,
+          "avgRub": 26870,
+          "minRub": 25674,
+          "maxRub": 29024
+        },
+        {
+          "month": "2025-06",
+          "count": 1,
+          "avgRub": 30234,
+          "minRub": 30234,
+          "maxRub": 30234
+        },
+        {
+          "month": "2025-07",
+          "count": 2,
+          "avgRub": 23343,
+          "minRub": 21874,
+          "maxRub": 24812
+        },
+        {
+          "month": "2025-08",
+          "count": 2,
+          "avgRub": 33825,
+          "minRub": 33825,
+          "maxRub": 33825
+        },
+        {
+          "month": "2025-09",
+          "count": 3,
+          "avgRub": 29299,
+          "minRub": 28883,
+          "maxRub": 30131
+        },
+        {
+          "month": "2025-10",
+          "count": 135,
+          "avgRub": 27618,
+          "minRub": 17363,
+          "maxRub": 36999
+        },
+        {
+          "month": "2025-12",
+          "count": 1,
+          "avgRub": 22519,
+          "minRub": 22519,
+          "maxRub": 22519
+        },
+        {
+          "month": "2026-01",
+          "count": 2,
+          "avgRub": 31838,
+          "minRub": 28101,
+          "maxRub": 35574
+        },
+        {
+          "month": "2026-02",
+          "count": 17,
+          "avgRub": 27865,
+          "minRub": 26325,
+          "maxRub": 30936
+        },
+        {
+          "month": "2026-03",
+          "count": 9,
+          "avgRub": 18192,
+          "minRub": 16101,
+          "maxRub": 18454
+        },
+        {
+          "month": "2026-04",
+          "count": 10,
+          "avgRub": 22927,
+          "minRub": 18564,
+          "maxRub": 34831
+        },
+        {
+          "month": "2026-05",
+          "count": 1,
+          "avgRub": 16555,
+          "minRub": 16555,
+          "maxRub": 16555
+        },
+        {
+          "month": "2026-06",
+          "count": 1,
+          "avgRub": 16088,
+          "minRub": 16088,
+          "maxRub": 16088
+        },
+        {
+          "month": "2026-07",
+          "count": 1,
+          "avgRub": 29885,
+          "minRub": 29885,
+          "maxRub": 29885
+        },
+        {
+          "month": "2026-09",
+          "count": 1,
+          "avgRub": 29208,
+          "minRub": 29208,
+          "maxRub": 29208
+        }
+      ]
+    },
+    {
+      "route": "EKATERINBURG → BLAGOVESHCHENSK",
+      "from": "EKATERINBURG",
+      "to": "BLAGOVESHCHENSK",
+      "transport": "flight",
+      "count": 215,
+      "pricedCount": 213,
+      "totalRub": 9447557,
+      "avgRub": 44355,
+      "minRub": 29769,
+      "maxRub": 66769,
+      "lastMonthAvgRub": 34044,
+      "momChangePct": -7.4,
+      "overallChangePct": -17.5,
+      "monthly": [
+        {
+          "month": "2026-02",
+          "count": 2,
+          "avgRub": 41269,
+          "minRub": 41269,
+          "maxRub": 41269
+        },
+        {
+          "month": "2026-03",
+          "count": 103,
+          "avgRub": 41727,
+          "minRub": 29769,
+          "maxRub": 59769
+        },
+        {
+          "month": "2026-04",
+          "count": 45,
+          "avgRub": 49612,
+          "minRub": 40257,
+          "maxRub": 66769
+        },
+        {
+          "month": "2026-05",
+          "count": 1,
+          "avgRub": 35769,
+          "minRub": 35769,
+          "maxRub": 35769
+        },
+        {
+          "month": "2026-06",
+          "count": 59,
+          "avgRub": 45496,
+          "minRub": 35769,
+          "maxRub": 60769
+        },
+        {
+          "month": "2026-07",
+          "count": 1,
+          "avgRub": 43784,
+          "minRub": 43784,
+          "maxRub": 43784
+        },
+        {
+          "month": "2026-09",
+          "count": 1,
+          "avgRub": 36784,
+          "minRub": 36784,
+          "maxRub": 36784
+        },
+        {
+          "month": "2026-10",
+          "count": 1,
+          "avgRub": 34044,
+          "minRub": 34044,
+          "maxRub": 34044
+        }
+      ]
+    },
+    {
+      "route": "TYUMEN → ISTANBUL",
+      "from": "TYUMEN",
+      "to": "ISTANBUL",
+      "transport": "flight",
+      "count": 213,
+      "pricedCount": 208,
+      "totalRub": 7803037,
+      "avgRub": 37515,
+      "minRub": 19801,
+      "maxRub": 105542,
+      "lastMonthAvgRub": 31206,
+      "momChangePct": -34.4,
+      "overallChangePct": 4.8,
+      "monthly": [
+        {
+          "month": "2025-05",
+          "count": 7,
+          "avgRub": 29767,
+          "minRub": 21323,
+          "maxRub": 61923
+        },
+        {
+          "month": "2025-06",
+          "count": 5,
+          "avgRub": 40631,
+          "minRub": 32128,
+          "maxRub": 51583
+        },
+        {
+          "month": "2025-07",
+          "count": 5,
+          "avgRub": 42573,
+          "minRub": 36763,
+          "maxRub": 55615
+        },
+        {
+          "month": "2025-08",
+          "count": 6,
+          "avgRub": 41290,
+          "minRub": 30313,
+          "maxRub": 73684
+        },
+        {
+          "month": "2025-09",
+          "count": 1,
+          "avgRub": 32452,
+          "minRub": 32452,
+          "maxRub": 32452
+        },
+        {
+          "month": "2025-10",
+          "count": 5,
+          "avgRub": 31729,
+          "minRub": 25968,
+          "maxRub": 41003
+        },
+        {
+          "month": "2025-11",
+          "count": 4,
+          "avgRub": 27580,
+          "minRub": 22762,
+          "maxRub": 30878
+        },
+        {
+          "month": "2025-12",
+          "count": 11,
+          "avgRub": 30780,
+          "minRub": 19801,
+          "maxRub": 43703
+        },
+        {
+          "month": "2026-01",
+          "count": 7,
+          "avgRub": 36891,
+          "minRub": 26409,
+          "maxRub": 49471
+        },
+        {
+          "month": "2026-02",
+          "count": 29,
+          "avgRub": 32537,
+          "minRub": 27185,
+          "maxRub": 50535
+        },
+        {
+          "month": "2026-03",
+          "count": 22,
+          "avgRub": 41041,
+          "minRub": 24865,
+          "maxRub": 53932
+        },
+        {
+          "month": "2026-04",
+          "count": 16,
+          "avgRub": 37263,
+          "minRub": 26360,
+          "maxRub": 44416
+        },
+        {
+          "month": "2026-05",
+          "count": 8,
+          "avgRub": 31602,
+          "minRub": 25320,
+          "maxRub": 51520
+        },
+        {
+          "month": "2026-06",
+          "count": 13,
+          "avgRub": 31984,
+          "minRub": 27891,
+          "maxRub": 35390
+        },
+        {
+          "month": "2026-07",
+          "count": 14,
+          "avgRub": 41039,
+          "minRub": 32513,
+          "maxRub": 48971
+        },
+        {
+          "month": "2026-08",
+          "count": 6,
+          "avgRub": 38900,
+          "minRub": 32513,
+          "maxRub": 54370
+        },
+        {
+          "month": "2026-09",
+          "count": 7,
+          "avgRub": 47585,
+          "minRub": 35707,
+          "maxRub": 105542
+        },
+        {
+          "month": "2026-10",
+          "count": 3,
+          "avgRub": 31206,
+          "minRub": 25265,
+          "maxRub": 36760
+        }
+      ]
+    }
+  ]
+}

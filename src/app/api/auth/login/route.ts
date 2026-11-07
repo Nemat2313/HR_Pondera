@@ -107,10 +107,15 @@ export async function POST(request: Request) {
       id: Number(user.id),
       name: String(user.name),
       email: String(user.email),
-      role: (user.role === 'admin' ? 'admin' : user.role === 'viewer' ? 'viewer' : 'user') as
-        | 'admin'
-        | 'user'
-        | 'viewer',
+      role: (
+        user.role === 'admin'
+          ? 'admin'
+          : user.role === 'viewer'
+          ? 'viewer'
+          : user.role === 'idari_isler'
+          ? 'idari_isler'
+          : 'user'
+      ) as 'admin' | 'user' | 'viewer' | 'idari_isler',
       scope_type: (
         user.scope_type === 'region' || user.scope_type === 'project' ? user.scope_type : 'all'
       ) as 'all' | 'region' | 'project',

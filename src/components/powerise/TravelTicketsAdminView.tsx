@@ -22,9 +22,12 @@ import {
   Clock,
   Check,
   AlertCircle,
+  X,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import LiveTicketScannerSystem from '@/components/powerise/LiveTicketScannerSystem';
+import AISettingsTab from '@/components/settings/AISettingsTab';
 
 interface TravelTicketsAdminViewProps {
   onOpenAiSettings?: () => void;
@@ -148,7 +151,10 @@ export default function TravelTicketsAdminView({
   onNavigateToPersonnel,
 }: TravelTicketsAdminViewProps) {
   const { lang } = useLanguage();
-  const [activeMainTab, setActiveMainTab] = useState<'showcase' | 'live_scanner'>('showcase');
+  const { user } = useAuth();
+  const isIdariOnly = user?.role === 'idari_isler';
+  const [activeMainTab, setActiveMainTab] = useState<'showcase' | 'live_scanner'>('live_scanner');
+  const [showInlineAiSettings, setShowInlineAiSettings] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'flight' | 'train'>('all');
   const [search, setSearch] = useState('');
 
@@ -168,27 +174,11 @@ export default function TravelTicketsAdminView({
   });
 
   return (
-    <div className="p-6 lg:p-8 space-y-6 font-normal max-w-7xl mx-auto">
-      {/* 2-TAB TOP SWITCHER: 1) VITRIN / REKLAM (DEFAULT)  2) CANLI POWERISE AI BILET OKUMA */}
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 font-normal max-w-[1680px] mx-auto">
+      {/* 2-TAB TOP SWITCHER (hidden for idari_isler role so they land straight in operations) */}
+      {!isIdariOnly && (
       <div className="p-2 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('showcase')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeMainTab === 'showcase'
-                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
-                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Plane className="w-3.5 h-3.5" />
-            <span>
-              {lang === 'ru'
-                ? '1. Презентация и Витрина Модуля'
-                : '1. Modül Tanıtım & Vitrin (Sunum)'}
-            </span>
-          </button>
-
           <button
             type="button"
             onClick={() => setActiveMainTab('live_scanner')}
@@ -201,11 +191,28 @@ export default function TravelTicketsAdminView({
             <Sparkles className="w-3.5 h-3.5" />
             <span>
               {lang === 'ru'
-                ? '2. Живое ИИ-чтение билетов и Учет Гостей (DeepSeek / Powerise)'
-                : '2. Canlı AI Bilet Okuma & Çalışan / Misafir Takibi (DeepSeek)'}
+                ? '1. ИИ-Билеты, Таблица Pondera и Табло Встреч (ТВ)'
+                : '1. Canlı AI Bilet Okuma, Pondera Bilet Tablosu & Havalimanı Karşılama Panosu (TV)'}
             </span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-400/30">
               Canlı
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('showcase')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeMainTab === 'showcase'
+                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Plane className="w-3.5 h-3.5" />
+            <span>
+              {lang === 'ru'
+                ? '2. Презентация и Витрина Модуля'
+                : '2. Modül Tanıtım & Vitrin (Sunum)'}
             </span>
           </button>
         </div>
@@ -216,15 +223,44 @@ export default function TravelTicketsAdminView({
             onClick={() => setActiveMainTab('live_scanner')}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer"
           >
-            <span>Canlı Bilet Okuma Sistemine Geç</span>
+            <span>Canlı Bilet & Karşılama Sistemine Geç</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
+      )}
 
-      {activeMainTab === 'live_scanner' ? (
+      {showInlineAiSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/60">
+              <span className="text-sm font-bold text-slate-900 dark:text-white">
+                AI Bilet Okuma Motoru & API Anahtarı Ayarları
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowInlineAiSettings(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              <AISettingsTab />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(isIdariOnly || activeMainTab === 'live_scanner') ? (
         <LiveTicketScannerSystem
-          onOpenAiSettings={onOpenAiSettings}
+          onOpenAiSettings={() => {
+            if (isIdariOnly) {
+              setShowInlineAiSettings(true);
+            } else if (onOpenAiSettings) {
+              onOpenAiSettings();
+            }
+          }}
           onNavigateToPersonnel={onNavigateToPersonnel}
         />
       ) : (

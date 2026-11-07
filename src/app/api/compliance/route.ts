@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
+import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -141,15 +142,17 @@ export async function GET(request: Request) {
     }
 
     if (scopeType === 'region' && scopeVal !== 'all') {
-      conditions.push('region = ?');
-      params.push(scopeVal);
+      const regCond = buildEffectiveRegionSqlCondition(scopeVal);
+      conditions.push(regCond.sql);
+      params.push(...regCond.params);
     } else if (scopeType === 'project' && scopeVal !== 'all') {
       conditions.push('proje_adi = ?');
       params.push(scopeVal);
     } else {
       if (filterRegion !== 'all') {
-        conditions.push('region = ?');
-        params.push(filterRegion);
+        const regCond = buildEffectiveRegionSqlCondition(filterRegion);
+        conditions.push(regCond.sql);
+        params.push(...regCond.params);
       }
       if (filterProject !== 'all') {
         conditions.push('proje_adi = ?');
@@ -248,8 +251,8 @@ export async function GET(request: Request) {
         } catch {}
       }
 
-      // Region breakdown tracker
-      const reg = r.region || 'Bilinmiyor';
+      // Region breakdown tracker (Kazan split into individual sites)
+      const reg = resolveEffectiveRegion(r.region, r.proje_adi, 'Bilinmiyor');
       const proj = (r.proje_adi || reg || 'Genel').trim();
       if (!regionBreakdown[reg]) {
         regionBreakdown[reg] = {
@@ -449,7 +452,7 @@ export async function GET(request: Request) {
           adSoyad: r.ad_soyad || '-',
           gorevi: r.gorevi || '-',
           departman: r.departman || '-',
-          region: r.region || '-',
+          region: reg,
           projeAdi: r.proje_adi || '-',
           uyruk: r.uyruk || '-',
           guncelDurum: r.guncel_durum || 'Mevcut',

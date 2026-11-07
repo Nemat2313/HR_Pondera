@@ -2,6 +2,8 @@ import https from 'https';
 import tls from 'tls';
 import crypto from 'crypto';
 import { getDb } from '@/lib/db';
+import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import upcomingTicketsSeed from '@/data/upcomingTicketsSeed.json';
 
 // Official Russian Ministry of Digital Development (Минцифры) Root & Sub CA
 // Required for Sberbank GigaChat OAuth & API endpoints (ngw.devices.sberbank.ru / gigachat.devices.sberbank.ru)
@@ -266,6 +268,212 @@ export function ensureAiTicketTables() {
     CREATE INDEX IF NOT EXISTS idx_travel_tickets_guest ON travel_tickets(guest_id);
     CREATE INDEX IF NOT EXISTS idx_travel_tickets_created ON travel_tickets(created_at);
   `);
+
+  // Idempotent migration for Pondera 29-column eBA ticket archive + Airport TV reception board
+  try {
+    const existingCols = new Set(
+      (db.prepare('PRAGMA table_info(travel_tickets)').all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    const addCols: Array<[string, string]> = [
+      ['eba_doc_id', "TEXT NOT NULL DEFAULT ''"],
+      ['passenger_name_ru', "TEXT NOT NULL DEFAULT ''"],
+      ['flight_purpose', "TEXT NOT NULL DEFAULT 'Transfer'"],
+      ['ticket_agent', "TEXT NOT NULL DEFAULT 'One Two Trip'"],
+      ['payment_company', "TEXT NOT NULL DEFAULT 'PONDERA-INDUSTRY'"],
+      ['departure_time', "TEXT NOT NULL DEFAULT ''"],
+      ['arrival_date', "TEXT NOT NULL DEFAULT ''"],
+      ['arrival_time', "TEXT NOT NULL DEFAULT ''"],
+      ['doc_status', "TEXT NOT NULL DEFAULT 'Uploaded'"],
+      ['contact_phone', "TEXT NOT NULL DEFAULT ''"],
+      ['job_title', "TEXT NOT NULL DEFAULT ''"],
+      ['ticket_status', "TEXT NOT NULL DEFAULT ''"],
+      ['detail_reason', "TEXT NOT NULL DEFAULT '0'"],
+      ['trip_type', "TEXT NOT NULL DEFAULT 'One Way'"],
+      ['notes', "TEXT NOT NULL DEFAULT ''"],
+      ['updated_by', "TEXT NOT NULL DEFAULT ''"],
+      ['updated_at', "TEXT NOT NULL DEFAULT ''"],
+      ['deduct_from_salary', "TEXT NOT NULL DEFAULT 'No'"],
+      ['reception_status', "TEXT NOT NULL DEFAULT 'pending'"],
+      ['reception_driver_note', "TEXT NOT NULL DEFAULT ''"],
+    ];
+    for (const [colName, colDef] of addCols) {
+      if (!existingCols.has(colName)) {
+        db.exec(`ALTER TABLE travel_tickets ADD COLUMN ${colName} ${colDef};`);
+      }
+    }
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_travel_tickets_ebaid ON travel_tickets(eba_doc_id);`);
+
+    // Ensure deduct_from_salary defaults to 'No' if blank, and split lumped 'Kazan' into site breakdown
+    db.exec(`
+      UPDATE travel_tickets
+      SET deduct_from_salary = 'No'
+      WHERE deduct_from_salary IS NULL OR TRIM(deduct_from_salary) = '';
+    `);
+
+    const kazanTickets = db
+      .prepare(
+        `SELECT id, region, project_name, sicil_no, departure_date, departure_time, arrival_or_return_date, arrival_date, arrival_time
+         FROM travel_tickets`
+      )
+      .all() as Array<Record<string, any>>;
+    const updTicketNorm = db.prepare(
+      `UPDATE travel_tickets
+       SET region = ?, departure_time = ?, arrival_date = ?, arrival_time = ?
+       WHERE id = ?`
+    );
+    for (const kt of kazanTickets) {
+      const effReg = kt.region
+        ? resolveEffectiveRegion(kt.region, kt.project_name)
+        : '';
+      let depTime = String(kt.departure_time || '').trim();
+      const depRaw = String(kt.departure_date || '').trim();
+      if (!depTime && depRaw.includes(' ')) {
+        const maybeTime = depRaw.split(/\s+/)[1] || '';
+        if (/^\d{1,2}:\d{2}/.test(maybeTime)) depTime = maybeTime.slice(0, 5);
+      }
+      let arrDate = String(kt.arrival_date || '').trim();
+      let arrTime = String(kt.arrival_time || '').trim();
+      const arrRaw = String(kt.arrival_or_return_date || '').trim();
+      if (!arrDate && arrRaw) {
+        const parts = arrRaw.split(/\s+/);
+        arrDate = parts[0] || '';
+        if (!arrTime && parts[1] && /^\d{1,2}:\d{2}/.test(parts[1])) {
+          arrTime = parts[1].slice(0, 5);
+        }
+      }
+      if (
+        effReg !== String(kt.region || '') ||
+        depTime !== String(kt.departure_time || '') ||
+        arrDate !== String(kt.arrival_date || '') ||
+        arrTime !== String(kt.arrival_time || '')
+      ) {
+        updTicketNorm.run(effReg, depTime, arrDate, arrTime, kt.id);
+      }
+    }
+
+    // One-time seed of Pondera's upcoming journeys from 'bilet alinan toplu liste.xlsx' (flight + train + bus)
+    db.exec(`CREATE TABLE IF NOT EXISTS system_info (key TEXT PRIMARY KEY, value TEXT);`);
+    const seededFlag = db
+      .prepare("SELECT value FROM system_info WHERE key = 'upcoming_tickets_v2826_multimodal_seeded'")
+      .get() as { value?: string } | undefined;
+
+    if (seededFlag?.value !== '1' && Array.isArray(upcomingTicketsSeed)) {
+      const findExistingEba = db.prepare(
+        'SELECT id FROM travel_tickets WHERE eba_doc_id = ? LIMIT 1'
+      );
+      const findEmp = db.prepare(
+        `SELECT sicil_no, pasaport_no, gorevi, telefon_no, region, proje_adi, tam_adi_kiril
+         FROM personnel
+         WHERE sicil_no = ?
+         ORDER BY CASE
+           WHEN LOWER(COALESCE(genel_durum, '')) LIKE '%mevcut%' THEN 0
+           WHEN LOWER(COALESCE(genel_durum, '')) LIKE '%bekleniyor%' OR LOWER(COALESCE(genel_durum, '')) LIKE '%sevke%' THEN 1
+           ELSE 2
+         END, id DESC
+         LIMIT 1`
+      );
+      const insertSeedStmt = db.prepare(`
+        INSERT INTO travel_tickets (
+          ticket_code, eba_doc_id, transport_type, person_type, sicil_no, guest_id,
+          passenger_name, passenger_name_ru, passport_no, citizenship,
+          flight_purpose, ticket_agent, payment_company,
+          carrier, flight_or_train_no, booking_ref, ticket_number,
+          departure_city, arrival_city, departure_date, departure_time,
+          arrival_or_return_date, arrival_date, arrival_time,
+          ticket_price, currency, doc_status, contact_phone, job_title,
+          region, project_name, ticket_status, detail_reason, trip_type,
+          notes, updated_by, updated_at, deduct_from_salary,
+          reception_status, reception_driver_note, ai_provider_used,
+          match_confidence, source_filename, status, created_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, NULL,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, '', '', '',
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          'pending', '', 'eBA Arşiv (Excel)',
+          100, 'bilet alinan toplu liste.xlsx', 'confirmed', ?
+        )
+      `);
+
+      const nowSeed = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      for (const s of upcomingTicketsSeed as Array<Record<string, any>>) {
+        const ebaId = String(s.eba_doc_id || '').trim();
+        if (ebaId && findExistingEba.get(ebaId)) continue;
+
+        const sicil = String(s.sicil_no || '').trim();
+        const emp = sicil
+          ? (findEmp.get(sicil) as Record<string, any> | undefined)
+          : undefined;
+        const pType = sicil ? 'employee' : 'guest';
+        const rawReg = String(s.region || emp?.region || '').trim();
+        const rawProj = String(s.project_name || emp?.proje_adi || '').trim();
+        const effRegion = rawReg ? resolveEffectiveRegion(rawReg, rawProj) : '';
+        const deduct = String(s.deduct_from_salary || '').trim() === 'Yes' ? 'Yes' : 'No';
+        const tType =
+          s.transport_type === 'bus'
+            ? 'bus'
+            : s.transport_type === 'train'
+            ? 'train'
+            : 'flight';
+        const codePrefix = tType === 'bus' ? 'BUS' : tType === 'train' ? 'RZD' : 'EBA';
+        const tCode = ebaId ? `${codePrefix}-${ebaId}` : `${codePrefix}-${Math.floor(10000 + Math.random() * 89999)}`;
+        const arrCombined = [String(s.arrival_date || '').trim(), String(s.arrival_time || '').trim()]
+          .filter(Boolean)
+          .join(' ');
+
+        insertSeedStmt.run(
+          tCode,
+          ebaId,
+          tType,
+          pType,
+          sicil,
+          String(s.passenger_name || '').trim().toUpperCase(),
+          String(s.passenger_name_ru || emp?.tam_adi_kiril || '').trim(),
+          String(emp?.pasaport_no || '').trim(),
+          String(s.citizenship || '').trim().toUpperCase(),
+          String(s.flight_purpose || 'Transfer').trim(),
+          String(s.ticket_agent || 'One Two Trip').trim(),
+          String(s.payment_company || 'PONDERA-INDUSTRY').trim(),
+          String(s.ticket_agent || 'One Two Trip').trim(),
+          String(s.departure_city || '').trim().toUpperCase(),
+          String(s.arrival_city || '').trim().toUpperCase(),
+          String(s.departure_date || '').trim(),
+          String(s.departure_time || '').trim(),
+          arrCombined,
+          String(s.arrival_date || '').trim(),
+          String(s.arrival_time || '').trim(),
+          Number(s.ticket_price || 0) || 0,
+          String(s.currency || 'RUB').trim().toUpperCase(),
+          String(s.doc_status || 'Uploaded').trim(),
+          String(s.contact_phone || emp?.telefon_no || '').trim(),
+          String(s.job_title || emp?.gorevi || '').trim(),
+          effRegion,
+          rawProj,
+          String(s.ticket_status || '').trim(),
+          String(s.detail_reason || '0').trim(),
+          String(s.trip_type || 'One Way').trim(),
+          String(s.notes || '').trim(),
+          String(s.updated_by || 'eBA').trim(),
+          String(s.updated_at || nowSeed).trim(),
+          deduct,
+          nowSeed
+        );
+      }
+
+      db.prepare(
+        "INSERT OR REPLACE INTO system_info (key, value) VALUES ('upcoming_tickets_v2826_multimodal_seeded', '1')"
+      ).run();
+    }
+  } catch {
+    // Non-blocking if read-only fs
+  }
 
   tablesEnsured = true;
   return db;
@@ -588,6 +796,8 @@ export interface MatchedPersonCandidate {
   projectName: string;
   department?: string;
   position?: string;
+  contactPhone?: string;
+  paymentCompany?: string;
   status: string;
   confidence: number;
   matchReason: string;
@@ -601,19 +811,81 @@ export interface PassengerMatchResult {
   candidates: MatchedPersonCandidate[];
 }
 
-export function matchPassengersAgainstPondera(
-  passengers: Array<{ passengerName: string; passportNumber?: string }>
-): PassengerMatchResult[] {
-  const db = ensureAiTicketTables();
+type EmployeeStatusCategory = 'active' | 'incoming' | 'former' | 'other';
 
-  const employees = db
+interface PreparedPonderaEmployee {
+  id: number;
+  sicil_no: string;
+  rhi_id: string;
+  fullLatin: string;
+  tam_adi_kiril: string;
+  pasaport_no: string;
+  tc_kimlik_no: string;
+  cleanPasp: string;
+  cleanTc: string;
+  uyruk: string;
+  effectiveRegion: string;
+  proje_adi: string;
+  departman: string;
+  gorevi: string;
+  genel_durum: string;
+  guncel_durum: string;
+  telefon_no: string;
+  firma: string;
+  statusCategory: EmployeeStatusCategory;
+  statusRank: number;
+  searchHaystackUpper: string;
+}
+
+function classifyEmployeeStatus(genelDurumRaw: string): {
+  category: EmployeeStatusCategory;
+  rank: number;
+} {
+  const s = String(genelDurumRaw || '').toLowerCase();
+  if (s.includes('mevcut') || s.includes('patentsiz')) {
+    return { category: 'active', rank: 1 };
+  }
+  if (s.includes('bekleniyor') || s.includes('sevke')) {
+    // Sevke Hazır = incoming expected hire; Sevki Iptal = cancelled dispatch
+    if (s.includes('iptal')) {
+      return { category: 'other', rank: 4 };
+    }
+    return { category: 'incoming', rank: 2 };
+  }
+  if (s.includes('cikis') || s.includes('çıkış')) {
+    return { category: 'former', rank: 3 };
+  }
+  return { category: 'other', rank: 4 };
+}
+
+function getPreparedPonderaEmployeesIndex(): PreparedPonderaEmployee[] {
+  const db = ensureAiTicketTables();
+  const meta = db
+    .prepare('SELECT COUNT(*) AS cnt, COALESCE(MAX(id), 0) AS maxId FROM personnel')
+    .get() as { cnt: number; maxId: number } | undefined;
+  const cacheKey = `${meta?.cnt || 0}:${meta?.maxId || 0}`;
+
+  const g = globalThis as unknown as {
+    __ponderaEmployeeMatchIndex?: {
+      cacheKey: string;
+      employees: PreparedPonderaEmployee[];
+    };
+  };
+
+  if (g.__ponderaEmployeeMatchIndex && g.__ponderaEmployeeMatchIndex.cacheKey === cacheKey) {
+    return g.__ponderaEmployeeMatchIndex.employees;
+  }
+
+  const rows = db
     .prepare(
-      `SELECT sicil_no, ad_soyad, adi, soyadi, tam_adi_kiril, pasaport_no, tc_kimlik_no,
-              uyruk, region, proje_adi, departman, gorevi, genel_durum
+      `SELECT id, sicil_no, rhi_id, ad_soyad, adi, soyadi, tam_adi_kiril, pasaport_no, tc_kimlik_no,
+              uyruk, region, proje_adi, departman, gorevi, genel_durum, guncel_durum, telefon_no, firma
        FROM personnel`
     )
     .all() as Array<{
+    id: number;
     sicil_no: string;
+    rhi_id: string;
     ad_soyad: string;
     adi: string;
     soyadi: string;
@@ -626,12 +898,172 @@ export function matchPassengersAgainstPondera(
     departman: string;
     gorevi: string;
     genel_durum: string;
+    guncel_durum: string;
+    telefon_no: string;
+    firma: string;
   }>;
+
+  const byKey = new Map<string, PreparedPonderaEmployee>();
+
+  for (const r of rows) {
+    const sicil = String(r.sicil_no || '').trim();
+    const fullLatin = (r.ad_soyad || `${r.adi || ''} ${r.soyadi || ''}`).trim();
+    const cleanPasp = cleanTicketPassportNumber(r.pasaport_no);
+    const cleanTc = cleanTicketPassportNumber(r.tc_kimlik_no);
+    const { category, rank } = classifyEmployeeStatus(r.genel_durum);
+    const effectiveRegion = r.region ? resolveEffectiveRegion(r.region, r.proje_adi) : '';
+    const rhiId = String(r.rhi_id || '').trim();
+    const kiril = String(r.tam_adi_kiril || '').trim();
+
+    const item: PreparedPonderaEmployee = {
+      id: Number(r.id || 0),
+      sicil_no: sicil,
+      rhi_id: rhiId,
+      fullLatin,
+      tam_adi_kiril: kiril,
+      pasaport_no: String(r.pasaport_no || '').trim(),
+      tc_kimlik_no: String(r.tc_kimlik_no || '').trim(),
+      cleanPasp,
+      cleanTc,
+      uyruk: String(r.uyruk || '').trim(),
+      effectiveRegion,
+      proje_adi: String(r.proje_adi || '').trim(),
+      departman: String(r.departman || '').trim(),
+      gorevi: String(r.gorevi || '').trim(),
+      genel_durum: String(r.genel_durum || 'Mevcut').trim(),
+      guncel_durum: String(r.guncel_durum || '').trim(),
+      telefon_no: String(r.telefon_no || '').trim(),
+      firma: String(r.firma || 'PONDERA-INDUSTRY').trim(),
+      statusCategory: category,
+      statusRank: rank,
+      searchHaystackUpper: `${sicil} ${rhiId} ${fullLatin.toUpperCase()} ${transliterateToLatinUpper(
+        kiril
+      )} ${kiril.toUpperCase()} ${cleanPasp} ${cleanTc}`,
+    };
+
+    const dedupeKey = sicil || `ROW_${r.id}`;
+    const existing = byKey.get(dedupeKey);
+    if (!existing) {
+      byKey.set(dedupeKey, item);
+    } else {
+      const preferNew =
+        item.statusRank < existing.statusRank ||
+        (item.statusRank === existing.statusRank && item.id > existing.id);
+      if (preferNew) {
+        if (!item.cleanPasp && existing.cleanPasp) {
+          item.cleanPasp = existing.cleanPasp;
+          item.pasaport_no = existing.pasaport_no;
+        }
+        if (!item.telefon_no && existing.telefon_no) item.telefon_no = existing.telefon_no;
+        if (!item.tam_adi_kiril && existing.tam_adi_kiril) item.tam_adi_kiril = existing.tam_adi_kiril;
+        byKey.set(dedupeKey, item);
+      } else {
+        if (!existing.cleanPasp && item.cleanPasp) {
+          existing.cleanPasp = item.cleanPasp;
+          existing.pasaport_no = item.pasaport_no;
+        }
+        if (!existing.telefon_no && item.telefon_no) existing.telefon_no = item.telefon_no;
+        if (!existing.tam_adi_kiril && item.tam_adi_kiril) existing.tam_adi_kiril = item.tam_adi_kiril;
+      }
+    }
+  }
+
+  const employees = Array.from(byKey.values());
+  g.__ponderaEmployeeMatchIndex = { cacheKey, employees };
+  return employees;
+}
+
+export function searchPonderaPeople35k(query: string, limit = 30): Array<Record<string, any>> {
+  const qTrim = String(query || '').trim();
+  if (qTrim.length < 2) return [];
+
+  const index = getPreparedPonderaEmployeesIndex();
+  const qUpper = qTrim.toUpperCase();
+  const qLat = transliterateToLatinUpper(qTrim);
+  const qPasp = cleanTicketPassportNumber(qTrim);
+  const tokens = qLat
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+
+  const hits: Array<{ emp: PreparedPonderaEmployee; score: number }> = [];
+
+  for (const emp of index) {
+    let score = 0;
+    if (emp.sicil_no && emp.sicil_no.toUpperCase() === qUpper) {
+      score = 120;
+    } else if (qPasp.length >= 5 && (emp.cleanPasp === qPasp || emp.cleanTc === qPasp)) {
+      score = 118;
+    } else if (emp.sicil_no && emp.sicil_no.toUpperCase().includes(qUpper)) {
+      score = 105;
+    } else if (
+      qPasp.length >= 4 &&
+      ((emp.cleanPasp && emp.cleanPasp.includes(qPasp)) ||
+        (emp.cleanTc && emp.cleanTc.includes(qPasp)))
+    ) {
+      score = 102;
+    } else if (
+      tokens.length > 0 &&
+      tokens.every(
+        (tok) =>
+          emp.searchHaystackUpper.includes(tok) || emp.tam_adi_kiril.toUpperCase().includes(tok)
+      )
+    ) {
+      score = 96;
+    } else if (emp.tam_adi_kiril && emp.tam_adi_kiril.toUpperCase().includes(qUpper)) {
+      score = 94;
+    }
+
+    if (score === 0 && qTrim.length >= 4) {
+      const pScore = Math.max(
+        computeNameMatchScore(qTrim, emp.fullLatin),
+        emp.tam_adi_kiril ? computeNameMatchScore(qTrim, emp.tam_adi_kiril) : 0
+      );
+      if (pScore >= 72) {
+        score = pScore;
+      }
+    }
+
+    if (score > 0) {
+      hits.push({ emp, score });
+    }
+  }
+
+  hits.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.emp.statusRank !== b.emp.statusRank) return a.emp.statusRank - b.emp.statusRank;
+    return b.emp.id - a.emp.id;
+  });
+
+  return hits.slice(0, limit).map(({ emp }) => ({
+    sicil_no: emp.sicil_no,
+    rhi_id: emp.rhi_id,
+    ad_soyad: emp.fullLatin || emp.tam_adi_kiril,
+    tam_adi_kiril: emp.tam_adi_kiril,
+    pasaport_no: emp.pasaport_no || emp.tc_kimlik_no,
+    uyruk: emp.uyruk,
+    region: emp.effectiveRegion,
+    proje_adi: emp.proje_adi,
+    departman: emp.departman,
+    gorevi: emp.gorevi,
+    genel_durum: emp.genel_durum,
+    guncel_durum: emp.guncel_durum,
+    telefon_no: emp.telefon_no,
+    firma: emp.firma,
+    status_category: emp.statusCategory,
+  }));
+}
+
+export function matchPassengersAgainstPondera(
+  passengers: Array<{ passengerName: string; passportNumber?: string }>
+): PassengerMatchResult[] {
+  const db = ensureAiTicketTables();
+  const preparedEmployees = getPreparedPonderaEmployeesIndex();
 
   const guests = db
     .prepare(
       `SELECT id, guest_code, full_name, full_name_ru, passport_no, citizenship,
-              company_or_org, assigned_region, assigned_project, status, linked_sicil_no
+              company_or_org, assigned_region, assigned_project, phone, status, linked_sicil_no
        FROM travel_guests
        WHERE status != 'archived'`
     )
@@ -645,23 +1077,10 @@ export function matchPassengersAgainstPondera(
     company_or_org: string;
     assigned_region: string;
     assigned_project: string;
+    phone: string;
     status: string;
     linked_sicil_no: string;
   }>;
-
-  // Pre-normalize employee passports & names once for O(N) fast matching over ~5,400 rows
-  const preparedEmployees = employees.map((e) => {
-    const cleanPasp = cleanTicketPassportNumber(e.pasaport_no);
-    const cleanTc = cleanTicketPassportNumber(e.tc_kimlik_no);
-    const fullLatin = e.ad_soyad || `${e.adi || ''} ${e.soyadi || ''}`.trim();
-    return {
-      row: e,
-      cleanPasp,
-      cleanTc,
-      fullLatin,
-      isActive: String(e.genel_durum || '').toLowerCase().includes('mevcut'),
-    };
-  });
 
   const preparedGuests = guests.map((g) => ({
     row: g,
@@ -671,19 +1090,33 @@ export function matchPassengersAgainstPondera(
   return passengers.map((p) => {
     const ticketPasp = cleanTicketPassportNumber(p.passportNumber);
     const ticketName = (p.passengerName || '').trim();
-    const scoredCandidates: MatchedPersonCandidate[] = [];
+    const scoredCandidates: Array<MatchedPersonCandidate & { _rank?: number }> = [];
 
     for (const emp of preparedEmployees) {
       let score = 0;
       let reason = '';
+
+      const statusLabelSuffix =
+        emp.statusCategory === 'incoming'
+          ? ' — Beklenen Yeni Giriş'
+          : emp.statusCategory === 'former'
+          ? ' — Eski Sicil (Geri Dönüş)'
+          : emp.statusCategory === 'other'
+          ? ` — ${emp.genel_durum}`
+          : '';
 
       if (
         ticketPasp &&
         ticketPasp.length >= 6 &&
         (emp.cleanPasp === ticketPasp || emp.cleanTc === ticketPasp)
       ) {
-        score = emp.isActive ? 100 : 95;
-        reason = 'Tam Pasaport Eşleşmesi';
+        score =
+          emp.statusCategory === 'active' || emp.statusCategory === 'incoming'
+            ? 100
+            : emp.statusCategory === 'former'
+            ? 99
+            : 97;
+        reason = `Tam Pasaport Eşleşmesi${statusLabelSuffix}`;
       } else if (
         ticketPasp &&
         ticketPasp.length >= 7 &&
@@ -692,44 +1125,60 @@ export function matchPassengersAgainstPondera(
       ) {
         const nameScore = Math.max(
           computeNameMatchScore(ticketName, emp.fullLatin),
-          computeNameMatchScore(ticketName, emp.row.tam_adi_kiril)
+          computeNameMatchScore(ticketName, emp.tam_adi_kiril)
         );
         if (nameScore >= 65) {
-          score = emp.isActive ? 96 : 91;
-          reason = 'Pasaport Son 7 Hane + İsim Eşleşmesi';
+          score =
+            emp.statusCategory === 'active' || emp.statusCategory === 'incoming'
+              ? 96
+              : emp.statusCategory === 'former'
+              ? 95
+              : 93;
+          reason = `Pasaport Son 7 Hane + İsim${statusLabelSuffix}`;
         }
       }
 
       if (score === 0 && ticketName) {
         const latinScore = computeNameMatchScore(ticketName, emp.fullLatin);
-        const cyrScore = emp.row.tam_adi_kiril
-          ? computeNameMatchScore(ticketName, emp.row.tam_adi_kiril)
+        const cyrScore = emp.tam_adi_kiril
+          ? computeNameMatchScore(ticketName, emp.tam_adi_kiril)
           : 0;
         const bestNameScore = Math.max(latinScore, cyrScore);
         if (bestNameScore >= 65) {
-          score = emp.isActive ? bestNameScore : Math.max(60, bestNameScore - 4);
-          reason =
+          // NEVER penalize incoming expected hires (Bekleniyor / Sevke Hazır) or returning former employees (Cikis) below 83%!
+          if (emp.statusCategory === 'active' || emp.statusCategory === 'incoming') {
+            score = bestNameScore;
+          } else if (emp.statusCategory === 'former') {
+            score = bestNameScore >= 84 ? bestNameScore : Math.max(65, bestNameScore - 1);
+          } else {
+            score = bestNameScore >= 86 ? bestNameScore - 1 : Math.max(65, bestNameScore - 2);
+          }
+          const baseReason =
             cyrScore > latinScore
-              ? 'Kiril İsim Benzerliği (1C/eBA)'
-              : 'İsim Benzerliği (eBA Personel)';
+              ? 'Kiril İsim Eşleşmesi (35K Havuz)'
+              : 'İsim Eşleşmesi (35K Personel Havuzu)';
+          reason = `${baseReason}${statusLabelSuffix}`;
         }
       }
 
       if (score >= 65) {
         scoredCandidates.push({
           personType: 'employee',
-          sicilNo: emp.row.sicil_no,
-          fullName: emp.fullLatin || emp.row.tam_adi_kiril,
-          fullNameRu: emp.row.tam_adi_kiril || '',
-          passportNo: emp.row.pasaport_no || emp.row.tc_kimlik_no || '',
-          citizenship: emp.row.uyruk || '',
-          region: emp.row.region || '',
-          projectName: emp.row.proje_adi || '',
-          department: emp.row.departman || '',
-          position: emp.row.gorevi || '',
-          status: emp.row.genel_durum || 'Mevcut',
+          sicilNo: emp.sicil_no,
+          fullName: emp.fullLatin || emp.tam_adi_kiril,
+          fullNameRu: emp.tam_adi_kiril || '',
+          passportNo: emp.pasaport_no || emp.tc_kimlik_no || '',
+          citizenship: emp.uyruk || '',
+          region: emp.effectiveRegion,
+          projectName: emp.proje_adi || '',
+          department: emp.departman || '',
+          position: emp.gorevi || '',
+          contactPhone: emp.telefon_no || '',
+          paymentCompany: emp.firma || 'PONDERA-INDUSTRY',
+          status: emp.genel_durum || 'Mevcut',
           confidence: score,
           matchReason: reason,
+          _rank: emp.statusRank,
         });
       }
     }
@@ -738,14 +1187,14 @@ export function matchPassengersAgainstPondera(
       let score = 0;
       let reason = '';
       if (ticketPasp && ticketPasp.length >= 6 && gst.cleanPasp === ticketPasp) {
-        score = 98;
+        score = 95;
         reason = 'Kayıtlı Misafir Pasaport Eşleşmesi';
       } else if (ticketName) {
         const gLatin = computeNameMatchScore(ticketName, gst.row.full_name);
         const gCyr = gst.row.full_name_ru ? computeNameMatchScore(ticketName, gst.row.full_name_ru) : 0;
         const best = Math.max(gLatin, gCyr);
         if (best >= 70) {
-          score = best;
+          score = Math.max(70, best - 2);
           reason = 'Kayıtlı Misafir İsim Eşleşmesi';
         }
       }
@@ -760,19 +1209,27 @@ export function matchPassengersAgainstPondera(
           fullNameRu: gst.row.full_name_ru || '',
           passportNo: gst.row.passport_no || '',
           citizenship: gst.row.citizenship || '',
-          region: gst.row.assigned_region || '',
+          region: gst.row.assigned_region
+            ? resolveEffectiveRegion(gst.row.assigned_region, gst.row.assigned_project)
+            : '',
           projectName: gst.row.assigned_project || '',
           department: gst.row.company_or_org || 'Misafir (Guest)',
           position: 'Misafir Yolcu',
+          contactPhone: gst.row.phone || '',
+          paymentCompany: 'PONDERA-INDUSTRY',
           status: 'Guest',
           confidence: score,
           matchReason: reason,
+          _rank: 9,
         });
       }
     }
 
-    scoredCandidates.sort((a, b) => b.confidence - a.confidence);
-    const topCandidates = scoredCandidates.slice(0, 6);
+    scoredCandidates.sort((a, b) => {
+      if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+      return (a._rank || 9) - (b._rank || 9);
+    });
+    const topCandidates = scoredCandidates.slice(0, 8).map(({ _rank: _unused, ...rest }) => rest);
     const best = topCandidates[0] || null;
 
     if (best && best.confidence >= 83) {
@@ -790,7 +1247,7 @@ export function matchPassengersAgainstPondera(
       confidence: best ? best.confidence : 0,
       matchReason: best
         ? `Düşük benzerlik (%${best.confidence}) — Misafir (Guest) olarak işaretlendi`
-        : 'Personel listesinde bulunamadı — Yeni Misafir (Guest) kaydı açılacak',
+        : '35K Personel listesinde bulunamadı — Yeni Misafir (Guest) kaydı açılacak',
       matchedPerson: null,
       candidates: topCandidates,
     };
@@ -802,16 +1259,16 @@ export function matchPassengersAgainstPondera(
 export const HUMAN_TICKET_SYSTEM_PROMPT = `You are a senior multilingual travel document analyst fluent in Russian, Turkish, Uzbek, and English.
 Read and understand the ticket document accurately and concisely:
 - Distinguish actual PASSENGER NAMES and PASSPORT/DOCUMENT NUMBERS from agency headers, company names (ООО ПОНДЕРА / PONDERA / POWERISE), and baggage/fare rules.
-- Recognize both AIRLINE E-TICKETS (Uzbekistan Airways, Aeroflot, Turkish Airlines, S7, Utair, Pobeda, Air India, Ural Airlines, Azimuth, Pegasus, SomonAir, Charter manifests) AND RUSSIAN RAILWAYS (РЖД / RZD) electronic tickets.
-- MULTI-SEGMENT / ROUND-TRIP RULE: If ONE passenger has multiple connecting or return flights on the same ticket (e.g. HY279 Urgench->Istanbul, HY274 Istanbul->Tashkent, HY51 Tashkent->Urgench), output ONLY ONE entry for that person in "passengers"! Combine flight numbers with " / " in "flightOrTrainNumber" (e.g. "HY279 / HY274 / HY51"), put initial origin in "departureCity", primary destination in "arrivalCity", first flight departure in "departureDate", and final return/arrival date in "returnOrArrivalDate".
+- Recognize AIRLINE E-TICKETS ("flight": Uzbekistan Airways, Aeroflot, Turkish Airlines, S7, Utair, Pobeda, Air India, Ural Airlines, Azimuth, Pegasus, SomonAir, Charter manifests), RUSSIAN RAILWAYS ("train": РЖД / RZD / Сапсан / Ласточка / поезд electronic tickets), AND INTERCITY BUS TICKETS ("bus": автобусный билет, автовокзал, Яндекс Автобусы, Tutu Автобусы, Obilet, FlixBus, charter bus manifests).
+- MULTI-SEGMENT / ROUND-TRIP RULE: If ONE passenger has multiple connecting or return segments on the same ticket (e.g. HY279 Urgench->Istanbul, HY274 Istanbul->Tashkent), output ONLY ONE entry for that person in "passengers"! Combine flight/train/bus numbers with " / " in "flightOrTrainNumber" (e.g. "HY279 / HY274"), put initial origin in "departureCity", primary destination in "arrivalCity", first segment departure in "departureDate", and final return/arrival date in "returnOrArrivalDate".
 - MULTIPLE DISTINCT PEOPLE: Only add multiple objects in "passengers" when multiple DIFFERENT human passengers are listed on a group booking.
-- PASSPORT NUMBER RULE: Extract passport/document number if printed (cleaning GDS prefixes like "PSPFA4210519" -> "FA4210519", "FOID PP..." -> "..."). If NO passport/ID number is printed on the ticket (for example Uzbekistan Airways web receipts only print Booking ref & Ticket number), set "passportNumber": "". Never put ticket numbers or PNR into "passportNumber".
+- PASSPORT NUMBER RULE: Extract passport/document number if printed (cleaning GDS prefixes like "PSPFA4210519" -> "FA4210519", "FOID PP..." -> "..."). If NO passport/ID number is printed on the ticket, set "passportNumber": "". Never put ticket numbers or PNR into "passportNumber".
 - Keep passengerName in clean UPPERCASE Latin without titles (strip MR, MRS, MS, ADT, CHD, INF — e.g. "Ruzmetov Nematjon Mr (ADT)" -> "RUZMETOV NEMATJON"). If strictly Cyrillic, put Cyrillic in passengerNameCyrillic and GOST Latin in passengerName.
 - Use Total Amount for "totalPrice" and "pricePerPassenger" (with its exact 3-letter currency code: RUB, UZS, USD, EUR, TRY).
 
 Return ONLY a single valid JSON object (no markdown fences, no comments, no extra keys) matching this exact schema:
 {
-  "transportType": "flight" | "train",
+  "transportType": "flight" | "train" | "bus",
   "passengers": [
     {
       "passengerName": "SURNAME GIVENNAME",
@@ -831,6 +1288,7 @@ Return ONLY a single valid JSON object (no markdown fences, no comments, no extr
   "arrivalAirportOrStation": "IST",
   "departureDate": "17.10.2025 09:25",
   "returnOrArrivalDate": "17.10.2025 11:45",
+  "tripType": "One Way",
   "ticketClass": "economy",
   "totalPrice": 27408,
   "pricePerPassenger": 27408,

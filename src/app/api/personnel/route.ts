@@ -8,6 +8,7 @@ import {
   getDatasetReferenceDates,
 } from '@/lib/workPermits';
 import { stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
+import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -190,8 +191,9 @@ export async function GET(request: Request) {
     if (region !== 'all') {
       const cleanReg = region.trim();
       const resolvedReg = regionMap[cleanReg.toUpperCase()] || cleanReg;
-      conditions.push('(region = ? OR region = ? OR region LIKE ?)');
-      params.push(resolvedReg, cleanReg, `%${resolvedReg}%`);
+      const regCond = buildEffectiveRegionSqlCondition(resolvedReg);
+      conditions.push(regCond.sql);
+      params.push(...regCond.params);
     }
     if (project !== 'all') {
       conditions.push('proje_adi = ?');
@@ -311,6 +313,7 @@ export async function GET(request: Request) {
 
     // Parse all_data_json if requested (stripping any official salary fields per privacy policy)
     const formattedRows = rows.map((r) => {
+      r.region = resolveEffectiveRegion(r.region, r.proje_adi, r.region);
       if (r.all_data_json && typeof r.all_data_json === 'string') {
         try {
           r.raw = stripOfficialSalaryFromRaw(JSON.parse(r.all_data_json));

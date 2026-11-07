@@ -5,6 +5,11 @@ import { getDb } from '@/lib/db';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 import { computeZupVsRealReconciliation } from '@/lib/zupReconciliation';
 import { sendCustomAlertEmail, renderCorporateEmailShell } from '@/lib/emailNotifier';
+import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  ensureVksQuarterlyArchiveAndState,
+  isVks15MinNotificationEnabled,
+} from '@/lib/vksQuarterManager';
 
 export function getTelegramConfig() {
   let dbToken = '';
@@ -432,6 +437,7 @@ function computeCurrentVksState(db: any): VksSnapshotState {
  */
 export async function checkAndSendVks15MinReport(force = false): Promise<{
   sent: boolean;
+  disabled?: boolean;
   queued?: boolean;
   reason?: string;
   deltaSent?: number;
@@ -454,6 +460,20 @@ export async function checkAndSendVks15MinReport(force = false): Promise<{
   };
 }> {
   const db = getDb();
+  ensureVksQuarterlyArchiveAndState(db);
+
+  if (!force && !isVks15MinNotificationEnabled(db)) {
+    return {
+      sent: false,
+      disabled: true,
+      reason: '15 dakikalık VKS bildirimleri durduruldu (bildirim dönemi dışında kapalı).',
+      deltaSent: 0,
+      deltaErrors: 0,
+      deltaPdfs: 0,
+      deltaStatusPdfs: 0,
+    };
+  }
+
   const current = computeCurrentVksState(db);
   const rawPrev = getSystemInfoValue(db, 'telegram_vks_last_snapshot');
 
@@ -830,7 +850,7 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
   const rows = db
     .prepare(
       `SELECT
-        id, region, uyruk, guncel_durum,
+        id, region, proje_adi, uyruk, guncel_durum,
         pasaport_no, pasaport_gecerlilik,
         vize_no, vize_bitis_tarihi,
         propusk_no, propusk_bitis_tarihi,
@@ -898,7 +918,7 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
       } catch {}
     }
 
-    const reg = r.region || 'Bilinmiyor';
+    const reg = resolveEffectiveRegion(r.region, r.proje_adi, 'Bilinmiyor');
     if (!regionBreakdown[reg]) {
       regionBreakdown[reg] = { region: reg, total: 0, expired: 0, critical: 0, missing: 0 };
     }
@@ -1035,13 +1055,13 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
   });
   const totalRow = `${'TOPLAM'.padEnd(15)} ${String(totalDocsCount).padStart(5)} ${String(totalExpired).padStart(5)} ${String(totalCritical).padStart(5)} ${String(totalWarning).padStart(5)} ${String(totalMissing).padStart(5)} ${String(totalValid).padStart(6)}`;
 
-  const regHdr = `${'Bölge'.padEnd(16)} ${'Kişi'.padStart(5)} ${'Geçmiş'.padStart(6)} ${'Kritik'.padStart(6)} ${'Eksik'.padStart(6)}`;
+  const regHdr = `${'Şantiye / Bölge'.padEnd(22)} ${'Kişi'.padStart(5)} ${'Geçmiş'.padStart(6)} ${'Kritik'.padStart(6)} ${'Eksik'.padStart(6)}`;
   const regSep = '-'.repeat(regHdr.length);
   const topRegionRows = Object.values(regionBreakdown)
     .sort((a, b) => b.expired + b.critical - (a.expired + a.critical))
-    .slice(0, 6)
+    .slice(0, 20)
     .map((reg) => {
-      const rName = reg.region.slice(0, 16).padEnd(16);
+      const rName = reg.region.slice(0, 22).padEnd(22);
       return `${rName} ${String(reg.total).padStart(5)} ${String(reg.expired).padStart(6)} ${String(reg.critical).padStart(6)} ${String(reg.missing).padStart(6)}`;
     });
 
@@ -1063,7 +1083,7 @@ export async function sendDailyCompliance915Report(force = false): Promise<{
     `📂 <b>Evrak Türüne Göre Dağılım (Tablo):</b>`,
     `<pre>${[hdr, sep, ...docTableRows, sep, totalRow].join('\n')}</pre>`,
     ``,
-    `🏗 <b>Bölge Bazlı Özet (İlk 6 Bölge):</b>`,
+    `🏗 <b>Şantiye / Bölge Bazlı Özet:</b>`,
     `<pre>${[regHdr, regSep, ...topRegionRows].join('\n')}</pre>`,
   ].join('\n');
 
@@ -1098,10 +1118,10 @@ export async function sendZupVsRealTelegramReport(force = false): Promise<{
   const meta = recon.metadata;
   const dc = s.discrepancyCounts;
 
-  const regHdr = `${'Bölge'.padEnd(15)} ${'Real'.padStart(5)} ${'ZUP'.padStart(5)} ${'Oran'.padStart(5)} ${'Eksik'.padStart(5)} ${'Çıkış'.padStart(5)}`;
+  const regHdr = `${'Şantiye / Bölge'.padEnd(22)} ${'Real'.padStart(5)} ${'ZUP'.padStart(5)} ${'Oran'.padStart(5)} ${'Eksik'.padStart(5)} ${'Çıkış'.padStart(5)}`;
   const regSep = '-'.repeat(regHdr.length);
-  const regRows = (recon.byRegion || []).slice(0, 6).map((r: any) => {
-    const rName = String(r.region || 'Diğer').slice(0, 15).padEnd(15);
+  const regRows = (recon.byRegion || []).slice(0, 20).map((r: any) => {
+    const rName = String(r.region || 'Diğer').slice(0, 22).padEnd(22);
     return `${rName} ${String(r.realActive).padStart(5)} ${String(r.inZupOfficial).padStart(5)} ${(r.officialRatePct + '%').padStart(5)} ${String(r.missingMainFirm).padStart(5)} ${String(r.zupActiveRealExit).padStart(5)}`;
   });
 
@@ -1153,7 +1173,7 @@ export async function sendZupVsRealTelegramReport(force = false): Promise<{
     `🪪 <b>Statü Bazlı 1C ZUP vs eBA Real Dağılımı:</b>`,
     `<pre>${[permitHdr, permitSep, ...permitRows].join('\n')}</pre>`,
     ``,
-    `🏗 <b>Bölge Bazlı Resmi (1C ZUP) Çalışma Oranı:</b>`,
+    `🏗 <b>Şantiye / Bölge Bazlı Resmi (1C ZUP) Çalışma Oranı:</b>`,
     `<pre>${[regHdr, regSep, ...regRows].join('\n')}</pre>`,
   ].join('\n');
 

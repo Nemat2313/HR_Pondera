@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -92,15 +93,17 @@ export async function GET(request: Request) {
     const params: any[] = [...STANDBY_STATUSES];
 
     if (scopeType === 'region' && scopeVal !== 'all') {
-      conditions.push('region = ?');
-      params.push(scopeVal);
+      const regCond = buildEffectiveRegionSqlCondition(scopeVal);
+      conditions.push(regCond.sql);
+      params.push(...regCond.params);
     } else if (scopeType === 'project' && scopeVal !== 'all') {
       conditions.push('proje_adi = ?');
       params.push(scopeVal);
     } else {
       if (filterRegion !== 'all') {
-        conditions.push('region = ?');
-        params.push(filterRegion);
+        const regCond = buildEffectiveRegionSqlCondition(filterRegion);
+        conditions.push(regCond.sql);
+        params.push(...regCond.params);
       }
       if (filterProject !== 'all') {
         conditions.push('proje_adi = ?');
@@ -174,8 +177,8 @@ export async function GET(request: Request) {
       const gDurum = r.guncel_durum || 'Diğer';
       statusCounts[gDurum] = (statusCounts[gDurum] || 0) + 1;
 
-      // Region breakdown
-      const reg = r.region || 'Merkez';
+      // Region breakdown (Kazan split into individual sites)
+      const reg = resolveEffectiveRegion(r.region, r.proje_adi, 'Merkez');
       if (!regionCounts[reg]) {
         regionCounts[reg] = { region: reg, total: 0, critical: 0, warning: 0, normal: 0 };
       }
@@ -192,7 +195,7 @@ export async function GET(request: Request) {
         adSoyad: r.ad_soyad || '-',
         gorevi: r.gorevi || '-',
         departman: r.departman || '-',
-        region: r.region || '-',
+        region: reg,
         projeAdi: r.proje_adi || '-',
         uyruk: r.uyruk || '-',
         guncelDurum: r.guncel_durum,

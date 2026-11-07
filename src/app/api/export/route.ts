@@ -8,6 +8,7 @@ import {
   getDatasetReferenceDates,
 } from '@/lib/workPermits';
 import { isOfficialSalaryColumn, stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
+import { buildEffectiveRegionSqlCondition } from '@/lib/regionSiteHelper';
 import * as XLSX from 'xlsx';
 
 export const runtime = 'nodejs';
@@ -271,8 +272,9 @@ export async function GET(request: Request) {
 
     // Dropdown filters
     if (region !== 'all') {
-      conditions.push('region = ?');
-      params.push(region);
+      const regCond = buildEffectiveRegionSqlCondition(region);
+      conditions.push(regCond.sql);
+      params.push(...regCond.params);
     }
     if (project !== 'all') {
       conditions.push('proje_adi = ?');

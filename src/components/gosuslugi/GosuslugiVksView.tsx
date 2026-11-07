@@ -42,6 +42,9 @@ import {
   Mail,
   ExternalLink,
   Zap,
+  Bell,
+  BellOff,
+  Archive,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -978,10 +981,37 @@ export default function GosuslugiVksView() {
     logs: [],
   });
 
-  // Global PAD Form Configuration (matching 933532 PDF & HR Manager's Tobolsk form)
-  const [periodStart, setPeriodStart] = useState('01.07.2026');
-  const [periodEnd, setPeriodEnd] = useState('30.09.2026');
-  const [periodCode, setPeriodCode] = useState('2026-3');
+  // Global PAD Form Configuration (Active Quarter default: 2026 Q4 — 01.10.2026 – 31.12.2026)
+  const [periodStart, setPeriodStart] = useState('01.10.2026');
+  const [periodEnd, setPeriodEnd] = useState('31.12.2026');
+  const [periodCode, setPeriodCode] = useState('2026-4');
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('active');
+  const selectedQuarterRef = useRef<string>('active');
+  const [isArchivedQuarter, setIsArchivedQuarter] = useState<boolean>(false);
+  const [isToggling15Min, setIsToggling15Min] = useState<boolean>(false);
+  const [isArchivingQuarter, setIsArchivingQuarter] = useState<boolean>(false);
+  const [quarterOverview, setQuarterOverview] = useState<{
+    activeQuarter: string;
+    activeLabelTr: string;
+    activeLabelRu: string;
+    shortLabelTr: string;
+    shortLabelRu: string;
+    periodStart: string;
+    periodEnd: string;
+    nextQuarterCode: string;
+    notifications15MinEnabled: boolean;
+    activeMasterCount: number;
+    activeSentCount: number;
+    archives: Array<{
+      quarter_code: string;
+      quarter_label: string;
+      period_start: string;
+      period_end: string;
+      master_count: number;
+      sent_count: number;
+      completed_count: number;
+    }>;
+  } | null>(null);
   const [workAddress, setWorkAddress] = useState(
     '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й'
   );
@@ -1096,11 +1126,18 @@ export default function GosuslugiVksView() {
     return fn;
   };
 
-  const refreshSavedSubmissionsFromDb = async (): Promise<Record<string, GosuslugiSubmissionEntry>> => {
+  const refreshSavedSubmissionsFromDb = async (
+    quarterOverride?: string
+  ): Promise<Record<string, GosuslugiSubmissionEntry>> => {
     try {
-      const res = await fetch('/api/gosuslugi/submissions?type=VKS_SALARY');
+      const qVal = quarterOverride ?? selectedQuarterRef.current;
+      const qQuery = qVal && qVal !== 'active' ? `&quarter=${encodeURIComponent(qVal)}` : '';
+      const res = await fetch(`/api/gosuslugi/submissions?type=VKS_SALARY${qQuery}`);
       if (!res.ok) return savedSubmissions;
       const json = await res.json();
+      if (json.quarterOverview) {
+        setQuarterOverview(json.quarterOverview);
+      }
       if (Array.isArray(json.archivedAppNos)) {
         for (const a of json.archivedAppNos) {
           const cleanA = String(a || '').trim();
@@ -1233,11 +1270,16 @@ export default function GosuslugiVksView() {
     return savedSubmissions;
   };
 
-  const refreshMasterListSummary = async () => {
+  const refreshMasterListSummary = async (quarterOverride?: string) => {
     try {
-      const res = await fetch('/api/gosuslugi/master-list?summaryOnly=1');
+      const qVal = quarterOverride ?? selectedQuarterRef.current;
+      const qQuery = qVal && qVal !== 'active' ? `&quarter=${encodeURIComponent(qVal)}` : '';
+      const res = await fetch(`/api/gosuslugi/master-list?summaryOnly=1${qQuery}`);
       if (!res.ok) return;
       const json = await res.json();
+      if (json.quarterOverview) {
+        setQuarterOverview(json.quarterOverview);
+      }
       if (json.success && json.computers) {
         setMasterSummary({
           totalMaster: json.totalMaster || 0,
@@ -2005,33 +2047,105 @@ export default function GosuslugiVksView() {
     }
   };
 
+  const handleSwitchQuarterView = async (nextQ: string) => {
+    selectedQuarterRef.current = nextQ;
+    setSelectedQuarter(nextQ);
+    await handleLoadFromMasterList(activeComputerFilter, 'all', true, nextQ);
+  };
+
+  const handleToggle15MinNotifications = async () => {
+    const currentlyEnabled = Boolean(quarterOverview?.notifications15MinEnabled);
+    setIsToggling15Min(true);
+    try {
+      const res = await fetch('/api/gosuslugi/quarters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'toggle_15min_notifications',
+          enabled: !currentlyEnabled,
+        }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        if (json.overview) setQuarterOverview(json.overview);
+        showNotice('success', json.message || '15 dakikalık VKS bildirim ayarı güncellendi.');
+      } else {
+        showNotice('error', json?.message || 'Bildirim ayarı değiştirilemedi.');
+      }
+    } catch {
+      showNotice('error', 'Bildirim ayarı güncellenirken bağlantı hatası oluştu.');
+    } finally {
+      setIsToggling15Min(false);
+    }
+  };
+
+  const handleArchiveActiveQuarter = async () => {
+    if (!quarterOverview) return;
+    const confirmed = window.confirm(
+      `${quarterOverview.activeLabelTr} dönemindeki tüm VKS ana listesi (${quarterOverview.activeMasterCount} kayıt) ve başvurular arşivlenerek yeni aktif döneme (${quarterOverview.nextQuarterCode}) geçilecek ve 15 dk bildirimleri durdurulacak.\n\nOnaylıyor musunuz?`
+    );
+    if (!confirmed) return;
+
+    setIsArchivingQuarter(true);
+    try {
+      const res = await fetch('/api/gosuslugi/quarters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'archive_and_advance' }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        selectedQuarterRef.current = 'active';
+        setSelectedQuarter('active');
+        if (json.overview) setQuarterOverview(json.overview);
+        showNotice('success', json.message || 'Mevcut çeyrek başarıyla arşivlendi.');
+        await handleLoadFromMasterList('all', 'all', true, 'active');
+      } else {
+        showNotice('error', json?.message || 'Arşivleme işlemi başarısız oldu.');
+      }
+    } catch {
+      showNotice('error', 'Arşivleme sırasında bağlantı hatası oluştu.');
+    } finally {
+      setIsArchivingQuarter(false);
+    }
+  };
+
   // Load directly from Central Backend Master VKS List (3,088 records partitioned across 4 Computers)
   const handleLoadFromMasterList = async (
     computerFilter: 'all' | '1' | '2' | '3' | '4' = 'all',
     statusFilter: 'all' | 'pending' | 'error' = 'all',
-    silent: boolean = false
+    silent: boolean = false,
+    quarterOverride?: string
   ) => {
+    const qVal = quarterOverride ?? selectedQuarterRef.current;
+    const qQuery = qVal && qVal !== 'active' ? `&quarter=${encodeURIComponent(qVal)}` : '';
     setIsLoadingMaster(true);
     setActiveComputerFilter(computerFilter);
     setTablePage(1);
     try {
       const [freshSubs, res] = await Promise.all([
-        refreshSavedSubmissionsFromDb(),
-        fetch(`/api/gosuslugi/master-list?computer=${computerFilter}&status=${statusFilter}`),
+        refreshSavedSubmissionsFromDb(qVal),
+        fetch(`/api/gosuslugi/master-list?computer=${computerFilter}&status=${statusFilter}${qQuery}`),
       ]);
       const json = await res.json();
-      if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
-        if (!silent) {
-          showNotice(
-            'info',
-            lang === 'ru'
-              ? 'В центральном списке ВКС нет записей по выбранному фильтру.'
-              : 'Merkezi VKS listesinde seçili filtreye uygun kayıt bulunamadı.'
+      if (json.quarterOverview) {
+        setQuarterOverview(json.quarterOverview);
+        setIsArchivedQuarter(Boolean(json.isArchivedQuarter));
+        if (!json.isArchivedQuarter) {
+          setPeriodStart(json.quarterOverview.periodStart || '01.10.2026');
+          setPeriodEnd(json.quarterOverview.periodEnd || '31.12.2026');
+          setPeriodCode(json.quarterOverview.activeQuarter || '2026-4');
+        } else {
+          const archMatch = (json.quarterOverview.archives || []).find(
+            (a: any) => a.quarter_code === json.selectedQuarter
           );
+          if (archMatch) {
+            setPeriodStart(archMatch.period_start);
+            setPeriodEnd(archMatch.period_end);
+            setPeriodCode(archMatch.quarter_code);
+          }
         }
-        return;
       }
-
       if (json.computers) {
         setMasterSummary({
           totalMaster: json.totalMaster || 0,
@@ -2039,6 +2153,18 @@ export default function GosuslugiVksView() {
           totalStatusPdf: json.summary?.totalStatusPdf ?? 0,
           computers: json.computers,
         });
+      }
+      if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
+        setWorkers([]);
+        if (!silent) {
+          showNotice(
+            'info',
+            lang === 'ru'
+              ? 'В активном квартале список ВКС еще не загружен. Вы можете загрузить Excel для нового квартала.'
+              : `${json.quarterOverview?.activeLabelTr || '2026 4. Çeyrek'} için henüz VKS listesi yüklenmedi. "Excel Yükle" veya "Sistemden Çek" ile yeni dönem listesini yükleyebilirsiniz.`
+          );
+        }
+        return;
       }
 
       const rawMapped: GosuslugiVksWorkerRecord[] = json.data.map((item: any, idx: number) => {
@@ -4472,11 +4598,87 @@ export default function GosuslugiVksView() {
 
           {/* Right: Clean Consolidated Toolbar */}
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            {/* Quarter / Archive Selector */}
+            <div className="h-8 px-2.5 rounded-lg border border-indigo-300 dark:border-indigo-500/40 bg-indigo-50/90 dark:bg-indigo-950/60 inline-flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <select
+                value={selectedQuarter}
+                onChange={(e) => handleSwitchQuarterView(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-indigo-950 dark:text-indigo-100 focus:outline-none cursor-pointer pr-1"
+                title="Aktif çeyrek veya arşivlenmiş geçmiş çeyrek verilerini seçin"
+              >
+                <option value="active" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                  🟢 Aktif: {quarterOverview?.shortLabelTr || '2026 4. Çeyrek'} ({quarterOverview?.periodStart || '01.10.2026'}–{quarterOverview?.periodEnd || '31.12.2026'})
+                </option>
+                {(quarterOverview?.archives || []).map((arch) => (
+                  <option
+                    key={arch.quarter_code}
+                    value={arch.quarter_code}
+                    className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                  >
+                    📦 Arşiv: {arch.quarter_code} ({arch.master_count} VKS / {arch.completed_count} Onay)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 15-Minute VKS Notification Stop / Enable Toggle Button */}
+            {user?.role !== 'viewer' && (
+              <button
+                type="button"
+                onClick={handleToggle15MinNotifications}
+                disabled={isToggling15Min}
+                title={
+                  quarterOverview?.notifications15MinEnabled
+                    ? '15 dakikalık VKS bildirimlerini durdurmak için tıklayın'
+                    : 'VKS bildirim döneminde 15 dakikalık otomatik Telegram & E-posta özetini tekrar aktif etmek için tıklayın'
+                }
+                className={`h-8 px-2.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50 ${
+                  quarterOverview?.notifications15MinEnabled
+                    ? 'border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/90 hover:bg-emerald-200/80 dark:bg-emerald-500/20 text-emerald-950 dark:text-emerald-200'
+                    : 'border-amber-300 dark:border-amber-600/50 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200'
+                }`}
+              >
+                {quarterOverview?.notifications15MinEnabled ? (
+                  <>
+                    <Bell className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 animate-pulse" />
+                    <span>{isToggling15Min ? '...' : '15 Dk Bildirimi: Aktif'}</span>
+                  </>
+                ) : (
+                  <>
+                    <BellOff className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                    <span>{isToggling15Min ? '...' : '15 Dk Bildirimi: Durduruldu'}</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Admin Quarter Archive Button */}
+            {user?.role === 'admin' &&
+              !isArchivedQuarter &&
+              ((quarterOverview?.activeMasterCount || 0) > 0 ||
+                (quarterOverview?.activeSentCount || 0) > 0) && (
+                <button
+                  type="button"
+                  onClick={handleArchiveActiveQuarter}
+                  disabled={isArchivingQuarter}
+                  className="h-8 px-2.5 rounded-lg border border-purple-300 dark:border-purple-600/50 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 text-purple-900 dark:text-purple-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
+                  title="Mevcut çeyrek verilerini arşivleyip bir sonraki çeyreğe temiz kuyrukla geç"
+                >
+                  <Archive className="w-3.5 h-3.5 text-purple-700 dark:text-purple-300" />
+                  <span>{isArchivingQuarter ? 'Arşivleniyor...' : 'Dönemi Arşivle'}</span>
+                </button>
+              )}
+
             <button
               onClick={triggerExcelFileSelect}
-              disabled={isUploadingExcel}
-              className="h-8 px-3 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-60"
-              title="Yeni VKS listesi veya düzeltilmiş şablon Excel dosyasını yükle"
+              disabled={isUploadingExcel || isArchivedQuarter}
+              className="h-8 px-3 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs inline-flex items-center gap-1.5 shadow-2xs cursor-pointer transition disabled:opacity-50"
+              title={
+                isArchivedQuarter
+                  ? 'Arşiv görünümünde Excel yüklenemez — önce Aktif Döneme geçin'
+                  : 'Yeni çeyrek VKS listesi veya düzeltilmiş şablon Excel dosyasını yükle'
+              }
             >
               {isUploadingExcel ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" />
@@ -4496,7 +4698,7 @@ export default function GosuslugiVksView() {
 
             <button
               onClick={handleLoadFromDatabase}
-              disabled={isLoadingDb}
+              disabled={isLoadingDb || isArchivedQuarter}
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
             >
               {isLoadingDb ? (
@@ -4516,7 +4718,7 @@ export default function GosuslugiVksView() {
             </button>
 
             <a
-              href={`/api/gosuslugi/master-list/export-errors?mode=only_data_errors&computer=${activeComputerFilter}`}
+              href={`/api/gosuslugi/master-list/export-errors?mode=only_data_errors&computer=${activeComputerFilter}${selectedQuarter !== 'active' ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
               download
               title="SADECE bizim eksik/hatalı girdiğimiz veri hatalarını (ИНН, РНР, Blank, Sözleşme Tarihi) açıklamalı ve renkli şablon formatında indir"
               className="h-8 px-2.5 rounded-lg border border-amber-300/90 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
@@ -4526,7 +4728,7 @@ export default function GosuslugiVksView() {
             </a>
 
             <a
-              href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}`}
+              href={`/api/gosuslugi/master-list/export-errors?computer=${activeComputerFilter}${selectedQuarter !== 'active' ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
               download
               title="Tüm Hatalı (Ошибка / Eksik Veri) kayıtları şablon formatında indir"
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
@@ -4536,7 +4738,7 @@ export default function GosuslugiVksView() {
             </a>
 
             <a
-              href={`/api/gosuslugi/master-list/export-errors?mode=refused&computer=${activeComputerFilter}`}
+              href={`/api/gosuslugi/master-list/export-errors?mode=refused&computer=${activeComputerFilter}${selectedQuarter !== 'active' ? `&quarter=${encodeURIComponent(selectedQuarter)}` : ''}`}
               download
               title="Услуга отказана (МВД Red) alan kayıtları şablon formatında indir"
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
@@ -4599,6 +4801,47 @@ export default function GosuslugiVksView() {
           </div>
         </div>
 
+        {/* Archive Read-Only or Active Q4 Upload Readiness Banner */}
+        {isArchivedQuarter ? (
+          <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-amber-50/95 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <Archive className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                <strong>📦 Arşiv Görünümü ({periodCode}):</strong> Arşivlenmiş çeyrek verilerini görüntülüyorsunuz (Salt Okunur). Yeni çeyrek listesi yüklemek için Aktif Döneme geçin.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSwitchQuarterView('active')}
+              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition"
+            >
+              🟢 Aktif Döneme Geç ({quarterOverview?.shortLabelTr || '2026 4. Çeyrek'})
+            </button>
+          </div>
+        ) : (
+          workers.length === 0 &&
+          !isLoadingMaster && (
+            <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-emerald-50/85 dark:bg-emerald-950/35 border border-emerald-200 dark:border-emerald-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-950 dark:text-emerald-200">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>
+                  <strong>{quarterOverview?.activeLabelTr || '2026 4. Çeyrek (01.10.2026 – 31.12.2026)'} Liste Yüklemeye Hazır:</strong>{' '}
+                  2026 3. Çeyrek verileri arşivlendi ve 15 dk VKS bildirimleri durduruldu. 4. Çeyrek VKS maaş listesini <strong>Excel Yükle</strong> butonuyla yükleyebilirsiniz.
+                </span>
+              </div>
+              {(quarterOverview?.archives?.length || 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleSwitchQuarterView(quarterOverview!.archives[0].quarter_code)}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs cursor-pointer transition"
+                >
+                  📦 {quarterOverview!.archives[0].quarter_code} (3. Çeyrek) Arşivini Görüntüle
+                </button>
+              )}
+            </div>
+          )
+        )}
+
         {/* Collapsible PAD Form Parameters (Period, Address, Postal Code, PDF Period Code) */}
         {showConfigPanel && (
           <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-50/90 dark:bg-slate-900/70 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
@@ -4622,7 +4865,7 @@ export default function GosuslugiVksView() {
                     }
                   }
                 }}
-                placeholder="01.07.2026"
+                placeholder="01.10.2026"
                 className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
               />
             </div>
@@ -4636,7 +4879,7 @@ export default function GosuslugiVksView() {
                 type="text"
                 value={periodEnd}
                 onChange={(e) => setPeriodEnd(e.target.value)}
-                placeholder="30.09.2026"
+                placeholder="31.12.2026"
                 className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono"
               />
             </div>
@@ -4650,7 +4893,7 @@ export default function GosuslugiVksView() {
                 type="text"
                 value={periodCode}
                 onChange={(e) => setPeriodCode(e.target.value)}
-                placeholder="2026-3"
+                placeholder="2026-4"
                 title="<GosuslugiNo>_<ФИО>_<Период>.pdf"
                 className="w-full h-8 px-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-mono font-bold"
               />

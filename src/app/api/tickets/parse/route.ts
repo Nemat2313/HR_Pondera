@@ -125,43 +125,95 @@ export async function POST(request: Request) {
 
     const rawTransport = String(parsed.transportType || '').toLowerCase();
     const carrierStr = String(parsed.carrier || parsed.airline || '').trim();
+    const combinedCarrier = `${carrierStr} ${parsed.flightOrTrainNumber || ''}`;
+    const isBus =
+      rawTransport === 'bus' ||
+      /автобус|автовокзал|bus|obilet|flixbus|ecolines|рейс\s*автобус/i.test(combinedCarrier);
     const isTrain =
-      rawTransport === 'train' ||
-      /ржд|rzd|сапсан|sapsan|поезд|ласточка|вагон/i.test(
-        `${carrierStr} ${parsed.flightOrTrainNumber || ''}`
-      );
+      !isBus &&
+      (rawTransport === 'train' ||
+        /ржд|rzd|сапсан|sapsan|поезд|ласточка|вагон/i.test(combinedCarrier));
+    const resolvedTransport: 'flight' | 'train' | 'bus' = isBus
+      ? 'bus'
+      : isTrain
+      ? 'train'
+      : 'flight';
 
     const enrichedRows = normalizedPassengers.map((np, idx) => {
       const m = matches[idx];
       const matched = m?.matchedPerson || null;
+
+      const splitDateTime = (rawVal: string) => {
+        const clean = String(rawVal || '').trim();
+        if (!clean) return { datePart: '', timePart: '', combined: '' };
+        const parts = clean.split(/\s+/);
+        let dPart = parts[0] || '';
+        const tPart = parts[1] && /^\d{1,2}:\d{2}/.test(parts[1]) ? parts[1].slice(0, 5) : '';
+        const isoMatch = dPart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoMatch) {
+          dPart = `${isoMatch[3]}.${isoMatch[2]}.${isoMatch[1]}`;
+        }
+        return {
+          datePart: dPart,
+          timePart: tPart,
+          combined: [dPart, tPart].filter(Boolean).join(' '),
+        };
+      };
+
+      const depInfo = splitDateTime(String(parsed.departureDate || ''));
+      const arrInfo = splitDateTime(
+        String(parsed.returnOrArrivalDate || parsed.returnDate || '')
+      );
+      const rawTrip = String(parsed.tripType || '').toLowerCase();
+      const detectedTripType =
+        rawTrip.includes('round') ||
+        (String(parsed.flightOrTrainNumber || '').includes('/') &&
+          arrInfo.datePart &&
+          arrInfo.datePart !== depInfo.datePart)
+          ? 'Round Trip'
+          : 'One Way';
+
       return {
         passengerName: np.passengerName,
-        passengerNameCyrillic: np.passengerNameCyrillic,
+        passengerNameCyrillic: np.passengerNameCyrillic || matched?.fullNameRu || '',
         passportNumber: np.passportNumber || matched?.passportNo || '',
         citizenship: np.citizenship || matched?.citizenship || '',
         ticketNumber: np.ticketNumber,
         seatOrWagon: np.seatOrWagon,
-        transportType: isTrain ? 'train' : 'flight',
+        transportType: resolvedTransport,
         bookingReference: String(parsed.bookingReference || '').trim(),
         carrier: carrierStr,
         flightOrTrainNumber: String(
           parsed.flightOrTrainNumber || parsed.flightNumber || ''
         ).trim(),
-        departureCity: String(parsed.departureCity || '').trim(),
-        arrivalCity: String(parsed.arrivalCity || '').trim(),
+        departureCity: String(parsed.departureCity || '').trim().toUpperCase(),
+        arrivalCity: String(parsed.arrivalCity || '').trim().toUpperCase(),
         departureAirportOrStation: String(
           parsed.departureAirportOrStation || parsed.departureAirport || ''
         ).trim(),
         arrivalAirportOrStation: String(
           parsed.arrivalAirportOrStation || parsed.arrivalAirport || ''
         ).trim(),
-        departureDate: String(parsed.departureDate || '').trim(),
-        returnOrArrivalDate: String(
-          parsed.returnOrArrivalDate || parsed.returnDate || ''
-        ).trim(),
+        departureDate: depInfo.combined || String(parsed.departureDate || '').trim(),
+        departureTime: depInfo.timePart,
+        returnOrArrivalDate:
+          arrInfo.combined || String(parsed.returnOrArrivalDate || parsed.returnDate || '').trim(),
+        arrivalDate: arrInfo.datePart || depInfo.datePart,
+        arrivalTime: arrInfo.timePart,
         ticketClass: String(parsed.ticketClass || 'economy').trim(),
         ticketPrice: perPassengerPrice,
         currency: String(parsed.currency || 'RUB').trim().toUpperCase(),
+        flightPurpose: 'Transfer',
+        ticketAgent: 'One Two Trip',
+        paymentCompany: matched?.paymentCompany || 'PONDERA-INDUSTRY',
+        docStatus: 'Uploaded',
+        contactPhone: matched?.contactPhone || '',
+        jobTitle: matched?.position || '',
+        ticketStatus: '',
+        detailReason: '0',
+        tripType: detectedTripType,
+        notes: '',
+        deductFromSalary: 'No',
         matchType: m.matchType,
         confidence: m.confidence,
         matchReason: m.matchReason,

@@ -13,6 +13,10 @@ import {
   runScheduledEmailReports,
   sendReportEmailById,
 } from '@/lib/emailNotifier';
+import {
+  ensureVksQuarterlyArchiveAndState,
+  isVks15MinNotificationEnabled,
+} from '@/lib/vksQuarterManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,6 +40,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const testMode = (searchParams.get('test') || '').toLowerCase();
     const db = getDb();
+    ensureVksQuarterlyArchiveAndState(db);
 
     if (testMode === 'vks') {
       const vksRes = await checkAndSendVks15MinReport(true);
@@ -91,7 +96,11 @@ export async function GET(request: Request) {
     if (isAtQuarterMark && lastQuarterSlot !== currentQuarterSlot) {
       setSystemVal(db, 'telegram_vks_last_quarter_slot', currentQuarterSlot);
       setSystemVal(db, 'telegram_vks_last_check_ms', String(nowMs));
-      vksResult = await checkAndSendVks15MinReport(false);
+      if (isVks15MinNotificationEnabled(db)) {
+        vksResult = await checkAndSendVks15MinReport(false);
+      } else {
+        vksResult = { skipped: true, disabled: true };
+      }
     }
 
     // 2. Check Daily 09:15 Moscow Time Document Expiry Report (Telegram)

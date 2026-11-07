@@ -7,6 +7,7 @@ import {
   getStatutoryRequiredIndices,
 } from '@/lib/documentScanDefinitions';
 import { computeZupVsRealReconciliation } from '@/lib/zupReconciliation';
+import { buildEffectiveRegionSqlCondition, matchesEffectiveRegion } from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -82,15 +83,17 @@ export async function GET(request: Request) {
     const locConds: string[] = [];
     const locParams: any[] = [];
     if (scopeType === 'region' && scopeVal !== 'all') {
-      locConds.push('region = ?');
-      locParams.push(scopeVal);
+      const regCond = buildEffectiveRegionSqlCondition(scopeVal);
+      locConds.push(regCond.sql);
+      locParams.push(...regCond.params);
     } else if (scopeType === 'project' && scopeVal !== 'all') {
       locConds.push('proje_adi = ?');
       locParams.push(scopeVal);
     } else {
       if (filterRegion !== 'all') {
-        locConds.push('region = ?');
-        locParams.push(filterRegion);
+        const regCond = buildEffectiveRegionSqlCondition(filterRegion);
+        locConds.push(regCond.sql);
+        locParams.push(...regCond.params);
       }
       if (filterProject !== 'all') {
         locConds.push('proje_adi = ?');
@@ -278,7 +281,7 @@ export async function GET(request: Request) {
     const scansData = getDocumentScansDataset(db, scopeType, scopeVal);
     const activeScansPool = scansData.employees.filter((e) => {
       if (!e.genelDurum.toLowerCase().includes('mevcut')) return false;
-      if (filterRegion !== 'all' && e.region !== filterRegion) return false;
+      if (filterRegion !== 'all' && !matchesEffectiveRegion(e.region, e.projeAdi, filterRegion)) return false;
       if (filterProject !== 'all' && e.projeAdi !== filterProject) return false;
       if (firmType === 'main' && !e.isMainFirm) return false;
       if (firmType === 'subcon' && e.isMainFirm) return false;

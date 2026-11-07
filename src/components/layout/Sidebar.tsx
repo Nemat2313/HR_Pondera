@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import PonderaLogo from '@/components/common/PonderaLogo';
 
 interface SidebarProps {
   activeTab: string;
@@ -154,7 +155,7 @@ export default function Sidebar({
           id: 'sites',
           label: t('nav_sites'),
           icon: Building2,
-          badge: user?.scope_type === 'region' ? (lang === 'ru' ? '1 Регион' : '1 Bölge') : (lang === 'ru' ? '6 Регионов' : '6 Bölge'),
+          badge: user?.scope_type === 'region' ? (lang === 'ru' ? '1 Объект' : '1 Saha') : (lang === 'ru' ? '11 Объектов' : '11 Saha'),
           badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60',
         },
         ...(user?.role !== 'viewer'
@@ -221,6 +222,27 @@ export default function Sidebar({
     },
   ];
 
+  const visibleNavGroups: NavGroup[] =
+    user?.role === 'idari_isler'
+      ? [
+          {
+            id: 'idari_only',
+            title: lang === 'ru' ? 'АХО И АВИАБИЛЕТЫ' : 'İDARİ İŞLER & UÇUŞ OPERASYON',
+            tag: 'TV • AI',
+            items: [
+              {
+                id: 'travel_tickets',
+                label: t('nav_travel_tickets'),
+                icon: Plane,
+                badge: 'TV • OCR',
+                badgeColor:
+                  'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-700/50',
+              },
+            ],
+          },
+        ]
+      : navGroups;
+
   const handleSelectTab = (id: string) => {
     setActiveTab(id);
     if (mobileOpen) setMobileOpen(false);
@@ -246,28 +268,25 @@ export default function Sidebar({
         {/* Top Header & Logo */}
         <div className="shrink-0">
           <div className="h-14 px-3 flex items-center justify-between border-b border-slate-100/80 dark:border-slate-800/80">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-xs shrink-0">
-                <HardHat className="w-4 h-4" />
-              </div>
-              {(!collapsed || mobileOpen) && (
-                <div>
-                  <h1 className="font-normal text-sm text-slate-900 dark:text-white tracking-tight leading-none flex items-center gap-1">
-                    Pondera <span className="text-emerald-600 dark:text-emerald-400 font-normal">HR</span>
-                  </h1>
+            <div className="flex items-center gap-2 min-w-0">
+              {collapsed && !mobileOpen ? (
+                <PonderaLogo variant="mark" size="sm" />
+              ) : (
+                <div className="flex flex-col min-w-0">
+                  <PonderaLogo variant="full" size="sm" />
                   <div
-                    className="flex items-center gap-1 mt-0.5"
+                    className="flex items-center gap-1 mt-0.5 pl-0.5"
                     title={
                       versionInfo?.commitHash
                         ? `Build #${versionInfo.buildNumber} • Commit: ${versionInfo.commitHash} (${versionInfo.updatedAt})`
-                        : 'TeamHub SaaS v2.6'
+                        : 'Pondera HR TeamHub v2.8.26'
                     }
                   >
-                    <span className="text-[9.5px] text-slate-400 dark:text-slate-400 font-normal tracking-tight">
-                      TeamHub
+                    <span className="text-[9px] text-slate-500 dark:text-slate-400 font-normal tracking-tight">
+                      HR TeamHub
                     </span>
-                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 dark:bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-mono font-normal text-[9.5px] leading-tight">
-                      {versionInfo?.version || 'v2.8.23'}
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 dark:bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-mono font-normal text-[9px] leading-tight">
+                      {versionInfo?.version || 'v2.8.26'}
                     </span>
                   </div>
                 </div>
@@ -300,6 +319,8 @@ export default function Sidebar({
                   className={`text-[9px] font-normal px-1.5 py-0.2 rounded border ${
                     user.role === 'viewer'
                       ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300/60 dark:border-amber-800/60'
+                      : user.role === 'idari_isler'
+                      ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border-sky-300/60 dark:border-sky-800/60'
                       : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200/50 dark:border-indigo-800/50'
                   }`}
                 >
@@ -307,6 +328,10 @@ export default function Sidebar({
                     ? lang === 'ru'
                       ? 'Админ'
                       : 'Admin'
+                    : user.role === 'idari_isler'
+                    ? lang === 'ru'
+                      ? '✈️ АХО'
+                      : '✈️ İdari İşler'
                     : user.role === 'viewer'
                     ? lang === 'ru'
                       ? '👁️ Наблюдатель'
@@ -340,7 +365,7 @@ export default function Sidebar({
 
         {/* Scrollable Navigation Groups Container */}
         <div className="flex-1 overflow-y-auto px-2 py-2 space-y-4 min-h-0">
-          {navGroups.map((group) => (
+          {visibleNavGroups.map((group) => (
             <div key={group.id} className="space-y-0.5">
               {/* Group Header */}
               {(!collapsed || mobileOpen) ? (
