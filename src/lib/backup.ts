@@ -333,6 +333,30 @@ export function restorePreActionBackup(backupId?: string): {
       };
     }
 
+    // Capture recent email delivery logs and release-summary state so restoring an earlier snapshot keeps audit history
+    let preservedEmailLogs: Array<Record<string, any>> = [];
+    let preservedEmailSysKeys: Array<{ key: string; value: string }> = [];
+    try {
+      const prevDb = getDb();
+      preservedEmailLogs = prevDb
+        .prepare(
+          `SELECT report_type, subject, to_list, cc_list, status, detail, created_at
+           FROM email_delivery_logs
+           WHERE status = 'SENT' AND subject NOT LIKE '%Ä%' AND subject NOT LIKE '%Ã%'
+           ORDER BY id ASC`
+        )
+        .all() as Array<Record<string, any>>;
+    } catch {}
+    try {
+      const prevDb = getDb();
+      preservedEmailSysKeys = prevDb
+        .prepare(
+          `SELECT key, value FROM system_info
+           WHERE key IN ('email_release_summary_draft', 'email_release_last_sent_version', 'email_release_last_sent_at', 'email_smtp_config')`
+        )
+        .all() as Array<{ key: string; value: string }>;
+    } catch {}
+
     // Close active DB connection and remove any WAL/SHM files before replacing pondera_hr.db
     resetDb();
     for (const suffix of ['-wal', '-shm']) {
@@ -346,6 +370,54 @@ export function restorePreActionBackup(backupId?: string): {
 
     fs.renameSync(tempRestorePath, dbPath);
     resetDb();
+
+    if (preservedEmailLogs.length > 0 || preservedEmailSysKeys.length > 0) {
+      try {
+        const freshDb = getDb();
+        freshDb.exec(`
+          CREATE TABLE IF NOT EXISTS system_info (key TEXT PRIMARY KEY, value TEXT);
+          CREATE TABLE IF NOT EXISTS email_delivery_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_type TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            to_list TEXT NOT NULL,
+            cc_list TEXT DEFAULT '',
+            status TEXT NOT NULL,
+            detail TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+          );
+        `);
+        const upsertSys = freshDb.prepare(`
+          INSERT INTO system_info (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `);
+        for (const kv of preservedEmailSysKeys) {
+          if (kv.key && kv.value) {
+            upsertSys.run(kv.key, kv.value);
+          }
+        }
+        const checkLog = freshDb.prepare(
+          `SELECT 1 FROM email_delivery_logs WHERE subject = ? AND created_at = ? LIMIT 1`
+        );
+        const insLog = freshDb.prepare(
+          `INSERT INTO email_delivery_logs (report_type, subject, to_list, cc_list, status, detail, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        );
+        for (const lg of preservedEmailLogs) {
+          if (!checkLog.get(String(lg.subject || ''), String(lg.created_at || ''))) {
+            insLog.run(
+              String(lg.report_type || ''),
+              String(lg.subject || ''),
+              String(lg.to_list || ''),
+              String(lg.cc_list || ''),
+              String(lg.status || 'SENT'),
+              String(lg.detail || ''),
+              String(lg.created_at || '')
+            );
+          }
+        }
+      } catch {}
+    }
 
     const label = targetMeta ? `${targetMeta.createdAt} (${targetMeta.actionLabelTr})` : path.basename(targetGzPath);
     return {

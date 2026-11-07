@@ -158,5 +158,11 @@ export function resetDb() {
     } catch {}
     dbInstance = null;
   }
+  const gState = globalThis as Record<string, any>;
+  delete gState.__ponderaVksQuarterEnsured;
+  delete gState.__ponderaSubmissionsEnsured;
+  delete gState.__ponderaMasterTablesEnsured;
+  delete gState.__ponderaColumnsClassified;
+  delete gState.__ponderaUpcomingTicketsSeeded;
 }
 

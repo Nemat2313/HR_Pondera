@@ -248,24 +248,12 @@ def classify_cells(cells, recovered):
 def needs_repair(db_path):
     if not os.path.exists(db_path):
         return False
-    if os.path.exists(db_path + "-wal"):
-        # Check quick_check or table counts
-        pass
     try:
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
         qc = cur.execute("PRAGMA quick_check(1)").fetchone()
-        if not qc or qc[0] != "ok":
-            conn.close()
-            return True
-        admin_row = cur.execute("SELECT email, password FROM users WHERE LOWER(email)='admin@pondera.com'").fetchone()
-        if not admin_row or not str(admin_row[1] or "").startswith("scrypt$"):
-            conn.close()
-            return True
-        m_cnt = cur.execute("SELECT COUNT(*) FROM gosuslugi_vks_master_list NOT INDEXED").fetchone()[0]
-        s_cnt = cur.execute("SELECT COUNT(*) FROM gosuslugi_submissions NOT INDEXED").fetchone()[0]
         conn.close()
-        if m_cnt < 3000 or s_cnt < 2900:
+        if not qc or qc[0] != "ok":
             return True
         return False
     except Exception:
@@ -503,14 +491,30 @@ def repair_database():
     old_conn = sqlite3.connect(DB_PATH)
     old_cur = old_conn.cursor()
 
-    for tbl in ("system_info", "columns_meta", "personnel"):
-        sql_row = old_cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()
-        if sql_row and sql_row[0]:
-            new_cur.execute(sql_row[0])
-            rows = old_cur.execute(f"SELECT * FROM {tbl} NOT INDEXED").fetchall()
+    rebuilt_tables = {
+        "users",
+        "gosuslugi_vks_master_list",
+        "gosuslugi_submissions",
+        "gosuslugi_refused_archive",
+        "gosuslugi_submission_history",
+        "gosuslugi_mail_config",
+        "gosuslugi_mail_events",
+        "telegram_outbox",
+    }
+    all_old_tables = old_cur.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ).fetchall()
+    for tbl, create_sql in all_old_tables:
+        if tbl in rebuilt_tables or not create_sql:
+            continue
+        try:
+            new_cur.execute(create_sql)
+            rows = old_cur.execute(f'SELECT * FROM "{tbl}" NOT INDEXED').fetchall()
             if rows:
                 ph = ",".join(["?"] * len(rows[0]))
-                new_cur.executemany(f"INSERT INTO {tbl} VALUES ({ph})", rows)
+                new_cur.executemany(f'INSERT INTO "{tbl}" VALUES ({ph})', rows)
+        except Exception:
+            pass
 
     old_conn.close()
 
