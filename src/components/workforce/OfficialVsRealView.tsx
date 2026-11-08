@@ -636,12 +636,12 @@ export default function OfficialVsRealView() {
     },
     {
       id: 'REAL_ACTIVE_NO_ZUP_MAIN',
-      titleTr: "Pondera Ana Kadro / ZUP'ta Yok",
-      titleRu: 'Основной штат Pondera / Нет в ЗУП',
+      titleTr: "Real'de Aktif / 1C ZUP'ta Yok",
+      titleRu: 'В eBA Активен / Нет в 1С ЗУП',
       subTr: `${summary.realActiveNotInZupRecentHire} kişi ${metadata.zupDate.slice(0, 5)} sonrası yeni giriş`,
       subRu: `${summary.realActiveNotInZupRecentHire} чел. приняты после ${metadata.zupDate.slice(0, 5)}`,
-      count: dc.missingInZupMainFirm,
-      tone: 'rose',
+      count: summary.realActiveNotInZupTotal,
+      tone: 'amber',
     },
     {
       id: 'ZUP_ONLY_NO_EBA',
@@ -708,15 +708,6 @@ export default function OfficialVsRealView() {
       subRu: `${dc.birthDateMismatch} дат рожд. • ${dc.kirilNameDiff} ФИО`,
       count: dc.birthDateMismatch + dc.kirilNameDiff,
       tone: 'cyan',
-    },
-    {
-      id: 'REAL_ACTIVE_NO_ZUP_SUBCON',
-      titleTr: 'Taşeron Kadro (1C ZUP Dışı)',
-      titleRu: 'Субподрядчики (Вне 1С ЗУП)',
-      subTr: 'Alt işveren bünyesinde çalışan aktif kadro',
-      subRu: 'Сотрудники субподрядных организаций',
-      count: dc.missingInZupSubcon,
-      tone: 'slate',
     },
     {
       id: 'FULL_MATCH',
@@ -1031,10 +1022,10 @@ export default function OfficialVsRealView() {
             </div>
             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 dark:border-slate-800/80">
               <span className="text-emerald-600 dark:text-emerald-400">
-                Pondera: {summary.realActiveMainFirm.toLocaleString('tr-TR')}
+                {lang === 'ru' ? 'В ЗУП:' : 'Resmide (ZUP):'} {summary.matchedActiveBoth.toLocaleString('tr-TR')}
               </span>
               <span className="text-amber-600 dark:text-amber-400">
-                {lang === 'ru' ? 'Субподряд' : 'Taşeron'}: {summary.realActiveSubcon.toLocaleString('tr-TR')}
+                {lang === 'ru' ? 'Нет в ЗУП:' : "ZUP'ta Yok:"} {summary.realActiveNotInZupTotal.toLocaleString('tr-TR')}
               </span>
             </div>
           </div>
@@ -1163,17 +1154,17 @@ export default function OfficialVsRealView() {
                 {summary.realActiveNotInZupTotal.toLocaleString('tr-TR')}
               </span>
               <span className="text-[11px] text-amber-700 dark:text-amber-300">
-                ({lang === 'ru' ? 'Pondera:' : 'Ana Kadro:'} {summary.realActiveNotInZupMainFirm})
+                ({lang === 'ru' ? 'Человек' : 'Kişi'})
               </span>
             </div>
             <div className="flex items-center justify-between text-[10.5px] text-amber-800/90 dark:text-amber-300/90 pt-1 border-t border-amber-200/60 dark:border-amber-800/60">
               <span>
-                {lang === 'ru' ? 'Pondera без ЗУП:' : 'Pondera Eksik:'}{' '}
-                <strong>{summary.realActiveNotInZupMainFirm}</strong>
+                {lang === 'ru' ? 'Новые:' : 'Yeni Giriş:'}{' '}
+                <strong>{summary.realActiveNotInZupRecentHire}</strong>
               </span>
               <span>
-                {lang === 'ru' ? 'Субподряд:' : 'Taşeron:'}{' '}
-                <strong>{summary.realActiveNotInZupSubcon}</strong>
+                {lang === 'ru' ? 'Ранее:' : 'Önceki Giriş:'}{' '}
+                <strong>{Math.max(0, summary.realActiveNotInZupTotal - summary.realActiveNotInZupRecentHire)}</strong>
               </span>
             </div>
           </div>
@@ -1221,187 +1212,125 @@ export default function OfficialVsRealView() {
                 </span>
               </div>
 
-              {/* Visual Side-by-Side Comparison Bars (1C ZUP vs eBA Real) with Pie-Chart-Style Callout Leader Lines */}
-              <div className="space-y-3.5">
-                {/* Bar 1: 1C ZUP Official Total Breakdown */}
-                {(() => {
-                  const zupTrans = summary.zupTransferPermitCheckCount || 0;
-                  const zupExit = summary.zupActiveButRealExited || 0;
-                  const zupMatchedClean = Math.max(0, summary.matchedActiveBoth - zupTrans);
-                  const wTrans = zupTrans > 0 ? 7.5 : 0;
-                  const wExit = zupExit > 0 ? 7.5 : 0;
-                  const wMatch = 100 - wTrans - wExit;
-                  const cxTrans = (wMatch + wTrans / 2) * 10;
-                  const cxExit = (wMatch + wTrans + wExit / 2) * 10;
+              {/* Aligned 2-Line Horizontal Comparison Matrix (1C ZUP vs eBA Real with Overlaps & Empty Gaps) */}
+              {(() => {
+                const zupTrans = summary.zupTransferPermitCheckCount || 0;
+                const zupExit = summary.zupActiveButRealExited || 0;
+                const zupMatchedClean = Math.max(0, summary.matchedActiveBoth - zupTrans);
+                const realOnlyMissingInZup = summary.realActiveNotInZupTotal || 0;
 
-                  return (
-                    <div>
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="text-indigo-700 dark:text-indigo-300 font-medium">
-                          {lang === 'ru' ? 'Официальный штат 1С ЗУП' : '1C ZUP Resmi Bordro Kadrosu'}
+                return (
+                  <div className="space-y-2.5">
+                    {/* Shared 3-Column Header (Aligned Axis Zones) */}
+                    <div className="grid grid-cols-12 gap-1.5 text-[10px] px-0.5">
+                      <div className="col-span-6 flex items-center justify-between px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-800 dark:text-emerald-300 font-medium">
+                        <span>🟢 {lang === 'ru' ? '1. В обоих (Актив)' : '1. Her İkisinde Mevcut'}</span>
+                        <strong>{summary.matchedActiveBoth.toLocaleString('tr-TR')}</strong>
+                      </div>
+                      <div className="col-span-3 flex items-center justify-between px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-800 dark:text-rose-300 font-medium">
+                        <span className="truncate">🔴 {lang === 'ru' ? '2. В ЗУП / Увол.' : '2. ZUP Var / Çıkış'}</span>
+                        <strong>{zupExit.toLocaleString('tr-TR')}</strong>
+                      </div>
+                      <div className="col-span-3 flex items-center justify-between px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 font-medium">
+                        <span className="truncate">🟠 {lang === 'ru' ? '3. Только Real' : "3. ZUP'ta Yok"}</span>
+                        <strong>{realOnlyMissingInZup.toLocaleString('tr-TR')}</strong>
+                      </div>
+                    </div>
+
+                    {/* LINE 1: 1C ZUP Official Workforce Track */}
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#131C31] border border-slate-200/90 dark:border-slate-800 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-indigo-700 dark:text-indigo-300 font-semibold flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                          {lang === 'ru' ? '1С ЗУП (Официальный штат)' : '1C ZUP Resmi Bordro'}
                         </span>
-                        <span className="text-slate-900 dark:text-white text-xs">
+                        <span className="text-slate-900 dark:text-white text-[11px]">
                           Toplam: <strong>{summary.zupOfficialTotal.toLocaleString('tr-TR')} Kişi</strong>
                         </span>
                       </div>
 
-                      <div className="h-8 w-full rounded-xl bg-slate-200/70 dark:bg-slate-800 overflow-hidden flex p-0.5 gap-0.5">
-                        {/* Segment A: Active Matched in Both */}
+                      <div className="grid grid-cols-12 gap-1.5 h-9">
+                        {/* Col 1 (Common Active in Both): Solid Green Bar + Transfer Pill */}
+                        <div className="col-span-6 h-full rounded-lg bg-emerald-500 text-white flex items-center justify-between px-2.5 gap-1 shadow-2xs overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPermitKey('ALL');
+                              setSelectedFilter('FULL_MATCH');
+                              scrollToTable();
+                            }}
+                            className="flex items-center gap-1 text-[11px] font-semibold hover:underline cursor-pointer truncate"
+                            title="Her iki sistemde de mevcut olan personelleri listele"
+                          >
+                            <span>
+                              {lang === 'ru' ? 'Актив:' : 'Mevcut:'}{' '}
+                              {zupMatchedClean.toLocaleString('tr-TR')}
+                            </span>
+                          </button>
+                          {zupTrans > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPermitKey('ALL');
+                                setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
+                                scrollToTable();
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-semibold shrink-0 cursor-pointer transition"
+                              title="Şirket İçi Şantiye Transferi (ZUP'ta aktif, Real'de yeni şantiyeye geçiş)"
+                            >
+                              +{zupTrans} Transfer
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Col 2 (In ZUP Active, Exited in Real): Solid Rose Bar */}
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedPermitKey('ALL');
-                            setSelectedFilter('FULL_MATCH');
+                            setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
                             scrollToTable();
                           }}
-                          style={{ width: `${wMatch}%` }}
-                          className="h-full rounded-l-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-medium flex items-center justify-center gap-1 px-2 transition-all cursor-pointer truncate"
-                          title="Hem Real'de Mevcut Hem 1C ZUP'ta Resmi Çalışan (Tıkla & Listele)"
+                          className="col-span-3 h-full rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[11px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
+                          title="1C ZUP'ta hala aktif görünen ancak eBA Real'de çıkış yapmış personeller"
                         >
                           <span>
-                            {lang === 'ru' ? 'Совпадает в штате:' : 'Mevcut Eşleşen:'}{' '}
-                            {zupMatchedClean.toLocaleString('tr-TR')}
+                            {lang === 'ru' ? 'В ЗУП:' : 'ZUP Aktif:'} +{zupExit}
                           </span>
                         </button>
 
-                        {/* Segment B: Inter-Site Transfer */}
-                        {zupTrans > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedPermitKey('ALL');
-                              setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
-                              scrollToTable();
-                            }}
-                            style={{ width: `${wTrans}%` }}
-                            className="h-full bg-indigo-500 hover:bg-indigo-600 text-white text-[10.5px] font-semibold flex items-center justify-center px-1 transition-all cursor-pointer"
-                            title="Şirket İçi Şantiye Transferi — Resmi çıkış gerekmez, izin bölgesi kontrol edilmeli (Tıkla & Listele)"
-                          >
-                            <span>{zupTrans}</span>
-                          </button>
-                        )}
-
-                        {/* Segment C: Genuine Exits in Real eBA but Still Active in ZUP */}
-                        {zupExit > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedPermitKey('ALL');
-                              setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
-                              scrollToTable();
-                            }}
-                            style={{ width: `${wExit}%` }}
-                            className="h-full rounded-r-lg bg-rose-500 hover:bg-rose-600 text-white text-[10.5px] font-semibold flex items-center justify-center px-1 transition-all cursor-pointer"
-                            title="Real'de Çıkış Yapılmış / 1C ZUP'ta Hala Aktif (Tıkla & Listele)"
-                          >
-                            <span>{zupExit}</span>
-                          </button>
-                        )}
+                        {/* Col 3 (In Real Active, Missing in ZUP): EMPTY / DASHED GAP BOX */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPermitKey('ALL');
+                            setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
+                            scrollToTable();
+                          }}
+                          className="col-span-3 h-full rounded-lg border-2 border-dashed border-amber-400/80 dark:border-amber-500/60 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-[10.5px] font-medium flex items-center justify-center px-1.5 transition cursor-pointer truncate"
+                          title="eBA Real'de aktif olup 1C ZUP resmi bordrosunda kaydı bulunmayanlar (Boşluk)"
+                        >
+                          <span>
+                            {lang === 'ru' ? 'Нет в ЗУП:' : "ZUP'ta Yok:"} -{realOnlyMissingInZup}
+                          </span>
+                        </button>
                       </div>
-
-                      {/* Pie-Chart-Style Leader Lines + External Callout Labels for Narrow Right Segments */}
-                      {(zupTrans > 0 || zupExit > 0) && (
-                        <div className="relative w-full">
-                          <svg
-                            viewBox="0 0 1000 24"
-                            preserveAspectRatio="none"
-                            className="w-full h-5 overflow-visible pointer-events-none"
-                          >
-                            {zupTrans > 0 && (
-                              <g>
-                                <circle cx={cxTrans} cy={2} r={3.5} fill="#6366f1" />
-                                <polyline
-                                  points={`${cxTrans},2 ${cxTrans},12 735,21 695,21`}
-                                  fill="none"
-                                  stroke="#6366f1"
-                                  strokeWidth="1.6"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </g>
-                            )}
-                            {zupExit > 0 && (
-                              <g>
-                                <circle cx={cxExit} cy={2} r={3.5} fill="#f43f5e" />
-                                <polyline
-                                  points={`${cxExit},2 ${cxExit},16 935,21 905,21`}
-                                  fill="none"
-                                  stroke="#f43f5e"
-                                  strokeWidth="1.6"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </g>
-                            )}
-                          </svg>
-
-                          <div className="flex items-center justify-end gap-2.5 -mt-1 pr-1">
-                            {zupTrans > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPermitKey('ALL');
-                                  setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
-                                  scrollToTable();
-                                }}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-200 text-[10.5px] font-medium hover:bg-indigo-100 transition cursor-pointer shadow-2xs"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
-                                <span>
-                                  {lang === 'ru' ? 'Трансфер:' : 'Transfer:'}{' '}
-                                  <strong>{zupTrans}</strong>
-                                </span>
-                              </button>
-                            )}
-                            {zupExit > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPermitKey('ALL');
-                                  setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
-                                  scrollToTable();
-                                }}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-200 text-[10.5px] font-medium hover:bg-rose-100 transition cursor-pointer shadow-2xs"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-                                <span>
-                                  {lang === 'ru' ? 'Уволен в Real:' : 'Çıkış:'}{' '}
-                                  <strong>{zupExit}</strong>
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  );
-                })()}
 
-                {/* Bar 2: eBA Real Active Workforce Breakdown */}
-                {(() => {
-                  const mainMiss = summary.realActiveNotInZupMainFirm || 0;
-                  const subcon = summary.realActiveNotInZupSubcon || 0;
-                  const wMainMiss = mainMiss > 0 ? 12.5 : 0;
-                  const wSubcon = subcon > 0 ? 8.5 : 0;
-                  const wRealMatch = 100 - wMainMiss - wSubcon;
-                  const cxMainMiss = (wRealMatch + wMainMiss / 2) * 10;
-                  const cxSubcon = (wRealMatch + wMainMiss + wSubcon / 2) * 10;
-
-                  return (
-                    <div>
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="text-emerald-700 dark:text-emerald-300 font-medium">
-                          {lang === 'ru'
-                            ? 'Реальный активный штат (eBA Real)'
-                            : 'eBA Real Saha Mevcut Kadrosu'}
+                    {/* LINE 2: eBA Real Workforce Track (Aligned Column-for-Column with Line 1) */}
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#131C31] border border-slate-200/90 dark:border-slate-800 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          {lang === 'ru' ? 'eBA Real (Реальный штат)' : 'eBA Real Saha Kadrosu'}
                         </span>
-                        <span className="text-slate-900 dark:text-white text-xs">
+                        <span className="text-slate-900 dark:text-white text-[11px]">
                           Toplam: <strong>{summary.realActiveTotal.toLocaleString('tr-TR')} Kişi</strong>
                         </span>
                       </div>
 
-                      <div className="h-8 w-full rounded-xl bg-slate-200/70 dark:bg-slate-800 overflow-hidden flex p-0.5 gap-0.5">
-                        {/* Segment A: Active & in ZUP */}
+                      <div className="grid grid-cols-12 gap-1.5 h-9">
+                        {/* Col 1 (Common Active in Both): Solid Green Bar Directly Under ZUP Green Bar */}
                         <button
                           type="button"
                           onClick={() => {
@@ -1409,132 +1338,57 @@ export default function OfficialVsRealView() {
                             setSelectedFilter('FULL_MATCH');
                             scrollToTable();
                           }}
-                          style={{ width: `${wRealMatch}%` }}
-                          className="h-full rounded-l-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-medium flex items-center justify-center gap-1 px-2 transition-all cursor-pointer truncate"
-                          title="Mevcut Kadrodan 1C ZUP Resmi Bordroda Çalışanlar (Tıkla & Listele)"
+                          className="col-span-6 h-full rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-semibold flex items-center justify-between px-2.5 shadow-2xs transition cursor-pointer truncate"
+                          title="Her iki sistemde de mevcut olan personelleri listele"
                         >
                           <span>
-                            {lang === 'ru' ? 'В официальном штате:' : 'Resmide Çalışan:'}{' '}
+                            {lang === 'ru' ? 'Официально:' : 'Resmide Mevcut:'}{' '}
                             {summary.matchedActiveBoth.toLocaleString('tr-TR')}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-700/70 text-[10px]">
+                            %{summary.matchedActiveRateAll}
                           </span>
                         </button>
 
-                        {/* Segment B: Pondera Main Firm Missing in ZUP */}
-                        {mainMiss > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedPermitKey('ALL');
-                              setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
-                              scrollToTable();
-                            }}
-                            style={{ width: `${wMainMiss}%` }}
-                            className="h-full bg-amber-500 hover:bg-amber-600 text-white text-[10.5px] font-semibold flex items-center justify-center px-1 transition-all cursor-pointer"
-                            title="Pondera Ana Kadroda Aktif Olup 1C ZUP'ta Kaydı Olmayanlar (Tıkla & Listele)"
-                          >
-                            <span>{mainMiss.toLocaleString('tr-TR')}</span>
-                          </button>
-                        )}
+                        {/* Col 2 (Exited in Real, Still Active in ZUP): EMPTY / DASHED GAP BOX Directly Under ZUP +40 */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPermitKey('ALL');
+                            setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
+                            scrollToTable();
+                          }}
+                          className="col-span-3 h-full rounded-lg border-2 border-dashed border-rose-400/80 dark:border-rose-500/60 bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-100/50 dark:hover:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-[10.5px] font-medium flex items-center justify-center px-1.5 transition cursor-pointer truncate"
+                          title="eBA Real'de çıkış yapıldığı için aktif kadroda yer almayan 40 kişi (Boşluk)"
+                        >
+                          <span>
+                            {lang === 'ru' ? 'Уволен:' : 'Real Çıkış:'} -{zupExit}
+                          </span>
+                        </button>
 
-                        {/* Segment C: Subcontractor Active (Outside ZUP) */}
-                        {subcon > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedPermitKey('ALL');
-                              setSelectedFilter('REAL_ACTIVE_NO_ZUP_SUBCON');
-                              scrollToTable();
-                            }}
-                            style={{ width: `${wSubcon}%` }}
-                            className="h-full rounded-r-lg bg-slate-500 hover:bg-slate-600 text-white text-[10.5px] font-semibold flex items-center justify-center px-1 transition-all cursor-pointer"
-                            title="Taşeron Firma Bordrosunda Çalışanlar (Tıkla & Listele)"
-                          >
-                            <span>{subcon.toLocaleString('tr-TR')}</span>
-                          </button>
-                        )}
+                        {/* Col 3 (Active in Real Only, Missing in ZUP): Solid Amber Bar Directly Under ZUP Empty Gap */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPermitKey('ALL');
+                            setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
+                            scrollToTable();
+                          }}
+                          className="col-span-3 h-full rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
+                          title="eBA Real'de aktif çalışan ancak 1C ZUP listesinde olmayan personeller"
+                        >
+                          <span>
+                            {lang === 'ru' ? 'Только Real:' : 'Real Aktif:'} +{realOnlyMissingInZup}
+                          </span>
+                        </button>
                       </div>
-
-                      {/* Pie-Chart-Style Leader Lines + External Callout Labels for Narrow Right Segments */}
-                      {(mainMiss > 0 || subcon > 0) && (
-                        <div className="relative w-full">
-                          <svg
-                            viewBox="0 0 1000 24"
-                            preserveAspectRatio="none"
-                            className="w-full h-5 overflow-visible pointer-events-none"
-                          >
-                            {mainMiss > 0 && (
-                              <g>
-                                <circle cx={cxMainMiss} cy={2} r={3.5} fill="#f59e0b" />
-                                <polyline
-                                  points={`${cxMainMiss},2 ${cxMainMiss},12 695,21 650,21`}
-                                  fill="none"
-                                  stroke="#f59e0b"
-                                  strokeWidth="1.6"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </g>
-                            )}
-                            {subcon > 0 && (
-                              <g>
-                                <circle cx={cxSubcon} cy={2} r={3.5} fill="#64748b" />
-                                <polyline
-                                  points={`${cxSubcon},2 ${cxSubcon},16 925,21 895,21`}
-                                  fill="none"
-                                  stroke="#64748b"
-                                  strokeWidth="1.6"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </g>
-                            )}
-                          </svg>
-
-                          <div className="flex items-center justify-end gap-2.5 -mt-1 pr-1">
-                            {mainMiss > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPermitKey('ALL');
-                                  setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
-                                  scrollToTable();
-                                }}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-[10.5px] font-medium hover:bg-amber-100 transition cursor-pointer shadow-2xs"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                                <span>
-                                  {lang === 'ru' ? 'Нет в ЗУП (Осн.):' : 'Ana Kadro Eksik:'}{' '}
-                                  <strong>{mainMiss.toLocaleString('tr-TR')}</strong>
-                                </span>
-                              </button>
-                            )}
-                            {subcon > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPermitKey('ALL');
-                                  setSelectedFilter('REAL_ACTIVE_NO_ZUP_SUBCON');
-                                  scrollToTable();
-                                }}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-[10.5px] font-medium hover:bg-slate-200 transition cursor-pointer shadow-2xs"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
-                                <span>
-                                  {lang === 'ru' ? 'Субподряд:' : 'Taşeron:'}{' '}
-                                  <strong>{subcon.toLocaleString('tr-TR')}</strong>
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  );
-                })()}
-              </div>
+                  </div>
+                );
+              })()}
 
-              {/* Interactive Status Breakdown Grid (6 Clickable Status Pills with Exact Counts) */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+              {/* Interactive Status Breakdown Grid (5 Clickable Status Pills without Subcontractor Split) */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -1542,16 +1396,16 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('FULL_MATCH');
                     scrollToTable();
                   }}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
                     selectedFilter === 'FULL_MATCH'
                       ? 'bg-emerald-600 text-white border-emerald-600'
                       : 'bg-white dark:bg-[#131C31] border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400'
                   }`}
                 >
-                  <div className="text-[10.5px] opacity-85">Mevcut & Resmide Aktif</div>
-                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                  <div className="text-[10px] opacity-85 truncate">İkisinde Mevcut</div>
+                  <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
                     <span>{summary.matchedActiveBoth.toLocaleString('tr-TR')}</span>
-                    <span className="text-[10px] opacity-80">%{summary.matchedActiveRateMainFirm}</span>
+                    <span className="text-[9.5px] opacity-80">%{summary.matchedActiveRateAll}</span>
                   </div>
                 </button>
 
@@ -1562,16 +1416,16 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
                     scrollToTable();
                   }}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
                     selectedFilter === 'SITE_TRANSFER_PERMIT_CHECK'
                       ? 'bg-indigo-600 text-white border-indigo-600'
                       : 'bg-white dark:bg-[#131C31] border-indigo-200 dark:border-indigo-900/60 hover:border-indigo-400'
                   }`}
                 >
-                  <div className="text-[10.5px] opacity-85">Şantiye Transferi (ZUP Aktif)</div>
-                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                  <div className="text-[10px] opacity-85 truncate">Şantiye Transferi</div>
+                  <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
                     <span>{(summary.zupTransferPermitCheckCount || 0).toLocaleString('tr-TR')}</span>
-                    <span className="text-[10px] opacity-80">İzin Kontrolü</span>
+                    <span className="text-[9.5px] opacity-80">İzin Kntr.</span>
                   </div>
                 </button>
 
@@ -1582,16 +1436,16 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
                     scrollToTable();
                   }}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
                     selectedFilter === 'ZUP_ACTIVE_REAL_EXIT'
                       ? 'bg-rose-600 text-white border-rose-600'
                       : 'bg-white dark:bg-[#131C31] border-rose-200 dark:border-rose-900/60 hover:border-rose-400'
                   }`}
                 >
-                  <div className="text-[10.5px] opacity-85">ZUP Aktif / Real Çıkışlı</div>
-                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                  <div className="text-[10px] opacity-85 truncate">ZUP Var / Real Çıkış</div>
+                  <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
                     <span>{summary.zupActiveButRealExited.toLocaleString('tr-TR')}</span>
-                    <span className="text-[10px] opacity-80">Resmi Düşülecek</span>
+                    <span className="text-[9.5px] opacity-80">Düşülecek</span>
                   </div>
                 </button>
 
@@ -1602,36 +1456,16 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
                     scrollToTable();
                   }}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
                     selectedFilter === 'REAL_ACTIVE_NO_ZUP_MAIN'
                       ? 'bg-amber-600 text-white border-amber-600'
                       : 'bg-white dark:bg-[#131C31] border-amber-200 dark:border-amber-900/60 hover:border-amber-400'
                   }`}
                 >
-                  <div className="text-[10.5px] opacity-85">Ana Kadro / ZUP Eksik</div>
-                  <div className="text-base mt-0.5 flex items-baseline justify-between">
-                    <span>{summary.realActiveNotInZupMainFirm.toLocaleString('tr-TR')}</span>
-                    <span className="text-[10px] opacity-80">Pondera</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedPermitKey('ALL');
-                    setSelectedFilter('REAL_ACTIVE_NO_ZUP_SUBCON');
-                    scrollToTable();
-                  }}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                    selectedFilter === 'REAL_ACTIVE_NO_ZUP_SUBCON'
-                      ? 'bg-slate-700 text-white border-slate-700'
-                      : 'bg-white dark:bg-[#131C31] border-slate-200 dark:border-slate-800 hover:border-slate-400'
-                  }`}
-                >
-                  <div className="text-[10.5px] opacity-85">Taşeron Aktif (ZUP Dışı)</div>
-                  <div className="text-base mt-0.5 flex items-baseline justify-between">
-                    <span>{summary.realActiveNotInZupSubcon.toLocaleString('tr-TR')}</span>
-                    <span className="text-[10px] opacity-80">Alt İşveren</span>
+                  <div className="text-[10px] opacity-85 truncate">Real Var / ZUP Yok</div>
+                  <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
+                    <span>{summary.realActiveNotInZupTotal.toLocaleString('tr-TR')}</span>
+                    <span className="text-[9.5px] opacity-80">Eklenecek</span>
                   </div>
                 </button>
 
@@ -1642,16 +1476,16 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('ZUP_ONLY_NO_EBA');
                     scrollToTable();
                   }}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
                     selectedFilter === 'ZUP_ONLY_NO_EBA'
                       ? 'bg-purple-600 text-white border-purple-600'
                       : 'bg-white dark:bg-[#131C31] border-purple-200 dark:border-purple-900/60 hover:border-purple-400'
                   }`}
                 >
-                  <div className="text-[10.5px] opacity-85">Sadece ZUP&apos;ta Var</div>
-                  <div className="text-base mt-0.5 flex items-baseline justify-between">
+                  <div className="text-[10px] opacity-85 truncate">Sadece ZUP&apos;ta Var</div>
+                  <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
                     <span>{summary.zupOnlyNotInRealDB.toLocaleString('tr-TR')}</span>
-                    <span className="text-[10px] opacity-80">eBA Kaydı Yok</span>
+                    <span className="text-[9.5px] opacity-80">eBA Yok</span>
                   </div>
                 </button>
               </div>

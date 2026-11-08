@@ -56,3 +56,4 @@ Write-Host "=================================================================" -
 
 # Hemen ilk kontrolu calistir
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath
+

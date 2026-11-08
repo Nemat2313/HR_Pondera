@@ -1193,7 +1193,8 @@ export function computeZupVsRealReconciliation(db: any) {
     const pBucket = regionStatsMap[reg].projectsMap[prj];
 
     const isMatched = matchedEbaIds.has(r.id);
-    const isMainFirm = String(r.firma || '').toUpperCase().includes('PONDERA');
+    // Pondera bünyesinde taşeron ayrımı yoktur; tüm aktif personel Pondera kadrosu olarak değerlendirilir
+    const isMainFirm = true;
     const isTransferRow =
       r.genel_durum !== 'Mevcut' &&
       String(r.cikis_sebebi || '').toLowerCase().includes('transfer');
