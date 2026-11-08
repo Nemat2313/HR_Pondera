@@ -2344,3 +2344,85 @@ export async function sendReleaseSummaryEmail(options?: {
     draft: getReleaseSummaryDraft(db),
   };
 }
+
+export async function sendCustomExecutiveEmail(options: {
+  to: string[];
+  cc?: string[];
+  subject: string;
+  badgeText?: string;
+  title: string;
+  greeting: string;
+  intro: string;
+  highlights: Array<{ title: string; description: string }>;
+  closingNote?: string;
+}): Promise<{ ok: boolean; status: 'SENT' | 'QUEUED' | 'ERROR'; message: string }> {
+  const db = getDb();
+  const smtp = getSmtpConfig(db);
+  const msk = getMoscowClock();
+
+  const itemsHtml = (options.highlights || [])
+    .map(
+      (item) => `
+      <tr>
+        <td style="padding: 0 0 12px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #0d9488; border-radius: 10px;">
+            <tr>
+              <td style="padding: 13px 16px;">
+                <div style="font-size: 13.5px; color: #0f172a; margin-bottom: 5px;">
+                  <strong>${escapeEmailHtml(item.title)}</strong>
+                </div>
+                <div style="font-size: 12.5px; line-height: 1.6; color: #334155;">
+                  ${escapeEmailHtml(item.description)}
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`
+    )
+    .join('');
+
+  const bodyHtml = `
+    <div style="font-size: 13.5px; line-height: 1.65; color: #1e293b; margin-bottom: 16px;">
+      <p style="margin: 0 0 10px 0;"><strong>${escapeEmailHtml(options.greeting)}</strong></p>
+      <p style="margin: 0;">${escapeEmailHtml(options.intro)}</p>
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 14px; margin-bottom: 8px;">
+      ${itemsHtml}
+    </table>
+
+    ${
+      options.closingNote
+        ? `<div style="margin-top: 14px; padding: 12px 15px; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 12.5px; line-height: 1.6; color: #065f46;">
+            ${escapeEmailHtml(options.closingNote)}
+          </div>`
+        : ''
+    }
+  `;
+
+  const html = renderCorporateEmailShell({
+    accentHex: '#0d9488',
+    headerBgHex: '#0f172a',
+    badgeText: options.badgeText || 'PONDERA İK & 1C:ЗУП ENTEGRASYONU',
+    title: options.title,
+    subtitle: `Tarih: ${msk.dateDisplay} ${msk.timeDisplay} • Gönderen: ikbildirim@pondera.ru`,
+    bodyHtml,
+    ctaLabel: 'Pondera İK Sistemini Aç (hr.pondera.network) →',
+  });
+
+  const toList = (options.to || []).filter((e) => e.includes('@'));
+  const ccList = (options.cc || []).filter((e) => e.includes('@'));
+
+  if (!smtp.enabled || !smtp.pass) {
+    const msg = 'SMTP aktif olmadığı için e-posta gönderilemedi.';
+    logEmailDelivery(db, 'custom_executive', options.subject, toList, ccList, 'QUEUED', msg);
+    return { ok: false, status: 'QUEUED', message: msg };
+  }
+
+  const res = await sendRawSmtpMail(smtp, toList, ccList, options.subject, html);
+  const status = res.ok ? 'SENT' : 'ERROR';
+  logEmailDelivery(db, 'custom_executive', options.subject, toList, ccList, status, res.detail);
+  return { ok: res.ok, status, message: res.detail };
+}
+

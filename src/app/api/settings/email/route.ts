@@ -12,6 +12,7 @@ import {
   getReleaseSummaryDraft,
   saveReleaseSummaryDraft,
   sendReleaseSummaryEmail,
+  sendCustomExecutiveEmail,
   DEFAULT_RELEASE_SUMMARY_DRAFT,
 } from '@/lib/emailNotifier';
 
@@ -133,6 +134,26 @@ export async function POST(request: Request) {
         status: sendRes.status,
         message: sendRes.message,
         releaseDraft: sendRes.draft,
+        logs: getEmailLogs(20, db),
+      });
+    }
+
+    if (action === 'send_custom_executive') {
+      const sendRes = await sendCustomExecutiveEmail({
+        to: Array.isArray(body.to) ? body.to : [],
+        cc: Array.isArray(body.cc) ? body.cc : [],
+        subject: String(body.subject || ''),
+        badgeText: String(body.badgeText || ''),
+        title: String(body.title || ''),
+        greeting: String(body.greeting || ''),
+        intro: String(body.intro || ''),
+        highlights: Array.isArray(body.highlights) ? body.highlights : [],
+        closingNote: String(body.closingNote || ''),
+      });
+      return NextResponse.json({
+        success: sendRes.ok,
+        status: sendRes.status,
+        message: sendRes.message,
         logs: getEmailLogs(20, db),
       });
     }
