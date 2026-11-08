@@ -34,8 +34,16 @@ export interface ZupOfficialRecord {
 export function extractZupReportDate(
   fileName: string,
   rawRows?: any[][],
-  fallback = '06.11.2026'
+  fallback?: string
 ): string {
+  const defaultFallback =
+    fallback ||
+    new Intl.DateTimeFormat('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(new Date());
   const cleanName = String(fileName || '').replace(/\.[^.]+$/, '');
   // Match DD.MM.YYYY, DD_MM_YYYY, DD MM YYYY, or typo DD MM 206 -> 2026
   const mFull = cleanName.match(/(\d{2})[\s._-]+(\d{2})[\s._-]+(20\d{2}|20\d)/);
@@ -57,9 +65,18 @@ export function extractZupReportDate(
       if (mHeader) {
         return `${mHeader[1]}.${mHeader[2]}.${mHeader[3]}`;
       }
+      const mSlashHeader = line.match(/\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/);
+      if (mSlashHeader) {
+        const p1 = parseInt(mSlashHeader[1], 10);
+        const p2 = parseInt(mSlashHeader[2], 10);
+        const yyyy = mSlashHeader[3];
+        const mm = String(p1 <= 12 ? p1 : p2).padStart(2, '0');
+        const dd = String(p1 <= 12 ? p2 : p1).padStart(2, '0');
+        return `${dd}.${mm}.${yyyy}`;
+      }
     }
   }
-  return fallback;
+  return defaultFallback;
 }
 
 export function formatZupBranchShort(rawDept?: string | null, lang: 'tr' | 'ru' = 'tr'): string {
@@ -146,11 +163,21 @@ export function normalizeDateValue(raw?: any): string {
       return `${yyyy === 2027 ? 2026 : yyyy}-${mm}-${dd}`;
     }
   }
-  if (/^\d{2}\.\d{2}\.\d{4}/.test(s) || /^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) {
     const yyyy = s.slice(6, 10);
     const mm = s.slice(3, 5);
     const dd = s.slice(0, 2);
     return `${yyyy === '2027' ? '2026' : yyyy}-${mm}-${dd}`;
+  }
+  const mSlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (mSlash) {
+    const p1 = parseInt(mSlash[1], 10);
+    const p2 = parseInt(mSlash[2], 10);
+    const yyyy = mSlash[3] === '2027' ? '2026' : mSlash[3];
+    // 172.20.250.32 1C RDP server uses US M/D/YYYY format (e.g. 8/26/2020, 11/8/2026)
+    const mm = String(p1 <= 12 ? p1 : p2).padStart(2, '0');
+    const dd = String(p1 <= 12 ? p2 : p1).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
     const iso = s.slice(0, 10);

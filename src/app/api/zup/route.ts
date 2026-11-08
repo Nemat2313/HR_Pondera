@@ -107,7 +107,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const reportDate = explicitDate || extractZupReportDate(file.name, rawRows, '06.11.2026');
+    const reportDate = explicitDate || extractZupReportDate(file.name, rawRows);
     const db = getDb();
     saveZupRecordsToDb(db, parsedRecords, reportDate, file.name);
     await triggerOnUploadEmailReports('zup');
