@@ -315,6 +315,23 @@ export interface InvitationCandidateMatch {
   reasons: string[];
 }
 
+const CYR_TO_LAT_MAP: Record<string, string> = {
+  А: 'A', Б: 'B', В: 'V', Г: 'G', Д: 'D', Е: 'E', Ё: 'E', Ж: 'ZH', З: 'Z',
+  И: 'I', Й: 'Y', К: 'K', Л: 'L', М: 'M', Н: 'N', О: 'O', П: 'P', Р: 'R',
+  С: 'S', Т: 'T', У: 'U', Ф: 'F', Х: 'KH', Ц: 'TS', Ч: 'CH', Ш: 'SH', Щ: 'SHCH',
+  Ъ: '', Ы: 'Y', Ь: '', Э: 'E', Ю: 'YU', Я: 'YA',
+};
+
+function transliterateCyrillicToLatin(text: string): string {
+  return String(text || '')
+    .toUpperCase()
+    .split('')
+    .map((ch) => (ch in CYR_TO_LAT_MAP ? CYR_TO_LAT_MAP[ch] : ch))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function matchInvitationAgainstPersonnel(
   fields: {
     passport_last3?: string;
@@ -347,6 +364,7 @@ export function matchInvitationAgainstPersonnel(
     'РЕСПУБЛИКА',
     'ИНДИЯ',
     'ТУРЦИЯ',
+    'ТУРЕЦКАЯ',
     'ШТАТ',
     'ГОРОД',
     'ОБЛАСТЬ',
@@ -385,7 +403,7 @@ export function matchInvitationAgainstPersonnel(
     rows = [];
   }
 
-  const scored: InvitationCandidateMatch[] = [];
+  const scoredMap = new Map<string, InvitationCandidateMatch>();
 
   for (const r of rows) {
     let rawJson: Record<string, any> = {};
@@ -449,8 +467,9 @@ export function matchInvitationAgainstPersonnel(
     }
 
     if (score >= 45) {
-      scored.push({
-        sicil_no: String(r.sicil_no || ''),
+      const sicilKey = String(r.sicil_no || '').trim();
+      scoredMap.set(sicilKey, {
+        sicil_no: sicilKey,
         ad_soyad: String(r.ad_soyad || ''),
         tam_adi_kiril: String(r.tam_adi_kiril || ''),
         uyruk: String(r.uyruk || ''),
@@ -467,6 +486,107 @@ export function matchInvitationAgainstPersonnel(
     }
   }
 
+  // Also search 1C ZUP Official List (zup_official_personnel)
+  try {
+    let zupRows: any[] = [];
+    if (last3) {
+      zupRows = db
+        .prepare(
+          `SELECT tabel_no, norm_sicil, fio_kiril, gender, birth_date, citizenship_ru, citizenship_tr,
+                  doc_series, doc_no, doc_issue_date, doc_issued_by, zup_department, position_ru
+           FROM zup_official_personnel
+           WHERE doc_no LIKE ?`
+        )
+        .all(`%${last3}`) as any[];
+    } else if (invDob) {
+      zupRows = db
+        .prepare(
+          `SELECT tabel_no, norm_sicil, fio_kiril, gender, birth_date, citizenship_ru, citizenship_tr,
+                  doc_series, doc_no, doc_issue_date, doc_issued_by, zup_department, position_ru
+           FROM zup_official_personnel
+           WHERE birth_date LIKE ?`
+        )
+        .all(`%${invDob.slice(6, 10)}%`) as any[];
+    }
+
+    for (const z of zupRows) {
+      const pSerie = String(z.doc_series || '').trim();
+      const pNumRaw = String(z.doc_no || '').trim();
+      const cleanPNum = pNumRaw.replace(/[^0-9A-Za-zА-Яа-я]/g, '').toUpperCase();
+      const pEndsWithLast3 = Boolean(last3 && cleanPNum.endsWith(last3));
+      if (last3 && !pEndsWithLast3) continue;
+
+      const zDob = normalizeAnyDateToDdMmYyyy(z.birth_date);
+      const zPassIssue = normalizeAnyDateToDdMmYyyy(z.doc_issue_date);
+      const zIssuedBy = String(z.doc_issued_by || '').trim();
+      const zNatUpper = String(z.citizenship_tr || '').trim().toUpperCase();
+      const zCitRuUpper = String(z.citizenship_ru || '').trim().toUpperCase();
+
+      let score = 0;
+      const reasons: string[] = [];
+
+      if (pEndsWithLast3) {
+        score += 35;
+        reasons.push(`1C ZUP Pasaport (*${last3})`);
+      }
+      if ((mappedNat && zNatUpper === mappedNat) || (invNatUpper && zCitRuUpper === invNatUpper)) {
+        score += 15;
+        reasons.push(`Uyruk (${zNatUpper || zCitRuUpper})`);
+      }
+      if (invDob && zDob === invDob) {
+        score += 35;
+        reasons.push(`Doğum Tarihi (${invDob})`);
+      } else if (invDob && zDob && invDob.slice(6, 10) === zDob.slice(6, 10)) {
+        score += 8;
+        reasons.push(`Doğum Yılı (${invDob.slice(6, 10)})`);
+      }
+      if (invPassIssue && zPassIssue === invPassIssue) {
+        score += 35;
+        reasons.push(`1C ZUP Pasaport Veriliş (${zPassIssue})`);
+      }
+      if (zIssuedBy && specificPlaceTokens.length > 0) {
+        const matchedTokens = specificPlaceTokens.filter((t) => zIssuedBy.toUpperCase().includes(t));
+        if (matchedTokens.length > 0) {
+          score += 25;
+          reasons.push(`1C ZUP Veren Makam (${zIssuedBy})`);
+        }
+      }
+
+      if (score >= 45) {
+        const sicilKey = String(z.norm_sicil || z.tabel_no || '').trim();
+        const existingCand = scoredMap.get(sicilKey);
+        const fullPass = pSerie && !pNumRaw.startsWith(pSerie) ? `${pSerie} ${pNumRaw}` : pNumRaw;
+        if (!existingCand || score > existingCand.score) {
+          scoredMap.set(sicilKey, {
+            sicil_no: sicilKey,
+            ad_soyad:
+              existingCand?.ad_soyad ||
+              transliterateCyrillicToLatin(String(z.fio_kiril || '').replace(/\b\d{5,7}\b/g, '')),
+            tam_adi_kiril: String(z.fio_kiril || existingCand?.tam_adi_kiril || '').trim(),
+            uyruk: String(z.citizenship_tr || existingCand?.uyruk || z.citizenship_ru || ''),
+            dogum_tarihi: zDob || existingCand?.dogum_tarihi || '',
+            pasaport_no: fullPass || existingCand?.pasaport_no || '',
+            pasaport_verilis: zPassIssue || existingCand?.pasaport_verilis || '',
+            dogum_yeri: existingCand?.dogum_yeri || zIssuedBy,
+            genel_durum: existingCand ? `${existingCand.genel_durum} • 1C ZUP` : '1C ZUP Resmi Liste',
+            region: existingCand?.region || String(z.zup_department || '1C ZUP'),
+            proje_adi: existingCand?.proje_adi || String(z.zup_department || '1C ZUP'),
+            score,
+            reasons,
+          });
+        } else if (existingCand && !existingCand.genel_durum.includes('1C ZUP')) {
+          existingCand.genel_durum = `${existingCand.genel_durum} • 1C ZUP`;
+          if (!existingCand.pasaport_verilis && zPassIssue) {
+            existingCand.pasaport_verilis = zPassIssue;
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore if zup_official_personnel table not yet initialized
+  }
+
+  const scored = Array.from(scoredMap.values());
   scored.sort((a, b) => b.score - a.score);
   const topCandidates = scored.slice(0, 6);
   const best = topCandidates[0] || null;
@@ -944,13 +1064,37 @@ export function manuallyLinkInvitationToEmployee(
     return { success: false, message: 'Davetiye kaydı bulunamadı.' };
   }
 
-  const emp = db
+  let emp = db
     .prepare(
       'SELECT sicil_no, ad_soyad, tam_adi_kiril, pasaport_no, genel_durum, region, proje_adi FROM personnel WHERE sicil_no = ? LIMIT 1'
     )
     .get(String(sicilNo).trim()) as any;
   if (!emp) {
-    return { success: false, message: `Sicil No (${sicilNo}) tüm personel listesinde bulunamadı.` };
+    try {
+      const zEmp = db
+        .prepare(
+          'SELECT norm_sicil, tabel_no, fio_kiril, doc_series, doc_no, zup_department FROM zup_official_personnel WHERE norm_sicil = ? OR tabel_no = ? LIMIT 1'
+        )
+        .get(String(sicilNo).trim(), String(sicilNo).trim()) as any;
+      if (zEmp) {
+        const cleanKiril = String(zEmp.fio_kiril || '').replace(/\b\d{5,7}\b/g, '').trim();
+        emp = {
+          sicil_no: String(zEmp.norm_sicil || zEmp.tabel_no || sicilNo).trim(),
+          ad_soyad: transliterateCyrillicToLatin(cleanKiril),
+          tam_adi_kiril: cleanKiril,
+          pasaport_no: `${zEmp.doc_series || ''} ${zEmp.doc_no || ''}`.trim(),
+          genel_durum: '1C ZUP Resmi Liste',
+          region: String(zEmp.zup_department || '1C ZUP'),
+          proje_adi: String(zEmp.zup_department || '1C ZUP'),
+        };
+      }
+    } catch {}
+  }
+  if (!emp) {
+    return {
+      success: false,
+      message: `Sicil No (${sicilNo}) tüm personel ve 1C ZUP listesinde bulunamadı.`,
+    };
   }
 
   const newFilename = buildInvitationPdfFilename(

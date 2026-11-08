@@ -8,6 +8,7 @@ import {
   parseZupWorksheetRows,
   saveZupRecordsToDb,
 } from '@/lib/zupReconciliation';
+import { rematchAllInvitationsInDb } from '@/lib/invitationManager';
 import { sendZupVsRealTelegramReport } from '@/lib/telegramNotifier';
 import {
   checkAndImportZupAutoFolder,
@@ -110,6 +111,9 @@ export async function POST(request: Request) {
     const reportDate = explicitDate || extractZupReportDate(file.name, rawRows);
     const db = getDb();
     saveZupRecordsToDb(db, parsedRecords, reportDate, file.name);
+    try {
+      rematchAllInvitationsInDb(db);
+    } catch {}
     await triggerOnUploadEmailReports('zup');
 
     const updatedData = computeZupVsRealReconciliation(db);
