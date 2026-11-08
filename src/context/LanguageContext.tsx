@@ -33,7 +33,7 @@ const translations: Record<string, { tr: string; ru: string }> = {
   nav_group_live: { tr: 'CANLI ÇALIŞAN SİSTEM', ru: 'ДЕЙСТВУЮЩИЕ МОДУЛИ' },
   nav_group_planned: { tr: 'PLANLANAN İŞLER (Zahid Bey)', ru: 'ПЛАНИРУЕМЫЕ ЗАДАЧИ' },
   nav_group_powerise: { tr: 'POWERISE SATILIK MODÜLLER', ru: 'МОДУЛИ POWERISE (ВИТРИНА)' },
-  nav_invitations: { tr: 'Personel Davetiyeleri Takibi', ru: 'Приглашения МВД (Телеграм)' },
+  nav_invitations: { tr: 'Davetiye Takip', ru: 'Учет приглашений' },
   nav_travel_tickets: { tr: 'İdari İşler & AI Bilet', ru: 'АХО и AI Билеты' },
   nav_camp_management: { tr: 'Kamp & Lojman Takibi', ru: 'Общежития и Коечный фонд' },
   badge_kpi: { tr: 'KPI', ru: 'KPI' },

@@ -187,7 +187,7 @@ export default function Sidebar({
           id: 'invitations',
           label: t('nav_invitations'),
           icon: Mail,
-          badge: lang === 'ru' ? 'МВД / TG' : 'Telegram',
+          badge: lang === 'ru' ? 'МВД • Live' : 'MVD • Canlı',
           badgeColor: 'bg-sky-50 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border border-sky-200/50 dark:border-sky-700/50',
         },
       ],

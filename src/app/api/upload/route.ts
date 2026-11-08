@@ -149,6 +149,11 @@ export async function POST(request: Request) {
 
     resetDb();
 
+    try {
+      const { rematchAllInvitationsInDb } = await import('@/lib/invitationManager');
+      rematchAllInvitationsInDb();
+    } catch {}
+
     return NextResponse.json({
       success: true,
       message: 'Excel başarıyla yüklendi ve sistem güncellendi.',

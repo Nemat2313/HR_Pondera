@@ -18,6 +18,10 @@ import {
   isVks15MinNotificationEnabled,
 } from '@/lib/vksQuarterManager';
 import { checkAndSendQuotaAlerts } from '@/lib/quotaManager';
+import {
+  sendDailyInvitationsSummaryNotification,
+  syncZohoInvitationsFromImap,
+} from '@/lib/invitationManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -79,6 +83,17 @@ export async function GET(request: Request) {
         quotaRes,
       });
     }
+    if (testMode === 'invitations') {
+      const invRes = await sendDailyInvitationsSummaryNotification({
+        onlyUnnotifiedOrYesterday: false,
+        dbInstance: db,
+      });
+      return NextResponse.json({
+        success: true,
+        mode: 'test_invitations',
+        invRes,
+      });
+    }
     if (testMode === 'both') {
       const vksRes = await checkAndSendVks15MinReport(true);
       const compRes = await sendDailyCompliance915Report(true);
@@ -105,10 +120,28 @@ export async function GET(request: Request) {
     if (isAtQuarterMark && lastQuarterSlot !== currentQuarterSlot) {
       setSystemVal(db, 'telegram_vks_last_quarter_slot', currentQuarterSlot);
       setSystemVal(db, 'telegram_vks_last_check_ms', String(nowMs));
+      // Also auto-sync Zoho Mail (ikbildirim@pondera.ru) for new MVD Invitation PDFs every 15 minutes
+      try {
+        syncZohoInvitationsFromImap(40, db);
+      } catch {}
       if (isVks15MinNotificationEnabled(db)) {
         vksResult = await checkAndSendVks15MinReport(false);
       } else {
         vksResult = { skipped: true, disabled: true };
+      }
+    }
+
+    // 1b. Every morning at 09:10–09:14 MSK: send daily summary of yesterday's / new MVD invitations via Email & Telegram
+    if (msk.hour === 9 && msk.minute >= 10 && msk.minute <= 14) {
+      const lastInvCronDate = getSystemVal(db, 'telegram_invitations_last_daily_date') || '';
+      if (lastInvCronDate !== msk.dateIso) {
+        setSystemVal(db, 'telegram_invitations_last_daily_date', msk.dateIso);
+        try {
+          await sendDailyInvitationsSummaryNotification({
+            onlyUnnotifiedOrYesterday: true,
+            dbInstance: db,
+          });
+        } catch {}
       }
     }
 
