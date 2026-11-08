@@ -11,6 +11,7 @@ FlateDecode streams), and returns JSON to the Next.js API.
 import sys
 import json
 import imaplib
+import poplib
 import email
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
@@ -537,15 +538,121 @@ def connect_zoho_imap(primary_host: str, port: int, email_addr: str, password: s
         if h and h not in hosts_to_try:
             hosts_to_try.append(h)
 
-    last_err = ""
+    primary_err = ""
     for h in hosts_to_try:
         try:
             conn = imaplib.IMAP4_SSL(h, port, timeout=20)
             conn.login(email_addr, password)
             return conn, h, ""
         except Exception as e:
-            last_err = f"{h}: {e}"
-    return None, "", last_err
+            if not primary_err:
+                primary_err = f"{h}: {e}"
+    return None, "", primary_err
+
+
+def process_raw_email_bytes(raw_email: bytes, fallback_id: str, items: list):
+    msg = email.message_from_bytes(raw_email)
+    subject = decode_mime_str(msg.get("Subject", ""))
+    sender = decode_mime_str(msg.get("From", ""))
+    msg_id_hdr = str(msg.get("Message-ID") or "").strip()
+    date_hdr = str(msg.get("Date") or "").strip()
+
+    email_received_iso = ""
+    email_received_display = ""
+    if date_hdr:
+        try:
+            dt = parsedate_to_datetime(date_hdr)
+            email_received_iso = dt.strftime("%Y-%m-%d")
+            email_received_display = dt.strftime("%d.%m.%Y %H:%M")
+        except Exception:
+            email_received_display = date_hdr[:25]
+
+    plain_parts = []
+    html_parts = []
+    pdf_attachments = []
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            ctype = (part.get_content_type() or "").lower()
+            fname = decode_mime_str(part.get_filename() or "")
+            if ctype == "application/pdf" or fname.lower().endswith(".pdf"):
+                pdf_bytes = part.get_payload(decode=True)
+                if pdf_bytes:
+                    pdf_attachments.append((fname or "Invitation.pdf", pdf_bytes))
+            elif ctype == "text/plain" and not fname:
+                b = part.get_payload(decode=True)
+                if b:
+                    ch = part.get_content_charset() or "utf-8"
+                    plain_parts.append(b.decode(ch, errors="replace"))
+            elif ctype == "text/html" and not fname:
+                b = part.get_payload(decode=True)
+                if b:
+                    ch = part.get_content_charset() or "utf-8"
+                    html_parts.append(b.decode(ch, errors="replace"))
+    else:
+        b = msg.get_payload(decode=True)
+        if b:
+            ch = msg.get_content_charset() or "utf-8"
+            plain_parts.append(b.decode(ch, errors="replace"))
+
+    body_text = "\n".join(plain_parts).strip()
+    if not body_text and html_parts:
+        body_text = html_to_visible_text("\n".join(html_parts))
+
+    combined_check = f"{subject}\n{sender}\n{body_text}".lower()
+    is_invitation_mail = (
+        "ходатайств" in combined_check
+        or "приглашен" in combined_check
+        or "invitation@pondera.ru" in combined_check
+        or "srv_pvm_invitation@mvd.ru" in combined_check
+    )
+    if not is_invitation_mail or not pdf_attachments:
+        return
+
+    for orig_fname, pdf_bytes in pdf_attachments:
+        extracted_text = extract_pdf_text_multi_strategy(pdf_bytes)
+        parsed_fields = parse_mvd_invitation_fields(extracted_text, subject, body_text)
+        items.append(
+            {
+                "message_id": msg_id_hdr or fallback_id,
+                "subject": subject,
+                "sender": sender,
+                "email_received_iso": email_received_iso,
+                "email_received_display": email_received_display,
+                "original_filename": orig_fname,
+                "pdf_size_bytes": len(pdf_bytes),
+                "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+                "fields": parsed_fields,
+            }
+        )
+
+
+def try_pop3_fallback(email_addr: str, password: str, max_messages: int):
+    for pop_host in ("poppro.zoho.com", "pop.zoho.com"):
+        try:
+            pop = poplib.POP3_SSL(pop_host, 995, timeout=20)
+            pop.user(email_addr)
+            pop.pass_(password)
+            num_messages = len(pop.list()[1])
+            start_idx = max(1, num_messages - max_messages + 1)
+            items = []
+            scanned = 0
+            for i in range(num_messages, start_idx - 1, -1):
+                scanned += 1
+                resp, lines, octets = pop.retr(i)
+                raw_email = b"\r\n".join(lines)
+                process_raw_email_bytes(raw_email, f"pop3-{i}", items)
+            pop.quit()
+            return {
+                "success": True,
+                "connected_host": f"{pop_host}:995 (POP3)",
+                "scanned_emails": scanned,
+                "found_invitations": len(items),
+                "items": items,
+            }
+        except Exception:
+            pass
+    return None
 
 
 def sync_imap_invitations(payload: dict) -> dict:
@@ -560,7 +667,17 @@ def sync_imap_invitations(payload: dict) -> dict:
 
     conn, connected_host, err = connect_zoho_imap(imap_host, imap_port, email_addr, password)
     if not conn:
-        return {"success": False, "message": f"Zoho IMAP bağlantısı kurulamadı ({err})"}
+        pop_res = try_pop3_fallback(email_addr, password, max_messages)
+        if pop_res:
+            return pop_res
+        return {
+            "success": False,
+            "message": (
+                f"Zoho IMAP erişimi henüz açık değil ({err}). "
+                "Zoho Mail (mail.zoho.com) → Sağ üst Ayarlar (⚙️) → Mail Accounts → IMAP sekmesinden "
+                "'IMAP Access' kutucuğunu işaretleyerek IMAP erişimini aktif edin."
+            ),
+        }
 
     items = []
     scanned_count = 0
@@ -582,82 +699,11 @@ def sync_imap_invitations(payload: dict) -> dict:
                         break
                 if not raw_email:
                     continue
-
-                msg = email.message_from_bytes(raw_email)
-                subject = decode_mime_str(msg.get("Subject", ""))
-                sender = decode_mime_str(msg.get("From", ""))
-                msg_id_hdr = str(msg.get("Message-ID") or "").strip()
-                date_hdr = str(msg.get("Date") or "").strip()
-
-                email_received_iso = ""
-                email_received_display = ""
-                if date_hdr:
-                    try:
-                        dt = parsedate_to_datetime(date_hdr)
-                        email_received_iso = dt.strftime("%Y-%m-%d")
-                        email_received_display = dt.strftime("%d.%m.%Y %H:%M")
-                    except Exception:
-                        email_received_display = date_hdr[:25]
-
-                # Extract text body and check if this email is an MVD invitation email
-                plain_parts = []
-                html_parts = []
-                pdf_attachments = []
-
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        ctype = (part.get_content_type() or "").lower()
-                        fname = decode_mime_str(part.get_filename() or "")
-                        if ctype == "application/pdf" or fname.lower().endswith(".pdf"):
-                            pdf_bytes = part.get_payload(decode=True)
-                            if pdf_bytes:
-                                pdf_attachments.append((fname or "Invitation.pdf", pdf_bytes))
-                        elif ctype == "text/plain" and not fname:
-                            b = part.get_payload(decode=True)
-                            if b:
-                                ch = part.get_content_charset() or "utf-8"
-                                plain_parts.append(b.decode(ch, errors="replace"))
-                        elif ctype == "text/html" and not fname:
-                            b = part.get_payload(decode=True)
-                            if b:
-                                ch = part.get_content_charset() or "utf-8"
-                                html_parts.append(b.decode(ch, errors="replace"))
-                else:
-                    b = msg.get_payload(decode=True)
-                    if b:
-                        ch = msg.get_content_charset() or "utf-8"
-                        plain_parts.append(b.decode(ch, errors="replace"))
-
-                body_text = "\n".join(plain_parts).strip()
-                if not body_text and html_parts:
-                    body_text = html_to_visible_text("\n".join(html_parts))
-
-                combined_check = f"{subject}\n{sender}\n{body_text}".lower()
-                is_invitation_mail = (
-                    "ходатайств" in combined_check
-                    or "приглашен" in combined_check
-                    or "invitation@pondera.ru" in combined_check
-                    or "srv_pvm_invitation@mvd.ru" in combined_check
+                process_raw_email_bytes(
+                    raw_email,
+                    f"imap-{mid.decode('utf-8', errors='ignore')}",
+                    items,
                 )
-                if not is_invitation_mail or not pdf_attachments:
-                    continue
-
-                for orig_fname, pdf_bytes in pdf_attachments:
-                    extracted_text = extract_pdf_text_multi_strategy(pdf_bytes)
-                    parsed_fields = parse_mvd_invitation_fields(extracted_text, subject, body_text)
-                    items.append(
-                        {
-                            "message_id": msg_id_hdr or f"imap-{mid.decode('utf-8', errors='ignore')}",
-                            "subject": subject,
-                            "sender": sender,
-                            "email_received_iso": email_received_iso,
-                            "email_received_display": email_received_display,
-                            "original_filename": orig_fname,
-                            "pdf_size_bytes": len(pdf_bytes),
-                            "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
-                            "fields": parsed_fields,
-                        }
-                    )
     finally:
         try:
             conn.logout()
@@ -707,3 +753,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
