@@ -247,7 +247,7 @@ export default function PonderaTicketFormModal({
                 : '➕ Yeni Manuel Bilet Ekle (Pondera 29 Sütun eBA Formatı)'}
             </h3>
             <p className="text-[11px] text-slate-500">
-              35.000+ kişilik personel havuzundan (Mevcut • Bekleniyor • Sevke Hazır • Çıkışlı) sicil arayıp bilgileri otomatik doldurabilirsiniz
+              Tüm personel havuzundan (Mevcut • Bekleniyor • Sevke Hazır • Çıkışlı) sicil arayıp bilgileri otomatik doldurabilirsiniz
             </p>
           </div>
           <button
@@ -260,10 +260,10 @@ export default function PonderaTicketFormModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[82vh] overflow-y-auto text-xs">
-          {/* 35K EMPLOYEE QUICK AUTO-FILL BAR */}
+          {/* ALL EMPLOYEES QUICK AUTO-FILL BAR */}
           <div className="p-3 rounded-2xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60 space-y-2">
             <label className="block text-[11px] font-bold text-teal-900 dark:text-teal-200">
-              🔎 35.000+ Personel Havuzundan Hızlı Eşleştir (Sicil No, Ad Soyad, Kiril Ad, Pasaport):
+              🔎 Tüm Personel Listesinden Hızlı Eşleştir (Sicil No, Ad Soyad, Kiril Ad, Pasaport):
             </label>
             <div className="relative">
               <Search className="w-4 h-4 text-teal-600 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -275,7 +275,7 @@ export default function PonderaTicketFormModal({
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 text-xs text-slate-900 dark:text-white"
               />
             </div>
-            {searching && <div className="text-[11px] text-teal-600">35K havuz taranıyor...</div>}
+            {searching && <div className="text-[11px] text-teal-600">Tüm personel listesi taranıyor...</div>}
             {empResults.length > 0 && (
               <div className="max-h-44 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
                 {empResults.map((emp) => (

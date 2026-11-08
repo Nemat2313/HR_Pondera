@@ -113,7 +113,7 @@ export async function POST(request: Request) {
       const res = rematchAllInvitationsInDb(db);
       return NextResponse.json({
         success: true,
-        message: `${res.total} davetiye 35.000 kişilik personel listesinde yeniden tarandı (${res.matched} sicil eşleşti).`,
+        message: `${res.total} davetiye tüm personel listesinde yeniden tarandı (${res.matched} sicil eşleşti).`,
         ...res,
       });
     }
@@ -154,3 +154,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

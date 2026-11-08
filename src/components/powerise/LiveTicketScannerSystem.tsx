@@ -1385,7 +1385,7 @@ export default function LiveTicketScannerSystem({
                 Uçak, RZD Tren veya Otobüs Biletlerini Buraya Sürükleyin (PDF, JPG, PNG)
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
-                Okutulan yolcular 35.000+ kişilik tam Pondera listesinde (Mevcut, Beklenen Yeni Giriş ve Geri Dönen Eski Siciller dahil) otomatik eşleştirilir.
+                Okutulan yolcular tüm personel listesinde (Mevcut, Beklenen Yeni Giriş ve Geri Dönen Eski Siciller dahil) otomatik eşleştirilir.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
@@ -2177,7 +2177,7 @@ export default function LiveTicketScannerSystem({
                                   setLinkerModal({
                                     mode: 'relink_saved_ticket',
                                     ticketId: t.id,
-                                    title: `${t.passenger_name} — 35K Personel / Misafir Bağlantısı`,
+                                    title: `${t.passenger_name} — Tüm Personel / Misafir Bağlantısı`,
                                     candidates: [],
                                   })
                                 }

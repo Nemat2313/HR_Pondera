@@ -508,7 +508,7 @@ export function matchInvitationAgainstPersonnel(
       ? `Refakatçi Aile Üyesi / Çocuk davetiyesi (СОПРОВОЖДАЮЩИЙ ЧЛЕН СЕМЬИ — Doğum: ${invDob || '—'}) — Personel siciline manuel bağlanabilir`
       : topCandidates.length > 0
       ? `Pasaport sonu *${last3} olan ${topCandidates.length} kayıt bulundu ancak Doğum Tarihi (${invDob || '—'}) / Veriliş (${invPassIssue || '—'}) farklı — Yeni aday henüz eBA'ya girilmemiş olabilir`
-      : `35.000 kişilik eBA listesinde *${last3} / ${invDob || '—'} kriterine uyan kayıt henüz açılmamış (Yeni Aday)`,
+      : `Tüm personel listesinde *${last3} / ${invDob || '—'} kriterine uyan kayıt henüz açılmamış (Yeni Aday)`,
     matched: null,
     candidates: topCandidates,
   };
@@ -950,7 +950,7 @@ export function manuallyLinkInvitationToEmployee(
     )
     .get(String(sicilNo).trim()) as any;
   if (!emp) {
-    return { success: false, message: `Sicil No (${sicilNo}) 35.000 kişilik personel listesinde bulunamadı.` };
+    return { success: false, message: `Sicil No (${sicilNo}) tüm personel listesinde bulunamadı.` };
   }
 
   const newFilename = buildInvitationPdfFilename(
@@ -1076,7 +1076,7 @@ export async function sendDailyInvitationsSummaryNotification(options?: {
     badgeText: 'PONDERA İK • MVD ELEKTRONİK DAVETİYE (ПРИГЛАШЕНИЕ) TAKİP SİSTEMİ',
     title: `📩 Gelen MVD Elektronik Giriş Davetiyeleri Özeti (${rows.length} Adet)`,
     greeting: 'Sayın İK Yönetimi,',
-    intro: `Zoho Mail (ikbildirim@pondera.ru) posta kutusuna ulaşan MVD elektronik vize giriş davetiyeleri (PDF) otomatik olarak taranmış, 35.000 kişilik personel veritabanımızla karşılaştırılmış ve sunucu arşivine kaydedilmiştir. Toplam ${rows.length} davetiyenin ${matchedCount} adedi mevcut/beklenen personel sicili ile eşleşmiş, ${unmatchedCount} adedi ise yeni aday olarak kaydedilmiştir:`,
+    intro: `Zoho Mail (ikbildirim@pondera.ru) posta kutusuna ulaşan MVD elektronik vize giriş davetiyeleri (PDF) otomatik olarak taranmış, tüm personel veritabanımızla karşılaştırılmış ve sunucu arşivine kaydedilmiştir. Toplam ${rows.length} davetiyenin ${matchedCount} adedi mevcut/beklenen personel sicili ile eşleşmiş, ${unmatchedCount} adedi ise yeni aday olarak kaydedilmiştir:`,
     highlights,
     closingNote:
       'Tüm davetiye PDF dosyalarını {Sicil_No}_{Ad_Soyad}.pdf formatında indirmek ve detayları incelemek için https://hr.pondera.network adresindeki "Davetiye Takip" sayfasını ziyaret edebilirsiniz.',

@@ -1258,8 +1258,8 @@ export function matchPassengersAgainstPondera(
           }
           const baseReason =
             cyrScore > latinScore
-              ? 'Kiril İsim Eşleşmesi (35K Havuz)'
-              : 'İsim Eşleşmesi (35K Personel Havuzu)';
+              ? 'Kiril İsim Eşleşmesi (Tüm Personel)'
+              : 'İsim Eşleşmesi (Tüm Personel)';
           reason = `${baseReason}${statusLabelSuffix}`;
         }
       }
@@ -1350,7 +1350,7 @@ export function matchPassengersAgainstPondera(
       confidence: best ? best.confidence : 0,
       matchReason: best
         ? `Düşük benzerlik (%${best.confidence}) — Misafir (Guest) olarak işaretlendi`
-        : '35K Personel listesinde bulunamadı — Yeni Misafir (Guest) kaydı açılacak',
+        : 'Tüm personel listesinde bulunamadı — Yeni Misafir (Guest) kaydı açılacak',
       matchedPerson: null,
       candidates: topCandidates,
     };

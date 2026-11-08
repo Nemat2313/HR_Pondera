@@ -837,10 +837,10 @@ export function QuotaWorkerIrsModal({
             )}
           </div>
 
-          {/* Step 2: Optional Quick Search from 35,000+ Pondera Personnel */}
+          {/* Step 2: Optional Quick Search from All Pondera Personnel */}
           <div className="relative">
             <label className="block text-xs text-slate-600 dark:text-slate-300 mb-1">
-              Pondera 35.000+ Personel / Beklenen Giriş Listesinden Hızlı Ara (Opsiyonel — Sicili olmayan yeni adayları doğrudan aşağıya yazabilirsiniz)
+              Pondera Tüm Personel / Beklenen Giriş Listesinden Hızlı Ara (Opsiyonel — Sicili olmayan yeni adayları doğrudan aşağıya yazabilirsiniz)
             </label>
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />

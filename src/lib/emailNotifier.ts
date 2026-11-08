@@ -2124,9 +2124,9 @@ export const DEFAULT_RELEASE_SUMMARY_DRAFT: ReleaseSummaryDraft = {
         'Henüz yolculuğu gerçekleşmemiş uçak, tren ve otobüs biletlerinin tamamı karşılama panosuna dahil edildi. Her şantiyenin İdari İşler ekibi kendi şantiyesini veya takip ettiği güzergahı seçerek havalimanı/gar formatındaki karşılama ekranını ofis televizyonunda canlı izleyebilmektedir.',
     },
     {
-      title: '4. Bilet Fiyat Analitiği ve 35 Bin Kişilik Kadrodan Personel Eşleştirmesi',
+      title: '4. Bilet Fiyat Analitiği ve Tüm Personel Listesinden Eşleştirme',
       description:
-        'En çok bilet alınan güzergahlardaki aylık fiyat değişimlerini, ulaşım türü maliyetlerini ve şantiye harcamalarını gösteren "Bilet Fiyat & Güzergah Analitiği" raporu eklendi. Bilet okutulduğunda tüm 35 bin kişilik kadro havuzundan arama yapılmakta; yeni işe başlayacak (Bekleniyor) adaylar "Misafir" olmadan ve geri dönen eski çalışanlar doğrudan kendi sicilleriyle eşleşmektedir.',
+        'En çok bilet alınan güzergahlardaki aylık fiyat değişimlerini, ulaşım türü maliyetlerini ve şantiye harcamalarını gösteren "Bilet Fiyat & Güzergah Analitiği" raporu eklendi. Bilet okutulduğunda tüm personel havuzundan arama yapılmakta; yeni işe başlayacak (Bekleniyor) adaylar "Misafir" olmadan ve geri dönen eski çalışanlar doğrudan kendi sicilleriyle eşleşmektedir.',
     },
     {
       title: '5. Gosuslugi VKS 2026 3. Çeyrek Arşivi ve 4. Çeyrek Dönem Hazırlığı',
