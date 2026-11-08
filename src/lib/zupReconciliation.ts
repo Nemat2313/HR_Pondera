@@ -718,7 +718,7 @@ export function computeZupVsRealReconciliation(db: any) {
     return gCache.__ponderaZupReconciliationCache.data;
   }
 
-  const zupRows = (
+  const allZupRows = (
     db.prepare('SELECT * FROM zup_official_personnel ORDER BY row_no ASC').all() as ZupOfficialRecord[]
   ).map((r) => ({
     ...r,
@@ -728,6 +728,19 @@ export function computeZupVsRealReconciliation(db: any) {
       r.citizenship_tr ||
       r.citizenship_ru,
   }));
+
+  // Keep only active employees for the 1C ZUP vs eBA Real active payroll reconciliation,
+  // while zup_official_personnel retains pre-hire candidates & exited rows for Invitation matching
+  const hasStateColumn = allZupRows.some((r) => Boolean(String(r.work_state || '').trim()));
+  const hasHireColumn = allZupRows.some((r) => Boolean(String(r.hire_date || '').trim()));
+  const zupRows = hasStateColumn
+    ? allZupRows.filter((r) => {
+        const ws = String(r.work_state || '').trim().toLowerCase();
+        return ws !== '' && !ws.includes('увол');
+      })
+    : hasHireColumn
+      ? allZupRows.filter((r) => Boolean(String(r.hire_date || '').trim()))
+      : allZupRows;
 
   const ebaRows = db
     .prepare(
@@ -1431,6 +1444,7 @@ export function computeZupVsRealReconciliation(db: any) {
       hasZupPassportColumn,
       hasZupInnColumn,
       hasZupDepartmentColumn,
+      zupTotalRecordsInDb: allZupRows.length,
     },
     summary: {
       realActiveTotal,

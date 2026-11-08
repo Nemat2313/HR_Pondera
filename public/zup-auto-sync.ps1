@@ -43,17 +43,24 @@ if ($LASTEXITCODE -eq 0 -and $resp -match '"uploadedCount"') {
 
 Set-Content -Path $ScriptPath -Value $WorkerScript -Encoding UTF8
 
-# Zamanlanmis Gorev Kaydi (Her 10 dakikada bir C:\1C_ZUP_Auto klasorunu kontrol eder)
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
-$Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 10) -RepetitionDuration (New-TimeSpan -Days 3650)
-Register-ScheduledTask -TaskName "Pondera_1C_ZUP_AutoSync" -Action $Action -Trigger $Trigger -Description "1C ZUP raporlarini C:\1C_ZUP_Auto klasorunden hr.pondera.network sistemine otomatik aktarir" -Force | Out-Null
+# Zamanlanmis Gorev Kaydi (Her 5 dakikada bir C:\1C_ZUP_Auto klasorunu kontrol eder)
+try {
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
+    $Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+    Register-ScheduledTask -TaskName "Pondera_1C_ZUP_AutoSync" -Action $Action -Trigger $Trigger -Settings $Settings -Description "1C ZUP raporlarini C:\1C_ZUP_Auto klasorunden hr.pondera.network sistemine otomatik aktarir" -Force -ErrorAction Stop | Out-Null
+} catch {}
+
+# Ayrica oturum acikken her 60 saniyede bir kontrol eden arka plan izleyicisini baslat
+$LoopCmd = "while (`$true) { try { & '$ScriptPath' *> `$null } catch {}; Start-Sleep -Seconds 60 }"
+Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command `"$LoopCmd`"" -WindowStyle Hidden
 
 Write-Host "=================================================================" -ForegroundColor Green
-Write-Host " KURULUM TAMAMLANDI!" -ForegroundColor Green
+Write-Host " KURULUM / SENKRONIZASYON TAMAMLANDI!" -ForegroundColor Green
 Write-Host " Klasor: C:\1C_ZUP_Auto" -ForegroundColor Cyan
-Write-Host " Gorev : Pondera_1C_ZUP_AutoSync (Her 10 dk otomatik kontrol)" -ForegroundColor Cyan
+Write-Host " Gorev : Pondera_1C_ZUP_AutoSync (Otomatik arka plan senkronizasyonu aktif)" -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Green
 
-# Hemen ilk kontrolu calistir
+# Hemen simdi kontrolu calistir ve yukle
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath
 

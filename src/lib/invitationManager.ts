@@ -553,12 +553,12 @@ export function matchInvitationAgainstPersonnel(
       }
 
       if (score >= 45) {
-        const sicilKey = String(z.norm_sicil || z.tabel_no || '').trim();
+        const sicilKey = String(z.norm_sicil || z.tabel_no || z.fio_kiril || '').trim();
         const existingCand = scoredMap.get(sicilKey);
         const fullPass = pSerie && !pNumRaw.startsWith(pSerie) ? `${pSerie} ${pNumRaw}` : pNumRaw;
         if (!existingCand || score > existingCand.score) {
           scoredMap.set(sicilKey, {
-            sicil_no: sicilKey,
+            sicil_no: String(z.norm_sicil || z.tabel_no || 'ADAY-1C').trim(),
             ad_soyad:
               existingCand?.ad_soyad ||
               transliterateCyrillicToLatin(String(z.fio_kiril || '').replace(/\b\d{5,7}\b/g, '')),
@@ -606,7 +606,9 @@ export function matchInvitationAgainstPersonnel(
       (rs) =>
         rs.startsWith('Doğum Tarihi (') ||
         rs.startsWith('Pasaport Veriliş (') ||
-        rs.startsWith('Doğum Yeri (')
+        rs.startsWith('1C ZUP Pasaport Veriliş (') ||
+        rs.startsWith('Doğum Yeri (') ||
+        rs.startsWith('1C ZUP Veren Makam (')
     );
     if (hasStrongSecondField) {
       return {
