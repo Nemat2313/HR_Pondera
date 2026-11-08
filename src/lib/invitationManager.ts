@@ -323,6 +323,7 @@ export function matchInvitationAgainstPersonnel(
     birth_place_ru?: string;
     nationality_ru?: string;
     gender_ru?: string;
+    purpose_of_entry?: string;
   },
   dbInstance?: any
 ): {
@@ -497,12 +498,17 @@ export function matchInvitationAgainstPersonnel(
     }
   }
 
+  const isFamilyMember = String(fields.purpose_of_entry || '')
+    .toUpperCase()
+    .includes('ЧЛЕН СЕМЬИ');
+
   return {
     confidence: 'UNMATCHED',
-    reason:
-      topCandidates.length > 0
-        ? `Pasaport sonu *${last3} olan ${topCandidates.length} kayıt bulundu ancak Doğum Tarihi (${invDob || '—'}) / Veriliş (${invPassIssue || '—'}) farklı — Yeni aday henüz eBA'ya girilmemiş olabilir`
-        : `35.000 kişilik eBA listesinde *${last3} / ${invDob || '—'} kriterine uyan kayıt henüz açılmamış (Yeni Aday)`,
+    reason: isFamilyMember
+      ? `Refakatçi Aile Üyesi / Çocuk davetiyesi (СОПРОВОЖДАЮЩИЙ ЧЛЕН СЕМЬИ — Doğum: ${invDob || '—'}) — Personel siciline manuel bağlanabilir`
+      : topCandidates.length > 0
+      ? `Pasaport sonu *${last3} olan ${topCandidates.length} kayıt bulundu ancak Doğum Tarihi (${invDob || '—'}) / Veriliş (${invPassIssue || '—'}) farklı — Yeni aday henüz eBA'ya girilmemiş olabilir`
+      : `35.000 kişilik eBA listesinde *${last3} / ${invDob || '—'} kriterine uyan kayıt henüz açılmamış (Yeni Aday)`,
     matched: null,
     candidates: topCandidates,
   };
@@ -582,6 +588,7 @@ export function upsertParsedInvitationToDb(
       birth_place_ru: f.birth_place_ru,
       nationality_ru: natRu,
       gender_ru: f.gender_ru,
+      purpose_of_entry: f.purpose_of_entry,
     },
     db
   );

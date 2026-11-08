@@ -328,14 +328,14 @@ def parse_mvd_invitation_fields(raw_text: str, email_subject: str = "", email_bo
     # 1. Petition No (Ходатайство, e.g. 2Y8860086) & Petition Date (e.g. 08.10.2026)
     petition_no = ""
     petition_date = ""
-    m_pet = re.search(
+    for m_pet in re.finditer(
         r"ходатайств[уао]\s+([0-9A-ZА-Я]{6,14})(?:\s+от\s+(\d{2}\.\d{2}\.\d{4}))?",
-        f"{email_subject}\n{email_body}",
+        f"{email_body}\n{email_subject}",
         re.IGNORECASE,
-    )
-    if m_pet:
-        petition_no = m_pet.group(1).strip().upper()
-        if m_pet.group(2):
+    ):
+        if not petition_no:
+            petition_no = m_pet.group(1).strip().upper()
+        if m_pet.group(2) and not petition_date:
             petition_date = m_pet.group(2).strip()
 
     # 2. Invitation Number (Номер приглашения, e.g. 7726002Y8860086)
@@ -422,67 +422,38 @@ def parse_mvd_invitation_fields(raw_text: str, email_subject: str = "", email_bo
         if m_l3:
             passport_last3 = m_l3.group(1)
 
-    # 8. All dates in the document to accurately map passport_issue_date, entry_from, stay_until
-    # Standard order of dates in MVD Electronic Invitation:
+    # 8. All unique dates in the document in positional order:
     #   [0] Date of birth (e.g. 01.01.2000)
     #   [1] Passport Date of issue (e.g. 12.10.2020)
     #   [2] Entry from (e.g. 27.10.2026)
     #   [3] Stay until (e.g. 24.01.2027)
     all_pdf_dates = re.findall(r"\b(\d{2}\.\d{2}\.(?:19\d{2}|20\d{2}))\b", norm_text)
-    if not birth_date and len(all_pdf_dates) >= 1:
-        birth_date = all_pdf_dates[0]
+    unique_dates = list(dict.fromkeys(all_pdf_dates))
+    if not birth_date and len(unique_dates) >= 1:
+        birth_date = unique_dates[0]
 
-    passport_issue_date = ""
-    entry_from = ""
-    stay_until = ""
+    remaining_dates = [d for d in unique_dates if d != birth_date]
+    passport_issue_date = remaining_dates[0] if len(remaining_dates) >= 1 else ""
+    entry_from = remaining_dates[1] if len(remaining_dates) >= 2 else ""
+    stay_until = remaining_dates[2] if len(remaining_dates) >= 3 else ""
 
-    # Try explicit label match first
-    m_pissue = re.search(
-        r"(?:Дата\s+выдачи|Date\s+of\s+issue)[\s\S]{0,60}?\b(\d{2}\.\d{2}\.(?:19\d{2}|20\d{2}))\b",
-        norm_text,
-        re.IGNORECASE,
-    )
-    if m_pissue:
-        passport_issue_date = m_pissue.group(1)
-
-    m_entry = re.search(
-        r"(?:Въезд\s+с|Entry\s+from)[\s\S]{0,60}?\b(\d{2}\.\d{2}\.20\d{2})\b",
-        norm_text,
-        re.IGNORECASE,
-    )
-    if m_entry:
-        entry_from = m_entry.group(1)
-
-    m_until = re.search(
-        r"(?:Пребывание\s+по|Stay\s+until)[\s\S]{0,60}?\b(\d{2}\.\d{2}\.20\d{2})\b",
-        norm_text,
-        re.IGNORECASE,
-    )
-    if m_until:
-        stay_until = m_until.group(1)
-
-    # Fallback by positional order of dates in MVD invitation table
-    remaining_dates = [d for d in all_pdf_dates if d != birth_date]
-    if not passport_issue_date and len(remaining_dates) >= 1:
-        passport_issue_date = remaining_dates[0]
-    if not entry_from and len(remaining_dates) >= 2:
-        entry_from = remaining_dates[1]
-    if not stay_until and len(remaining_dates) >= 3:
-        stay_until = remaining_dates[2]
-
-    # 9. Duration days (На срок (дней), e.g. 90)
+    # 9. Duration days (На срок (дней), e.g. 90 or 641) - standalone integer not adjacent to dots
     duration_days = ""
-    m_dur = re.search(
-        r"(?:Duration\s+of\s+stay\s*\(days\)|На\s+срок\s*\(дней\))[\s\S]{0,50}?\b(\d{1,3})\b",
-        norm_text,
-        re.IGNORECASE,
-    )
-    if m_dur:
-        duration_days = m_dur.group(1)
-    elif stay_until:
-        m_after_until = re.search(re.escape(stay_until) + r"[\s\S]{0,60}?\b(30|60|90|180|365)\b", norm_text)
+    if stay_until:
+        m_after_until = re.search(
+            re.escape(stay_until) + r"[\s\S]{0,120}?(?<![.\d-])(\d{1,4})(?![.\d-])",
+            norm_text,
+        )
         if m_after_until:
             duration_days = m_after_until.group(1)
+    if not duration_days:
+        m_dur = re.search(
+            r"(?:\(days[)f]?|\(дней[)f]?)[\s\S]{0,60}?(?<![.\d-])(\d{1,4})(?![.\d-])",
+            norm_text,
+            re.IGNORECASE,
+        )
+        if m_dur:
+            duration_days = m_dur.group(1)
 
     # 10. Visa Category & Multiplicity
     visa_category = ""
@@ -496,18 +467,34 @@ def parse_mvd_invitation_fields(raw_text: str, email_subject: str = "", email_bo
     elif "ДВУКРАТНАЯ" in norm_text.upper():
         visa_multiplicity = "ДВУКРАТНАЯ [Д]"
 
-    # 11. Place of visa issuance (Место получения визы: ИНДИЯ, НЬЮ-ДЕЛИ)
+    # 11. Place of visa issuance (Место получения визы: ИНДИЯ, НЬЮ-ДЕЛИ / ТУРЦИЯ, СТАМБУЛ)
     visa_issuance_place = ""
     m_vplace = re.search(
-        r"(?:Place\s+of\s+visa\s+issuance|Место\s+получения\s+визы)\s*([А-ЯЁA-Z\s,\-]+?)(?=\s+(?:Цель\s+поездки|Purpose\s+of\s+entry|ТРУДОВАЯ)\b)",
+        r"(?:Place\s+of\s+visa\s+issuance|Место\s+получения\s+визы)([\s\S]{1,120}?)(?=\s*(?:Цель\s+поездки|Purpose\s+of\s+entry)\b)",
         norm_text,
         re.IGNORECASE,
     )
     if m_vplace:
-        visa_issuance_place = re.sub(r"\s+", " ", m_vplace.group(1)).strip(" ,")
+        vp = m_vplace.group(1)
+        vp = re.sub(r"(?:Place\s+of\s+visa\s+issuance|Место\s+получения\s+визы)", ",", vp, flags=re.IGNORECASE)
+        vp_parts = [re.sub(r"\s+", " ", p).strip(" ,-") for p in re.split(r"[\n,]+", vp)]
+        vp_parts = [p for p in vp_parts if p and not re.search(r"[a-zA-Z]", p)]
+        visa_issuance_place = ", ".join(dict.fromkeys(vp_parts))
 
-    # 12. Purpose of entry (Цель поездки: ТРУДОВАЯ ДЕЯТЕЛЬНОСТЬ)
-    purpose_of_entry = "ТРУДОВАЯ ДЕЯТЕЛЬНОСТЬ" if "ТРУДОВАЯ ДЕЯТЕЛЬНОСТЬ" in norm_text.upper() else ""
+    # 12. Purpose of entry (Цель поездки: ТРУДОВАЯ ДЕЯТЕЛЬНОСТЬ / СОПРОВОЖДАЮЩИЙ ЧЛЕН СЕМЬИ)
+    purpose_of_entry = ""
+    if "СОПРОВОЖДАЮЩИЙ ЧЛЕН СЕМЬИ" in norm_text.upper():
+        purpose_of_entry = "СОПРОВОЖДАЮЩИЙ ЧЛЕН СЕМЬИ"
+    elif "ТРУДОВАЯ ДЕЯТЕЛЬНОСТЬ" in norm_text.upper():
+        purpose_of_entry = "ТРУДОВАЯ ДЕЯТЕЛЬНОСТЬ"
+    else:
+        m_purp = re.search(
+            r"(?:Purpose\s+of\s+entry|Цель\s+поездки)\s*([А-ЯЁ\s\-]+?)(?=\s*(?:Приглашающая|Invited\s+by)\b)",
+            norm_text,
+            re.IGNORECASE,
+        )
+        if m_purp:
+            purpose_of_entry = re.sub(r"\s+", " ", m_purp.group(1)).strip()
 
     return {
         "invitation_no": invitation_no,
