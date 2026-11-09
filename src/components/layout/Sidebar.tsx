@@ -132,6 +132,20 @@ export default function Sidebar({
           badge: totalActive ? `${totalActive.toLocaleString('tr-TR')}` : undefined,
           badgeColor: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
         },
+        {
+          id: 'invitations',
+          label: t('nav_invitations'),
+          icon: Mail,
+          badge: lang === 'ru' ? 'МВД • Live' : 'MVD • Canlı',
+          badgeColor: 'bg-sky-50 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border border-sky-200/50 dark:border-sky-700/50',
+        },
+        {
+          id: 'quotas',
+          label: t('nav_quotas'),
+          icon: Briefcase,
+          badge: lang === 'ru' ? 'ИРС • Live' : 'ИРС • Canlı',
+          badgeColor: 'bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-700/50',
+        },
         ...(user?.role !== 'viewer'
           ? [
               {
@@ -172,29 +186,8 @@ export default function Sidebar({
       ],
     },
     {
-      id: 'planned',
-      title: lang === 'ru' ? '2. ПЛАНИРУЕМЫЕ ЗАДАЧИ' : '2. PLANLANAN İŞLER (Zahid Bey)',
-      tag: lang === 'ru' ? 'В плане' : 'Planlandı',
-      items: [
-        {
-          id: 'quotas',
-          label: t('nav_quotas'),
-          icon: Briefcase,
-          badge: lang === 'ru' ? 'ИРС • Live' : 'ИРС • Canlı',
-          badgeColor: 'bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-700/50',
-        },
-        {
-          id: 'invitations',
-          label: t('nav_invitations'),
-          icon: Mail,
-          badge: lang === 'ru' ? 'МВД • Live' : 'MVD • Canlı',
-          badgeColor: 'bg-sky-50 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border border-sky-200/50 dark:border-sky-700/50',
-        },
-      ],
-    },
-    {
       id: 'powerise',
-      title: lang === 'ru' ? '3. МОДУЛИ POWERISE' : '3. POWERISE SATILIK MODÜLLER',
+      title: lang === 'ru' ? '2. МОДУЛИ POWERISE' : '2. POWERISE SATILIK MODÜLLER',
       tag: lang === 'ru' ? 'Витрина' : 'Vitrin',
       items: [
         {

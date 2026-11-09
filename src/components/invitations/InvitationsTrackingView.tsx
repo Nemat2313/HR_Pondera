@@ -23,8 +23,12 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   FileSpreadsheet,
   Filter,
+  Archive,
+  CheckSquare,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -118,6 +122,12 @@ export default function InvitationsTrackingView() {
   const [nationalityFilter, setNationalityFilter] = useState<string>('ALL');
   const [purposeFilter, setPurposeFilter] = useState<'ALL' | 'WORK' | 'FAMILY'>('ALL');
   const [mailDateFilter, setMailDateFilter] = useState<string>('ALL');
+
+  // Pagination & Bulk Selection state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [selectedNos, setSelectedNos] = useState<string[]>([]);
+  const [downloadingBulkPdf, setDownloadingBulkPdf] = useState<boolean>(false);
 
   const [banner, setBanner] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(
     null
@@ -364,6 +374,104 @@ export default function InvitationsTrackingView() {
     purposeFilter !== 'ALL' ||
     mailDateFilter !== 'ALL' ||
     Boolean(search.trim());
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterMode, nationalityFilter, purposeFilter, mailDateFilter, search, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedRows = useMemo(() => {
+    const startIdx = (safeCurrentPage - 1) * pageSize;
+    return filtered.slice(startIdx, startIdx + pageSize);
+  }, [filtered, safeCurrentPage, pageSize]);
+
+  const selectedSet = useMemo(() => new Set(selectedNos), [selectedNos]);
+  const allCurrentPageSelected =
+    paginatedRows.length > 0 && paginatedRows.every((r) => selectedSet.has(r.invitation_no));
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((r) => selectedSet.has(r.invitation_no));
+
+  const toggleRowSelection = (invNo: string) => {
+    setSelectedNos((prev) =>
+      prev.includes(invNo) ? prev.filter((id) => id !== invNo) : [...prev, invNo]
+    );
+  };
+
+  const toggleCurrentPageSelection = () => {
+    const pageIds = paginatedRows.map((r) => r.invitation_no);
+    if (allCurrentPageSelected) {
+      const pageIdSet = new Set(pageIds);
+      setSelectedNos((prev) => prev.filter((id) => !pageIdSet.has(id)));
+    } else {
+      setSelectedNos((prev) => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
+  const handleBulkSelectMode = (mode: string) => {
+    if (mode === 'ALL_FILTERED') {
+      setSelectedNos(filtered.map((r) => r.invitation_no));
+    } else if (mode === 'CURRENT_PAGE') {
+      setSelectedNos(paginatedRows.map((r) => r.invitation_no));
+    } else if (mode === 'ONLY_MATCHED') {
+      setSelectedNos(filtered.filter((r) => Boolean(r.matched_sicil_no)).map((r) => r.invitation_no));
+    } else if (mode === 'ONLY_UNMATCHED') {
+      setSelectedNos(filtered.filter((r) => !r.matched_sicil_no).map((r) => r.invitation_no));
+    } else if (mode === 'CLEAR') {
+      setSelectedNos([]);
+    }
+  };
+
+  const handleBulkDownloadPdfs = async () => {
+    const targetNos =
+      selectedNos.length > 0
+        ? selectedNos
+        : filtered.map((r) => r.invitation_no);
+
+    if (targetNos.length === 0) return;
+
+    setDownloadingBulkPdf(true);
+    setBanner(null);
+    try {
+      const res = await fetch('/api/invitations/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invitation_nos: targetNos }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        setBanner({
+          type: 'error',
+          text: errJson?.message || 'PDF dosyaları indirilemedi.',
+        });
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `Pondera_MVD_Davetiyeler_${targetNos.length}_Adet_${dateStr}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setBanner({
+        type: 'success',
+        text: `${targetNos.length} adet davetiye PDF dosyası ZIP arşivi olarak indirildi.`,
+      });
+    } catch {
+      setBanner({
+        type: 'error',
+        text: 'Toplu PDF indirme sırasında bağlantı hatası oluştu.',
+      });
+    } finally {
+      setDownloadingBulkPdf(false);
+    }
+  };
 
   const handleExportExcel = () => {
     const exportData = filtered.map((item, idx) => ({
@@ -746,6 +854,63 @@ export default function InvitationsTrackingView() {
               />
             </div>
 
+            {/* Bulk Select Mode Dropdown */}
+            <div className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/50 text-xs">
+              <CheckSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) handleBulkSelectMode(e.target.value);
+                }}
+                className="bg-transparent text-xs text-indigo-900 dark:text-indigo-200 focus:outline-hidden cursor-pointer"
+              >
+                <option value="">
+                  {selectedNos.length > 0
+                    ? `Seçim Ayarı (${selectedNos.length} Seçili)`
+                    : 'Toplu Seçim Ayarı...'}
+                </option>
+                <option value="ALL_FILTERED">
+                  Tüm Filtrelenenleri Seç ({filtered.length})
+                </option>
+                <option value="CURRENT_PAGE">
+                  Bu Sayfadakileri Seç ({paginatedRows.length})
+                </option>
+                <option value="ONLY_MATCHED">
+                  Sadece Sicil Eşleşenleri Seç (
+                  {filtered.filter((r) => Boolean(r.matched_sicil_no)).length})
+                </option>
+                <option value="ONLY_UNMATCHED">
+                  Sadece Bekleyen Adayları Seç (
+                  {filtered.filter((r) => !r.matched_sicil_no).length})
+                </option>
+                {selectedNos.length > 0 && (
+                  <option value="CLEAR">Seçimi Temizle (0)</option>
+                )}
+              </select>
+            </div>
+
+            {/* Bulk PDF Download (.zip) Button */}
+            <button
+              type="button"
+              onClick={handleBulkDownloadPdfs}
+              disabled={downloadingBulkPdf || filtered.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition cursor-pointer shadow-2xs disabled:opacity-50"
+              title={
+                selectedNos.length > 0
+                  ? `Seçili ${selectedNos.length} davetiyenin PDF dosyasını ZIP olarak indir`
+                  : `Filtrelenen ${filtered.length} davetiyenin PDF dosyasını ZIP olarak indir`
+              }
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>
+                {downloadingBulkPdf
+                  ? 'ZIP Hazırlanıyor...'
+                  : selectedNos.length > 0
+                  ? `Seçili PDF İndir (${selectedNos.length})`
+                  : `Toplu PDF İndir (${filtered.length})`}
+              </span>
+            </button>
+
             {/* Excel Export Button */}
             <button
               type="button"
@@ -764,6 +929,19 @@ export default function InvitationsTrackingView() {
           <table className="w-full text-left border-collapse text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/90 text-[11px] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
               <tr>
+                <th className="py-2.5 px-3 w-9 text-center">
+                  <input
+                    type="checkbox"
+                    checked={allCurrentPageSelected}
+                    onChange={toggleCurrentPageSelection}
+                    title={
+                      allCurrentPageSelected
+                        ? 'Sayfadaki seçimi kaldır'
+                        : 'Sayfadaki tüm satırları seç'
+                    }
+                    className="w-3.5 h-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                  />
+                </th>
                 <th className="py-2.5 px-3 font-normal whitespace-nowrap">Mail Tarihi</th>
                 <th className="py-2.5 px-3 font-normal whitespace-nowrap">Davetiye & Başvuru (Ходатайство)</th>
                 <th className="py-2.5 px-3 font-normal">Eşleşen Personel (Tüm Personel)</th>
@@ -778,28 +956,41 @@ export default function InvitationsTrackingView() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
                     Davetiyeler yükleniyor...
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
                     Arama veya filtre kriterine uygun MVD davetiyesi bulunamadı.
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => {
+                paginatedRows.map((item) => {
                   const candidateCount = item.candidates?.length || 0;
                   const isFamily = String(item.purpose_of_entry || '')
                     .toUpperCase()
                     .includes('ЧЛЕН СЕМЬИ');
+                  const isChecked = selectedSet.has(item.invitation_no);
 
                   return (
                     <tr
                       key={item.invitation_no}
-                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors align-middle"
+                      className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors align-middle ${
+                        isChecked ? 'bg-sky-50/60 dark:bg-sky-950/30' : ''
+                      }`}
                     >
+                      {/* 0. Checkbox */}
+                      <td className="py-2 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleRowSelection(item.invitation_no)}
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                        />
+                      </td>
+
                       {/* 1. Separate Mail Date Column (max 2 lines) */}
                       <td className="py-2 px-3 whitespace-nowrap">
                         <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight">
@@ -1011,6 +1202,102 @@ export default function InvitationsTrackingView() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination & Selection Footer */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 text-xs text-slate-600 dark:text-slate-400">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>
+              Toplam <strong>{filtered.length}</strong> davetiyeden{' '}
+              <strong>
+                {filtered.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}–
+                {Math.min(safeCurrentPage * pageSize, filtered.length)}
+              </strong>{' '}
+              arası gösteriliyor
+            </span>
+            {selectedNos.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-200 border border-sky-200 dark:border-sky-800">
+                <strong>{selectedNos.length}</strong> satır seçili
+                {!allFilteredSelected && filtered.length > selectedNos.length && (
+                  <button
+                    type="button"
+                    onClick={() => handleBulkSelectMode('ALL_FILTERED')}
+                    className="underline ml-1 cursor-pointer font-semibold"
+                  >
+                    Tümünü Seç ({filtered.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedNos([])}
+                  className="text-rose-600 dark:text-rose-400 underline ml-1 cursor-pointer"
+                >
+                  Temizle
+                </button>
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Page Size Selector */}
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-500">Sayfa başı:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 cursor-pointer"
+              >
+                <option value={10}>10 Satır</option>
+                <option value={25}>25 Satır</option>
+                <option value={50}>50 Satır</option>
+                <option value={100}>100 Satır</option>
+              </select>
+            </div>
+
+            {/* Page Navigation Buttons */}
+            <div className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                disabled={safeCurrentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Önceki</span>
+              </button>
+
+              {Array.from({ length: Math.min(5, totalPages) }, (_, idx) => {
+                let pageNum = idx + 1;
+                if (totalPages > 5 && safeCurrentPage > 3) {
+                  pageNum = Math.min(safeCurrentPage - 2 + idx, totalPages - 4 + idx);
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-7 h-7 rounded-lg text-xs font-medium transition cursor-pointer ${
+                      pageNum === safeCurrentPage
+                        ? 'bg-sky-600 text-white shadow-2xs'
+                        : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                disabled={safeCurrentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+              >
+                <span>Sonraki</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

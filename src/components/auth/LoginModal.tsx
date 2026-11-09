@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  HardHat,
   LogIn,
   Lock,
   User,
@@ -11,11 +10,20 @@ import {
   EyeOff,
   ShieldCheck,
   Sparkles,
-  Users,
-  Cpu,
-  Globe2,
   ArrowRight,
   CheckCircle2,
+  Bot,
+  Mail,
+  Send,
+  Database,
+  Smartphone,
+  ScanText,
+  Plane,
+  BarChart3,
+  FileCheck2,
+  Cpu,
+  RefreshCw,
+  QrCode,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -26,6 +34,185 @@ interface LoginModalProps {
   onClose?: () => void;
 }
 
+interface ShowcaseFeature {
+  id: string;
+  badge: string;
+  titleTr: string;
+  titleRu: string;
+  shortTr: string;
+  shortRu: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accentBg: string;
+  accentText: string;
+  accentBorder: string;
+  pillClass: string;
+  stepsTr: [string, string, string];
+  stepsRu: [string, string, string];
+  stepIcons: [
+    React.ComponentType<{ className?: string }>,
+    React.ComponentType<{ className?: string }>,
+    React.ComponentType<{ className?: string }>
+  ];
+  metricLabelTr: string;
+  metricLabelRu: string;
+  metricValue: string;
+}
+
+const SHOWCASE_FEATURES: ShowcaseFeature[] = [
+  {
+    id: 'gosuslugi',
+    badge: 'RPA ROBOT',
+    titleTr: 'Gosuslugi & МВД Otomasyonu',
+    titleRu: 'Автоматизация Госуслуг и МВД',
+    shortTr: 'Otonom E-İmza & VKS Bildirim Robotu',
+    shortRu: 'Робот уведомлений ВКС и ЭЦП',
+    icon: Bot,
+    accentBg: 'bg-cyan-500',
+    accentText: 'text-cyan-700',
+    accentBorder: 'border-cyan-400',
+    pillClass: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+    stepsTr: ['Personel Verisi', 'E-İmza & RPA Robotu', 'МВД Resmi Onay'],
+    stepsRu: ['Данные кадра', 'ЭЦП и RPA Робот', 'Статус Госуслуг'],
+    stepIcons: [User, Cpu, FileCheck2],
+    metricLabelTr: 'Çoklu PC Otonom Ajan',
+    metricLabelRu: 'Автономные RPA-агенты',
+    metricValue: '7/24 RPA',
+  },
+  {
+    id: 'mail_bot',
+    badge: 'MAIL ROBOT',
+    titleTr: 'Mail Okuyan & Bildiren Robot',
+    titleRu: 'Почтовый Робот Приглашений',
+    shortTr: 'MVD Davetiye PDF Yakalama & Eşleştirme',
+    shortRu: 'Чтение писем МВД и сверка PDF',
+    icon: Mail,
+    accentBg: 'bg-sky-500',
+    accentText: 'text-sky-700',
+    accentBorder: 'border-sky-400',
+    pillClass: 'bg-sky-50 text-sky-800 border-sky-200',
+    stepsTr: ['Gelen E-Posta (PDF)', 'Pasaport & Sicil Eşleştir', 'Otomatik Arşiv & Mail'],
+    stepsRu: ['Входящая почта (PDF)', 'Поиск по паспорту', 'Архив и рассылка'],
+    stepIcons: [Mail, ScanText, CheckCircle2],
+    metricLabelTr: 'Canlı Posta Kutusu Takibi',
+    metricLabelRu: 'Мониторинг почты МВД',
+    metricValue: 'IMAP BOT',
+  },
+  {
+    id: 'telegram',
+    badge: 'TELEGRAM BOT',
+    titleTr: 'Telegram & Sabah Raporları',
+    titleRu: 'Telegram и Утренние Сводки',
+    shortTr: 'Her Sabah Otomatik Özet & Kritik Uyarılar',
+    shortRu: 'Авто-отчеты в Telegram и на почту',
+    icon: Send,
+    accentBg: 'bg-indigo-500',
+    accentText: 'text-indigo-700',
+    accentBorder: 'border-indigo-400',
+    pillClass: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+    stepsTr: ['Kota & Evrak Süreleri', 'Otonom Sabah Botu', 'Telegram & Mail Uyarı'],
+    stepsRu: ['Квоты и сроки', 'Утренний бот 09:00', 'Telegram и Почта'],
+    stepIcons: [FileCheck2, Bot, Send],
+    metricLabelTr: 'Anlık Grup & Yönetici Bildirimi',
+    metricLabelRu: 'Мгновенные оповещения',
+    metricValue: 'CANLI BOT',
+  },
+  {
+    id: 'zup_sync',
+    badge: '1C ZUP AUTO',
+    titleTr: '1C ZUP Veri Çekme Otomasyonu',
+    titleRu: 'Авто-синхронизация с 1С ЗУП',
+    shortTr: 'Resmi Bordro ↔ Saha Anlık Karşılaştırma',
+    shortRu: 'Сверка 1С ЗУП и реального штата',
+    icon: Database,
+    accentBg: 'bg-violet-500',
+    accentText: 'text-violet-700',
+    accentBorder: 'border-violet-400',
+    pillClass: 'bg-violet-50 text-violet-800 border-violet-200',
+    stepsTr: ['1C ZUP Sunucusu', 'Otomatik Veri Aktarımı', 'Resmi ↔ Real Analiz'],
+    stepsRu: ['Сервер 1С ЗУП', 'Авто-выгрузка', 'Сверка 1С ↔ eBA'],
+    stepIcons: [Database, RefreshCw, BarChart3],
+    metricLabelTr: 'Tam Kadro Otomatik Senkron',
+    metricLabelRu: 'Полная база 1С ЗУП',
+    metricValue: '1C ↔ eBA',
+  },
+  {
+    id: 'mobile_att',
+    badge: 'MOBİL PUANTAJ',
+    titleTr: 'Mobil Uygulama ile Puantaj',
+    titleRu: 'Мобильный Табель и Учет',
+    shortTr: 'Saha Yoklama, QR & Yüz Tanıma',
+    shortRu: 'Мобильная отметка на объектах',
+    icon: Smartphone,
+    accentBg: 'bg-emerald-500',
+    accentText: 'text-emerald-700',
+    accentBorder: 'border-emerald-400',
+    pillClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    stepsTr: ['Saha Mobil Uygulama', 'QR & Biyometrik Onay', 'Anlık Merkez Puantaj'],
+    stepsRu: ['Мобильное приложение', 'QR / Биометрия', 'Табель в реальном времени'],
+    stepIcons: [Smartphone, QrCode, CheckCircle2],
+    metricLabelTr: 'Şantiye Saha Entegrasyonu',
+    metricLabelRu: 'Контроль на стройплощадках',
+    metricValue: 'iOS & ANDROID',
+  },
+  {
+    id: 'ai_ocr',
+    badge: 'AI EVRAK OCR',
+    titleTr: 'AI ile Evrak & Pasaport Okuma',
+    titleRu: 'ИИ-распознавание Документов',
+    shortTr: 'Yapay Zeka ile Pasaport, Vize & RNR Analizi',
+    shortRu: 'AI OCR паспортов, виз и РНР',
+    icon: ScanText,
+    accentBg: 'bg-amber-500',
+    accentText: 'text-amber-700',
+    accentBorder: 'border-amber-400',
+    pillClass: 'bg-amber-50 text-amber-800 border-amber-200',
+    stepsTr: ['Evrak & Pasaport Görseli', 'Gemini Vision AI OCR', 'Sıfır Hata Veri Kaydı'],
+    stepsRu: ['Скан документа / PDF', 'Gemini Vision AI', 'Авто-заполнение полей'],
+    stepIcons: [FileCheck2, Sparkles, Database],
+    metricLabelTr: 'Yapay Zeka Belge İşleme',
+    metricLabelRu: 'Нейросетевой OCR движок',
+    metricValue: 'GEMINI AI',
+  },
+  {
+    id: 'tickets',
+    badge: 'AI BİLET TAKİP',
+    titleTr: 'Uçak Bileti Okuma & Takip',
+    titleRu: 'AI Контроль Авиабилетов',
+    shortTr: 'PDF Biletten Uçuş, PNR & Maliyet Çıkarma',
+    shortRu: 'Чтение билетов, рейсов и тарифов',
+    icon: Plane,
+    accentBg: 'bg-rose-500',
+    accentText: 'text-rose-700',
+    accentBorder: 'border-rose-400',
+    pillClass: 'bg-rose-50 text-rose-800 border-rose-200',
+    stepsTr: ['PDF Uçak Bileti', 'AI Uçuş & PNR Okuma', 'Canlı Uçuş & TV Ekranı'],
+    stepsRu: ['PDF маршрутная квитанция', 'ИИ парсинг рейса', 'Табло прилетов и вылетов'],
+    stepIcons: [Plane, Sparkles, BarChart3],
+    metricLabelTr: 'Otomatik Bilet & Sevk Kontrolü',
+    metricLabelRu: 'Авто-разбор авиабилетов',
+    metricValue: 'CANLI UÇUŞ',
+  },
+  {
+    id: 'hr_bi',
+    badge: 'CANLI İK BI',
+    titleTr: 'İK & Kota Analitik Dashboard',
+    titleRu: 'HR Дашборды и Квоты ИРС',
+    shortTr: '11 Şantiye Canlı Kadro, Demografi & Kota',
+    shortRu: 'Аналитика штата, квот и объектов',
+    icon: BarChart3,
+    accentBg: 'bg-teal-500',
+    accentText: 'text-teal-700',
+    accentBorder: 'border-teal-400',
+    pillClass: 'bg-teal-50 text-teal-800 border-teal-200',
+    stepsTr: ['Tüm Personel & Şantiyeler', 'Çapraz Filtre & Kota', 'Canlı Yönetim Ekranı'],
+    stepsRu: ['Все объекты и штат', 'Квоты ИРС и фильтры', 'Панель руководителя'],
+    stepIcons: [User, BarChart3, ShieldCheck],
+    metricLabelTr: '11 Şantiye Tek Merkezde',
+    metricLabelRu: 'Все строительные объекты',
+    metricValue: 'CANLI KPI',
+  },
+];
+
 export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const { login } = useAuth();
   const { lang, setLang, t } = useLanguage();
@@ -34,21 +221,18 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [mounted, setMounted] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (paused) return;
+    const timer = setInterval(() => {
+      setActiveIdx((prev) => (prev + 1) % SHOWCASE_FEATURES.length);
+    }, 3400);
+    return () => clearInterval(timer);
+  }, [paused]);
 
   if (!isOpen) return null;
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (typeof window === 'undefined') return;
-    const x = (e.clientX / window.innerWidth - 0.5) * 14;
-    const y = (e.clientY / window.innerHeight - 0.5) * 14;
-    setMousePos({ x, y });
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,360 +249,382 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     }
   };
 
-  const isStandalonePage = !onClose;
+  const activeFeature = SHOWCASE_FEATURES[activeIdx] || SHOWCASE_FEATURES[0];
+  const ActiveIcon = activeFeature.icon;
+  const StepIcon0 = activeFeature.stepIcons[0];
+  const StepIcon1 = activeFeature.stepIcons[1];
+  const StepIcon2 = activeFeature.stepIcons[2];
 
   return (
-    <div
-      onMouseMove={handleMouseMove}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden select-none font-normal"
-    >
-      {/* Keyframes & Transparent Autofill Override */}
+    <div className="fixed inset-0 z-50 flex flex-col lg:flex-row bg-white overflow-y-auto lg:overflow-hidden select-none font-normal">
       <style jsx global>{`
-        @keyframes kenBurns3D {
+        @keyframes pulseFlow {
           0% {
-            transform: scale(1.03) translate3d(0px, 0px, 0px);
+            transform: translateX(-100%);
+            opacity: 0.2;
           }
           50% {
-            transform: scale(1.07) translate3d(-8px, -4px, 0px);
+            opacity: 1;
           }
           100% {
-            transform: scale(1.03) translate3d(0px, 0px, 0px);
+            transform: translateX(220%);
+            opacity: 0.2;
           }
         }
-        @keyframes floatSlow {
-          0%, 100% {
+        @keyframes softFloat {
+          0%,
+          100% {
             transform: translateY(0px);
           }
           50% {
-            transform: translateY(-5px);
+            transform: translateY(-4px);
           }
-        }
-        @keyframes floatDelayed {
-          0%, 100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-6px);
-          }
-        }
-        .transparent-login-input:-webkit-autofill,
-        .transparent-login-input:-webkit-autofill:hover,
-        .transparent-login-input:-webkit-autofill:focus,
-        .transparent-login-input:-webkit-autofill:active {
-          -webkit-text-fill-color: #0f172a !important;
-          -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.45) inset !important;
-          background-color: transparent !important;
-          transition: background-color 5000s ease-in-out 0s;
         }
       `}</style>
 
-      {/* Fullscreen Daylight Executive HR Office Background (Light Mode — Bright & Legible) */}
-      <div className="absolute inset-0 overflow-hidden bg-[#F1F5F9]">
-        <div
-          className="absolute inset-[-3%] bg-cover bg-center bg-no-repeat transition-transform duration-300 ease-out"
-          style={{
-            backgroundImage: `url('/login-hr-office-light.jpg')`,
-            transform: `scale(1.03) translate3d(${-mousePos.x * 0.4}px, ${-mousePos.y * 0.4}px, 0)`,
-            animation: 'kenBurns3D 32s ease-in-out infinite',
-          }}
-        />
+      {/* ===================================================================== */}
+      {/* LEFT PANEL: PURE WHITE LOGIN WINDOW (Fixed width on Left)             */}
+      {/* ===================================================================== */}
+      <div className="w-full lg:w-[410px] xl:w-[440px] shrink-0 bg-white text-slate-900 border-b lg:border-b-0 lg:border-r border-slate-200 shadow-[12px_0_36px_-12px_rgba(15,23,42,0.12)] z-20 flex flex-col justify-between p-6 sm:p-8 lg:h-full">
+        {/* Top Logo & Language Switcher */}
+        <div className="flex items-center justify-between gap-3">
+          <PonderaLogo variant="full" tone="light-bg" size="md" />
 
-        {/* Multi-layered Soft Daylight Vignettes for Bright Background & High Text Legibility */}
-        <div className="absolute inset-0 bg-gradient-to-r from-white/85 via-white/45 to-white/80 pointer-events-none" />
-        <div className="absolute inset-0 bg-gradient-to-t from-white/85 via-white/20 to-white/45 pointer-events-none" />
-      </div>
-
-      {/* Full-Viewport Content Layout: Left texts pinned to Top-Left & Bottom-Left corners, Right Login Card */}
-      <div className="relative z-10 w-full h-full px-5 sm:px-8 lg:px-12 py-5 sm:py-7 flex flex-col lg:flex-row items-center lg:items-stretch justify-between gap-6">
-        {/* LEFT SHOWCASE PANEL: Pinned to Top-Left & Bottom-Left Corners */}
-        {isStandalonePage && (
-          <div
-            className={`hidden lg:flex flex-col justify-between items-start h-full max-w-md text-slate-900 transition-all duration-700 ${
-              mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
-            }`}
-            style={{
-              transform: `translate3d(${mousePos.x * 0.2}px, ${mousePos.y * 0.2}px, 0)`,
-            }}
-          >
-            {/* TOP-LEFT CORNER: Live Badge & Compact Headline */}
-            <div className="space-y-2.5 p-4 rounded-2xl bg-white/65 backdrop-blur-md border border-white/85 shadow-sm">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/85 backdrop-blur-md border border-slate-200/80 shadow-2xs">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600" />
-                </span>
-                <span className="text-[11px] font-normal tracking-wide uppercase text-slate-800">
-                  {lang === 'ru'
-                    ? 'PONDERA HR • ЦЕНТР УПРАВЛЕНИЯ ПЕРСОНАЛОМ'
-                    : 'PONDERA HR • İNSAN KAYNAKLARI KOMUTA MERKEZİ'}
-                </span>
-                <Sparkles className="w-3 h-3 text-amber-500" />
-              </div>
-
-              <div className="space-y-1.5">
-                <h1 className="text-2xl xl:text-3xl font-normal tracking-tight leading-snug text-slate-900">
-                  {lang === 'ru' ? (
-                    <>
-                      Интеллектуальное управление{' '}
-                      <span className="text-emerald-700">персоналом</span>
-                    </>
-                  ) : (
-                    <>
-                      Yeni Nesil Kurumsal{' '}
-                      <span className="text-emerald-700">Personel Yönetimi</span>
-                    </>
-                  )}
-                </h1>
-                <p className="text-xs xl:text-sm text-slate-700 leading-relaxed font-normal">
-                  {lang === 'ru'
-                    ? 'Единая платформа кадровой аналитики, миграционного контроля, автоматизации Госуслуг МВД и корпоративного доступа.'
-                    : 'Şantiye, bölge ve proje bazlı izole yetkilendirme mimarisiyle uçtan uca personel analitiği, göçmenlik uyumluluğu ve Gosuslugi МВД otomasyonu.'}
-                </p>
-              </div>
-            </div>
-
-            {/* BOTTOM-LEFT CORNER: 3 Translucent Feature Pills & SSL Trust Strip */}
-            <div className="space-y-2.5 w-full max-w-md">
-              <div className="space-y-1.5">
-                {/* Item 1 */}
-                <div
-                  style={{ animation: 'floatSlow 6s ease-in-out infinite' }}
-                  className="group flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-white/70 hover:bg-white/85 backdrop-blur-md border border-white/90 shadow-xs transition-all duration-300"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xs font-normal text-slate-900">
-                        {lang === 'ru' ? 'Кадровая Аналитика в Реальном Времени' : 'Canlı Personel & Puantaj Analitiği'}
-                      </h3>
-                      <span className="px-1.5 py-0.2 text-[9px] font-normal rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        BI
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-700 truncate font-normal">
-                      {lang === 'ru'
-                        ? 'Мгновенная фильтрация по проектам, отделам, гражданству и табелям'
-                        : 'Proje, departman, uyruk ve yaka bazlı anlık çapraz filtreleme ve raporlama'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Item 2 */}
-                <div
-                  style={{ animation: 'floatDelayed 7s ease-in-out infinite 1s' }}
-                  className="group flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-white/70 hover:bg-white/85 backdrop-blur-md border border-white/90 shadow-xs transition-all duration-300"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0">
-                    <Cpu className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xs font-normal text-slate-900">
-                        {lang === 'ru' ? 'Роботизация Госуслуг и МВД (RPA)' : 'Gosuslugi & МВД VKS Robot Otomasyonu'}
-                      </h3>
-                      <span className="px-1.5 py-0.2 text-[9px] font-normal rounded bg-amber-50 text-amber-800 border border-amber-200">
-                        AUTO-SYNC
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-700 truncate font-normal">
-                      {lang === 'ru'
-                        ? 'Автоматическая подача уведомлений ВКС, ЭЦП и контроль статусов МВД'
-                        : 'Çoklu bilgisayar RPA ajanları, elektronik imza ve anlık МВД statü takibi'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Item 3 */}
-                <div
-                  style={{ animation: 'floatSlow 6.5s ease-in-out infinite 0.5s' }}
-                  className="group flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-white/70 hover:bg-white/85 backdrop-blur-md border border-white/90 shadow-xs transition-all duration-300"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center shrink-0">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xs font-normal text-slate-900">
-                        {lang === 'ru' ? 'Корпоративная Защита и Изоляция Данных' : 'Kurumsal Veri & Yetki İzolasyonu'}
-                      </h3>
-                      <span className="px-1.5 py-0.2 text-[9px] font-normal rounded bg-indigo-50 text-indigo-800 border border-indigo-200">
-                        256-BIT
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-700 truncate font-normal">
-                      {lang === 'ru'
-                        ? 'Строгое разграничение прав доступа по регионам и строительным объектам'
-                        : 'Bölge ve şantiye yetkilerine göre izole edilmiş yüksek güvenlikli veri erişimi'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer Trust Strip in Bottom-Left Corner */}
-              <div className="inline-flex items-center gap-5 px-3.5 py-1.5 rounded-xl bg-white/70 backdrop-blur-md border border-white/90 shadow-2xs text-xs text-slate-800 font-normal">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{lang === 'ru' ? 'Защищенное соединение SSL' : 'SSL Şifreli Kurumsal Bağlantı'}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Globe2 className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>hr.pondera.network</span>
-                </div>
-              </div>
-            </div>
+          <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs">
+            <button
+              type="button"
+              onClick={() => setLang('tr')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                lang === 'tr'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              TR
+            </button>
+            <button
+              type="button"
+              onClick={() => setLang('ru')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                lang === 'ru'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              RU
+            </button>
           </div>
-        )}
+        </div>
 
-        {/* RIGHT PANEL: Translucent Glassmorphic Login Container & Translucent Input Boxes */}
-        <div
-          className={`w-full max-w-[400px] mx-auto lg:mx-0 lg:self-center transition-all duration-700 ${
-            mounted ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-6 scale-95'
-          }`}
-          style={{
-            transform: `translate3d(${mousePos.x * 0.15}px, ${mousePos.y * 0.15}px, 0)`,
-          }}
-        >
-          <div className="relative rounded-[24px] bg-white/60 backdrop-blur-lg overflow-hidden text-slate-900 border border-white/85 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.14)]">
-            {/* Language Switcher Pill */}
-            <div className="absolute top-5 right-5 z-20 flex items-center bg-white/60 backdrop-blur-sm rounded-xl p-0.5 border border-slate-200/80 text-xs font-normal">
-              <button
-                type="button"
-                onClick={() => setLang('tr')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-normal transition-all cursor-pointer ${
-                  lang === 'tr'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-700 hover:text-slate-950'
-                }`}
-              >
-                TR
-              </button>
-              <button
-                type="button"
-                onClick={() => setLang('ru')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-normal transition-all cursor-pointer ${
-                  lang === 'ru'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-700 hover:text-slate-950'
-                }`}
-              >
-                RU
-              </button>
+        {/* Center Login Form (Pure White Surface) */}
+        <div className="my-auto py-6 space-y-6">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>
+                {lang === 'ru' ? 'Корпоративный Портал Входа' : 'Kurumsal Sistem Girişi'}
+              </span>
             </div>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+              {t('login_title')}
+            </h1>
+            <p className="text-xs text-slate-500 leading-relaxed">{t('login_sub')}</p>
+          </div>
 
-            {/* Card Header */}
-            <div className="relative px-8 pt-8 pb-5 text-center border-b border-slate-200/60">
-              <div className="flex justify-center mb-3.5">
-                <PonderaLogo variant="full" tone="light-bg" size="lg" />
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-normal tracking-tight text-slate-900">
-                {t('login_title')}
-              </h2>
-              <p className="text-xs text-slate-700 mt-1 max-w-xs mx-auto leading-relaxed font-normal">
-                {t('login_sub')}
-              </p>
-            </div>
-
-            {/* Login Form Body */}
-            <div className="relative p-7 space-y-4">
-              <form onSubmit={handleSubmit} className="space-y-4 select-text">
-                {/* Username / Email Input (Translucent Background) */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-normal text-slate-800">
-                    {lang === 'ru' ? 'Логин или Эл. почта' : 'Kullanıcı Adı veya E-Posta'}
-                  </label>
-                  <div className="relative group">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-emerald-600 transition-colors" />
-                    <input
-                      type="text"
-                      required
-                      autoComplete="username"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin"
-                      className="transparent-login-input w-full pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 bg-white/45 hover:bg-white/60 focus:bg-white/75 backdrop-blur-xs border border-slate-300/80 focus:border-emerald-600 rounded-xl focus:outline-none focus:ring-3 focus:ring-emerald-500/15 font-normal transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Input (Translucent Background) */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-normal text-slate-800">
-                    {t('login_password')}
-                  </label>
-                  <div className="relative group">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-emerald-600 transition-colors" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="transparent-login-input w-full pl-10 pr-11 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 bg-white/45 hover:bg-white/60 focus:bg-white/75 backdrop-blur-xs border border-slate-300/80 focus:border-emerald-600 rounded-xl focus:outline-none focus:ring-3 focus:ring-emerald-500/15 font-normal transition-all"
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
-                      title={showPassword ? 'Gizle' : 'Göster'}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Error Message */}
-                {error && (
-                  <div className="p-3 rounded-xl bg-rose-50/85 backdrop-blur-xs border border-rose-300 text-rose-800 text-xs flex items-center gap-2 font-normal animate-in fade-in duration-150">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="group relative w-full py-3 px-5 bg-emerald-600/90 hover:bg-emerald-600 text-white font-normal text-sm rounded-xl shadow-md shadow-emerald-600/20 border border-white/30 transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-1"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>
-                    {loading
-                      ? lang === 'ru'
-                        ? 'Выполняется вход...'
-                        : 'Giriş Yapılıyor...'
-                      : t('login_btn')}
-                  </span>
-                  <ArrowRight className="w-4 h-4 opacity-80 group-hover:translate-x-0.5 transition-transform" />
-                </button>
-              </form>
-
-              {/* Security Footer Inside Card */}
-              <div className="pt-2.5 border-t border-white/35 flex items-center justify-between text-[11px] text-slate-800 font-normal">
-                <span className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-                  {lang === 'ru' ? 'Защита RLS активна' : 'RLS Güvenlik Katmanı Aktif'}
-                </span>
-                <span className="text-slate-800 font-normal">Pondera v2.8.26</span>
+          <form onSubmit={handleSubmit} className="space-y-4 select-text">
+            {/* Username / Email Input */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-slate-700">
+                {lang === 'ru' ? 'Логин или Эл. почта' : 'Kullanıcı Adı veya E-Posta'}
+              </label>
+              <div className="relative group">
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
+                <input
+                  type="text"
+                  required
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin"
+                  className="w-full pl-10 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 bg-white border border-slate-300 focus:border-emerald-600 rounded-xl focus:outline-none focus:ring-3 focus:ring-emerald-500/15 transition-all"
+                />
               </div>
             </div>
 
-            {/* Optional Close Button when opened as an in-app modal */}
-            {onClose && (
-              <div className="px-8 py-3.5 border-t border-white/35 bg-white/20 text-center">
+            {/* Password Input */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-slate-700">
+                {t('login_password')}
+              </label>
+              <div className="relative group">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 bg-white border border-slate-300 focus:border-emerald-600 rounded-xl focus:outline-none focus:ring-3 focus:ring-emerald-500/15 transition-all"
+                />
                 <button
-                  onClick={onClose}
-                  className="text-xs text-slate-800 hover:text-slate-950 font-normal transition-colors cursor-pointer"
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                  title={showPassword ? 'Gizle' : 'Göster'}
                 >
-                  {lang === 'ru' ? 'Отмена и закрыть' : 'Vazgeç ve Kapat'}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{error}</span>
               </div>
             )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="group w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-emerald-600/20 transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>
+                {loading
+                  ? lang === 'ru'
+                    ? 'Выполняется вход...'
+                    : 'Giriş Yapılıyor...'
+                  : t('login_btn')}
+              </span>
+              <ArrowRight className="w-4 h-4 opacity-85 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </form>
+
+          {onClose && (
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+              >
+                {lang === 'ru' ? 'Отмена и закрыть' : 'Vazgeç ve Kapat'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Security Footer */}
+        <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            {lang === 'ru' ? 'Защита RLS • 256-Bit SSL' : 'RLS Güvenlik • 256-Bit SSL'}
+          </span>
+          <span className="font-mono text-[11px] text-slate-400">hr.pondera.network</span>
+        </div>
+      </div>
+
+      {/* ===================================================================== */}
+      {/* RIGHT PANEL: UNCROPPED RESIZED IMAGE + ANIMATED VISUAL SHOWCASE       */}
+      {/* ===================================================================== */}
+      <div
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        className="relative flex-1 min-h-[540px] lg:h-full overflow-hidden flex flex-col justify-between p-5 sm:p-7 xl:p-9"
+      >
+        {/* Uncropped Full Image Resized from Login Panel Border to Screen Edge */}
+        <img
+          src="/login-hr-office-light.jpg"
+          alt="Pondera Office"
+          className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
+        />
+
+        {/* Soft Luminous Overlay for Contrast while keeping the office clearly visible */}
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/45 via-slate-950/25 to-slate-950/65 pointer-events-none" />
+
+        {/* TOP BAR: Visual Platform Title */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/90 backdrop-blur-md border border-white shadow-lg">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600" />
+            </span>
+            <span className="text-xs sm:text-sm font-bold tracking-wide text-slate-900">
+              {lang === 'ru'
+                ? 'PONDERA • ЕДИНАЯ ПЛАТФОРМА HR, RPA, 1С И ИИ-АВТОМАТИЗАЦИИ'
+                : 'PONDERA • İK, ROBOTİK (RPA), 1C ZUP, MOBİL & YAPAY ZEKA OTOMASYON MERKEZİ'}
+            </span>
+            <Sparkles className="w-4 h-4 text-amber-500" />
           </div>
+
+          <div className="hidden xl:flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/75 backdrop-blur-md text-white text-xs border border-white/20">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>
+              {lang === 'ru' ? '8 Активных Модулей в Одном Окне' : '8 Otonom Sistem Tek Merkezde'}
+            </span>
+          </div>
+        </div>
+
+        {/* CENTER ANIMATED VISUAL SPOTLIGHT: Shows How the Active Module Works Visually */}
+        <div
+          style={{ animation: 'softFloat 5s ease-in-out infinite' }}
+          className="relative z-10 my-auto py-4"
+        >
+          <div className="max-w-4xl mx-auto rounded-3xl bg-white/92 backdrop-blur-xl border border-white shadow-2xl p-5 sm:p-6 transition-all duration-500">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className={`w-13 h-13 rounded-2xl ${activeFeature.accentBg} text-white flex items-center justify-center shadow-lg shrink-0`}
+                >
+                  <ActiveIcon className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${activeFeature.pillClass}`}
+                    >
+                      {activeFeature.badge}
+                    </span>
+                    <span className="text-xs font-medium text-slate-500">
+                      {lang === 'ru' ? activeFeature.metricLabelRu : activeFeature.metricLabelTr}
+                    </span>
+                  </div>
+                  <h2 className="text-lg sm:text-2xl font-bold text-slate-900 mt-0.5">
+                    {lang === 'ru' ? activeFeature.titleRu : activeFeature.titleTr}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start md:self-center px-3.5 py-2 rounded-2xl bg-slate-900 text-white text-xs font-bold shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>{activeFeature.metricValue}</span>
+              </div>
+            </div>
+
+            {/* Animated 3-Step Visual Pipeline Diagram */}
+            <div className="grid grid-cols-1 sm:grid-cols-5 items-center gap-2 sm:gap-3 pt-4">
+              {/* Step 1 */}
+              <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/90">
+                <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs shrink-0">
+                  <StepIcon0 className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {lang === 'ru' ? 'ШАГ 1' : 'ADIM 1'}
+                  </div>
+                  <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                    {lang === 'ru' ? activeFeature.stepsRu[0] : activeFeature.stepsTr[0]}
+                  </div>
+                </div>
+              </div>
+
+              {/* Animated Connector 1 */}
+              <div className="hidden sm:flex flex-col items-center justify-center px-1">
+                <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden relative">
+                  <div
+                    className={`w-1/2 h-full rounded-full ${activeFeature.accentBg}`}
+                    style={{ animation: 'pulseFlow 1.8s linear infinite' }}
+                  />
+                </div>
+                <span className="text-[10px] font-semibold text-slate-500 mt-1">OTOMATİK</span>
+              </div>
+
+              {/* Step 2 */}
+              <div
+                className={`flex items-center gap-3 p-3 rounded-2xl bg-white border-2 ${activeFeature.accentBorder} shadow-md`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-xl ${activeFeature.accentBg} text-white flex items-center justify-center shadow-xs shrink-0`}
+                >
+                  <StepIcon1 className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-[10px] font-bold uppercase tracking-wider ${activeFeature.accentText}`}>
+                    {lang === 'ru' ? 'ШАГ 2 • РОБОТ / ИИ' : 'ADIM 2 • ROBOT / AI'}
+                  </div>
+                  <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                    {lang === 'ru' ? activeFeature.stepsRu[1] : activeFeature.stepsTr[1]}
+                  </div>
+                </div>
+              </div>
+
+              {/* Animated Connector 2 */}
+              <div className="hidden sm:flex flex-col items-center justify-center px-1">
+                <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden relative">
+                  <div
+                    className={`w-1/2 h-full rounded-full ${activeFeature.accentBg}`}
+                    style={{ animation: 'pulseFlow 1.8s linear infinite 0.5s' }}
+                  />
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-600 mt-1">CANLI</span>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex items-center gap-3 p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <StepIcon2 className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                    {lang === 'ru' ? 'РЕЗУЛЬТАТ' : 'SONUÇ'}
+                  </div>
+                  <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                    {lang === 'ru' ? activeFeature.stepsRu[2] : activeFeature.stepsTr[2]}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* BOTTOM VISUAL MODULE CARDS: 8 Bold Visual Cards (Short, Punchy, Interactive) */}
+        <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+          {SHOWCASE_FEATURES.map((item, idx) => {
+            const IconComp = item.icon;
+            const isSelected = idx === activeIdx;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveIdx(idx)}
+                onMouseEnter={() => setActiveIdx(idx)}
+                className={`group text-left p-3 sm:p-3.5 rounded-2xl transition-all duration-300 cursor-pointer flex items-center gap-3 border ${
+                  isSelected
+                    ? 'bg-white text-slate-900 border-white shadow-xl scale-[1.02]'
+                    : 'bg-white/82 hover:bg-white/95 text-slate-800 border-white/80 shadow-md'
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105 ${
+                    isSelected
+                      ? `${item.accentBg} text-white shadow-md`
+                      : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <IconComp className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded border ${item.pillClass}`}
+                    >
+                      {item.badge}
+                    </span>
+                  </div>
+                  <div className="text-xs sm:text-sm font-bold text-slate-900 leading-snug mt-0.5 truncate">
+                    {lang === 'ru' ? item.titleRu : item.titleTr}
+                  </div>
+                  <div className="text-[11px] text-slate-600 truncate">
+                    {lang === 'ru' ? item.shortRu : item.shortTr}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
