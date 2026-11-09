@@ -255,17 +255,17 @@ export default function GosuslugiDismissalPanel({
   const { user } = useAuth();
   const { lang } = useLanguage();
 
-  // Dismissal Default Form Configuration (from Powerise gosuslugi_dismissal_robot.py)
+  // Dismissal Default Form Configuration (Pondera 600585/1 & VKS MVD Moscow Parameters)
   const [patentRegion, setPatentRegion] = useState('Ленинградская');
   const [patentRegionFull, setPatentRegionFull] = useState('Ленинградская область');
   const [workAddress, setWorkAddress] = useState(
-    '188471, Ленинградская обл, Кингисеппский р-н, поселок Усть-Луга'
+    '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й'
   );
   const [ufmsDept, setUfmsDept] = useState(
-    'ОПВМ ОМВД России по Кингисеппскому району Ленинградской области'
+    'ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ'
   );
-  const [okvedCode, setOkvedCode] = useState('42.99');
-  const [okvedText, setOkvedText] = useState('Строительство прочих инженерных сооружений, не');
+  const [okvedCode, setOkvedCode] = useState('43.29');
+  const [okvedText, setOkvedText] = useState('Производство прочих строительно-монтажных работ');
   const [defaultVoluntary, setDefaultVoluntary] = useState('Да');
   const [showConfigPanel, setShowConfigPanel] = useState(false);
 
@@ -1292,6 +1292,17 @@ export default function GosuslugiDismissalPanel({
                 className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
               />
             </div>
+            <div className="md:col-span-3">
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                {lang === 'ru' ? 'Текст поиска ОКВЭД (OKVED_TEXT)' : 'OKVED Arama Metni (OKVED_TEXT)'}
+              </label>
+              <input
+                type="text"
+                value={okvedText}
+                onChange={(e) => setOkvedText(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+              />
+            </div>
             <div className="md:col-span-2">
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 {lang === 'ru' ? 'Адрес места работы (WORK_ADDRESS)' : 'Çalışma Adresi (WORK_ADDRESS)'}
@@ -1305,7 +1316,7 @@ export default function GosuslugiDismissalPanel({
             </div>
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'ru' ? 'Подразделение МВД (UFMS)' : 'MVD Birimi (UFMS)'}
+                {lang === 'ru' ? 'Подразделение МВД (UFMS — МОСКВЕ)' : 'MVD Birimi (UFMS — МОСКВЕ)'}
               </label>
               <input
                 type="text"
