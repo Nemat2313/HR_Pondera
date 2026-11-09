@@ -58,7 +58,9 @@ DEFAULT_CONFIG = {
     "UFMS_DEPARTMENT": "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ",
     "DEFAULT_EXCEL_PATH": r"C:\Users\nemat\Downloads\GosUsluga_ увольнения.xlsx",
     "CDP_PORT": 9222,
-    "TIMEOUT_MS": 30000,
+    "TIMEOUT_MS": 120000,
+    "MAX_SCREEN_WAIT_SEC": 120,
+    "DELETE_OLD_DRAFTS": True,
     "ACTION_DELAY_SEC": 0.5,
 }
 
@@ -736,11 +738,17 @@ class GosuslugiDismissalBot:
             step_label=f"Step 7 (ОКВЭД {okved_code})",
             click_continue_after=True,
         )
-        # Wait up to 4 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
-        for _ in range(10):
+        # Wait up to 120 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
+        max_wait_s = max(120, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 120))
+        for _w in range(max_wait_s * 2):
+            if PAUSE_SIGNAL_FILE.exists():
+                self.wait_if_paused_or_logged_out()
+            self.check_and_handle_error_modal()
             if self.page.locator("#si13_lastNameRu:visible, input[name*='lastNameRu']:visible").count() > 0:
                 break
-            self.page.wait_for_timeout(400)
+            if _w > 0 and _w % 20 == 0:
+                logger.info(f"Step 7->8: Ожидание перехода к данным сотрудника... ({int(_w * 0.5)} сек / до {max_wait_s} сек)")
+            self.page.wait_for_timeout(500)
         return ok
 
     def sanitize_cyrillic_field(self, value: str, fallback: str = "", allow_digits: bool = False) -> str:
@@ -2048,13 +2056,19 @@ class GosuslugiDismissalBot:
         self.check_and_handle_error_modal()
 
         # Steps 2 & 3a Unified State-Machine Polling Loop:
-        # Handles Drafts Modal ('Начать заново' / 'Создать заявление'), 'Начать' landing screen,
-        # and 'О расторжении договора' option button. Never advances until 'О расторжении договора' is clicked!
+        # Handles Drafts Modal ('Начать заново' / 'Создать заявление' + automatic old draft deletion if limit reached),
+        # 'Начать' landing screen, and 'О расторжении договора' option button. Never advances until 'О расторжении договора' is clicked!
         step3a_selected = False
-        for _tick in range(55):
+        create_click_attempts = 0
+        delete_old_drafts_enabled = bool(self.cfg.get("DELETE_OLD_DRAFTS", True))
+        max_wait_sec = max(120, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 120))
+
+        for _tick in range(120):
+            if PAUSE_SIGNAL_FILE.exists():
+                self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
 
-            # Priority 1: Drafts Modal ('Выберите черновик' -> 'Начать заново' / 'Создать заявление')
+            # Priority 1: Drafts Modal ('Выберите черновик' -> delete old drafts if needed -> 'Начать заново' / 'Создать заявление')
             draft_items = self.page.locator(".draft-list .draft, epgu-constructor-draft-list .draft")
             create_btn = self.page.locator(
                 "button:has-text('Начать заново'), "
@@ -2084,6 +2098,13 @@ class GosuslugiDismissalBot:
                                 b => (b.innerText || '').includes('Начать заново') || (b.innerText || '').includes('Создать заявление') || (b.innerText || '').includes('Создать новое')
                             ) || document.querySelector('lib-button.conf-modal__button button');
                             if (btn) {
+                                let p = btn.parentElement;
+                                while (p) {
+                                    if (p.scrollHeight > p.clientHeight) {
+                                        try { p.scrollTop = p.scrollHeight; } catch (e) {}
+                                    }
+                                    p = p.parentElement;
+                                }
                                 btn.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
                             }
                             window.scrollTo(0, document.body.scrollHeight);
@@ -2091,23 +2112,62 @@ class GosuslugiDismissalBot:
                     )
                 except Exception:
                     pass
-                self.page.wait_for_timeout(250)
+                self.page.wait_for_timeout(300)
 
-                btn_disabled = True
-                if create_btn.count() > 0 and create_btn.is_visible():
-                    dis_attr = create_btn.get_attribute("disabled")
-                    cls_attr = create_btn.get_attribute("class") or ""
-                    btn_disabled = (dis_attr is not None) or ("disabled" in cls_attr) or (not create_btn.is_enabled())
+                # Check via JS if 'Начать заново' / 'Создать заявление' (or its parent lib-button) is disabled OR if draft count >= 8
+                draft_state = {}
+                try:
+                    draft_state = self.page.evaluate(
+                        """() => {
+                            const drafts = document.querySelectorAll('.draft-list .draft, epgu-constructor-draft-list .draft, .conf-modal .draft');
+                            const delBtns = Array.from(document.querySelectorAll(
+                                ".draft-list .draft button.draft-link, epgu-constructor-draft-list button, button.draft-link, .draft button, button, a"
+                            )).filter(el => (el.innerText || el.textContent || '').trim() === 'Удалить' && el.getBoundingClientRect().width > 5);
+                            const createBtn = Array.from(document.querySelectorAll('button')).find(
+                                b => {
+                                    const t = (b.innerText || b.textContent || '').trim();
+                                    return t.includes('Начать заново') || t.includes('Создать заявление') || t.includes('Создать новое') || t.includes('Новое заявление');
+                                }
+                            ) || document.querySelector('lib-button.conf-modal__button button');
+                            let btnDisabled = true;
+                            if (createBtn) {
+                                const wrap = createBtn.closest('lib-button, epgu-cf-ui-button');
+                                const st = window.getComputedStyle(createBtn);
+                                btnDisabled = !!(
+                                    createBtn.disabled ||
+                                    createBtn.getAttribute('disabled') !== null ||
+                                    (createBtn.className || '').includes('disabled') ||
+                                    st.pointerEvents === 'none' ||
+                                    (wrap && ((wrap.className || '').includes('disabled') || wrap.getAttribute('disabled') !== null))
+                                );
+                            }
+                            return {
+                                draftCount: Math.max(drafts.length, delBtns.length),
+                                delCount: delBtns.length,
+                                btnDisabled
+                            };
+                        }"""
+                    ) or {}
+                except Exception:
+                    draft_state = {}
 
-                if btn_disabled or draft_items.count() >= 9:
-                    del_btns = self.page.locator(
-                        ".draft-list .draft button.draft-link:has-text('Удалить'), "
-                        "epgu-constructor-draft-list button:has-text('Удалить'), "
-                        "button.draft-link:has-text('Удалить')"
-                    )
-                    if del_btns.count() > 0:
+                btn_disabled = bool(draft_state.get("btnDisabled", True))
+                draft_cnt = int(draft_state.get("draftCount", draft_items.count()) or 0)
+
+                if delete_old_drafts_enabled and (btn_disabled or draft_cnt >= 8 or create_click_attempts >= 1):
+                    for _del_round in range(3):
+                        del_btns = self.page.locator(
+                            ".draft-list .draft button.draft-link:has-text('Удалить'), "
+                            "epgu-constructor-draft-list button:has-text('Удалить'), "
+                            "button.draft-link:has-text('Удалить'), "
+                            ".draft button:has-text('Удалить')"
+                        )
+                        if del_btns.count() == 0:
+                            break
                         oldest_del = del_btns.last
-                        logger.info("Deleting oldest draft ('Удалить') so 'Начать заново' / 'Создать заявление' becomes active...")
+                        logger.info(
+                            f"Step 2: Удаление самого старого черновика (всего черновиков: {del_btns.count()}), чтобы активировать кнопку «Начать заново / Создать заявление»..."
+                        )
                         try:
                             oldest_del.scroll_into_view_if_needed(timeout=1500)
                         except Exception:
@@ -2115,8 +2175,35 @@ class GosuslugiDismissalBot:
                         try:
                             oldest_del.click(timeout=2500)
                         except Exception:
-                            oldest_del.evaluate("el => el.click()")
-                        self.page.wait_for_timeout(800)
+                            try:
+                                oldest_del.evaluate("el => el.click()")
+                            except Exception:
+                                pass
+                        self.page.wait_for_timeout(850)
+
+                        # Re-check if 'Начать заново' / 'Создать заявление' is now active and draft count < 9
+                        still_disabled = bool(
+                            self.page.evaluate(
+                                """() => {
+                                    const createBtn = Array.from(document.querySelectorAll('button')).find(
+                                        b => {
+                                            const t = (b.innerText || b.textContent || '').trim();
+                                            return t.includes('Начать заново') || t.includes('Создать заявление') || t.includes('Создать новое') || t.includes('Новое заявление');
+                                        }
+                                    ) || document.querySelector('lib-button.conf-modal__button button');
+                                    if (!createBtn) return false;
+                                    const wrap = createBtn.closest('lib-button, epgu-cf-ui-button');
+                                    return !!(
+                                        createBtn.disabled ||
+                                        createBtn.getAttribute('disabled') !== null ||
+                                        (createBtn.className || '').includes('disabled') ||
+                                        (wrap && ((wrap.className || '').includes('disabled') || wrap.getAttribute('disabled') !== null))
+                                    );
+                                }"""
+                            )
+                        )
+                        if not still_disabled and del_btns.count() < 9:
+                            break
 
                 if create_btn.count() > 0:
                     try:
@@ -2130,6 +2217,7 @@ class GosuslugiDismissalBot:
                     )
                     if not disabled_now:
                         logger.info("Step 2: Clicking 'Начать заново' / 'Создать заявление'...")
+                        create_click_attempts += 1
                         try:
                             create_btn.click(timeout=2500)
                         except Exception:
@@ -2208,23 +2296,29 @@ class GosuslugiDismissalBot:
                 self.page.wait_for_timeout(1200)
                 break
 
-            self.page.wait_for_timeout(350)
+            self.page.wait_for_timeout(500)
 
         if not step3a_selected:
-            logger.info("Step 3a (Fallback): Waiting for 'О расторжении договора'...")
+            logger.info("Step 3a (Fallback): Waiting up to 120s for 'О расторжении договора'...")
             term_btn = self.page.locator(
                 "epgu-cf-ui-long-button:has-text('О расторжении договора'), "
                 "button:has-text('О расторжении договора')"
             ).first
-            term_btn.wait_for(state="visible", timeout=15000)
+            term_btn.wait_for(state="visible", timeout=max_wait_sec * 1000)
             term_btn.click()
             self.page.wait_for_timeout(1200)
 
         # Steps 3b -> 4 -> 5 -> 6 -> 7 Smart Transition Polling Loop until Step 8 (#si13_lastNameRu) appears!
+        # Waits up to 2+ minutes (max_wait_sec = 120s+) if Gosuslugi shows 'Это может занять несколько секунд' after Screen 2 ('Верно').
         last_name_input = self.page.locator("#si13_lastNameRu, input[name*='lastNameRu'], input[id*='lastNameRu']").first
         verno_clicks = 0
         okved_done = False
-        for _step_tick in range(90):
+        total_step_ticks = max(260, int(max_wait_sec * 2.2))
+        spinner_ticks = 0
+
+        for _step_tick in range(total_step_ticks):
+            if PAUSE_SIGNAL_FILE.exists():
+                self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
 
             # Check if we have reached Step 8 (Personal Info)
@@ -2276,6 +2370,7 @@ class GosuslugiDismissalBot:
                     verno_clicks += 1
                     logger.info(f"Step 5: Clicking 'Верно' (screen {verno_clicks})...")
                     verno_btn.click()
+                    spinner_ticks = 0
                     self.page.wait_for_timeout(1500)
                     continue
             except Exception:
@@ -2293,6 +2388,7 @@ class GosuslugiDismissalBot:
                         step_label="Step 6 (Статус организации)",
                         click_continue_after=True,
                     )
+                    spinner_ticks = 0
                     continue
             except Exception:
                 pass
@@ -2319,12 +2415,31 @@ class GosuslugiDismissalBot:
                 except Exception:
                     pass
 
-            self.page.wait_for_timeout(450)
+            # Log every 10 seconds if Gosuslugi is showing 'Это может занять несколько секунд' after Screen 2
+            spinner_ticks += 1
+            if spinner_ticks % 20 == 0:
+                try:
+                    is_slow_loading = bool(
+                        self.page.evaluate(
+                            """() => {
+                                const txt = (document.body && document.body.innerText) || '';
+                                return txt.includes('Это может занять несколько секунд') || txt.includes('Подождите');
+                            }"""
+                        )
+                    )
+                    if is_slow_loading:
+                        logger.info(
+                            f"Step 5->7: Ожидание ответа Госуслуг («Это может занять несколько секунд»)... прошло {int(spinner_ticks * 0.5)} сек / макс. {max_wait_sec} сек"
+                        )
+                except Exception:
+                    pass
+
+            self.page.wait_for_timeout(500)
 
         # Step 8: Fill Employee Personal Details
         logger.info(f"Step 8: Filling Personal Info for {row.get('Фамилия')}...")
         self.check_and_handle_error_modal()
-        last_name_input.wait_for(state="visible", timeout=15000)
+        last_name_input.wait_for(state="visible", timeout=max_wait_sec * 1000)
 
         fam_clean = self.sanitize_cyrillic_field(str(row.get("Фамилия", "")))
         imya_clean = self.sanitize_cyrillic_field(str(row.get("Имя", "")))
@@ -2399,7 +2514,7 @@ class GosuslugiDismissalBot:
         logger.info(f"Step 9: Filling Passport {row.get('СерияПаспорта')} {row.get('НомерПаспорта')}...")
         self.check_and_handle_error_modal()
         pass_num = self.page.locator("#number:visible, input[name*='number']:visible, input[id*='number']:visible").first
-        pass_num.wait_for(state="visible", timeout=15000)
+        pass_num.wait_for(state="visible", timeout=max_wait_sec * 1000)
 
         p_series_val = str(row.get("СерияПаспорта", "")).strip()
         if p_series_val and p_series_val.lower() not in ("нет", "-", "не заполнено"):
@@ -2461,7 +2576,7 @@ class GosuslugiDismissalBot:
             (self.cfg["PATENT_REGION"], self.cfg["PATENT_REGION_FULL"]),
         )
 
-        for _step10_tick in range(40):
+        for _step10_tick in range(int(max_wait_sec * 2.2)):
             if PAUSE_SIGNAL_FILE.exists():
                 self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
@@ -2510,11 +2625,11 @@ class GosuslugiDismissalBot:
                 self.page.wait_for_timeout(1000)
                 continue
 
-            self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(500)
 
         # Patent Series & Number, Blank Series & Number
         patent_series_inputs = self.page.locator("#series:visible, input[name*='series']:visible, input[id*='series']:visible").first
-        patent_series_inputs.wait_for(state="visible", timeout=15000)
+        patent_series_inputs.wait_for(state="visible", timeout=max_wait_sec * 1000)
         self.type_masked_input(
             "#series:visible, input[name*='series']:visible, input[id*='series']:visible",
             patent_series_str,
@@ -2587,7 +2702,7 @@ class GosuslugiDismissalBot:
         pos_str = self.sanitize_cyrillic_field(str(row.get("Должность", "Монтажник")).strip(), "Монтажник", allow_digits=True)
         logger.info(f"Step 11: Setting Termination Date {dismiss_date} & Position {pos_str}...")
         self.check_and_handle_error_modal()
-        for _ in range(30):
+        for _ in range(int(max_wait_sec * 2.2)):
             if PAUSE_SIGNAL_FILE.exists():
                 self.wait_if_paused_or_logged_out()
             if (
@@ -2599,7 +2714,7 @@ class GosuslugiDismissalBot:
                 > 0
             ):
                 break
-            self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(500)
 
         # 11a. Contract type radio ('Трудовой' -> input[name='ri16_type'])
         try:

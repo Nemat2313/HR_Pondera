@@ -267,6 +267,8 @@ export default function GosuslugiDismissalPanel({
   const [okvedCode, setOkvedCode] = useState('43.29');
   const [okvedText, setOkvedText] = useState('Производство прочих строительно-монтажных работ');
   const [defaultVoluntary, setDefaultVoluntary] = useState('Да');
+  const [deleteOldDrafts, setDeleteOldDrafts] = useState(true);
+  const [maxScreenWaitSec, setMaxScreenWaitSec] = useState(120);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
 
   const [workers, setWorkers] = useState<GosuslugiDismissalWorkerRecord[]>([]);
@@ -946,6 +948,8 @@ export default function GosuslugiDismissalPanel({
             UFMS_DEPARTMENT: ufmsDept,
             OKVED_CODE: okvedCode,
             OKVED_TEXT: okvedText,
+            DELETE_OLD_DRAFTS: deleteOldDrafts,
+            MAX_SCREEN_WAIT_SEC: maxScreenWaitSec,
           },
         }),
       });
@@ -1343,6 +1347,42 @@ export default function GosuslugiDismissalPanel({
                 value={ufmsDept}
                 onChange={(e) => setUfmsDept(e.target.value)}
                 className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+              />
+            </div>
+            <div className="md:col-span-2 flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <div>
+                <div className="font-bold text-slate-800 dark:text-slate-200">
+                  {lang === 'ru'
+                    ? 'Автоудаление старых черновиков Госуслуг (как в ВКС)'
+                    : 'Eski Gosuslugi Taslaklarını Otomatik Sil (VKS Gibi)'}
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {lang === 'ru'
+                    ? 'Если черновиков много и кнопка «Начать заново / Создать заявление» неактивна, робот удаляет самые старые черновики снизу списка.'
+                    : 'Taslak sayısı fazlaysa ve «Yeni Başvuru (Начать заново)» butonu aktif değilse en alttaki eski taslakları otomatik siler.'}
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={deleteOldDrafts}
+                onChange={(e) => setDeleteOldDrafts(e.target.checked)}
+                className="w-4 h-4 accent-teal-600 rounded cursor-pointer shrink-0"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                {lang === 'ru'
+                  ? 'Ожидание медленного экрана (сек)'
+                  : 'Yavaş Ekran Bekleme Süresi (sn)'}
+              </label>
+              <input
+                type="number"
+                min={60}
+                max={300}
+                step={15}
+                value={maxScreenWaitSec}
+                onChange={(e) => setMaxScreenWaitSec(Math.max(60, Number(e.target.value) || 120))}
+                className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
               />
             </div>
           </div>
