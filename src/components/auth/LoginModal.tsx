@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   LogIn,
   Lock,
@@ -24,6 +24,8 @@ import {
   Cpu,
   RefreshCw,
   QrCode,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -232,14 +234,37 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [paused, setPaused] = useState(false);
+  const pointerStartX = useRef<number | null>(null);
+
+  const goNext = useCallback(() => {
+    setActiveIdx((prev) => (prev + 1) % SHOWCASE_FEATURES.length);
+  }, []);
+
+  const goPrev = useCallback(() => {
+    setActiveIdx((prev) => (prev - 1 + SHOWCASE_FEATURES.length) % SHOWCASE_FEATURES.length);
+  }, []);
 
   useEffect(() => {
     if (paused) return;
     const timer = setInterval(() => {
-      setActiveIdx((prev) => (prev + 1) % SHOWCASE_FEATURES.length);
-    }, 3400);
+      goNext();
+    }, 4500);
     return () => clearInterval(timer);
-  }, [paused]);
+  }, [paused, goNext]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === 'ArrowRight') {
+        goNext();
+      } else if (e.key === 'ArrowLeft') {
+        goPrev();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goNext, goPrev]);
 
   if (!isOpen) return null;
 
@@ -422,26 +447,87 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       </div>
 
       {/* ===================================================================== */}
-      {/* RIGHT PANEL: LARGE MODULE VISUAL SHOWCASE WITH BLURRED AMBIENT FRAME  */}
+      {/* RIGHT PANEL: FULL-SCREEN CLOUD-BLENDED ANIMATED MODULE CAROUSEL       */}
       {/* ===================================================================== */}
       <div
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
-        className="relative flex-1 min-h-[560px] lg:h-full overflow-hidden flex flex-col justify-between p-4 sm:p-6 xl:p-8 bg-slate-100"
+        onPointerDown={(e) => {
+          pointerStartX.current = e.clientX;
+        }}
+        onPointerUp={(e) => {
+          if (pointerStartX.current !== null) {
+            const diff = e.clientX - pointerStartX.current;
+            if (Math.abs(diff) > 45) {
+              if (diff < 0) goNext();
+              else goPrev();
+            }
+            pointerStartX.current = null;
+          }
+        }}
+        className="relative flex-1 min-h-[560px] lg:h-full overflow-hidden flex flex-col justify-between p-5 sm:p-7 xl:p-9 bg-emerald-50/40 cursor-grab active:cursor-grabbing"
       >
-        {/* Ambient Blurred Surround Generated Dynamically from the Active Module Image */}
-        <img
-          key={`ambient-${activeFeature.imageUrl}`}
-          src={activeFeature.imageUrl}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 w-full h-full object-cover scale-115 blur-3xl opacity-55 pointer-events-none select-none transition-all duration-700"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-white/55 via-white/30 to-slate-900/25 backdrop-blur-md pointer-events-none" />
+        {/* Soft Left-Edge Cloud Mist Blending Login Panel into the Showcase */}
+        <div className="hidden lg:block absolute inset-y-0 left-0 w-24 z-20 bg-gradient-to-r from-emerald-100/80 via-emerald-50/35 to-transparent pointer-events-none" />
 
-        {/* TOP BAR: Clean Platform Header */}
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/90 backdrop-blur-xl border border-white/90 shadow-md">
+        {/* ALL 8 SLIDES STACKED FULL-SCREEN WITH CLOUD-BLURRED EDGES & CINEMATIC TRANSITIONS */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {SHOWCASE_FEATURES.map((item, idx) => {
+            const isActive = idx === activeIdx;
+            return (
+              <div
+                key={item.id}
+                className={`absolute inset-0 transition-all duration-1000 ease-out ${
+                  isActive
+                    ? 'opacity-100 scale-100 translate-x-0 z-10'
+                    : 'opacity-0 scale-105 translate-x-4 z-0'
+                }`}
+              >
+                {/* Layer 1: Deep Cloud Ambient Backdrop (Full Bleed Heavy Blur) */}
+                <img
+                  src={item.imageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover scale-125 blur-3xl opacity-90"
+                />
+
+                {/* Layer 2: Mid-Cloud Soft Halo Blur */}
+                <img
+                  src={item.imageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    WebkitMaskImage:
+                      'radial-gradient(ellipse 92% 88% at 52% 46%, rgba(0,0,0,1) 50%, rgba(0,0,0,0.5) 78%, rgba(0,0,0,0) 100%)',
+                    maskImage:
+                      'radial-gradient(ellipse 92% 88% at 52% 46%, rgba(0,0,0,1) 50%, rgba(0,0,0,0.5) 78%, rgba(0,0,0,0) 100%)',
+                  }}
+                  className="absolute inset-0 w-full h-full object-cover scale-105 blur-xl opacity-85"
+                />
+
+                {/* Layer 3: Frameless Full-Screen Crisp Visual Dissolving Like a Cloud into the Background */}
+                <img
+                  src={item.imageUrl}
+                  alt={item.titleTr}
+                  style={{
+                    WebkitMaskImage:
+                      'radial-gradient(ellipse 84% 78% at 52% 45%, rgba(0,0,0,1) 54%, rgba(0,0,0,0.78) 68%, rgba(0,0,0,0.28) 84%, rgba(0,0,0,0) 97%)',
+                    maskImage:
+                      'radial-gradient(ellipse 84% 78% at 52% 45%, rgba(0,0,0,1) 54%, rgba(0,0,0,0.78) 68%, rgba(0,0,0,0.28) 84%, rgba(0,0,0,0) 97%)',
+                  }}
+                  className="absolute inset-2 sm:inset-4 w-[calc(100%-16px)] sm:w-[calc(100%-32px)] h-[calc(100%-16px)] sm:h-[calc(100%-32px)] object-cover"
+                />
+              </div>
+            );
+          })}
+
+          {/* Subtle Bottom Cloud Mist for Text Legibility */}
+          <div className="absolute inset-x-0 bottom-0 h-52 z-20 bg-gradient-to-t from-slate-950/75 via-slate-950/30 to-transparent" />
+        </div>
+
+        {/* TOP BAR: Clean Floating Platform Badge & Slide Counter */}
+        <div className="relative z-30 flex flex-wrap items-center justify-between gap-4">
+          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/85 backdrop-blur-xl border border-white/80 shadow-md">
             <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600" />
@@ -454,142 +540,121 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             <Sparkles className="w-4 h-4 text-amber-500" />
           </div>
 
-          <div className="hidden xl:flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/90 backdrop-blur-xl text-slate-800 text-xs font-semibold border border-white/90 shadow-sm">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>
-              {lang === 'ru' ? '8 Активных Модулей в Одном Окне' : '8 Otonom Sistem Tek Merkezde'}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-slate-900/70 backdrop-blur-xl text-white text-xs font-semibold border border-white/20 shadow-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>{activeFeature.metricValue}</span>
+            <span className="text-white/40">•</span>
+            <span className="font-mono text-emerald-300">
+              {String(activeIdx + 1).padStart(2, '0')} / {String(SHOWCASE_FEATURES.length).padStart(2, '0')}
             </span>
           </div>
         </div>
 
-        {/* CENTER LARGE SHOWCASE IMAGE WITH FROSTED BLUR FRAME */}
-        <div
-          style={{ animation: 'softFloat 6s ease-in-out infinite' }}
-          className="relative z-10 my-auto py-3 flex items-center justify-center"
+        {/* LEFT / RIGHT FLOATING ARROW CONTROLS */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            goPrev();
+          }}
+          aria-label={lang === 'ru' ? 'Предыдущий модуль' : 'Önceki Modül'}
+          title={lang === 'ru' ? 'Предыдущий модуль (←)' : 'Önceki Modül (←)'}
+          className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-white/80 hover:bg-white text-slate-900 backdrop-blur-xl border border-white/90 shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer"
         >
-          {/* Outer Frosted Blurred Bezel / Frame */}
-          <div className="relative w-full max-w-5xl rounded-[32px] p-3 sm:p-4 bg-white/35 backdrop-blur-2xl border border-white/75 shadow-[0_28px_70px_-15px_rgba(15,23,42,0.32)] ring-1 ring-white/50">
-            {/* Soft Blurred Side Glows Around the Image */}
-            <div className="relative w-full h-[260px] sm:h-[340px] xl:h-[420px] rounded-3xl overflow-hidden bg-slate-900 shadow-inner border border-white/60">
-              {/* Blurred Edge Fill Layer */}
-              <img
-                key={`frame-blur-${activeFeature.imageUrl}`}
-                src={activeFeature.imageUrl}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-75 pointer-events-none"
-              />
+          <ChevronLeft className="w-6 h-6" />
+        </button>
 
-              {/* Crisp Large Main Showcase Image */}
-              <img
-                key={activeFeature.imageUrl}
-                src={activeFeature.imageUrl}
-                alt={activeFeature.titleTr}
-                className="relative z-10 w-full h-full object-cover transition-all duration-500"
-              />
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            goNext();
+          }}
+          aria-label={lang === 'ru' ? 'Следующий модуль' : 'Sonraki Modül'}
+          title={lang === 'ru' ? 'Следующий модуль (→)' : 'Sonraki Modül (→)'}
+          className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-white/80 hover:bg-white text-slate-900 backdrop-blur-xl border border-white/90 shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer"
+        >
+          <ChevronRight className="w-6 h-6" />
+        </button>
 
-              {/* Soft Edge Vignette (Feathered Frame Blur Effect) */}
-              <div className="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_0_48px_12px_rgba(255,255,255,0.28)] rounded-3xl" />
-              <div className="absolute inset-x-0 bottom-0 h-32 z-20 bg-gradient-to-t from-slate-950/85 via-slate-950/40 to-transparent pointer-events-none" />
-
-              {/* Top-Right Live Badge */}
-              <div className="absolute top-3.5 right-3.5 z-30 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/25 text-white text-xs font-bold shadow-lg">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span>{activeFeature.metricValue}</span>
+        {/* BOTTOM HERO CAPTION & SLIDE PROGRESS INDICATORS (No 8-card grid clutter) */}
+        <div className="relative z-30 mt-auto pt-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            {/* Active Module Info */}
+            <div
+              key={`caption-${activeFeature.id}`}
+              className="flex items-center gap-4 min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-500"
+            >
+              <div
+                className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl ${activeFeature.accentBg} text-white flex items-center justify-center shadow-xl border border-white/35 shrink-0`}
+              >
+                <ActiveIcon className="w-7 h-7" />
               </div>
-
-              {/* Clean Minimal Bottom Caption Inside the Large Visual */}
-              <div className="absolute inset-x-4 bottom-3.5 z-30 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div
-                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${activeFeature.accentBg} text-white flex items-center justify-center shadow-lg border border-white/30 shrink-0`}
-                  >
-                    <ActiveIcon className="w-6 h-6" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 text-[10.5px] font-bold rounded-full bg-white/95 text-slate-900 shadow-2xs">
-                        {activeFeature.badge}
-                      </span>
-                      <span className="text-xs font-medium text-emerald-300 truncate">
-                        {lang === 'ru' ? activeFeature.metricLabelRu : activeFeature.metricLabelTr}
-                      </span>
-                    </div>
-                    <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight truncate mt-0.5 drop-shadow-sm">
-                      {lang === 'ru' ? activeFeature.titleRu : activeFeature.titleTr}
-                    </h2>
-                    <p className="text-xs sm:text-sm text-slate-200 truncate">
-                      {lang === 'ru' ? activeFeature.shortRu : activeFeature.shortTr}
-                    </p>
-                  </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-white/95 text-slate-900 shadow-sm">
+                    {activeFeature.badge}
+                  </span>
+                  <span className="text-xs sm:text-sm font-semibold text-emerald-300 drop-shadow-xs">
+                    {lang === 'ru' ? activeFeature.metricLabelRu : activeFeature.metricLabelTr}
+                  </span>
                 </div>
-
-                {/* Slide Indicator Dots */}
-                <div className="hidden sm:flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/15 shrink-0">
-                  {SHOWCASE_FEATURES.map((f, i) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => setActiveIdx(i)}
-                      aria-label={f.titleTr}
-                      className={`h-2 rounded-full transition-all cursor-pointer ${
-                        i === activeIdx ? 'w-6 bg-emerald-400' : 'w-2 bg-white/45 hover:bg-white/80'
-                      }`}
-                    />
-                  ))}
-                </div>
+                <h2 className="text-xl sm:text-2xl xl:text-3xl font-bold text-white tracking-tight mt-1 drop-shadow-md">
+                  {lang === 'ru' ? activeFeature.titleRu : activeFeature.titleTr}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-100/95 mt-0.5 drop-shadow-xs">
+                  {lang === 'ru' ? activeFeature.shortRu : activeFeature.shortTr}
+                </p>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* BOTTOM VISUAL MODULE CARDS: 8 Visual Photo + Icon Cards */}
-        <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-2.5">
-          {SHOWCASE_FEATURES.map((item, idx) => {
-            const IconComp = item.icon;
-            const isSelected = idx === activeIdx;
-            return (
+            {/* Interactive Prev / Next + Segmented Progress Pills */}
+            <div className="flex items-center gap-3 self-start sm:self-end shrink-0 bg-slate-900/60 backdrop-blur-xl px-3.5 py-2 rounded-2xl border border-white/20 shadow-lg">
               <button
-                key={item.id}
                 type="button"
-                onClick={() => setActiveIdx(idx)}
-                onMouseEnter={() => setActiveIdx(idx)}
-                className={`group text-left p-2.5 rounded-2xl transition-all duration-300 cursor-pointer flex items-center gap-2.5 border ${
-                  isSelected
-                    ? `bg-white text-slate-900 border-2 ${item.accentBorder} shadow-xl scale-[1.02]`
-                    : 'bg-white/85 hover:bg-white text-slate-800 border-white/80 backdrop-blur-md shadow-md'
-                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goPrev();
+                }}
+                aria-label="Önceki"
+                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition cursor-pointer"
               >
-                <div className="relative w-14 h-12 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-slate-100">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.titleTr}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div
-                    className={`absolute bottom-0.5 right-0.5 w-5 h-5 rounded-md ${item.accentBg} text-white flex items-center justify-center shadow-xs`}
-                  >
-                    <IconComp className="w-3 h-3" />
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1">
-                    <span
-                      className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${item.pillClass}`}
-                    >
-                      {item.badge}
-                    </span>
-                  </div>
-                  <div className="text-xs sm:text-[13px] font-bold text-slate-900 leading-snug mt-0.5 truncate">
-                    {lang === 'ru' ? item.titleRu : item.titleTr}
-                  </div>
-                  <div className="text-[10.5px] text-slate-600 truncate">
-                    {lang === 'ru' ? item.shortRu : item.shortTr}
-                  </div>
-                </div>
+                <ChevronLeft className="w-4 h-4" />
               </button>
-            );
-          })}
+
+              <div className="flex items-center gap-1.5">
+                {SHOWCASE_FEATURES.map((f, i) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveIdx(i);
+                    }}
+                    title={lang === 'ru' ? f.titleRu : f.titleTr}
+                    aria-label={f.titleTr}
+                    className={`h-2 rounded-full transition-all duration-500 cursor-pointer ${
+                      i === activeIdx
+                        ? 'w-8 bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]'
+                        : 'w-2 bg-white/40 hover:bg-white/75'
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goNext();
+                }}
+                aria-label="Sonraki"
+                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
