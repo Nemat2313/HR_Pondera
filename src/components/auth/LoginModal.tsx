@@ -260,26 +260,10 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
   const activeFeature = SHOWCASE_FEATURES[activeIdx] || SHOWCASE_FEATURES[0];
   const ActiveIcon = activeFeature.icon;
-  const StepIcon0 = activeFeature.stepIcons[0];
-  const StepIcon1 = activeFeature.stepIcons[1];
-  const StepIcon2 = activeFeature.stepIcons[2];
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col lg:flex-row bg-white overflow-y-auto lg:overflow-hidden select-none font-normal">
       <style jsx global>{`
-        @keyframes pulseFlow {
-          0% {
-            transform: translateX(-100%);
-            opacity: 0.2;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            transform: translateX(220%);
-            opacity: 0.2;
-          }
-        }
         @keyframes softFloat {
           0%,
           100% {
@@ -438,26 +422,26 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       </div>
 
       {/* ===================================================================== */}
-      {/* RIGHT PANEL: BRIGHT DAYLIGHT OFFICE + NANO BANANA VISUAL SHOWCASE     */}
+      {/* RIGHT PANEL: LARGE MODULE VISUAL SHOWCASE WITH BLURRED AMBIENT FRAME  */}
       {/* ===================================================================== */}
       <div
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
-        className="relative flex-1 min-h-[540px] lg:h-full overflow-hidden flex flex-col justify-between p-4 sm:p-6 xl:p-8"
+        className="relative flex-1 min-h-[560px] lg:h-full overflow-hidden flex flex-col justify-between p-4 sm:p-6 xl:p-8 bg-slate-100"
       >
-        {/* Uncropped Full Daylight Office Image Resized from Login Panel Border to Screen Edge */}
+        {/* Ambient Blurred Surround Generated Dynamically from the Active Module Image */}
         <img
-          src="/login-hr-office-light.jpg"
-          alt="Pondera Office"
-          className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
+          key={`ambient-${activeFeature.imageUrl}`}
+          src={activeFeature.imageUrl}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-cover scale-115 blur-3xl opacity-55 pointer-events-none select-none transition-all duration-700"
         />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/55 via-white/30 to-slate-900/25 backdrop-blur-md pointer-events-none" />
 
-        {/* Bright Daylight Soft Vignette (No dark overlay — keeps the office bright & airy) */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/35 via-white/10 to-white/40 pointer-events-none" />
-
-        {/* TOP BAR: Visual Platform Title */}
+        {/* TOP BAR: Clean Platform Header */}
         <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/95 backdrop-blur-md border border-white shadow-md">
+          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/90 backdrop-blur-xl border border-white/90 shadow-md">
             <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600" />
@@ -470,7 +454,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             <Sparkles className="w-4 h-4 text-amber-500" />
           </div>
 
-          <div className="hidden xl:flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/95 backdrop-blur-md text-slate-800 text-xs font-semibold border border-emerald-200 shadow-sm">
+          <div className="hidden xl:flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/90 backdrop-blur-xl text-slate-800 text-xs font-semibold border border-white/90 shadow-sm">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             <span>
               {lang === 'ru' ? '8 Активных Модулей в Одном Окне' : '8 Otonom Sistem Tek Merkezde'}
@@ -478,131 +462,81 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </div>
         </div>
 
-        {/* CENTER ANIMATED VISUAL SPOTLIGHT: Nano Banana Visual Illustration + 3-Step Flow */}
+        {/* CENTER LARGE SHOWCASE IMAGE WITH FROSTED BLUR FRAME */}
         <div
-          style={{ animation: 'softFloat 5s ease-in-out infinite' }}
-          className="relative z-10 my-auto py-3"
+          style={{ animation: 'softFloat 6s ease-in-out infinite' }}
+          className="relative z-10 my-auto py-3 flex items-center justify-center"
         >
-          <div className="max-w-5xl mx-auto rounded-3xl bg-white/95 backdrop-blur-xl border border-white shadow-2xl p-4 sm:p-5 transition-all duration-500">
-            <div className="flex flex-col lg:flex-row items-stretch gap-5">
-              {/* Left Side: Vivid Nano Banana Generated Illustration */}
-              <div className="relative w-full lg:w-[350px] xl:w-[390px] h-44 sm:h-52 rounded-2xl overflow-hidden border border-slate-200 shadow-md shrink-0 bg-slate-100">
-                <img
-                  key={activeFeature.imageUrl}
-                  src={activeFeature.imageUrl}
-                  alt={activeFeature.titleTr}
-                  className="w-full h-full object-cover transition-all duration-500"
-                />
-                <div className="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/85 backdrop-blur-xs text-white text-[11px] font-bold shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>{activeFeature.metricValue}</span>
-                </div>
+          {/* Outer Frosted Blurred Bezel / Frame */}
+          <div className="relative w-full max-w-5xl rounded-[32px] p-3 sm:p-4 bg-white/35 backdrop-blur-2xl border border-white/75 shadow-[0_28px_70px_-15px_rgba(15,23,42,0.32)] ring-1 ring-white/50">
+            {/* Soft Blurred Side Glows Around the Image */}
+            <div className="relative w-full h-[260px] sm:h-[340px] xl:h-[420px] rounded-3xl overflow-hidden bg-slate-900 shadow-inner border border-white/60">
+              {/* Blurred Edge Fill Layer */}
+              <img
+                key={`frame-blur-${activeFeature.imageUrl}`}
+                src={activeFeature.imageUrl}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-75 pointer-events-none"
+              />
+
+              {/* Crisp Large Main Showcase Image */}
+              <img
+                key={activeFeature.imageUrl}
+                src={activeFeature.imageUrl}
+                alt={activeFeature.titleTr}
+                className="relative z-10 w-full h-full object-cover transition-all duration-500"
+              />
+
+              {/* Soft Edge Vignette (Feathered Frame Blur Effect) */}
+              <div className="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_0_48px_12px_rgba(255,255,255,0.28)] rounded-3xl" />
+              <div className="absolute inset-x-0 bottom-0 h-32 z-20 bg-gradient-to-t from-slate-950/85 via-slate-950/40 to-transparent pointer-events-none" />
+
+              {/* Top-Right Live Badge */}
+              <div className="absolute top-3.5 right-3.5 z-30 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/25 text-white text-xs font-bold shadow-lg">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>{activeFeature.metricValue}</span>
               </div>
 
-              {/* Right Side: Module Title + Animated 3-Step Pipeline */}
-              <div className="flex-1 flex flex-col justify-between min-w-0">
-                <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-200/90">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-12 h-12 rounded-2xl ${activeFeature.accentBg} text-white flex items-center justify-center shadow-md shrink-0`}
-                    >
-                      <ActiveIcon className="w-6 h-6" />
+              {/* Clean Minimal Bottom Caption Inside the Large Visual */}
+              <div className="absolute inset-x-4 bottom-3.5 z-30 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div
+                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${activeFeature.accentBg} text-white flex items-center justify-center shadow-lg border border-white/30 shrink-0`}
+                  >
+                    <ActiveIcon className="w-6 h-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 text-[10.5px] font-bold rounded-full bg-white/95 text-slate-900 shadow-2xs">
+                        {activeFeature.badge}
+                      </span>
+                      <span className="text-xs font-medium text-emerald-300 truncate">
+                        {lang === 'ru' ? activeFeature.metricLabelRu : activeFeature.metricLabelTr}
+                      </span>
                     </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${activeFeature.pillClass}`}
-                        >
-                          {activeFeature.badge}
-                        </span>
-                        <span className="text-xs font-medium text-slate-500">
-                          {lang === 'ru' ? activeFeature.metricLabelRu : activeFeature.metricLabelTr}
-                        </span>
-                      </div>
-                      <h2 className="text-lg sm:text-xl xl:text-2xl font-bold text-slate-900 mt-0.5">
-                        {lang === 'ru' ? activeFeature.titleRu : activeFeature.titleTr}
-                      </h2>
-                      <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
-                        {lang === 'ru' ? activeFeature.shortRu : activeFeature.shortTr}
-                      </p>
-                    </div>
+                    <h2 className="text-lg sm:text-2xl font-bold text-white tracking-tight truncate mt-0.5 drop-shadow-sm">
+                      {lang === 'ru' ? activeFeature.titleRu : activeFeature.titleTr}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-200 truncate">
+                      {lang === 'ru' ? activeFeature.shortRu : activeFeature.shortTr}
+                    </p>
                   </div>
                 </div>
 
-                {/* Animated 3-Step Visual Pipeline Diagram */}
-                <div className="grid grid-cols-1 sm:grid-cols-5 items-center gap-2 pt-3">
-                  {/* Step 1 */}
-                  <div className="flex items-center gap-2.5 p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 shadow-2xs shrink-0">
-                      <StepIcon0 className="w-4.5 h-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
-                        {lang === 'ru' ? 'ШАГ 1' : 'ADIM 1'}
-                      </div>
-                      <div className="text-xs font-bold text-slate-900 truncate">
-                        {lang === 'ru' ? activeFeature.stepsRu[0] : activeFeature.stepsTr[0]}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Animated Connector 1 */}
-                  <div className="hidden sm:flex flex-col items-center justify-center px-1">
-                    <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden relative">
-                      <div
-                        className={`w-1/2 h-full rounded-full ${activeFeature.accentBg}`}
-                        style={{ animation: 'pulseFlow 1.8s linear infinite' }}
-                      />
-                    </div>
-                    <span className="text-[9.5px] font-semibold text-slate-500 mt-1">OTOMATİK</span>
-                  </div>
-
-                  {/* Step 2 */}
-                  <div
-                    className={`flex items-center gap-2.5 p-2.5 rounded-2xl bg-white border-2 ${activeFeature.accentBorder} shadow-sm`}
-                  >
-                    <div
-                      className={`w-9 h-9 rounded-xl ${activeFeature.accentBg} text-white flex items-center justify-center shadow-xs shrink-0`}
-                    >
-                      <StepIcon1 className="w-4.5 h-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div
-                        className={`text-[9.5px] font-bold uppercase tracking-wider ${activeFeature.accentText}`}
-                      >
-                        {lang === 'ru' ? 'ШАГ 2 • РОБОТ / ИИ' : 'ADIM 2 • ROBOT / AI'}
-                      </div>
-                      <div className="text-xs font-bold text-slate-900 truncate">
-                        {lang === 'ru' ? activeFeature.stepsRu[1] : activeFeature.stepsTr[1]}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Animated Connector 2 */}
-                  <div className="hidden sm:flex flex-col items-center justify-center px-1">
-                    <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden relative">
-                      <div
-                        className={`w-1/2 h-full rounded-full ${activeFeature.accentBg}`}
-                        style={{ animation: 'pulseFlow 1.8s linear infinite 0.5s' }}
-                      />
-                    </div>
-                    <span className="text-[9.5px] font-semibold text-emerald-600 mt-1">CANLI</span>
-                  </div>
-
-                  {/* Step 3 */}
-                  <div className="flex items-center gap-2.5 p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                      <StepIcon2 className="w-4.5 h-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[9.5px] font-bold uppercase tracking-wider text-emerald-700">
-                        {lang === 'ru' ? 'РЕЗУЛЬТАТ' : 'SONUÇ'}
-                      </div>
-                      <div className="text-xs font-bold text-slate-900 truncate">
-                        {lang === 'ru' ? activeFeature.stepsRu[2] : activeFeature.stepsTr[2]}
-                      </div>
-                    </div>
-                  </div>
+                {/* Slide Indicator Dots */}
+                <div className="hidden sm:flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/15 shrink-0">
+                  {SHOWCASE_FEATURES.map((f, i) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setActiveIdx(i)}
+                      aria-label={f.titleTr}
+                      className={`h-2 rounded-full transition-all cursor-pointer ${
+                        i === activeIdx ? 'w-6 bg-emerald-400' : 'w-2 bg-white/45 hover:bg-white/80'
+                      }`}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
@@ -623,7 +557,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 className={`group text-left p-2.5 rounded-2xl transition-all duration-300 cursor-pointer flex items-center gap-2.5 border ${
                   isSelected
                     ? `bg-white text-slate-900 border-2 ${item.accentBorder} shadow-xl scale-[1.02]`
-                    : 'bg-white/90 hover:bg-white text-slate-800 border-white shadow-md'
+                    : 'bg-white/85 hover:bg-white text-slate-800 border-white/80 backdrop-blur-md shadow-md'
                 }`}
               >
                 <div className="relative w-14 h-12 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-slate-100">
