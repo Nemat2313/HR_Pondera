@@ -51,8 +51,8 @@ DEFAULT_CONFIG = {
     "TYPE_COMPANY": "Юридическое лицо",
     "OKVED_TEXT": "Производство прочих строительно-монтажных работ",
     "OKVED_CODE": "43.29",
-    "PATENT_REGION": "Ленинградская",
-    "PATENT_REGION_FULL": "Ленинградская область",
+    "PATENT_REGION": "Тюменская",
+    "PATENT_REGION_FULL": "Тюменская область",
     "WORK_ADDRESS": "626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й",
     "WORK_POSTAL_CODE": "626150",
     "UFMS_DEPARTMENT": "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ",
@@ -67,6 +67,7 @@ PATENT_SERIES_TO_REGION = {
     "47": ("Ленинградская", "Ленинградская область"),
     "78": ("Санкт-Петербург", "г. Санкт-Петербург"),
     "77": ("Москва", "г. Москва"),
+    "99": ("Москва", "г. Москва"),
     "50": ("Московская", "Московская область"),
     "28": ("Амурская", "Амурская область"),
     "16": ("Татарстан", "Республика Татарстан"),
@@ -705,6 +706,247 @@ class GosuslugiDismissalBot:
             ],
             step_label=f"Step 7 (ОКВЭД {okved_code})",
             click_continue_after=True,
+        )
+        return ok
+
+    def sanitize_cyrillic_field(self, value: str, fallback: str = "") -> str:
+        """
+        Ensures a string contains ONLY Russian Cyrillic letters, spaces, and hyphens.
+        Replaces common Latin lookalikes (A, B, C, E, H, K, M, O, P, T, X, Y, I) with Cyrillic equivalents
+        so Gosuslugi never complains 'Поле может содержать только русские буквы'.
+        """
+        s = str(value or "").strip()
+        if not s:
+            return fallback
+        latin_to_cyr = str.maketrans({
+            "A": "А", "B": "В", "C": "С", "E": "Е", "H": "Н", "K": "К",
+            "M": "М", "O": "О", "P": "Р", "T": "Т", "X": "Х", "Y": "У",
+            "a": "а", "b": "в", "c": "с", "e": "е", "h": "н", "k": "к",
+            "m": "м", "o": "о", "p": "р", "t": "т", "x": "х", "y": "у",
+            "İ": "И", "I": "И", "ı": "и", "i": "и", "Ş": "Ш", "ş": "ш",
+            "Ğ": "Г", "ğ": "г", "Ç": "Ч", "ç": "ч", "Ö": "О", "ö": "о",
+            "Ü": "У", "ü": "у",
+        })
+        s = s.translate(latin_to_cyr)
+        s = re.sub(r"[^А-Яа-яЁё\s\-]", " ", s)
+        s = re.sub(r"\s+", " ", s).strip(" -")
+        return s if s else fallback
+
+    def type_masked_input(self, selector: str, value: str, delay: int = 35):
+        """Clicks an input, clears it with Ctrl+A + Backspace, and types character-by-character so Angular masks trigger."""
+        val = str(value or "").strip()
+        if not val:
+            return
+        try:
+            loc = self.page.locator(selector)
+            if loc.count() > 0 and loc.first.is_visible():
+                inp = loc.first
+                inp.scroll_into_view_if_needed()
+                inp.click(timeout=2500)
+                self.page.wait_for_timeout(80)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.keyboard.type(val, delay=delay)
+                self.page.wait_for_timeout(120)
+                self.page.keyboard.press("Tab")
+                return
+        except Exception as e:
+            logger.debug(f"type_masked_input({selector}) primary note: {e}")
+
+        # Non-blocking JS + physical mouse fallback
+        try:
+            pos = self.page.evaluate(
+                """(sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return null;
+                    el.scrollIntoView({ block: 'center' });
+                    const r = el.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0) return null;
+                    el.focus();
+                    return { x: r.left + Math.min(40, r.width / 2), y: r.top + r.height / 2 };
+                }""",
+                selector.replace(":visible", ""),
+            )
+            if pos and pos.get("x") and pos.get("y"):
+                self.page.mouse.click(float(pos["x"]), float(pos["y"]))
+                self.page.wait_for_timeout(80)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.keyboard.type(val, delay=delay)
+                self.page.wait_for_timeout(120)
+                self.page.keyboard.press("Tab")
+        except Exception as e:
+            logger.debug(f"type_masked_input({selector}) JS fallback note: {e}")
+
+    def fill_date_input_smart(self, primary_selector: str, label_keywords: List[str], value: str, delay: int = 35) -> bool:
+        """
+        Reliably locates and fills a Gosuslugi Angular date field (e.g. 'Дата рождения' [di13_birth],
+        'Дата выдачи' [di14_issue / di15], 'Дата расторжения' [di16]) without ever hanging on placeholder selectors.
+        """
+        val = str(value or "").strip()
+        if not val:
+            return False
+
+        self.enable_background_focus_emulation()
+        kw_lower = [str(k).strip().lower() for k in label_keywords if str(k).strip()]
+        clean_sel = primary_selector.replace(":visible", "")
+
+        try:
+            target_info = self.page.evaluate(
+                """({ sel, kwList }) => {
+                    const isVis = (el) => {
+                        if (!el) return false;
+                        const r = el.getBoundingClientRect();
+                        if (r.width < 20 || r.height < 14) return false;
+                        const st = window.getComputedStyle(el);
+                        return st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity || '1') > 0.05;
+                    };
+
+                    // 1. Collect all visible candidate date inputs
+                    const candidates = [];
+                    const seen = new Set();
+                    const addCand = (inp, priorityBonus) => {
+                        if (!inp || seen.has(inp) || !isVis(inp)) return;
+                        seen.add(inp);
+                        // Gather context text from surrounding form group / label / date-picker
+                        const wrapper = inp.closest('lib-date-picker, .form-field, .input-group, .field-wrap, epgu-constructor-form-field, div') || inp.parentElement;
+                        const parentWrap = (wrapper && wrapper.parentElement) ? wrapper.parentElement : wrapper;
+                        const ctxText = ((parentWrap ? parentWrap.innerText : '') || (wrapper ? wrapper.innerText : '') || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                        const nameId = ((inp.getAttribute('name') || '') + ' ' + (inp.getAttribute('id') || '') + ' ' + (inp.getAttribute('placeholder') || '')).toLowerCase();
+                        let score = priorityBonus;
+                        for (const kw of kwList) {
+                            if (ctxText.includes(kw)) score += 50;
+                            if (nameId.includes(kw)) score += 30;
+                        }
+                        if (inp.closest('lib-date-picker')) score += 20;
+                        candidates.push({ inp, score, curVal: (inp.value || '').trim() });
+                    };
+
+                    if (sel) {
+                        try {
+                            document.querySelectorAll(sel).forEach(el => addCand(el, 40));
+                        } catch (e) {}
+                    }
+                    document.querySelectorAll("lib-date-picker input, input[name^='di'], input[id^='di'], input[placeholder*='__']").forEach(el => addCand(el, 15));
+
+                    // Also search labels matching kwList and find input inside the same container
+                    if (kwList.length > 0) {
+                        const labels = Array.from(document.querySelectorAll('label, .label, .field-label, .form-label, span, p, div'));
+                        for (const lbl of labels) {
+                            if (!isVis(lbl)) continue;
+                            const t = (lbl.innerText || lbl.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                            if (t.length > 100) continue;
+                            if (kwList.some(k => t.includes(k))) {
+                                let container = lbl.parentElement;
+                                for (let depth = 0; depth < 4 && container; depth++) {
+                                    const inp = container.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])');
+                                    if (inp && isVis(inp)) {
+                                        addCand(inp, 60 - depth * 5);
+                                        break;
+                                    }
+                                    container = container.parentElement;
+                                }
+                            }
+                        }
+                    }
+
+                    if (candidates.length === 0) return null;
+                    candidates.sort((a, b) => b.score - a.score);
+                    const chosen = candidates[0].inp;
+                    chosen.scrollIntoView({ block: 'center' });
+                    const r = chosen.getBoundingClientRect();
+                    chosen.focus();
+                    chosen.click();
+                    return {
+                        x: r.left + Math.min(45, r.width / 2),
+                        y: r.top + r.height / 2,
+                        name: chosen.getAttribute('name') || chosen.getAttribute('id') || 'date-input'
+                    };
+                }""",
+                {"sel": clean_sel, "kwList": kw_lower},
+            )
+        except Exception as e:
+            logger.debug(f"fill_date_input_smart evaluate note: {e}")
+            target_info = None
+
+        if target_info and target_info.get("x") and target_info.get("y"):
+            try:
+                cx = float(target_info["x"])
+                cy = float(target_info["y"])
+                self.page.mouse.click(cx, cy)
+                self.page.wait_for_timeout(80)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(50)
+                self.page.keyboard.type(val, delay=delay)
+                self.page.wait_for_timeout(120)
+                self.page.keyboard.press("Tab")
+                self.page.wait_for_timeout(200)
+                return True
+            except Exception as e:
+                logger.debug(f"fill_date_input_smart mouse/keyboard note: {e}")
+
+        # Fallback via Playwright locator with short timeout (never 30s)
+        try:
+            loc = self.page.locator(primary_selector)
+            if loc.count() > 0 and loc.first.is_visible():
+                loc.first.click(timeout=2500)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.keyboard.type(val, delay=delay)
+                self.page.keyboard.press("Tab")
+                self.page.wait_for_timeout(200)
+                return True
+        except Exception as e:
+            logger.debug(f"fill_date_input_smart fallback note: {e}")
+
+        return False
+
+    def fill_citizenship_strict(self, citizenship_raw: str) -> bool:
+        """
+        Selects 'Гражданство' in Gosuslugi's #dic13_ctz lookup dropdown so it never stays empty
+        or triggers 'Поле обязательно для заполнения'.
+        """
+        raw = str(citizenship_raw or "").strip().upper()
+        search_term = "Узбекистан"
+        target_keywords = ["УЗБЕКИСТАН", "РЕСПУБЛИКА УЗБЕКИСТАН"]
+        if "ТУРЦ" in raw or "ТУРЕЦ" in raw or "TURK" in raw:
+            search_term = "Турция"
+            target_keywords = ["ТУРЦИЯ", "ТУРЕЦКАЯ РЕСПУБЛИКА"]
+        elif "ТАДЖ" in raw:
+            search_term = "Таджикистан"
+            target_keywords = ["ТАДЖИКИСТАН", "РЕСПУБЛИКА ТАДЖИКИСТАН"]
+        elif "КАЗАХ" in raw:
+            search_term = "Казахстан"
+            target_keywords = ["КАЗАХСТАН", "РЕСПУБЛИКА КАЗАХСТАН"]
+        elif "КЫРГ" in raw or "КИРГ" in raw:
+            search_term = "Кыргызстан"
+            target_keywords = ["КЫРГЫЗСТАН", "КИРГИЗИЯ", "КЫРГЫЗСКАЯ РЕСПУБЛИКА"]
+        elif "БЕЛАР" in raw or "БЕЛОР" in raw:
+            search_term = "Беларусь"
+            target_keywords = ["БЕЛАРУСЬ", "РЕСПУБЛИКА БЕЛАРУСЬ"]
+        elif "АЗЕРБ" in raw:
+            search_term = "Азербайджан"
+            target_keywords = ["АЗЕРБАЙДЖАН", "АЗЕРБАЙДЖАНСКАЯ РЕСПУБЛИКА"]
+        elif "АРМЕН" in raw:
+            search_term = "Армения"
+            target_keywords = ["АРМЕНИЯ", "РЕСПУБЛИКА АРМЕНИЯ"]
+        elif "ИНДИ" in raw:
+            search_term = "Индия"
+            target_keywords = ["ИНДИЯ", "РЕСПУБЛИКА ИНДИЯ"]
+        elif "СЕРБ" in raw:
+            search_term = "Сербия"
+            target_keywords = ["СЕРБИЯ", "РЕСПУБЛИКА СЕРБИЯ"]
+        elif citizenship_raw and len(citizenship_raw.strip()) >= 3:
+            search_term = self.sanitize_cyrillic_field(citizenship_raw.strip(), "Узбекистан")
+            target_keywords = [search_term.upper()]
+
+        ok = self.select_lookup_option_mvd_style(
+            input_selector="input#dic13_ctz, input[id*='ctz'], lib-lookup[formcontrolname='dic13_ctz'] input.search-input, lib-lookup input.search-input",
+            type_text=search_term,
+            match_keywords=target_keywords,
+            step_label=f"Step 8 (Гражданство: {search_term})",
+            click_continue_after=False,
         )
         return ok
 
@@ -1912,182 +2154,311 @@ class GosuslugiDismissalBot:
         logger.info(f"Step 8: Filling Personal Info for {row.get('Фамилия')}...")
         self.check_and_handle_error_modal()
         last_name_input.wait_for(state="visible", timeout=15000)
-        last_name_input.fill(str(row.get("Фамилия", "")))
-        self.page.locator("input[name*='firstNameRu'], input[id*='firstNameRu']").first.fill(str(row.get("Имя", "")))
-        middle_val = str(row.get("Отчество") or "").strip() or "НЕТ"
-        self.page.locator("input[name*='secondNameRu'], input[id*='secondNameRu']").first.fill(middle_val)
 
-        # Birth date
-        bdate_str = str(row.get("ДатаРождения", ""))
-        birth_input = self.page.locator("input[placeholder*='__.__.____'], input[name*='birthDate']").first
-        birth_input.click()
-        self.page.keyboard.press("Control+A")
-        self.page.keyboard.press("Backspace")
-        self.page.keyboard.type(bdate_str, delay=40)
-        self.page.wait_for_timeout(400)
-
-        # Citizenship (#dic13_ctz via MVD-style lookup)
-        citizenship = str(row.get("ТекущееГражданство", "Узбекистан")).strip()
-        self.select_lookup_option_mvd_style(
-            input_selector="input#dic13_ctz, input[id*='ctz'], lib-lookup input.search-input",
-            type_text=citizenship,
-            match_keywords=[citizenship],
-            step_label=f"Step 8 (Гражданство: {citizenship})",
-            click_continue_after=False,
+        fam_clean = self.sanitize_cyrillic_field(str(row.get("Фамилия", "")))
+        imya_clean = self.sanitize_cyrillic_field(str(row.get("Имя", "")))
+        otch_raw = str(row.get("Отчество") or "").strip()
+        otch_clean = (
+            "Нет"
+            if (not otch_raw or otch_raw.lower() in ("нет", "-", "не заполнено", "none"))
+            else self.sanitize_cyrillic_field(otch_raw, "Нет")
         )
 
-        # Place of birth (si13_pob)
-        pob_input = self.page.locator("#si13_pob:visible, input[name*='pob']:visible, input[id*='pob']:visible")
-        if pob_input.count() > 0:
-            pob_input.first.fill(citizenship)
+        self.type_masked_input(
+            "#si13_lastNameRu:visible, input[name*='lastNameRu']:visible, input[id*='lastNameRu']:visible",
+            fam_clean,
+        )
+        self.type_masked_input(
+            "#si13_firstNameRu:visible, input[name*='firstNameRu']:visible, input[id*='firstNameRu']:visible",
+            imya_clean,
+        )
+        self.type_masked_input(
+            "#si13_secondNameRu:visible, input[name*='secondNameRu']:visible, input[id*='secondNameRu']:visible",
+            otch_clean,
+        )
+
+        # Birth date (uses di13_birth / lib-date-picker input / label 'Дата рождения')
+        bdate_str = str(row.get("ДатаРождения", "")).strip()
+        self.fill_date_input_smart(
+            primary_selector="input[name='di13_birth']:visible, input#di13_birth:visible, input[id*='birth']:visible, lib-date-picker input:visible",
+            label_keywords=["дата рождения", "рождения"],
+            value=bdate_str,
+        )
+        self.page.wait_for_timeout(300)
+
+        # Citizenship (#dic13_ctz via strict lookup)
+        citizenship = str(row.get("ТекущееГражданство", "Узбекистан")).strip()
+        self.fill_citizenship_strict(citizenship)
+
+        # Place of birth (#si13_pob)
+        pob_val = self.sanitize_cyrillic_field(
+            str(row.get("МестоРождения") or citizenship).strip(),
+            "Республика Узбекистан",
+        )
+        self.type_masked_input(
+            "#si13_pob:visible, input[name*='pob']:visible, input[id*='pob']:visible",
+            pob_val,
+        )
 
         # Gender selection
         gender = str(row.get("Пол", "Мужской")).strip()
         gender_label = "Женский" if gender.lower().startswith("ж") or gender.lower().startswith("k") else "Мужской"
         gender_loc = self.page.locator(
-            f"label.radio:has-text('{gender_label}'):visible, span:has-text('{gender_label}'):visible, label:has-text('{gender_label}'):visible"
+            f"label.radio:has-text('{gender_label}'):visible, "
+            f"lib-radio:has-text('{gender_label}') label:visible, "
+            f"span:has-text('{gender_label}'):visible, "
+            f"label:has-text('{gender_label}'):visible"
         )
         if gender_loc.count() > 0:
-            gender_loc.first.click()
-        self.page.wait_for_timeout(600)
+            try:
+                gender_loc.first.click(timeout=2500)
+            except Exception:
+                pass
+        self.page.wait_for_timeout(500)
 
-        # Click 'Продолжить'
-        self._click_continue_js_and_mouse()
-        self.page.wait_for_timeout(1500)
-        self.check_and_handle_error_modal()
+        # Click 'Продолжить' and ensure transition to Step 9
+        for _ in range(3):
+            self._click_continue_js_and_mouse()
+            self.page.wait_for_timeout(1200)
+            self.check_and_handle_error_modal()
+            if self.page.locator("#si13_lastNameRu:visible, input[name*='lastNameRu']:visible").count() == 0:
+                break
 
         # Step 9: Passport Details
         logger.info(f"Step 9: Filling Passport {row.get('СерияПаспорта')} {row.get('НомерПаспорта')}...")
         self.check_and_handle_error_modal()
-        pass_num = self.page.locator("#number, input[name*='number'], input[id*='number']").first
-        pass_num.wait_for(state="visible", timeout=12000)
+        pass_num = self.page.locator("#number:visible, input[name*='number']:visible, input[id*='number']:visible").first
+        pass_num.wait_for(state="visible", timeout=15000)
+
         p_series_val = str(row.get("СерияПаспорта", "")).strip()
         if p_series_val and p_series_val.lower() not in ("нет", "-", "не заполнено"):
-            pass_series = self.page.locator("#series, input[name*='series'], input[id*='series']").first
-            if pass_series.count() > 0 and pass_series.is_visible():
-                pass_series.fill(p_series_val)
-        pass_num.fill(str(row.get("НомерПаспорта", "")).strip())
+            self.type_masked_input(
+                "#series:visible, input[name*='series']:visible, input[id*='series']:visible",
+                p_series_val,
+            )
+        self.type_masked_input(
+            "#number:visible, input[name*='number']:visible, input[id*='number']:visible",
+            str(row.get("НомерПаспорта", "")).strip(),
+        )
 
-        # Passport Issue Date
+        # Passport Issue Date (di14_issue / lib-date-picker input / label 'Дата выдачи')
         pass_date = str(row.get("ДатаВыдачи", "")).strip()
-        pass_date_input = self.page.locator("input[name='di14_issue'], input[placeholder*='__.__.____']:visible").first
-        pass_date_input.click()
-        self.page.keyboard.press("Control+A")
-        self.page.keyboard.press("Backspace")
-        self.page.keyboard.type(pass_date, delay=40)
+        self.fill_date_input_smart(
+            primary_selector="input[name='di14_issue']:visible, input#di14_issue:visible, input[id*='issue']:visible, lib-date-picker input:visible",
+            label_keywords=["дата выдачи", "выдачи"],
+            value=pass_date,
+        )
 
-        # Issued by
-        issued_by = str(row.get("ПаспортКемВыдан", "")).strip() or "МВД"
-        self.page.locator("#si14_issuedBy_125, input[name*='issuedBy'], input[id*='issuedBy']").first.fill(issued_by)
-        self.page.wait_for_timeout(600)
+        # Issued by (#si14_issuedBy_125)
+        issued_by = self.sanitize_cyrillic_field(str(row.get("ПаспортКемВыдан", "")).strip() or "МВД", "МВД")
+        self.type_masked_input(
+            "#si14_issuedBy_125:visible, input[name*='issuedBy']:visible, input[id*='issuedBy']:visible",
+            issued_by,
+        )
+        self.page.wait_for_timeout(500)
 
-        self._click_continue_js_and_mouse()
-        self.page.wait_for_timeout(1500)
-        self.check_and_handle_error_modal()
+        for _ in range(3):
+            self._click_continue_js_and_mouse()
+            self.page.wait_for_timeout(1200)
+            self.check_and_handle_error_modal()
+            if self.page.locator("#si14_issuedBy_125:visible, input[id*='issuedBy']:visible").count() == 0:
+                break
 
-        # Step 10: Patent & Region Details
+        # Step 10: Wait for and handle optional INN (Step 9b), Patent Region (Step 10a), and Patent Details (Step 10)
         patent_series_str = str(row.get("Серия", "")).strip()
         logger.info(f"Step 10: Filling Patent Series {patent_series_str} No {row.get('Номер')}...")
-        self.check_and_handle_error_modal()
-
-        # Resolve Patent Region from 2-digit Patent Series (e.g. 72 -> Тюменская область, 47 -> Ленинградская область, 28 -> Амурская область)
         reg_short, reg_full = PATENT_SERIES_TO_REGION.get(
             patent_series_str,
             (self.cfg["PATENT_REGION"], self.cfg["PATENT_REGION_FULL"]),
         )
 
-        # Check if Patent Region screen is shown before Patent Series/Number
-        region_input = self.page.locator(
-            "input[placeholder*='Регион']:visible, input[name*='region']:visible, input[id*='region']:visible, lib-lookup input.search-input:visible"
-        ).first
-        if region_input.count() > 0 and self.page.locator("#series:visible, input[name*='series']:visible").count() == 0:
-            self.select_lookup_option_mvd_style(
-                input_selector="input[placeholder*='Регион'], input[name*='region'], input[id*='region'], lib-lookup input.search-input",
-                type_text=reg_short,
-                match_keywords=[reg_full, reg_short],
-                step_label=f"Step 10a (Регион патента: {reg_full})",
-                click_continue_after=True,
-            )
+        for _step10_tick in range(35):
             self.check_and_handle_error_modal()
+            if self.page.locator("#series:visible, input[name*='series']:visible, input[id*='series']:visible").count() > 0:
+                break
+
+            # Optional Step 9b: Foreigner INN ('ИНН иностранного гражданина')
+            inn_loc = self.page.locator("#c_foreignerINN:visible, input[id*='foreignerINN']:visible, input[name*='foreignerINN']:visible")
+            if inn_loc.count() > 0 and inn_loc.first.is_visible():
+                inn_val = re.sub(r"\D", "", str(row.get("ИНН") or ""))
+                if len(inn_val) == 12:
+                    self.type_masked_input("#c_foreignerINN:visible, input[id*='foreignerINN']:visible", inn_val)
+                self._click_continue_js_and_mouse()
+                self.page.wait_for_timeout(1200)
+                continue
+
+            # Step 10a: Patent Region ('В каком регионе выдан патент?')
+            region_input = self.page.locator(
+                "input[placeholder*='Регион']:visible, input[name*='region']:visible, input[id*='region']:visible, lib-lookup input.search-input:visible"
+            )
+            if region_input.count() > 0 and region_input.first.is_visible():
+                self.select_lookup_option_mvd_style(
+                    input_selector="input[placeholder*='Регион'], input[name*='region'], input[id*='region'], lib-lookup input.search-input",
+                    type_text=reg_short,
+                    match_keywords=[reg_full, reg_short],
+                    step_label=f"Step 10a (Регион патента: {reg_full})",
+                    click_continue_after=True,
+                )
+                self.page.wait_for_timeout(1000)
+                continue
+
+            self.page.wait_for_timeout(400)
 
         # Patent Series & Number, Blank Series & Number
-        patent_series_inputs = self.page.locator("#series, input[name*='series'], input[id*='series']").first
-        patent_series_inputs.wait_for(state="visible", timeout=12000)
-        patent_series_inputs.fill(patent_series_str)
+        patent_series_inputs = self.page.locator("#series:visible, input[name*='series']:visible, input[id*='series']:visible").first
+        patent_series_inputs.wait_for(state="visible", timeout=15000)
+        self.type_masked_input(
+            "#series:visible, input[name*='series']:visible, input[id*='series']:visible",
+            patent_series_str,
+        )
+        self.type_masked_input(
+            "#number:visible, input[name*='number']:visible, input[id*='number']:visible",
+            str(row.get("Номер", "")).strip(),
+        )
 
-        patent_num_inputs = self.page.locator("#number, input[name*='number'], input[id*='number']").first
-        patent_num_inputs.fill(str(row.get("Номер", "")).strip())
+        blank_series_val = self.sanitize_cyrillic_field(str(row.get("СерийныйНомер1", "")).strip()).replace(" ", "")
+        if blank_series_val:
+            self.type_masked_input(
+                "#s15_dict_2_seriaBlank:visible, #dic15_seriaBlank:visible, input[name*='seriaBlank']:visible, input[id*='seriaBlank']:visible, input[placeholder*='Серия бланка']:visible",
+                blank_series_val,
+            )
+            # If 'Серия бланка' opened a lookup dropdown (#lookup-list-wrap .lookup-item), click the matching item
+            try:
+                lookup_item = self.page.locator("#lookup-list-wrap .lookup-item:visible, lib-lookup .lookup-item:visible").first
+                if lookup_item.count() > 0 and lookup_item.is_visible():
+                    lookup_item.click(timeout=1500)
+                    self.page.wait_for_timeout(200)
+            except Exception:
+                pass
 
-        blank_series = self.page.locator(
-            "input[name*='seriaBlank'], input[id*='seriaBlank'], input[placeholder*='Серия бланка']"
-        ).first
-        if blank_series.count() > 0 and blank_series.is_visible():
-            blank_series.fill(str(row.get("СерийныйНомер1", "")).strip())
-
-        blank_number = self.page.locator(
-            "input[name*='numberBlank'], input[id*='numberBlank'], input[placeholder*='Номер бланка']"
-        ).first
-        if blank_number.count() > 0 and blank_number.is_visible():
-            blank_number.fill(str(row.get("СерийныйНомер2", "")).strip())
+        blank_num_val = str(row.get("СерийныйНомер2", "")).strip()
+        if blank_num_val:
+            self.type_masked_input(
+                "input[name='s15_dict_2_numberBlank']:visible, input[name='s15_numberBlank']:visible, input[name*='numberBlank']:visible, input[id*='numberBlank']:visible, input[placeholder*='Номер бланка']:visible",
+                blank_num_val,
+            )
 
         patent_issue_date = str(row.get("ДатаВыдачиВКС", "")).strip()
         if patent_issue_date:
-            p_date_loc = self.page.locator("input[placeholder*='__.__.____']:visible").first
-            if p_date_loc.count() > 0 and p_date_loc.is_visible():
-                p_date_loc.click()
-                self.page.keyboard.press("Control+A")
-                self.page.keyboard.press("Backspace")
-                self.page.keyboard.type(patent_issue_date, delay=40)
+            self.fill_date_input_smart(
+                primary_selector="input[name*='di15']:visible, input[id*='di15']:visible, lib-date-picker input:visible",
+                label_keywords=["дата выдачи", "выдачи"],
+                value=patent_issue_date,
+            )
 
-        self.page.wait_for_timeout(600)
-        self._click_continue_js_and_mouse()
-        self.page.wait_for_timeout(1500)
-        self.check_and_handle_error_modal()
+        self.page.wait_for_timeout(500)
+        for _ in range(3):
+            self._click_continue_js_and_mouse()
+            self.page.wait_for_timeout(1200)
+            self.check_and_handle_error_modal()
+            if self.page.locator("input[name*='numberBlank']:visible, input[id*='numberBlank']:visible, #series:visible").count() == 0:
+                break
 
         # Step 11: Contract Termination Details (Сведения о расторжении договора)
         logger.info(f"Step 11: Setting Termination Date {row.get('ДатаУволь')} & Position {row.get('Должность')}...")
         self.check_and_handle_error_modal()
+        for _ in range(25):
+            if (
+                self.page.locator(
+                    "label.radio:has-text('Трудовой'):visible, lib-radio:has-text('Трудовой'):visible, "
+                    "input#dic16_prof:visible, lib-date-picker input:visible, "
+                    "epgu-constructor-address-input textarea:visible"
+                ).count()
+                > 0
+            ):
+                break
+            self.page.wait_for_timeout(400)
 
-        checkbox = self.page.locator("input[type='checkbox']")
-        if checkbox.count() > 0:
+        pos_str = self.sanitize_cyrillic_field(str(row.get("Должность", "Монтажник")).strip(), "Монтажник")
+
+        # 11a. Profession ('Профессия (должность, специальность, вид трудовой деятельности)')
+        # Check if there is a manual-entry checkbox before the profession field or a lookup input
+        prof_lookup = self.page.locator(
+            "input#dic16_prof:visible, input[id*='dic16']:visible, input[id*='prof']:visible, lib-lookup input.search-input:visible"
+        )
+        if prof_lookup.count() > 0 and prof_lookup.first.is_visible():
+            ok_prof = self.select_lookup_option_mvd_style(
+                input_selector="input#dic16_prof, input[id*='dic16'], input[id*='prof'], lib-lookup input.search-input",
+                type_text=pos_str,
+                match_keywords=[pos_str, pos_str.split()[0] if pos_str.split() else "Монтажник"],
+                step_label=f"Step 11 (Профессия: {pos_str})",
+                click_continue_after=False,
+            )
+            if not ok_prof:
+                # Fallback: check if there's a manual checkbox ('Нет в списке' / first checkbox above radio buttons) or select 'Монтажник'
+                manual_cb = self.page.locator("lib-checkbox label.check:visible, lib-checkbox label:visible").first
+                if manual_cb.count() > 0 and manual_cb.is_visible():
+                    try:
+                        manual_cb.click(timeout=2000)
+                        self.page.wait_for_timeout(300)
+                        self.type_masked_input(
+                            "input#si16_prof:visible, input[id*='si16']:visible, input[name*='prof']:visible, input[type='text']:visible",
+                            pos_str,
+                        )
+                    except Exception:
+                        pass
+                else:
+                    self.select_lookup_option_mvd_style(
+                        input_selector="input#dic16_prof, input[id*='dic16'], input[id*='prof'], lib-lookup input.search-input",
+                        type_text="Монтажник",
+                        match_keywords=["МОНТАЖНИК"],
+                        step_label="Step 11 (Профессия fallback: Монтажник)",
+                        click_continue_after=False,
+                    )
+        else:
+            # If manual checkbox is present at top of Step 11, click it and fill text input
+            manual_cb = self.page.locator("lib-checkbox label.check:visible, lib-checkbox label:visible").first
+            if manual_cb.count() > 0 and manual_cb.is_visible():
+                try:
+                    manual_cb.click(timeout=2000)
+                    self.page.wait_for_timeout(300)
+                except Exception:
+                    pass
+            self.type_masked_input(
+                "input#si16_prof:visible, input[id*='si16']:visible, input[name*='prof']:visible, input[type='text']:visible",
+                pos_str,
+            )
+
+        # 11b. Contract type radio ('Трудовой')
+        trudovoy_lbl = self.page.locator(
+            "label.radio:has-text('Трудовой'):visible, lib-radio:has-text('Трудовой') label:visible, span:has-text('Трудовой'):visible"
+        ).first
+        if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
             try:
-                checkbox.first.check(timeout=2000)
+                trudovoy_lbl.click(timeout=2500)
+            except Exception:
+                pass
+
+        # 11c. Dates on Step 11 (optional 'Дата заключения' + mandatory 'Дата расторжения' / 'Дата прекращения')
+        dismiss_date = str(row.get("ДатаУволь", "")).strip()
+        hire_date = str(row.get("ДатаПриема", "")).strip()
+        if hire_date and self.page.locator("lib-date-picker input:visible").count() >= 2:
+            self.fill_date_input_smart(
+                primary_selector="input[name*='start']:visible, input[id*='start']:visible",
+                label_keywords=["дата заключения", "заключения"],
+                value=hire_date,
+            )
+
+        self.fill_date_input_smart(
+            primary_selector="input[name*='di16']:visible, input[id*='di16']:visible, lib-date-picker input:visible",
+            label_keywords=["дата расторжения", "дата прекращения", "расторжения", "прекращения", "увольнения", "дата"],
+            value=dismiss_date,
+        )
+
+        # 11d. Voluntary termination radio ('По инициативе работника' -> 'Да' / 'Нет')
+        is_voluntary = str(row.get("УвПоСобствЖел", self.cfg.get("DEFAULT_VOLUNTARY", "Да"))).strip()
+        vol_label = "Да" if is_voluntary.lower() in ["да", "yes", "true", "1"] else "Нет"
+        vol_loc = self.page.locator(
+            f"label.radio:has-text('{vol_label}'):visible, lib-radio:has-text('{vol_label}') label:visible, span:has-text('{vol_label}'):visible"
+        ).last
+        if vol_loc.count() > 0 and vol_loc.is_visible():
+            try:
+                vol_loc.click(timeout=2500)
             except Exception:
                 pass
         self.page.wait_for_timeout(400)
 
-        pos_str = str(row.get("Должность", "Монтажник")).strip()
-        self.page.keyboard.press("Tab")
-        self.page.keyboard.type(pos_str, delay=40)
-        self.page.wait_for_timeout(800)
-        self.page.keyboard.press("Enter")
-
-        trudovoy_lbl = self.page.locator("label.radio:has-text('Трудовой'):visible, lib-radio:has-text('Трудовой') label:visible").first
-        if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
-            trudovoy_lbl.click()
-        else:
-            contract_radio = self.page.locator("input[type='radio'][name*='ri16_type'], input[type='radio']")
-            if contract_radio.count() > 0:
-                try:
-                    contract_radio.first.check(timeout=2000)
-                except Exception:
-                    pass
-
-        dismiss_date = str(row.get("ДатаУволь", "")).strip()
-        date_input = self.page.locator("input[placeholder*='__.__.____']:visible, input[name*='Дата']:visible").first
-        if date_input.count() > 0 and date_input.is_visible():
-            date_input.click()
-            self.page.keyboard.press("Control+A")
-            self.page.keyboard.press("Backspace")
-            self.page.keyboard.type(dismiss_date, delay=40)
-
-        is_voluntary = str(row.get("УвПоСобствЖел", "Да")).strip()
-        vol_label = "Да" if is_voluntary.lower() in ["да", "yes", "true"] else "Нет"
-        vol_loc = self.page.locator(f"label.radio:has-text('{vol_label}'):visible, span:has-text('{vol_label}'):visible").first
-        if vol_loc.count() > 0 and vol_loc.is_visible():
-            vol_loc.click()
-        self.page.wait_for_timeout(500)
-
+        # 11e. Work Address (if present on Step 11)
         raw_work_addr = str(row.get("АдресРаботы") or "").strip()
         if not raw_work_addr or "188471" in raw_work_addr or "Усть-Луга" in raw_work_addr or "Кингисепп" in raw_work_addr:
             work_addr = self.cfg["WORK_ADDRESS"]
@@ -2107,7 +2478,7 @@ class GosuslugiDismissalBot:
                         "span:has-text('Уточнить адрес'):visible"
                     ).first
                     if clarify_btn.count() > 0 and clarify_btn.is_visible():
-                        clarify_btn.click()
+                        clarify_btn.click(timeout=2500)
                         self.page.wait_for_timeout(700)
             except Exception:
                 pass

@@ -256,8 +256,8 @@ export default function GosuslugiDismissalPanel({
   const { lang } = useLanguage();
 
   // Dismissal Default Form Configuration (Pondera 600585/1 & VKS MVD Moscow Parameters)
-  const [patentRegion, setPatentRegion] = useState('Ленинградская');
-  const [patentRegionFull, setPatentRegionFull] = useState('Ленинградская область');
+  const [patentRegion, setPatentRegion] = useState('Тюменская');
+  const [patentRegionFull, setPatentRegionFull] = useState('Тюменская область');
   const [workAddress, setWorkAddress] = useState(
     '626150, обл. Тюменская, г. Тобольск, тер. Восточный промышленный район, кв-л. 5-й'
   );
