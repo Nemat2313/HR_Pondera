@@ -595,6 +595,10 @@ export default function GosuslugiDismissalPanel({
             raw['Resmi Görevi'] || raw['Çalışma Kart Görevi'] || emp.gorevi || emp.rhi_gorevi || 'Монтажник'
           ),
           voluntaryResignation: defaultVoluntary,
+          patentRegion: String(raw['РегионПатента'] || raw['Patent Bölgesi (Kısa)'] || raw['Patent Bölgesi'] || '').trim(),
+          patentRegionFull: String(raw['РегионПатентаПолный'] || raw['Patent Bölgesi (Tam Adı)'] || '').trim(),
+          workAddress: String(raw['АдресРаботы'] || raw['Çalışma Adresi'] || '').trim(),
+          ufmsDepartment: String(raw['ПодразделениеМВД'] || raw['MVD Birimi'] || '').trim(),
           alreadyNotified,
           notificationInfo,
           applicationNo: dbSub?.appNo,
@@ -636,7 +640,7 @@ export default function GosuslugiDismissalPanel({
     }
   };
 
-  // Upload & Parse Excel File (Powerise 21-column format)
+  // Upload & Parse Excel File (Powerise 25-column format including optional per-worker Region/Address/MVD)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -696,6 +700,10 @@ export default function GosuslugiDismissalPanel({
         const idxBlank2 = findCol(['СерийныйНомер2', 'Patent Form No'], 18);
         const idxPosition = findCol(['Должность', 'Resmi Görevi', 'Görevi'], 19);
         const idxVoluntary = findCol(['УвПоСобствЖел'], 20);
+        const idxPatentRegion = findCol(['РегионПатента', 'Регион патента', 'Patent Bölgesi (Kısa)', 'Patent Bölgesi'], 21);
+        const idxPatentRegionFull = findCol(['РегионПатентаПолный', 'Регион патента (полное)', 'Patent Bölgesi (Tam Adı)'], 22);
+        const idxWorkAddress = findCol(['АдресРаботы', 'Адрес работы', 'Çalışma Adresi', 'WORK_ADDRESS'], 23);
+        const idxUfmsDept = findCol(['ПодразделениеМВД', 'Подразделение МВД', 'MVD Birimi', 'UFMS'], 24);
 
         const getVal = (r: any[], colIdx: number) => {
           if (colIdx < 0 || colIdx >= r.length) return '';
@@ -740,6 +748,10 @@ export default function GosuslugiDismissalPanel({
             blankNumber: getVal(r, idxBlank2),
             position: getVal(r, idxPosition) || 'Монтажник',
             voluntaryResignation: getVal(r, idxVoluntary) || defaultVoluntary,
+            patentRegion: getVal(r, idxPatentRegion),
+            patentRegionFull: getVal(r, idxPatentRegionFull),
+            workAddress: getVal(r, idxWorkAddress),
+            ufmsDepartment: getVal(r, idxUfmsDept),
           });
         });
 
@@ -792,13 +804,17 @@ export default function GosuslugiDismissalPanel({
     passportNumber: '4829103',
     passportIssueDate: '12.08.2021',
     passportIssuedBy: 'МВД РЕСПУБЛИКИ УЗБЕКИСТАН',
-    patentSeries: '47',
+    patentSeries: '72',
     patentNumber: '2600148291',
     patentIssueDate: '01.03.2026',
     blankSeries: 'АА',
     blankNumber: '1948201',
     position: 'Монтажник',
     voluntaryResignation: 'Да',
+    patentRegion: patentRegion,
+    patentRegionFull: patentRegionFull,
+    workAddress: workAddress,
+    ufmsDepartment: ufmsDept,
   });
 
   const handleLoadSample = () => {
@@ -813,8 +829,14 @@ export default function GosuslugiDismissalPanel({
   };
 
   const handleExportExcel = () => {
+    const excelDefaults = {
+      patentRegion,
+      patentRegionFull,
+      workAddress,
+      ufmsDepartment: ufmsDept,
+    };
     if (workers.length === 0) {
-      exportGosuslugiDismissalExcel([getSampleDismissalRecord()]);
+      exportGosuslugiDismissalExcel([getSampleDismissalRecord()], undefined, excelDefaults);
       showNotice(
         'info',
         lang === 'ru'
@@ -823,7 +845,7 @@ export default function GosuslugiDismissalPanel({
       );
       return;
     }
-    exportGosuslugiDismissalExcel(workers);
+    exportGosuslugiDismissalExcel(workers, undefined, excelDefaults);
     showNotice(
       'success',
       lang === 'ru' ? 'Список увольнений выгружен в Excel!' : 'İşten çıkış listesi Excel olarak indirildi!'
@@ -898,7 +920,10 @@ export default function GosuslugiDismissalPanel({
       СерийныйНомер2: w.blankNumber,
       Должность: w.position,
       УвПоСобствЖел: w.voluntaryResignation || defaultVoluntary,
-      АдресРаботы: workAddress,
+      РегионПатента: (w.patentRegion || '').trim() || patentRegion,
+      РегионПатентаПолный: (w.patentRegionFull || '').trim() || patentRegionFull,
+      АдресРаботы: (w.workAddress || '').trim() || workAddress,
+      ПодразделениеМВД: (w.ufmsDepartment || '').trim() || ufmsDept,
     }));
 
   const handleStartRobot = async (limit: number = 0, singleWorker?: GosuslugiDismissalWorkerRecord) => {
@@ -1283,9 +1308,16 @@ export default function GosuslugiDismissalPanel({
         {/* Collapsible Dismissal Form Settings (Powerise 600585/1 Parameters) */}
         {showConfigPanel && (
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs animate-in fade-in duration-150">
+            <div className="md:col-span-3 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-800/60 text-[11px] text-indigo-900 dark:text-indigo-200">
+              <span>
+                {lang === 'ru'
+                  ? '💡 ОКВЭД — общий для компании. Регион патента, Адрес работы и Подразделение МВД ниже используются как значения по умолчанию, если в строке сотрудника в таблице они оставлены пустыми.'
+                  : '💡 OKVED şirket genelidir. Aşağıdaki Patent Bölgesi, Çalışma Adresi ve MVD Birimi ise alttaki tabloda ilgili çalışanın satırı boş bırakıldığında genel varsayılan olarak kullanılır.'}
+              </span>
+            </div>
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'ru' ? 'Регион патента (кратко)' : 'Patent Bölgesi (Kısa)'}
+                {lang === 'ru' ? 'Регион патента по умолч. (кратко)' : 'Varsayılan Patent Bölgesi (Kısa)'}
               </label>
               <input
                 type="text"
@@ -1296,7 +1328,7 @@ export default function GosuslugiDismissalPanel({
             </div>
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'ru' ? 'Регион патента (полное название)' : 'Patent Bölgesi (Tam Adı)'}
+                {lang === 'ru' ? 'Регион патента по умолч. (полное)' : 'Varsayılan Patent Bölgesi (Tam Adı)'}
               </label>
               <input
                 type="text"
@@ -1307,7 +1339,7 @@ export default function GosuslugiDismissalPanel({
             </div>
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'ru' ? 'Код ОКВЭД' : 'OKVED Kodu'}
+                {lang === 'ru' ? 'Код ОКВЭД (Общий)' : 'OKVED Kodu (Genel)'}
               </label>
               <input
                 type="text"
@@ -1318,7 +1350,7 @@ export default function GosuslugiDismissalPanel({
             </div>
             <div className="md:col-span-3">
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'ru' ? 'Текст поиска ОКВЭД (OKVED_TEXT)' : 'OKVED Arama Metni (OKVED_TEXT)'}
+                {lang === 'ru' ? 'Текст поиска ОКВЭД (OKVED_TEXT — Общий)' : 'OKVED Arama Metni (OKVED_TEXT — Genel)'}
               </label>
               <input
                 type="text"
@@ -1329,7 +1361,7 @@ export default function GosuslugiDismissalPanel({
             </div>
             <div className="md:col-span-2">
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'ru' ? 'Адрес места работы (WORK_ADDRESS)' : 'Çalışma Adresi (WORK_ADDRESS)'}
+                {lang === 'ru' ? 'Адрес места работы по умолч. (WORK_ADDRESS)' : 'Varsayılan Çalışma Adresi (WORK_ADDRESS)'}
               </label>
               <input
                 type="text"
@@ -1340,7 +1372,7 @@ export default function GosuslugiDismissalPanel({
             </div>
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'ru' ? 'Подразделение МВД (UFMS — МОСКВЕ)' : 'MVD Birimi (UFMS — МОСКВЕ)'}
+                {lang === 'ru' ? 'Подразделение МВД по умолч. (UFMS)' : 'Varsayılan MVD Birimi (UFMS)'}
               </label>
               <input
                 type="text"
@@ -1549,13 +1581,14 @@ export default function GosuslugiDismissalPanel({
                 <th className="py-2.5 px-3 min-w-[160px]">{lang === 'ru' ? 'Патент и Бланк' : 'Patent & Blank No'}</th>
                 <th className="py-2.5 px-3 min-w-[155px]">{lang === 'ru' ? 'Дата приема / увольнения' : 'Giriş / Çıkış Tarihi'}</th>
                 <th className="py-2.5 px-3 min-w-[145px]">{lang === 'ru' ? 'Должность / Собств. жел.' : 'Görev / İstifa'}</th>
+                <th className="py-2.5 px-3 min-w-[220px]">{lang === 'ru' ? 'Регион / Адрес работы / МВД' : 'Bölge / Çalışma Adresi / MVD'}</th>
                 <th className="py-2.5 px-3 text-right">{lang === 'ru' ? 'Действия' : 'İşlem'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {filteredWorkers.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="py-12 text-center text-slate-500 dark:text-slate-400">
                     <UserMinus className="w-8 h-8 mx-auto mb-2 opacity-40" />
                     <p className="font-bold text-sm text-slate-700 dark:text-slate-300">
                       {lang === 'ru'
@@ -1573,6 +1606,16 @@ export default function GosuslugiDismissalPanel({
                 filteredWorkers.map((w) => {
                   const v = validationMap[w.id];
                   const isEditing = editingRowId === w.id;
+                  const effPatentRegion = (w.patentRegion || '').trim() || patentRegion;
+                  const effPatentRegionFull = (w.patentRegionFull || '').trim() || patentRegionFull;
+                  const effWorkAddress = (w.workAddress || '').trim() || workAddress;
+                  const effUfmsDept = (w.ufmsDepartment || '').trim() || ufmsDept;
+                  const hasCustomMvdFields = Boolean(
+                    (w.patentRegion || '').trim() ||
+                    (w.patentRegionFull || '').trim() ||
+                    (w.workAddress || '').trim() ||
+                    (w.ufmsDepartment || '').trim()
+                  );
                   return (
                     <React.Fragment key={w.id}>
                       <tr
@@ -1695,6 +1738,52 @@ export default function GosuslugiDismissalPanel({
                             Собств. жел.: <strong>{w.voluntaryResignation}</strong>
                           </div>
                         </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[175px]"
+                              title={`${effPatentRegion} (${effPatentRegionFull})`}
+                            >
+                              {effPatentRegion}
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                hasCustomMvdFields
+                                  ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                              }`}
+                              title={
+                                hasCustomMvdFields
+                                  ? lang === 'ru'
+                                    ? 'Индивидуальные настройки строки'
+                                    : 'Satıra özel ayar'
+                                  : lang === 'ru'
+                                  ? 'Из общих настроек сверху'
+                                  : 'Üstteki genel ayarlardan'
+                              }
+                            >
+                              {hasCustomMvdFields
+                                ? lang === 'ru'
+                                  ? 'Свой'
+                                  : 'Özel'
+                                : lang === 'ru'
+                                ? 'Общ.'
+                                : 'Genel'}
+                            </span>
+                          </div>
+                          <div
+                            className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[215px]"
+                            title={effWorkAddress}
+                          >
+                            📍 {effWorkAddress}
+                          </div>
+                          <div
+                            className="text-[10px] text-indigo-700 dark:text-indigo-300 font-medium truncate max-w-[215px]"
+                            title={effUfmsDept}
+                          >
+                            🏛️ {effUfmsDept}
+                          </div>
+                        </td>
                         <td className="py-2.5 px-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
@@ -1719,7 +1808,7 @@ export default function GosuslugiDismissalPanel({
                       {/* Inline Row Editor */}
                       {isEditing && (
                         <tr className="bg-slate-50/95 dark:bg-slate-900/95">
-                          <td colSpan={11} className="p-4">
+                          <td colSpan={12} className="p-4">
                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5 text-xs">
                               <div>
                                 <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Фамилия</label>
@@ -1876,6 +1965,54 @@ export default function GosuslugiDismissalPanel({
                                   <option value="Да">Да</option>
                                   <option value="Нет">Нет</option>
                                 </select>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mb-0.5">
+                                  РегионПатента {lang === 'ru' ? '(пусто = общий)' : '(Boş = Genel)'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={w.patentRegion || ''}
+                                  placeholder={patentRegion}
+                                  onChange={(e) => handleUpdateWorkerField(w.id, 'patentRegion', e.target.value)}
+                                  className="w-full px-2 py-1 rounded bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 text-slate-900 dark:text-white"
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mb-0.5">
+                                  РегионПатентаПолный {lang === 'ru' ? '(пусто = общий)' : '(Boş = Genel)'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={w.patentRegionFull || ''}
+                                  placeholder={patentRegionFull}
+                                  onChange={(e) => handleUpdateWorkerField(w.id, 'patentRegionFull', e.target.value)}
+                                  className="w-full px-2 py-1 rounded bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 text-slate-900 dark:text-white"
+                                />
+                              </div>
+                              <div className="sm:col-span-3">
+                                <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mb-0.5">
+                                  АдресРаботы {lang === 'ru' ? '(пусто = общий сверху)' : '(Boş bırakılırsa üstteki genel adres kullanılır)'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={w.workAddress || ''}
+                                  placeholder={workAddress}
+                                  onChange={(e) => handleUpdateWorkerField(w.id, 'workAddress', e.target.value)}
+                                  className="w-full px-2 py-1 rounded bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 text-slate-900 dark:text-white"
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mb-0.5">
+                                  ПодразделениеМВД {lang === 'ru' ? '(пусто = общее сверху)' : '(Boş bırakılırsa üstteki genel MVD kullanılır)'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={w.ufmsDepartment || ''}
+                                  placeholder={ufmsDept}
+                                  onChange={(e) => handleUpdateWorkerField(w.id, 'ufmsDepartment', e.target.value)}
+                                  className="w-full px-2 py-1 rounded bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 text-slate-900 dark:text-white"
+                                />
                               </div>
                               <div className="flex items-end">
                                 <button

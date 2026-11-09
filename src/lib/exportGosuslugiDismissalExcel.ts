@@ -26,6 +26,10 @@ export interface GosuslugiDismissalWorkerRecord {
   blankNumber: string;
   position: string;
   voluntaryResignation: string; // "Да" or "Нет"
+  patentRegion?: string;
+  patentRegionFull?: string;
+  workAddress?: string;
+  ufmsDepartment?: string;
   alreadyNotified?: boolean;
   notificationInfo?: string;
   applicationNo?: string;
@@ -56,11 +60,23 @@ export const GOSUSLUGI_DISMISSAL_EXCEL_COLUMNS = [
   'СерийныйНомер2',
   'Должность',
   'УвПоСобствЖел',
+  'РегионПатента',
+  'РегионПатентаПолный',
+  'АдресРаботы',
+  'ПодразделениеМВД',
 ];
+
+export interface DismissalExcelDefaults {
+  patentRegion?: string;
+  patentRegionFull?: string;
+  workAddress?: string;
+  ufmsDepartment?: string;
+}
 
 export function exportGosuslugiDismissalExcel(
   records: GosuslugiDismissalWorkerRecord[],
-  filename?: string
+  filename?: string,
+  defaults?: DismissalExcelDefaults
 ) {
   const rows = records.map((r) => [
     r.sicil || '',
@@ -84,6 +100,10 @@ export function exportGosuslugiDismissalExcel(
     r.blankNumber || '',
     r.position || '',
     r.voluntaryResignation || 'Да',
+    (r.patentRegion || '').trim() || defaults?.patentRegion || '',
+    (r.patentRegionFull || '').trim() || defaults?.patentRegionFull || '',
+    (r.workAddress || '').trim() || defaults?.workAddress || '',
+    (r.ufmsDepartment || '').trim() || defaults?.ufmsDepartment || '',
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet([GOSUSLUGI_DISMISSAL_EXCEL_COLUMNS, ...rows]);
@@ -110,6 +130,10 @@ export function exportGosuslugiDismissalExcel(
     { wch: 16 }, // СерийныйНомер2
     { wch: 22 }, // Должность
     { wch: 16 }, // УвПоСобствЖел
+    { wch: 18 }, // РегионПатента
+    { wch: 24 }, // РегионПатентаПолный
+    { wch: 48 }, // АдресРаботы
+    { wch: 48 }, // ПодразделениеМВД
   ];
 
   const wb = XLSX.utils.book_new();

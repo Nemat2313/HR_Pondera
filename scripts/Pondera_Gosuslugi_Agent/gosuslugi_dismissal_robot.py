@@ -1486,20 +1486,32 @@ class GosuslugiDismissalBot:
             pass
         return False
 
-    def ensure_moscow_mvd_department(self) -> bool:
+    def ensure_moscow_mvd_department(self, target_dept_override: str = "") -> bool:
         """
         Ensures that on Step 12 ('Подразделение МВД, куда отправится уведомление' /
-        'Выберите подразделение МВД, куда отправится уведомление'), the robot clicks 'Изменить'
-        if needed, types 'МОСКВЕ' into #dic18_byHand, and selects
-        'ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ'
-        before clicking 'Продолжить' (identical to VKS notification).
+        'Выберите подразделение МВД, куда отправится уведомление'), the robot selects the target MVD
+        department for the current employee (or global default UFMS_DEPARTMENT).
+        When the target is Moscow ('МОСКВ'), uses the proven 'МОСКВЕ' lookup for
+        'ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ'.
+        When a custom regional MVD is specified for the employee, selects that regional MVD.
         """
         if self._click_step13_confirm_js():
             return True
         if self._has_advanced_past_step12_js():
             return False
 
-        target_dept = "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ"
+        raw_target = str(
+            target_dept_override
+            or self.cfg.get("UFMS_DEPARTMENT")
+            or "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ"
+        ).strip()
+        is_moscow_target = "МОСКВ" in raw_target.upper()
+        target_dept = (
+            "ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ"
+            if is_moscow_target
+            else raw_target
+        )
+        search_word = "МОСКВЕ" if is_moscow_target else raw_target
 
         state = {}
         try:
@@ -1535,14 +1547,18 @@ class GosuslugiDismissalBot:
         if state.get("hasReadonly") or state.get("hasIzmenit"):
             cur_dept = str(state.get("readonlyVal") or "").strip()
             cur_dept_up = cur_dept.upper()
-            is_exact_vks_moscow_dept = (
-                "ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ" in cur_dept_up
-                and "МОСКВ" in cur_dept_up
-                and "РАЙОН" not in cur_dept_up
-            )
-            if not is_exact_vks_moscow_dept:
+            if is_moscow_target:
+                is_matching_dept = (
+                    "ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ" in cur_dept_up
+                    and "МОСКВ" in cur_dept_up
+                    and "РАЙОН" not in cur_dept_up
+                )
+            else:
+                target_up = target_dept.upper()
+                is_matching_dept = bool(cur_dept_up and (target_up in cur_dept_up or cur_dept_up in target_up))
+            if not is_matching_dept:
                 logger.info(
-                    f"Step 12: Pre-selected MVD is '{cur_dept or 'non-VKS-Moscow'}' -> clicking 'Изменить' to select '{target_dept}'..."
+                    f"Step 12: Pre-selected MVD is '{cur_dept or 'non-matching'}' -> clicking 'Изменить' to select '{target_dept}'..."
                 )
                 byhand_visible = False
                 for _izm_try in range(1, 4):
@@ -1589,6 +1605,19 @@ class GosuslugiDismissalBot:
 
         # Case B: Manual MVD lookup screen ('Выберите подразделение МВД, куда отправится уведомление') with #dic18_byHand
         if state.get("hasByHand") or state.get("hasMvdHeading"):
+            if not is_moscow_target:
+                ok_custom = self.select_lookup_option_mvd_style(
+                    input_selector="input#dic18_byHand, lib-lookup input.search-input",
+                    type_text=search_word,
+                    match_keywords=[target_dept, search_word],
+                    step_label=f"Step 12 (Подразделение МВД: {target_dept})",
+                    click_continue_after=True,
+                )
+                if ok_custom:
+                    self.page.wait_for_timeout(1200)
+                    self.check_and_stop_if_insufficient_permissions()
+                    return True
+
             self.enable_background_focus_emulation()
             for mvd_try in range(1, 7):
                 self.check_and_handle_error_modal()
@@ -1873,14 +1902,15 @@ class GosuslugiDismissalBot:
         except Exception:
             pass
 
-    def complete_mvd_and_submit_flow(self) -> bool:
+    def complete_mvd_and_submit_flow(self, target_dept_override: str = "") -> bool:
         """
         State-machine loop for Steps 12 -> 13 -> 14 -> 15:
-        Advances through 'Подразделение МВД' (selecting Moscow ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ via 'МОСКВЕ'),
+        Advances through 'Подразделение МВД' (selecting employee's ПодразделениеМВД or default Moscow ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ via 'МОСКВЕ'),
         'Подтвердить' consent modal, 'Согласие на обработку ПДн',
         and clicks 'Отправить' until 'Уведомление отправлено' / 'Заявление отправлено' is reached.
         """
-        logger.info("Steps 12-15: Advancing through MVD division ('МОСКВЕ'), consents, and final 'Отправить' screen...")
+        eff_dept = str(target_dept_override or self.cfg.get("UFMS_DEPARTMENT") or "МОСКВЕ").strip()
+        logger.info(f"Steps 12-15: Advancing through MVD division ('{eff_dept}'), consents, and final 'Отправить' screen...")
         for _tick in range(65):
             self.check_and_handle_error_modal()
             self.wait_if_paused_or_logged_out()
@@ -1922,7 +1952,7 @@ class GosuslugiDismissalBot:
             if self._click_step13_confirm_js():
                 continue
 
-            if self.ensure_moscow_mvd_department():
+            if self.ensure_moscow_mvd_department(target_dept_override=target_dept_override):
                 continue
 
             if self._is_step12_continue_ready_js():
@@ -2571,10 +2601,16 @@ class GosuslugiDismissalBot:
         # Step 10: Wait for and handle optional INN (Step 9b), Patent Region (Step 10a), and Patent Details (Step 10)
         patent_series_str = str(row.get("Серия", "")).strip()
         logger.info(f"Step 10: Filling Patent Series {patent_series_str} No {row.get('Номер')}...")
-        reg_short, reg_full = PATENT_SERIES_TO_REGION.get(
-            patent_series_str,
-            (self.cfg["PATENT_REGION"], self.cfg["PATENT_REGION_FULL"]),
-        )
+        row_reg_short = str(row.get("РегионПатента") or "").strip()
+        row_reg_full = str(row.get("РегионПатентаПолный") or "").strip()
+        if row_reg_short or row_reg_full:
+            reg_short = row_reg_short or row_reg_full.split()[0]
+            reg_full = row_reg_full or row_reg_short
+        else:
+            reg_short, reg_full = PATENT_SERIES_TO_REGION.get(
+                patent_series_str,
+                (self.cfg["PATENT_REGION"], self.cfg["PATENT_REGION_FULL"]),
+            )
 
         for _step10_tick in range(int(max_wait_sec * 2.2)):
             if os.path.exists(PAUSE_SIGNAL_FILE):
@@ -2824,12 +2860,9 @@ class GosuslugiDismissalBot:
                     pass
         self.page.wait_for_timeout(400)
 
-        # 11e. Work Address (if present on Step 11)
+        # 11e. Work Address (if present on Step 11) — uses employee row's АдресРаботы if filled, else global WORK_ADDRESS
         raw_work_addr = str(row.get("АдресРаботы") or "").strip()
-        if not raw_work_addr or "188471" in raw_work_addr or "Усть-Луга" in raw_work_addr or "Кингисепп" in raw_work_addr:
-            work_addr = self.cfg["WORK_ADDRESS"]
-        else:
-            work_addr = raw_work_addr
+        work_addr = raw_work_addr if raw_work_addr else self.cfg["WORK_ADDRESS"]
 
         m_post = re.search(r"\b(\d{6})\b", work_addr)
         postal_code = m_post.group(1) if m_post else str(self.cfg.get("WORK_POSTAL_CODE") or "626150")
@@ -2863,9 +2896,10 @@ class GosuslugiDismissalBot:
             if self._is_on_step12_mvd_screen_js() or self._has_advanced_past_step12_js():
                 break
 
-        # Steps 12 -> 13 -> 14 -> 15: MVD Destination Division ('МОСКВЕ' -> ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ),
+        # Steps 12 -> 13 -> 14 -> 15: MVD Destination Division (uses row's ПодразделениеМВД if filled, else global UFMS_DEPARTMENT),
         # Employee Consent ('Подтвердить'), and Final Submission ('Отправить')
-        self.complete_mvd_and_submit_flow()
+        row_mvd_dept = str(row.get("ПодразделениеМВД") or self.cfg.get("UFMS_DEPARTMENT") or "").strip()
+        self.complete_mvd_and_submit_flow(target_dept_override=row_mvd_dept)
 
         # Step 14: Personal Cabinet & PDF Receipt Archiving
         self.download_and_rename_receipt_pdf(row)
