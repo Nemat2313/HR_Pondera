@@ -514,12 +514,32 @@ export default function GosuslugiDismissalPanel({
             emp.ise_giris_tarihi ||
             raw['İşe Giriş Tarihi']
         );
-        const dismissalDateStr = formatDateRu(
+        let dismissalDateStr = formatDateRu(
           raw['Resmi Çıkış Tarihi'] || emp.cikis_tarihi || raw['Çıkış Tarihi']
         );
+        const fallbackExitStr = formatDateRu(emp.cikis_tarihi || raw['Çıkış Tarihi']);
+        const parsedPrimaryExit = parseStrictDateRu(dismissalDateStr);
+        if (parsedPrimaryExit.valid && parsedPrimaryExit.ts > Date.now()) {
+          const m = /^(\d{2})\.11\.(\d{4})$/.exec(dismissalDateStr);
+          if (m) {
+            const octCandidate = `${m[1]}.10.${m[2]}`;
+            const parsedOct = parseStrictDateRu(octCandidate);
+            if (parsedOct.valid && parsedOct.ts <= Date.now()) {
+              dismissalDateStr = octCandidate;
+            }
+          }
+          const parsedFallback = parseStrictDateRu(fallbackExitStr);
+          if (
+            parseStrictDateRu(dismissalDateStr).ts > Date.now() &&
+            parsedFallback.valid &&
+            parsedFallback.ts <= Date.now()
+          ) {
+            dismissalDateStr = fallbackExitStr;
+          }
+        }
 
         const parsedExit = parseStrictDateRu(dismissalDateStr);
-        if (parsedExit.valid && parsedExit.ts <= Date.now() + 30 * 86400 * 1000 && parsedExit.ts > maxExitTs) {
+        if (parsedExit.valid && parsedExit.ts <= Date.now() && parsedExit.ts > maxExitTs) {
           maxExitTs = parsedExit.ts;
         }
 

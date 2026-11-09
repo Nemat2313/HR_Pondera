@@ -743,9 +743,9 @@ class GosuslugiDismissalBot:
             self.page.wait_for_timeout(400)
         return ok
 
-    def sanitize_cyrillic_field(self, value: str, fallback: str = "") -> str:
+    def sanitize_cyrillic_field(self, value: str, fallback: str = "", allow_digits: bool = False) -> str:
         """
-        Ensures a string contains ONLY Russian Cyrillic letters, spaces, and hyphens.
+        Ensures a string contains ONLY Russian Cyrillic letters, spaces, and hyphens (plus digits if allow_digits=True).
         Replaces common Latin lookalikes (A, B, C, E, H, K, M, O, P, T, X, Y, I) with Cyrillic equivalents
         so Gosuslugi never complains 'Поле может содержать только русские буквы'.
         """
@@ -762,9 +762,39 @@ class GosuslugiDismissalBot:
             "Ü": "У", "ü": "у",
         })
         s = s.translate(latin_to_cyr)
-        s = re.sub(r"[^А-Яа-яЁё\s\-]", " ", s)
+        if allow_digits:
+            s = re.sub(r"[^А-Яа-яЁё0-9\s\-№.]", " ", s)
+        else:
+            s = re.sub(r"[^А-Яа-яЁё\s\-]", " ", s)
         s = re.sub(r"\s+", " ", s).strip(" -")
         return s if s else fallback
+
+    def normalize_past_or_today_date_ru(self, date_str: str) -> str:
+        """
+        Ensures a DD.MM.YYYY date is not in the future (Gosuslugi rejects future 'Дата расторжения' with ng-invalid).
+        If an Excel typo has '.11.2026' in the future (e.g. '28.11.2026' instead of '28.10.2026'), normalizes it to '.10.2026'.
+        """
+        raw = str(date_str or "").strip()
+        m = re.match(r"^(\d{2})\.(\d{2})\.(\d{4})$", raw)
+        if not m:
+            return raw
+        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            dt = datetime(yyyy, mm, dd).date()
+            today = datetime.now().date()
+            if dt > today:
+                if mm == 11 and yyyy == today.year:
+                    alt = datetime(yyyy, 10, min(dd, 31)).date()
+                    if alt <= today:
+                        fixed = alt.strftime("%d.%m.%Y")
+                        logger.warning(f"Normalized future dismissal date '{raw}' -> '{fixed}' (Gosuslugi max date is today)")
+                        return fixed
+                fixed = today.strftime("%d.%m.%Y")
+                logger.warning(f"Clamped future dismissal date '{raw}' -> '{fixed}' (Gosuslugi max date is today)")
+                return fixed
+        except Exception:
+            pass
+        return raw
 
     def type_masked_input(self, selector: str, value: str, delay: int = 35):
         """Clicks an input, clears it with Ctrl+A + Backspace, and types character-by-character so Angular masks trigger."""
@@ -1274,7 +1304,7 @@ class GosuslugiDismissalBot:
                         const dic = document.querySelector('input#dic18, input#dic18_byHand, lib-lookup input.search-input');
                         if (vis(dic)) return true;
                         const h1 = Array.from(document.querySelectorAll('h1, h2, h3')).find(
-                            h => vis(h) && (h.innerText || '').includes('подразделение МВД')
+                            h => vis(h) && (h.innerText || '').toLowerCase().includes('подразделение мвд')
                         );
                         return !!h1;
                     }"""
@@ -1374,10 +1404,11 @@ class GosuslugiDismissalBot:
                             return st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity || '1') > 0.05;
                         };
                         const dic18 = document.querySelector('input#dic18');
+                        const disp = document.querySelector('lib-lookup .displayed.lookup-item, .displayed.lookup-item');
                         const izmBtn = Array.from(document.querySelectorAll("lib-button[data-button-type='skipstep'] button, button"))
                             .find(b => vis(b) && (b.innerText || '').trim().includes('Изменить'));
-                        if (vis(dic18) || izmBtn) {
-                            const valUp = dic18 ? (dic18.value || '').trim().toUpperCase() : '';
+                        if (vis(dic18) || vis(disp) || izmBtn) {
+                            const valUp = ((dic18 ? dic18.value : '') || (disp ? disp.innerText : '') || '').trim().toUpperCase();
                             const isExactVks = valUp.includes('ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ') && valUp.includes('МОСКВ') && !valUp.includes('РАЙОН');
                             if (!isExactVks) return false;
                         }
@@ -1474,14 +1505,15 @@ class GosuslugiDismissalBot:
                         return st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity || '1') > 0.05;
                     };
                     const dic18 = document.querySelector('input#dic18');
+                    const disp = document.querySelector('lib-lookup .displayed.lookup-item, .displayed.lookup-item');
                     const byHand = document.querySelector('input#dic18_byHand, lib-lookup input.search-input');
                     const izmBtn = Array.from(document.querySelectorAll("lib-button[data-button-type='skipstep'] button, button"))
                         .find(b => vis(b) && (b.innerText || '').trim().includes('Изменить'));
                     const h1 = Array.from(document.querySelectorAll('h1, h2, h3'))
-                        .find(h => vis(h) && (h.innerText || '').includes('подразделение МВД'));
+                        .find(h => vis(h) && (h.innerText || '').toLowerCase().includes('подразделение мвд'));
                     return {
-                        hasReadonly: vis(dic18),
-                        readonlyVal: dic18 ? (dic18.value || '').trim() : '',
+                        hasReadonly: vis(dic18) || vis(disp),
+                        readonlyVal: ((dic18 ? dic18.value : '') || (disp ? disp.innerText : '') || '').trim(),
                         hasIzmenit: !!izmBtn,
                         hasByHand: vis(byHand),
                         hasMvdHeading: !!h1
@@ -2389,18 +2421,36 @@ class GosuslugiDismissalBot:
         )
 
         # Issued by (#si14_issuedBy_125)
-        issued_by = self.sanitize_cyrillic_field(str(row.get("ПаспортКемВыдан", "")).strip() or "МВД", "МВД")
+        issued_by = self.sanitize_cyrillic_field(
+            str(row.get("ПаспортКемВыдан", "")).strip() or "МВД",
+            "МВД",
+            allow_digits=True,
+        )
         self.type_masked_input(
             "#si14_issuedBy_125:visible, input[name*='issuedBy']:visible, input[id*='issuedBy']:visible",
             issued_by,
         )
         self.page.wait_for_timeout(500)
 
-        for _ in range(3):
+        for _ in range(4):
             self._click_continue_js_and_mouse()
-            self.page.wait_for_timeout(1200)
-            self.check_and_handle_error_modal()
-            if self.page.locator("#si14_issuedBy_125:visible, input[id*='issuedBy']:visible").count() == 0:
+            for _w in range(12):
+                self.page.wait_for_timeout(300)
+                self.check_and_handle_error_modal()
+                # Wait until Passport-specific fields (#si14_issuedBy_125 / di14_issue) are gone AND no .loader button is spinning
+                still_on_step9 = bool(
+                    self.page.evaluate(
+                        """() => {
+                            const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
+                            const iss = document.querySelector("#si14_issuedBy_125, input[id*='issuedBy'], input[name='di14_issue']");
+                            const loader = document.querySelector("button.loader");
+                            return !!(vis(iss) || vis(loader));
+                        }"""
+                    )
+                )
+                if not still_on_step9:
+                    break
+            if self.page.locator("#si14_issuedBy_125:visible, input[id*='issuedBy']:visible, input[name='di14_issue']:visible").count() == 0:
                 break
 
         # Step 10: Wait for and handle optional INN (Step 9b), Patent Region (Step 10a), and Patent Details (Step 10)
@@ -2411,9 +2461,28 @@ class GosuslugiDismissalBot:
             (self.cfg["PATENT_REGION"], self.cfg["PATENT_REGION_FULL"]),
         )
 
-        for _step10_tick in range(35):
+        for _step10_tick in range(40):
+            if PAUSE_SIGNAL_FILE.exists():
+                self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
-            if self.page.locator("#series:visible, input[name*='series']:visible, input[id*='series']:visible").count() > 0:
+
+            # ONLY break when we are genuinely on the Patent Details screen ('Укажите данные патента' / #s15_dict_2_seriaBlank)
+            # Never break on Step 9's #series!
+            on_patent_details = bool(
+                self.page.evaluate(
+                    """() => {
+                        const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
+                        if (vis(document.querySelector("#si14_issuedBy_125, input[id*='issuedBy'], input[name='di14_issue']"))) return false;
+                        const blankInp = document.querySelector("#s15_dict_2_seriaBlank, input[name*='seriaBlank'], input[name*='numberBlank']");
+                        if (vis(blankInp)) return true;
+                        const h1 = Array.from(document.querySelectorAll("h1, h2, h3")).find(
+                            h => vis(h) && (h.innerText || "").toLowerCase().includes("данные патента")
+                        );
+                        return !!h1 && vis(document.querySelector("#series"));
+                    }"""
+                )
+            )
+            if on_patent_details:
                 break
 
             # Optional Step 9b: Foreigner INN ('ИНН иностранного гражданина')
@@ -2477,8 +2546,9 @@ class GosuslugiDismissalBot:
                 blank_num_val,
             )
 
+        # Only fill patent issue date if a date-picker is actually present on the Patent screen
         patent_issue_date = str(row.get("ДатаВыдачиВКС", "")).strip()
-        if patent_issue_date:
+        if patent_issue_date and self.page.locator("input[name*='di15']:visible, lib-date-picker input:visible").count() > 0:
             self.fill_date_input_smart(
                 primary_selector="input[name*='di15']:visible, input[id*='di15']:visible, lib-date-picker input:visible",
                 label_keywords=["дата выдачи", "выдачи"],
@@ -2486,90 +2556,116 @@ class GosuslugiDismissalBot:
             )
 
         self.page.wait_for_timeout(500)
-        for _ in range(3):
+        for _ in range(4):
             self._click_continue_js_and_mouse()
-            self.page.wait_for_timeout(1200)
-            self.check_and_handle_error_modal()
-            if self.page.locator("input[name*='numberBlank']:visible, input[id*='numberBlank']:visible, #series:visible").count() == 0:
+            for _w in range(15):
+                self.page.wait_for_timeout(300)
+                self.check_and_handle_error_modal()
+                reached_step11 = bool(
+                    self.page.evaluate(
+                        """() => {
+                            const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
+                            if (vis(document.querySelector("button.loader"))) return false;
+                            if (vis(document.querySelector("#s15_dict_2_seriaBlank, input[name*='numberBlank']"))) return false;
+                            const step11El = document.querySelector("input#dic16, input#si16, input[name='di16_2'], input[name='ri16_type']");
+                            if (vis(step11El)) return true;
+                            const h1 = Array.from(document.querySelectorAll("h1, h2, h3")).find(
+                                h => vis(h) && (h.innerText || "").toLowerCase().includes("расторжении договора")
+                            );
+                            return !!h1;
+                        }"""
+                    )
+                )
+                if reached_step11:
+                    break
+            if self.page.locator("#s15_dict_2_seriaBlank:visible, input[name*='numberBlank']:visible").count() == 0:
                 break
 
-        # Step 11: Contract Termination Details (Сведения о расторжении договора)
-        logger.info(f"Step 11: Setting Termination Date {row.get('ДатаУволь')} & Position {row.get('Должность')}...")
+        # Step 11: Contract Termination Details ('Укажите информацию о расторжении договора')
+        raw_dismiss_date = str(row.get("ДатаУволь", "")).strip()
+        dismiss_date = self.normalize_past_or_today_date_ru(raw_dismiss_date)
+        pos_str = self.sanitize_cyrillic_field(str(row.get("Должность", "Монтажник")).strip(), "Монтажник", allow_digits=True)
+        logger.info(f"Step 11: Setting Termination Date {dismiss_date} & Position {pos_str}...")
         self.check_and_handle_error_modal()
-        for _ in range(25):
+        for _ in range(30):
+            if PAUSE_SIGNAL_FILE.exists():
+                self.wait_if_paused_or_logged_out()
             if (
                 self.page.locator(
-                    "label.radio:has-text('Трудовой'):visible, lib-radio:has-text('Трудовой'):visible, "
-                    "input#dic16_prof:visible, lib-date-picker input:visible, "
-                    "epgu-constructor-address-input textarea:visible"
+                    "h1:has-text('расторжении договора'):visible, "
+                    "input#dic16:visible, input#si16:visible, input[name='di16_2']:visible, "
+                    "lib-radio:has-text('Трудовой'):visible"
                 ).count()
                 > 0
             ):
                 break
             self.page.wait_for_timeout(400)
 
-        pos_str = self.sanitize_cyrillic_field(str(row.get("Должность", "Монтажник")).strip(), "Монтажник")
+        # 11a. Contract type radio ('Трудовой' -> input[name='ri16_type'])
+        try:
+            self.page.evaluate(
+                """() => {
+                    const radios = Array.from(document.querySelectorAll("lib-radio"));
+                    for (const r of radios) {
+                        const txt = (r.innerText || "").trim();
+                        if (txt.includes("Трудовой")) {
+                            const lbl = r.querySelector("label.radio") || r;
+                            lbl.click();
+                        }
+                    }
+                }"""
+            )
+        except Exception:
+            pass
+        trudovoy_lbl = self.page.locator("lib-radio:has-text('Трудовой') label.radio:visible, label.radio:has-text('Трудовой'):visible").first
+        if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
+            try:
+                trudovoy_lbl.click(timeout=2000)
+            except Exception:
+                pass
+        self.page.wait_for_timeout(200)
 
-        # 11a. Profession ('Профессия (должность, специальность, вид трудовой деятельности)')
-        # Check if there is a manual-entry checkbox before the profession field or a lookup input
-        prof_lookup = self.page.locator(
-            "input#dic16_prof:visible, input[id*='dic16']:visible, input[id*='prof']:visible, lib-lookup input.search-input:visible"
-        )
-        if prof_lookup.count() > 0 and prof_lookup.first.is_visible():
+        # 11b. Profession ('Профессия')
+        # Check 'Нет подходящей профессии' (input#cb16_) to unlock input#si16 and type the exact position from Excel immediately
+        try:
+            self.page.evaluate(
+                """() => {
+                    const cb = document.querySelector("input#cb16_");
+                    const libCb = cb ? cb.closest("lib-checkbox") : Array.from(document.querySelectorAll("lib-checkbox")).find(el => (el.innerText || "").includes("Нет подходящей профессии"));
+                    if (libCb) {
+                        const inp = libCb.querySelector("input[type='checkbox']");
+                        if (!inp || !inp.checked) {
+                            const lbl = libCb.querySelector("label.check") || libCb;
+                            lbl.click();
+                        }
+                    }
+                }"""
+            )
+            self.page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+        if self.page.locator("input#si16:visible, input[name='si16']:visible").count() > 0:
+            self.type_masked_input("input#si16:visible, input[name='si16']:visible", pos_str)
+        else:
+            # Fallback if #si16 didn't appear: use #dic16 lookup
             ok_prof = self.select_lookup_option_mvd_style(
-                input_selector="input#dic16_prof, input[id*='dic16'], input[id*='prof'], lib-lookup input.search-input",
+                input_selector="input#dic16, input#dic16_prof, input[id*='dic16'], lib-lookup input.search-input",
                 type_text=pos_str,
                 match_keywords=[pos_str, pos_str.split()[0] if pos_str.split() else "Монтажник"],
                 step_label=f"Step 11 (Профессия: {pos_str})",
                 click_continue_after=False,
             )
             if not ok_prof:
-                # Fallback: check if there's a manual checkbox ('Нет в списке' / first checkbox above radio buttons) or select 'Монтажник'
-                manual_cb = self.page.locator("lib-checkbox label.check:visible, lib-checkbox label:visible").first
-                if manual_cb.count() > 0 and manual_cb.is_visible():
-                    try:
-                        manual_cb.click(timeout=2000)
-                        self.page.wait_for_timeout(300)
-                        self.type_masked_input(
-                            "input#si16_prof:visible, input[id*='si16']:visible, input[name*='prof']:visible, input[type='text']:visible",
-                            pos_str,
-                        )
-                    except Exception:
-                        pass
-                else:
-                    self.select_lookup_option_mvd_style(
-                        input_selector="input#dic16_prof, input[id*='dic16'], input[id*='prof'], lib-lookup input.search-input",
-                        type_text="Монтажник",
-                        match_keywords=["МОНТАЖНИК"],
-                        step_label="Step 11 (Профессия fallback: Монтажник)",
-                        click_continue_after=False,
-                    )
-        else:
-            # If manual checkbox is present at top of Step 11, click it and fill text input
-            manual_cb = self.page.locator("lib-checkbox label.check:visible, lib-checkbox label:visible").first
-            if manual_cb.count() > 0 and manual_cb.is_visible():
-                try:
-                    manual_cb.click(timeout=2000)
-                    self.page.wait_for_timeout(300)
-                except Exception:
-                    pass
-            self.type_masked_input(
-                "input#si16_prof:visible, input[id*='si16']:visible, input[name*='prof']:visible, input[type='text']:visible",
-                pos_str,
-            )
+                self.select_lookup_option_mvd_style(
+                    input_selector="input#dic16, input#dic16_prof, input[id*='dic16'], lib-lookup input.search-input",
+                    type_text="Монтажник",
+                    match_keywords=["МОНТАЖНИК"],
+                    step_label="Step 11 (Профессия fallback: Монтажник)",
+                    click_continue_after=False,
+                )
 
-        # 11b. Contract type radio ('Трудовой')
-        trudovoy_lbl = self.page.locator(
-            "label.radio:has-text('Трудовой'):visible, lib-radio:has-text('Трудовой') label:visible, span:has-text('Трудовой'):visible"
-        ).first
-        if trudovoy_lbl.count() > 0 and trudovoy_lbl.is_visible():
-            try:
-                trudovoy_lbl.click(timeout=2500)
-            except Exception:
-                pass
-
-        # 11c. Dates on Step 11 (optional 'Дата заключения' + mandatory 'Дата расторжения' / 'Дата прекращения')
-        dismiss_date = str(row.get("ДатаУволь", "")).strip()
+        # 11c. Dates on Step 11 (optional 'Дата заключения' + mandatory 'Дата расторжения' [di16_2])
         hire_date = str(row.get("ДатаПриема", "")).strip()
         if hire_date and self.page.locator("lib-date-picker input:visible").count() >= 2:
             self.fill_date_input_smart(
@@ -2579,22 +2675,38 @@ class GosuslugiDismissalBot:
             )
 
         self.fill_date_input_smart(
-            primary_selector="input[name*='di16']:visible, input[id*='di16']:visible, lib-date-picker input:visible",
+            primary_selector="input[name='di16_2']:visible, input[name*='di16']:visible, input[id*='di16']:visible, lib-date-picker input:visible",
             label_keywords=["дата расторжения", "дата прекращения", "расторжения", "прекращения", "увольнения", "дата"],
             value=dismiss_date,
         )
 
-        # 11d. Voluntary termination radio ('По инициативе работника' -> 'Да' / 'Нет')
+        # 11d. Voluntary termination radio ('По инициативе работника' -> input[name='ri16_2_ini'][value='Y'|'N'])
         is_voluntary = str(row.get("УвПоСобствЖел", self.cfg.get("DEFAULT_VOLUNTARY", "Да"))).strip()
-        vol_label = "Да" if is_voluntary.lower() in ["да", "yes", "true", "1"] else "Нет"
-        vol_loc = self.page.locator(
-            f"label.radio:has-text('{vol_label}'):visible, lib-radio:has-text('{vol_label}') label:visible, span:has-text('{vol_label}'):visible"
-        ).last
-        if vol_loc.count() > 0 and vol_loc.is_visible():
-            try:
-                vol_loc.click(timeout=2500)
-            except Exception:
-                pass
+        vol_val = "Y" if is_voluntary.lower() in ["да", "yes", "true", "1"] else "N"
+        vol_label = "Да" if vol_val == "Y" else "Нет"
+        try:
+            vol_box = self.page.evaluate(
+                """(val) => {
+                    const inp = document.querySelector(`input[name='ri16_2_ini'][value='${val}']`);
+                    if (!inp) return null;
+                    const libRadio = inp.closest("lib-radio");
+                    const lbl = libRadio ? (libRadio.querySelector("label.radio") || libRadio) : inp;
+                    lbl.scrollIntoView({ block: 'center' });
+                    const r = lbl.getBoundingClientRect();
+                    lbl.click();
+                    return (r.width > 5 && r.height > 5) ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+                }""",
+                vol_val,
+            )
+            if vol_box and not self.page.evaluate(f"() => !!(document.querySelector(\"input[name='ri16_2_ini'][value='{vol_val}']\")?.checked)"):
+                self.page.mouse.click(float(vol_box["x"]), float(vol_box["y"]))
+        except Exception:
+            vol_loc = self.page.locator(f"lib-radio:has-text('{vol_label}') label.radio:visible").last
+            if vol_loc.count() > 0:
+                try:
+                    vol_loc.click(timeout=2000)
+                except Exception:
+                    pass
         self.page.wait_for_timeout(400)
 
         # 11e. Work Address (if present on Step 11)
@@ -2626,8 +2738,15 @@ class GosuslugiDismissalBot:
             self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
 
         self.page.wait_for_timeout(500)
-        self._click_continue_js_and_mouse()
-        self.page.wait_for_timeout(1500)
+        for _ in range(4):
+            self._click_continue_js_and_mouse()
+            for _w in range(12):
+                self.page.wait_for_timeout(300)
+                self.check_and_handle_error_modal()
+                if self._is_on_step12_mvd_screen_js() or self._has_advanced_past_step12_js():
+                    break
+            if self._is_on_step12_mvd_screen_js() or self._has_advanced_past_step12_js():
+                break
 
         # Steps 12 -> 13 -> 14 -> 15: MVD Destination Division ('МОСКВЕ' -> ОТДЕЛ ВНЕШНЕЙ ТРУДОВОЙ МИГРАЦИИ УВМ ГУ МВД РОССИИ ПО Г. МОСКВЕ),
         # Employee Consent ('Подтвердить'), and Final Submission ('Отправить')
