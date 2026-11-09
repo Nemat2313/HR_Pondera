@@ -7,12 +7,12 @@ export const metadata: Metadata = {
   description: 'TeamHub SaaS tarzı Kurumsal İK, Personel & Şantiye Yönetim Analitikleri',
   icons: {
     icon: [
-      { url: '/favicon-64.png?v=3', type: 'image/png', sizes: '64x64' },
-      { url: '/pondera-icon.png?v=3', type: 'image/png', sizes: '192x192' },
-      { url: '/pondera-icon.svg?v=3', type: 'image/svg+xml' },
+      { url: '/favicon-64.png?v=6', type: 'image/png', sizes: '64x64' },
+      { url: '/pondera-icon.png?v=6', type: 'image/png', sizes: '192x192' },
+      { url: '/pondera-icon.svg?v=6', type: 'image/svg+xml', sizes: 'any' },
     ],
-    shortcut: '/favicon-64.png?v=3',
-    apple: '/pondera-icon.png?v=3',
+    shortcut: '/favicon-64.png?v=6',
+    apple: '/pondera-icon.png?v=6',
   },
 };
 
