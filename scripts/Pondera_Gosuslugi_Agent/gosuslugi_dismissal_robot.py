@@ -741,7 +741,7 @@ class GosuslugiDismissalBot:
         # Wait up to 120 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
         max_wait_s = max(120, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 120))
         for _w in range(max_wait_s * 2):
-            if PAUSE_SIGNAL_FILE.exists():
+            if os.path.exists(PAUSE_SIGNAL_FILE):
                 self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
             if self.page.locator("#si13_lastNameRu:visible, input[name*='lastNameRu']:visible").count() > 0:
@@ -2064,7 +2064,7 @@ class GosuslugiDismissalBot:
         max_wait_sec = max(120, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 120))
 
         for _tick in range(120):
-            if PAUSE_SIGNAL_FILE.exists():
+            if os.path.exists(PAUSE_SIGNAL_FILE):
                 self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
 
@@ -2317,7 +2317,7 @@ class GosuslugiDismissalBot:
         spinner_ticks = 0
 
         for _step_tick in range(total_step_ticks):
-            if PAUSE_SIGNAL_FILE.exists():
+            if os.path.exists(PAUSE_SIGNAL_FILE):
                 self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
 
@@ -2577,7 +2577,7 @@ class GosuslugiDismissalBot:
         )
 
         for _step10_tick in range(int(max_wait_sec * 2.2)):
-            if PAUSE_SIGNAL_FILE.exists():
+            if os.path.exists(PAUSE_SIGNAL_FILE):
                 self.wait_if_paused_or_logged_out()
             self.check_and_handle_error_modal()
 
@@ -2703,7 +2703,7 @@ class GosuslugiDismissalBot:
         logger.info(f"Step 11: Setting Termination Date {dismiss_date} & Position {pos_str}...")
         self.check_and_handle_error_modal()
         for _ in range(int(max_wait_sec * 2.2)):
-            if PAUSE_SIGNAL_FILE.exists():
+            if os.path.exists(PAUSE_SIGNAL_FILE):
                 self.wait_if_paused_or_logged_out()
             if (
                 self.page.locator(
