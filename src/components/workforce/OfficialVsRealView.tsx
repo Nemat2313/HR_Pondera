@@ -1212,46 +1212,71 @@ export default function OfficialVsRealView() {
                 </span>
               </div>
 
-              {/* Aligned 2-Line Horizontal Comparison Matrix (1C ZUP vs eBA Real with Overlaps & Empty Gaps) */}
+              {/* Single Horizontal Axis Line (Deduplicated Union Total) with 1C ZUP Above & eBA Real Below */}
               {(() => {
                 const zupTrans = summary.zupTransferPermitCheckCount || 0;
-                const zupExit = summary.zupActiveButRealExited || 0;
-                const zupMatchedClean = Math.max(0, summary.matchedActiveBoth - zupTrans);
-                const realOnlyMissingInZup = summary.realActiveNotInZupTotal || 0;
+                const bothActive = summary.matchedActiveBoth || 0;
+                const ebaOnlyActive = summary.realActiveNotInZupTotal || 0;
+                const zupOnlyNoEba = dc.zupOnlyNoEba || summary.zupOnlyNotInRealDB || 0;
+                const zupActiveEbaExit = summary.zupActiveButRealExited || 0;
+                const dedupUnionTotal = bothActive + ebaOnlyActive + zupOnlyNoEba + zupActiveEbaExit;
+
+                const cum1 = bothActive;
+                const cum2 = cum1 + ebaOnlyActive;
+                const cum3 = cum2 + zupOnlyNoEba;
+                const cum4 = dedupUnionTotal;
 
                 return (
-                  <div className="space-y-2.5">
-                    {/* Shared 3-Column Header (Aligned Axis Zones) */}
-                    <div className="grid grid-cols-12 gap-1.5 text-[10px] px-0.5">
-                      <div className="col-span-6 flex items-center justify-between px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-800 dark:text-emerald-300 font-medium">
-                        <span>🟢 {lang === 'ru' ? '1. В обоих (Актив)' : '1. Her İkisinde Mevcut'}</span>
-                        <strong>{summary.matchedActiveBoth.toLocaleString('tr-TR')}</strong>
+                  <div className="p-3 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/90 dark:border-slate-800 space-y-2">
+                    {/* 4-Column Segment Header Labels */}
+                    <div className="flex items-stretch gap-1.5 text-[10px]">
+                      <div style={{ width: '44%' }} className="px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                        <span className="truncate font-semibold">
+                          1. {lang === 'ru' ? 'В обоих (Актив)' : 'Her İkisinde Mevcut'}
+                        </span>
+                        <strong>{bothActive.toLocaleString('tr-TR')}</strong>
                       </div>
-                      <div className="col-span-3 flex items-center justify-between px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-800 dark:text-rose-300 font-medium">
-                        <span className="truncate">🔴 {lang === 'ru' ? '2. В ЗУП / Увол.' : '2. ZUP Var / Çıkış'}</span>
-                        <strong>{zupExit.toLocaleString('tr-TR')}</strong>
+                      <div style={{ width: '20%' }} className="px-2 py-1 rounded-lg bg-slate-500/10 border border-slate-400/30 text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                        <span className="truncate font-semibold">
+                          2. {lang === 'ru' ? 'Только eBA' : "eBA'da Var"}
+                        </span>
+                        <strong>{ebaOnlyActive.toLocaleString('tr-TR')}</strong>
                       </div>
-                      <div className="col-span-3 flex items-center justify-between px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 font-medium">
-                        <span className="truncate">🟠 {lang === 'ru' ? '3. Только Real' : "3. ZUP'ta Yok"}</span>
-                        <strong>{realOnlyMissingInZup.toLocaleString('tr-TR')}</strong>
+                      <div style={{ width: '17%' }} className="px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-400/30 text-purple-800 dark:text-purple-300 flex items-center justify-between">
+                        <span className="truncate font-semibold">
+                          3. {lang === 'ru' ? 'Только ЗУП' : "ZUP'ta Var"}
+                        </span>
+                        <strong>{zupOnlyNoEba.toLocaleString('tr-TR')}</strong>
+                      </div>
+                      <div style={{ width: '19%' }} className="px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-400/30 text-rose-800 dark:text-rose-300 flex items-center justify-between">
+                        <span className="truncate font-semibold">
+                          4. {lang === 'ru' ? 'ЗУП / Увол.' : 'Mevcut / Çıkışlı'}
+                        </span>
+                        <strong>{zupActiveEbaExit.toLocaleString('tr-TR')}</strong>
                       </div>
                     </div>
 
-                    {/* LINE 1: 1C ZUP Official Workforce Track */}
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#131C31] border border-slate-200/90 dark:border-slate-800 space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-indigo-700 dark:text-indigo-300 font-semibold flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                          {lang === 'ru' ? '1С ЗУП (Официальный штат)' : '1C ZUP Resmi Bordro'}
+                    {/* TOP TRACK (ABOVE THE LINE): 1C ZUP Official Workforce */}
+                    <div className="space-y-1 pt-0.5">
+                      <div className="flex items-center justify-between text-[11px] px-0.5">
+                        <span className="text-purple-700 dark:text-purple-300 font-semibold flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-purple-500" />
+                          {lang === 'ru' ? '▲ ВЕРХ: 1С ЗУП (Официальный штат)' : '▲ ÜST: 1C ZUP Resmi Kadro'}
                         </span>
-                        <span className="text-slate-900 dark:text-white text-[11px]">
-                          Toplam: <strong>{summary.zupOfficialTotal.toLocaleString('tr-TR')} Kişi</strong>
+                        <span className="text-slate-700 dark:text-slate-300">
+                          {lang === 'ru' ? 'Актив ЗУП:' : 'ZUP Mevcut:'}{' '}
+                          <strong className="text-slate-900 dark:text-white">
+                            {summary.zupOfficialTotal.toLocaleString('tr-TR')}
+                          </strong>
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-12 gap-1.5 h-9">
-                        {/* Col 1 (Common Active in Both): Solid Green Bar + Transfer Pill */}
-                        <div className="col-span-6 h-full rounded-lg bg-emerald-500 text-white flex items-center justify-between px-2.5 gap-1 shadow-2xs overflow-hidden">
+                      <div className="flex items-stretch gap-1.5 h-9">
+                        {/* Seg 1 (Both Active): Solid Green Bar (Equal to eBA below) */}
+                        <div
+                          style={{ width: '44%' }}
+                          className="h-full rounded-lg bg-emerald-500 text-white flex items-center justify-between px-2.5 gap-1 shadow-2xs overflow-hidden"
+                        >
                           <button
                             type="button"
                             onClick={() => {
@@ -1260,11 +1285,10 @@ export default function OfficialVsRealView() {
                               scrollToTable();
                             }}
                             className="flex items-center gap-1 text-[11px] font-semibold hover:underline cursor-pointer truncate"
-                            title="Her iki sistemde de mevcut olan personelleri listele"
+                            title="Her iki sistemde de mevcut olan personeller (Yeşil eşit bar)"
                           >
                             <span>
-                              {lang === 'ru' ? 'Актив:' : 'Mevcut:'}{' '}
-                              {zupMatchedClean.toLocaleString('tr-TR')}
+                              {lang === 'ru' ? 'В обоих:' : 'İkisinde:'} {bothActive.toLocaleString('tr-TR')}
                             </span>
                           </button>
                           {zupTrans > 0 && (
@@ -1275,112 +1299,196 @@ export default function OfficialVsRealView() {
                                 setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
                                 scrollToTable();
                               }}
-                              className="px-1.5 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-semibold shrink-0 cursor-pointer transition"
-                              title="Şirket İçi Şantiye Transferi (ZUP'ta aktif, Real'de yeni şantiyeye geçiş)"
+                              className="px-1.5 py-0.5 rounded bg-emerald-700/80 hover:bg-emerald-800 text-white text-[9.5px] font-semibold shrink-0 cursor-pointer transition"
+                              title="Şirket İçi Şantiye Transferi"
                             >
-                              +{zupTrans} Transfer
+                              +{zupTrans} Trf.
                             </button>
                           )}
                         </div>
 
-                        {/* Col 2 (In ZUP Active, Exited in Real): Solid Rose Bar */}
+                        {/* Seg 2 (In eBA Only -> EMPTY in 1C ZUP) */}
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedPermitKey('ALL');
-                            setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
-                            scrollToTable();
-                          }}
-                          className="col-span-3 h-full rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[11px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
-                          title="1C ZUP'ta hala aktif görünen ancak eBA Real'de çıkış yapmış personeller"
-                        >
-                          <span>
-                            {lang === 'ru' ? 'В ЗУП:' : 'ZUP Aktif:'} +{zupExit}
-                          </span>
-                        </button>
-
-                        {/* Col 3 (In Real Active, Missing in ZUP): EMPTY / DASHED GAP BOX */}
-                        <button
-                          type="button"
+                          style={{ width: '20%' }}
                           onClick={() => {
                             setSelectedPermitKey('ALL');
                             setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
                             scrollToTable();
                           }}
-                          className="col-span-3 h-full rounded-lg border-2 border-dashed border-amber-400/80 dark:border-amber-500/60 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-[10.5px] font-medium flex items-center justify-center px-1.5 transition cursor-pointer truncate"
-                          title="eBA Real'de aktif olup 1C ZUP resmi bordrosunda kaydı bulunmayanlar (Boşluk)"
+                          className="h-full rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/30 hover:bg-slate-100/60 text-slate-400 dark:text-slate-500 text-[10px] font-medium flex items-center justify-center px-1 transition cursor-pointer truncate"
+                          title="eBA'da mevcut (899) ancak 1C ZUP'ta kaydı yok (ZUP'ta Boş)"
+                        >
+                          <span>{lang === 'ru' ? 'В ЗУП Пусто' : "ZUP'ta Boş"}</span>
+                        </button>
+
+                        {/* Seg 3 (In ZUP Only -> Light Purple Bar in 1C ZUP) */}
+                        <button
+                          type="button"
+                          style={{ width: '17%' }}
+                          onClick={() => {
+                            setSelectedPermitKey('ALL');
+                            setSelectedFilter('ZUP_ONLY_NO_EBA');
+                            scrollToTable();
+                          }}
+                          className="h-full rounded-lg bg-purple-400 hover:bg-purple-500 dark:bg-purple-500/85 dark:hover:bg-purple-500 text-white text-[10.5px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
+                          title="Sadece 1C ZUP'ta olup eBA'da kaydı olmayanlar (Açık Mor)"
                         >
                           <span>
-                            {lang === 'ru' ? 'Нет в ЗУП:' : "ZUP'ta Yok:"} -{realOnlyMissingInZup}
+                            {lang === 'ru' ? 'ЗУП:' : 'ZUP:'} {zupOnlyNoEba}
+                          </span>
+                        </button>
+
+                        {/* Seg 4 (Active in ZUP, Exited in eBA -> Light Purple Bar in 1C ZUP, Equal to eBA Exited below) */}
+                        <button
+                          type="button"
+                          style={{ width: '19%' }}
+                          onClick={() => {
+                            setSelectedPermitKey('ALL');
+                            setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
+                            scrollToTable();
+                          }}
+                          className="h-full rounded-lg bg-purple-400 hover:bg-purple-500 dark:bg-purple-500/85 dark:hover:bg-purple-500 text-white text-[10.5px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
+                          title="1C ZUP'ta mevcut (aktif) olup eBA'da çıkışlı olanlar"
+                        >
+                          <span>
+                            {lang === 'ru' ? 'Актив:' : 'Mevcut:'} {zupActiveEbaExit}
                           </span>
                         </button>
                       </div>
                     </div>
 
-                    {/* LINE 2: eBA Real Workforce Track (Aligned Column-for-Column with Line 1) */}
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#131C31] border border-slate-200/90 dark:border-slate-800 space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          {lang === 'ru' ? 'eBA Real (Реальный штат)' : 'eBA Real Saha Kadrosu'}
+                    {/* CENTER SINGLE HORIZONTAL LINE: Deduplicated Union of Active Personnel Across Both Systems */}
+                    <div className="py-1.5 px-0.5">
+                      <div className="flex items-center justify-between text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold mb-1">
+                        <span>
+                          {lang === 'ru'
+                            ? '── Единая шкала (Уникальный пул обоих систем без дубликатов)'
+                            : '── Tek Yatay Referans Çizgisi (İki Sistem Tekil Mevcut Toplamı / Remove Duplicate)'}
                         </span>
-                        <span className="text-slate-900 dark:text-white text-[11px]">
-                          Toplam: <strong>{summary.realActiveTotal.toLocaleString('tr-TR')} Kişi</strong>
+                        <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/90 border border-indigo-300 dark:border-indigo-700 text-indigo-900 dark:text-indigo-200 font-bold">
+                          {lang === 'ru' ? 'Всего уникальных:' : 'Tekil Toplam:'}{' '}
+                          {dedupUnionTotal.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-12 gap-1.5 h-9">
-                        {/* Col 1 (Common Active in Both): Solid Green Bar Directly Under ZUP Green Bar */}
+                      {/* Continuous Horizontal Axis Line with Column Division Ticks */}
+                      <div className="relative flex items-center w-full">
+                        <div className="w-full h-1.5 rounded-full bg-gradient-to-r from-emerald-500 via-slate-400 to-purple-500 shadow-2xs" />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[9.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        <div style={{ width: '44%' }} className="flex justify-between pr-1 border-r border-slate-300 dark:border-slate-700">
+                          <span>0</span>
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            {cum1.toLocaleString('tr-TR')}
+                          </span>
+                        </div>
+                        <div style={{ width: '20%' }} className="flex justify-end pr-1 border-r border-slate-300 dark:border-slate-700">
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            {cum2.toLocaleString('tr-TR')}
+                          </span>
+                        </div>
+                        <div style={{ width: '17%' }} className="flex justify-end pr-1 border-r border-slate-300 dark:border-slate-700">
+                          <span className="font-semibold text-purple-700 dark:text-purple-300">
+                            {cum3.toLocaleString('tr-TR')}
+                          </span>
+                        </div>
+                        <div style={{ width: '19%' }} className="flex justify-end">
+                          <span className="font-bold text-indigo-700 dark:text-indigo-300">
+                            {cum4.toLocaleString('tr-TR')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BOTTOM TRACK (BELOW THE LINE): eBA Real Workforce */}
+                    <div className="space-y-1 pb-0.5">
+                      <div className="flex items-stretch gap-1.5 h-9">
+                        {/* Seg 1 (Both Active): Solid Green Bar (Equal to 1C ZUP above) */}
                         <button
                           type="button"
+                          style={{ width: '44%' }}
                           onClick={() => {
                             setSelectedPermitKey('ALL');
                             setSelectedFilter('FULL_MATCH');
                             scrollToTable();
                           }}
-                          className="col-span-6 h-full rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-semibold flex items-center justify-between px-2.5 shadow-2xs transition cursor-pointer truncate"
-                          title="Her iki sistemde de mevcut olan personelleri listele"
+                          className="h-full rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-semibold flex items-center justify-between px-2.5 shadow-2xs transition cursor-pointer truncate"
+                          title="Her iki sistemde de mevcut olan personeller (Yeşil eşit bar)"
                         >
                           <span>
-                            {lang === 'ru' ? 'Официально:' : 'Resmide Mevcut:'}{' '}
-                            {summary.matchedActiveBoth.toLocaleString('tr-TR')}
+                            {lang === 'ru' ? 'В обоих:' : 'İkisinde:'} {bothActive.toLocaleString('tr-TR')}
                           </span>
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-700/70 text-[10px]">
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-700/75 text-[9.5px]">
                             %{summary.matchedActiveRateAll}
                           </span>
                         </button>
 
-                        {/* Col 2 (Exited in Real, Still Active in ZUP): EMPTY / DASHED GAP BOX Directly Under ZUP +40 */}
+                        {/* Seg 2 (In eBA Only -> Solid GREY Bar in eBA, Blank in ZUP above) */}
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedPermitKey('ALL');
-                            setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
-                            scrollToTable();
-                          }}
-                          className="col-span-3 h-full rounded-lg border-2 border-dashed border-rose-400/80 dark:border-rose-500/60 bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-100/50 dark:hover:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-[10.5px] font-medium flex items-center justify-center px-1.5 transition cursor-pointer truncate"
-                          title="eBA Real'de çıkış yapıldığı için aktif kadroda yer almayan 40 kişi (Boşluk)"
-                        >
-                          <span>
-                            {lang === 'ru' ? 'Уволен:' : 'Real Çıkış:'} -{zupExit}
-                          </span>
-                        </button>
-
-                        {/* Col 3 (Active in Real Only, Missing in ZUP): Solid Amber Bar Directly Under ZUP Empty Gap */}
-                        <button
-                          type="button"
+                          style={{ width: '20%' }}
                           onClick={() => {
                             setSelectedPermitKey('ALL');
                             setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
                             scrollToTable();
                           }}
-                          className="col-span-3 h-full rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
-                          title="eBA Real'de aktif çalışan ancak 1C ZUP listesinde olmayan personeller"
+                          className="h-full rounded-lg bg-slate-500 hover:bg-slate-600 dark:bg-slate-600 dark:hover:bg-slate-500 text-white text-[10.5px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
+                          title="eBA Real'de mevcut olup 1C ZUP'ta olmayan personeller (Gri Bar)"
                         >
                           <span>
-                            {lang === 'ru' ? 'Только Real:' : 'Real Aktif:'} +{realOnlyMissingInZup}
+                            {lang === 'ru' ? 'В eBA:' : "eBA'da Var:"} {ebaOnlyActive.toLocaleString('tr-TR')}
                           </span>
                         </button>
+
+                        {/* Seg 3 (In ZUP Only -> EMPTY in eBA) */}
+                        <button
+                          type="button"
+                          style={{ width: '17%' }}
+                          onClick={() => {
+                            setSelectedPermitKey('ALL');
+                            setSelectedFilter('ZUP_ONLY_NO_EBA');
+                            scrollToTable();
+                          }}
+                          className="h-full rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-800/70 bg-purple-50/30 dark:bg-purple-950/20 hover:bg-purple-100/40 text-purple-400 dark:text-purple-400/80 text-[10px] font-medium flex items-center justify-center px-1 transition cursor-pointer truncate"
+                          title="Sadece 1C ZUP'ta olup eBA'da olmayanlar (eBA'da Boş)"
+                        >
+                          <span>{lang === 'ru' ? 'В eBA Пусто' : "eBA'da Boş"}</span>
+                        </button>
+
+                        {/* Seg 4 (Active in ZUP, Exited in eBA -> Equal-width Exited Bar in eBA) */}
+                        <button
+                          type="button"
+                          style={{ width: '19%' }}
+                          onClick={() => {
+                            setSelectedPermitKey('ALL');
+                            setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
+                            scrollToTable();
+                          }}
+                          className="h-full rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[10.5px] font-semibold flex items-center justify-center px-1.5 shadow-2xs transition cursor-pointer truncate"
+                          title="1C ZUP'ta mevcut görünürken eBA Real'de çıkışlı olanlar (Eşit Bar)"
+                        >
+                          <span>
+                            {lang === 'ru' ? 'Уволен:' : 'Çıkışlı:'} {zupActiveEbaExit}
+                          </span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] px-0.5">
+                        <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          {lang === 'ru' ? '▼ НИЗ: eBA Real (Реальный штат)' : '▼ ALT: eBA Real Saha Kadrosu'}
+                        </span>
+                        <span className="text-slate-700 dark:text-slate-300">
+                          {lang === 'ru' ? 'Актив eBA:' : 'eBA Mevcut:'}{' '}
+                          <strong className="text-slate-900 dark:text-white">
+                            {summary.realActiveTotal.toLocaleString('tr-TR')}
+                          </strong>
+                          {' • '}
+                          <span className="text-rose-600 dark:text-rose-400">
+                            {lang === 'ru' ? 'Уволен:' : 'Çıkışlı:'} <strong>{zupActiveEbaExit}</strong>
+                          </span>
+                        </span>
                       </div>
                     </div>
                   </div>

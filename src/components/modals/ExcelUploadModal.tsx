@@ -14,7 +14,13 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
   const { lang } = useLanguage();
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [customDate, setCustomDate] = useState('25.10.2026');
+  const [customDate, setCustomDate] = useState(() => {
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const y = now.getFullYear();
+    return `${d}.${m}.${y}`;
+  });
   const [uploading, setUploading] = useState(false);
   const [progressPercent, setProgressPercent] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -23,9 +29,9 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
 
   if (!isOpen) return null;
 
-  // Auto-detect date from file name if possible (e.g. "tum liste 25 10 26.xlsx" -> "25.10.2026")
+  // Auto-detect date from file name if possible (e.g. "tum liste 09  11 2026.xlsx" -> "09.11.2026")
   const extractDateFromFileName = (name: string) => {
-    const match = name.match(/(\d{1,2})[._\s-](\d{1,2})[._\s-](\d{2,4})/);
+    const match = name.match(/(\d{1,2})[._\s-]+(\d{1,2})[._\s-]+(\d{2,4})/);
     if (match) {
       const day = match[1].padStart(2, '0');
       const month = match[2].padStart(2, '0');
@@ -88,7 +94,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
 
     setUploading(true);
     setProgressPercent(0);
-    const targetDate = customDate.trim() || '25.10.2026';
+    const targetDate = customDate.trim() || extractDateFromFileName(file.name) || '09.11.2026';
     setIsError(false);
 
     try {

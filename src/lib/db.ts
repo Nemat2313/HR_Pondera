@@ -123,6 +123,30 @@ function ensureUsersTable(db: any) {
       CREATE INDEX IF NOT EXISTS idx_gos_subs_appno ON gosuslugi_submissions(application_no);
       CREATE INDEX IF NOT EXISTS idx_gos_subs_subat ON gosuslugi_submissions(submitted_at);
     `);
+
+    // Auto-heal data_freshness if source_file has a newer date with multiple spaces (e.g. "tum liste 09  11 2026.xlsx")
+    try {
+      const sysRows = db
+        .prepare("SELECT key, value FROM system_info WHERE key IN ('source_file', 'data_freshness')")
+        .all() as Array<{ key: string; value: string }>;
+      const sysMap: Record<string, string> = {};
+      for (const r of sysRows) sysMap[r.key] = r.value;
+      const srcFile = sysMap['source_file'] || '';
+      const curFresh = sysMap['data_freshness'] || '';
+      const m = srcFile.match(/(\d{1,2})[._\s-]+(\d{1,2})[._\s-]+(\d{2,4})/);
+      if (m) {
+        const d = m[1].padStart(2, '0');
+        const mo = m[2].padStart(2, '0');
+        let yr = m[3];
+        if (yr.length === 2) yr = '20' + yr;
+        const extractedDate = `${d}.${mo}.${yr}`;
+        if (!curFresh || curFresh === '25.10.2026' || curFresh === '08.10.2026') {
+          db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)").run(
+            extractedDate
+          );
+        }
+      }
+    } catch {}
   } catch {
     // Ignore if database is opened in read-only filesystem
   }

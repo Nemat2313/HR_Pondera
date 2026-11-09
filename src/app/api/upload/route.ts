@@ -34,13 +34,26 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const dataFreshness = ((formData.get('dataFreshness') as string) || '').trim() || '08.10.2026';
+    let dataFreshness = ((formData.get('dataFreshness') as string) || '').trim();
 
     if (!file) {
       return NextResponse.json(
         { success: false, message: 'Lütfen geçerli bir dosya (.xlsx, .txt, .csv, .zip) seçin.' },
         { status: 400 }
       );
+    }
+
+    const fileDateMatch = file.name.match(/(\d{1,2})[._\s-]+(\d{1,2})[._\s-]+(\d{2,4})/);
+    if (fileDateMatch && (!dataFreshness || dataFreshness === '25.10.2026' || dataFreshness === '08.10.2026')) {
+      const d = fileDateMatch[1].padStart(2, '0');
+      const mo = fileDateMatch[2].padStart(2, '0');
+      let yr = fileDateMatch[3];
+      if (yr.length === 2) yr = '20' + yr;
+      dataFreshness = `${d}.${mo}.${yr}`;
+    }
+    if (!dataFreshness) {
+      const now = new Date();
+      dataFreshness = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
     }
 
     const lowerName = file.name.toLowerCase();
