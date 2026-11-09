@@ -413,7 +413,27 @@ class GosuslugiDismissalBot:
         keywords_up = [str(k).strip().upper() for k in match_keywords if str(k).strip()]
 
         for attempt in range(1, 7):
-            # If already selected (.displayed.lookup-item matches) and 'Продолжить' is active
+            self.check_and_handle_error_modal()
+
+            # Verify the target input actually exists on the current screen before doing anything
+            try:
+                inp_present = bool(
+                    self.page.evaluate(
+                        """(sel) => {
+                            const el = document.querySelector(sel);
+                            if (!el) return false;
+                            const r = el.getBoundingClientRect();
+                            return r.width > 10 && r.height > 10;
+                        }""",
+                        input_selector,
+                    )
+                )
+                if not inp_present:
+                    return False
+            except Exception:
+                pass
+
+            # If already selected (.displayed.lookup-item matches)
             already_selected = False
             try:
                 already_selected = bool(
@@ -432,8 +452,8 @@ class GosuslugiDismissalBot:
             except Exception:
                 already_selected = False
 
-            if already_selected and self._is_continue_ready_js():
-                logger.info(f"{step_label}: Значение уже выбрано и кнопка «Продолжить» активна!")
+            if already_selected and (not click_continue_after or self._is_continue_ready_js()):
+                logger.info(f"{step_label}: Значение уже выбрано!")
                 if click_continue_after:
                     self._click_continue_js_and_mouse()
                     self.page.wait_for_timeout(1500)
@@ -445,12 +465,13 @@ class GosuslugiDismissalBot:
             try:
                 inp_coords = self.page.evaluate(
                     """(sel) => {
-                        const clr = document.querySelector('lib-lookup button.search-clear, button.search-clear');
+                        const inp = document.querySelector(sel);
+                        if (!inp) return null;
+                        const wrap = inp.closest('lib-lookup, .form-field, div') || document;
+                        const clr = wrap.querySelector('button.search-clear, .search-clear');
                         if (clr && clr.getBoundingClientRect().width > 5) {
                             clr.click();
                         }
-                        const inp = document.querySelector(sel);
-                        if (!inp) return null;
                         inp.scrollIntoView({ block: 'center' });
                         const r = inp.getBoundingClientRect();
                         if (r.width <= 10) return null;
@@ -460,14 +481,16 @@ class GosuslugiDismissalBot:
                     }""",
                     input_selector,
                 )
-                if inp_coords:
-                    self.page.mouse.click(float(inp_coords["x"]), float(inp_coords["y"]))
-                    self.page.wait_for_timeout(200)
-                    self.page.keyboard.press("Control+A")
-                    self.page.keyboard.press("Backspace")
-                    self.page.wait_for_timeout(120)
-                    self.page.keyboard.type(type_text, delay=55)
-                    self.page.wait_for_timeout(150)
+                if not inp_coords:
+                    return False
+
+                self.page.mouse.click(float(inp_coords["x"]), float(inp_coords["y"]))
+                self.page.wait_for_timeout(200)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(120)
+                self.page.keyboard.type(type_text, delay=55)
+                self.page.wait_for_timeout(150)
 
                 # Background-window guarantee: set value via native HTMLInputElement prototype setter & dispatch InputEvent
                 self.page.evaluate(
@@ -507,11 +530,12 @@ class GosuslugiDismissalBot:
             except Exception as e:
                 logger.warning(f"{step_label} input typing note: {e}")
 
-            # Poll every 250ms (up to 32 ticks = 8s) using non-blocking page.evaluate
-            for tick in range(32):
+            # Poll every 250ms (up to 28 ticks = 7s) using non-blocking page.evaluate
+            for tick in range(28):
+                self.check_and_handle_error_modal()
                 self.page.wait_for_timeout(250)
 
-                # Check if option is already displayed in .displayed.lookup-item and 'Продолжить' is ready
+                # Check if option is already displayed in .displayed.lookup-item
                 try:
                     disp_ready = bool(
                         self.page.evaluate(
@@ -526,8 +550,8 @@ class GosuslugiDismissalBot:
                             keywords_up,
                         )
                     )
-                    if disp_ready and self._is_continue_ready_js():
-                        logger.info(f"{step_label}: Элемент выбран в поле -> нажимаем «Продолжить»!")
+                    if disp_ready and (not click_continue_after or self._is_continue_ready_js()):
+                        logger.info(f"{step_label}: Элемент выбран в поле!")
                         if click_continue_after:
                             self._click_continue_js_and_mouse()
                             self.page.wait_for_timeout(1500)
@@ -543,24 +567,30 @@ class GosuslugiDismissalBot:
                             const inp = document.querySelector(sel);
                             const inpRect = inp ? inp.getBoundingClientRect() : null;
 
+                            // ONLY search actual dropdown list items (never generic div/span that could match the input wrapper!)
                             const all = Array.from(document.querySelectorAll(
-                                '#lookup-list-wrap .lookup-item, lib-lookup .lookup-item, .lookup-item, .search-input-drop-down-item, .select-item, [role="option"], #lookup-list-wrap li, #lookup-list-wrap div, lib-lookup li, lib-lookup div, .scroll-container div, div, li, span, p, a'
+                                '#lookup-list-wrap .lookup-item:not(.nothing-found), ' +
+                                'lib-lookup .lookup-item:not(.nothing-found):not(.displayed), ' +
+                                '.lookup-item:not(.nothing-found):not(.displayed), ' +
+                                '.search-input-drop-down-item, .select-item, [role="option"], #lookup-list-wrap li'
                             ));
                             let best = null;
                             let bestScore = Infinity;
 
                             for (const el of all) {
                                 if (!el || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'BUTTON') continue;
-                                if (el.querySelector && el.querySelector('input.search-input, input#dic12, input#dic11_UL_TD')) continue;
+                                if (el.querySelector && el.querySelector('input.search-input, input#dic12, input#dic11_UL_TD, input#dic13_ctz')) continue;
                                 if (el.classList && (el.classList.contains('nothing-found') || el.classList.contains('displayed'))) continue;
+                                if (el.closest && el.closest('.nothing-found, .displayed')) continue;
 
                                 const r = el.getBoundingClientRect();
-                                if (r.width < 80 || r.height < 16 || r.height > 180) continue;
+                                if (r.width < 60 || r.height < 16 || r.height > 180) continue;
                                 const st = window.getComputedStyle(el);
                                 if (st.visibility === 'hidden' || st.display === 'none' || parseFloat(st.opacity || '1') < 0.05) continue;
 
                                 const txt = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toUpperCase();
                                 if (!txt || txt.length > 260 || txt === 'ПРОДОЛЖИТЬ' || txt === 'ИЗМЕНИТЬ' || txt === 'НАЗАД') continue;
+                                if (txt.includes('НИЧЕГО НЕ НАЙДЕНО') || txt.includes('НЕ НАЙДЕНО') || txt.startsWith('ПО ЗАПРОСУ')) continue;
 
                                 const matchesKw = kwList.some(k => txt.includes(k));
                                 if (!matchesKw) continue;
@@ -569,14 +599,9 @@ class GosuslugiDismissalBot:
                                     if (r.top < inpRect.top - 15 || r.top > inpRect.bottom + 320) continue;
                                 }
 
-                                const isLookupItem = el.classList && (
-                                    el.classList.contains('lookup-item') ||
-                                    el.classList.contains('search-input-drop-down-item') ||
-                                    el.classList.contains('select-item') ||
-                                    el.getAttribute('role') === 'option'
-                                );
                                 const area = r.width * r.height;
-                                const score = isLookupItem ? area * 0.1 : area;
+                                const exactMatchBonus = kwList.some(k => txt === k) ? 0.05 : 1.0;
+                                const score = area * exactMatchBonus;
                                 if (score < bestScore) {
                                     bestScore = score;
                                     best = { el, r, txt };
@@ -628,11 +653,16 @@ class GosuslugiDismissalBot:
                         pass
                     self.page.wait_for_timeout(450)
 
+                    # When click_continue_after=False (e.g. Citizenship or Profession in the middle of a multi-field form),
+                    # 'Продолжить' at the bottom of the page will NOT be enabled yet because fields below are still empty!
+                    if not click_continue_after:
+                        logger.info(f"{step_label}: Пункт успешно выбран!")
+                        return True
+
                     if self._is_continue_ready_js():
                         logger.info(f"{step_label}: Пункт успешно выбран -> нажимаем «Продолжить»...")
-                        if click_continue_after:
-                            self._click_continue_js_and_mouse()
-                            self.page.wait_for_timeout(1500)
+                        self._click_continue_js_and_mouse()
+                        self.page.wait_for_timeout(1500)
                         return True
 
                     # Also try ArrowDown + Enter if dropdown remained open
@@ -646,9 +676,8 @@ class GosuslugiDismissalBot:
 
                     if self._is_continue_ready_js():
                         logger.info(f"{step_label}: Пункт выбран через клавиатуру -> нажимаем «Продолжить»...")
-                        if click_continue_after:
-                            self._click_continue_js_and_mouse()
-                            self.page.wait_for_timeout(1500)
+                        self._click_continue_js_and_mouse()
+                        self.page.wait_for_timeout(1500)
                         return True
 
                 # Fast in-place nudge at 1.5s (tick==6) and 3.25s (tick==13) if dropdown option hasn't appeared yet
@@ -686,16 +715,16 @@ class GosuslugiDismissalBot:
     def ensure_okved_selected(self) -> bool:
         """
         Step 7 ('Укажите вид деятельности по ОКВЭД'):
-        Types 'Производство прочих строительно-монтажных работ' into #dic12 and selects
-        '43.29, Производство прочих строительно-монтажных работ' using the exact MVD selection mechanism,
-        then clicks 'Продолжить' and waits for Step 8 (#si13_lastNameRu).
+        Types 'Производство прочих строительно-монтажных работ' into #dic12 ONLY (never generic lib-lookup)
+        and selects '43.29, Производство прочих строительно-монтажных работ', then clicks 'Продолжить'
+        and waits for Step 8 (#si13_lastNameRu) to appear.
         """
         okved_code = str(self.cfg.get("OKVED_CODE") or "43.29").strip()
         okved_text = str(self.cfg.get("OKVED_TEXT") or "Производство прочих строительно-монтажных работ").strip()
         logger.info(f"Step 7: Selecting OKVED {okved_code} ({okved_text})...")
 
         ok = self.select_lookup_option_mvd_style(
-            input_selector="input#dic12, input[id*='dic12'], lib-lookup input.search-input",
+            input_selector="input#dic12, input[id*='dic12']",
             type_text=okved_text,
             match_keywords=[
                 okved_code,
@@ -707,6 +736,11 @@ class GosuslugiDismissalBot:
             step_label=f"Step 7 (ОКВЭД {okved_code})",
             click_continue_after=True,
         )
+        # Wait up to 4 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
+        for _ in range(10):
+            if self.page.locator("#si13_lastNameRu:visible, input[name*='lastNameRu']:visible").count() > 0:
+                break
+            self.page.wait_for_timeout(400)
         return ok
 
     def sanitize_cyrillic_field(self, value: str, fallback: str = "") -> str:
@@ -904,51 +938,152 @@ class GosuslugiDismissalBot:
 
     def fill_citizenship_strict(self, citizenship_raw: str) -> bool:
         """
-        Selects 'Гражданство' in Gosuslugi's #dic13_ctz lookup dropdown so it never stays empty
-        or triggers 'Поле обязательно для заполнения'.
+        Reliably fills 'Гражданство' (#dic13_ctz) on Step 8 without looping or waiting for 'Продолжить':
+        1) Types the country name (e.g. 'Узбекистан') into #dic13_ctz
+        2) Immediately clicks the matching dropdown option once it appears (~0.3s)
+        3) Returns immediately so 'Место рождения' and 'Пол' can be filled next.
         """
         raw = str(citizenship_raw or "").strip().upper()
-        search_term = "Узбекистан"
-        target_keywords = ["УЗБЕКИСТАН", "РЕСПУБЛИКА УЗБЕКИСТАН"]
+        ctz_val = "Узбекистан"
         if "ТУРЦ" in raw or "ТУРЕЦ" in raw or "TURK" in raw:
-            search_term = "Турция"
-            target_keywords = ["ТУРЦИЯ", "ТУРЕЦКАЯ РЕСПУБЛИКА"]
+            ctz_val = "Турция"
         elif "ТАДЖ" in raw:
-            search_term = "Таджикистан"
-            target_keywords = ["ТАДЖИКИСТАН", "РЕСПУБЛИКА ТАДЖИКИСТАН"]
+            ctz_val = "Таджикистан"
         elif "КАЗАХ" in raw:
-            search_term = "Казахстан"
-            target_keywords = ["КАЗАХСТАН", "РЕСПУБЛИКА КАЗАХСТАН"]
+            ctz_val = "Казахстан"
         elif "КЫРГ" in raw or "КИРГ" in raw:
-            search_term = "Кыргызстан"
-            target_keywords = ["КЫРГЫЗСТАН", "КИРГИЗИЯ", "КЫРГЫЗСКАЯ РЕСПУБЛИКА"]
+            ctz_val = "Кыргызстан"
         elif "БЕЛАР" in raw or "БЕЛОР" in raw:
-            search_term = "Беларусь"
-            target_keywords = ["БЕЛАРУСЬ", "РЕСПУБЛИКА БЕЛАРУСЬ"]
+            ctz_val = "Беларусь"
         elif "АЗЕРБ" in raw:
-            search_term = "Азербайджан"
-            target_keywords = ["АЗЕРБАЙДЖАН", "АЗЕРБАЙДЖАНСКАЯ РЕСПУБЛИКА"]
+            ctz_val = "Азербайджан"
         elif "АРМЕН" in raw:
-            search_term = "Армения"
-            target_keywords = ["АРМЕНИЯ", "РЕСПУБЛИКА АРМЕНИЯ"]
+            ctz_val = "Армения"
         elif "ИНДИ" in raw:
-            search_term = "Индия"
-            target_keywords = ["ИНДИЯ", "РЕСПУБЛИКА ИНДИЯ"]
+            ctz_val = "Индия"
         elif "СЕРБ" in raw:
-            search_term = "Сербия"
-            target_keywords = ["СЕРБИЯ", "РЕСПУБЛИКА СЕРБИЯ"]
+            ctz_val = "Сербия"
         elif citizenship_raw and len(citizenship_raw.strip()) >= 3:
-            search_term = self.sanitize_cyrillic_field(citizenship_raw.strip(), "Узбекистан")
-            target_keywords = [search_term.upper()]
+            ctz_val = self.sanitize_cyrillic_field(citizenship_raw.strip(), "Узбекистан")
 
-        ok = self.select_lookup_option_mvd_style(
-            input_selector="input#dic13_ctz, input[id*='ctz'], lib-lookup[formcontrolname='dic13_ctz'] input.search-input, lib-lookup input.search-input",
-            type_text=search_term,
-            match_keywords=target_keywords,
-            step_label=f"Step 8 (Гражданство: {search_term})",
-            click_continue_after=False,
-        )
-        return ok
+        ctz_lower = ctz_val.lower()
+
+        for attempt in range(1, 3):
+            self.check_and_handle_error_modal()
+            try:
+                # 1) Quick check if `.displayed.lookup-item` already shows the right country
+                already_selected = self.page.evaluate(
+                    """(want) => {
+                        const el = document.querySelector('lib-lookup .displayed.lookup-item, .displayed.lookup-item');
+                        if (!el) return '';
+                        const r = el.getBoundingClientRect();
+                        if (r.width === 0 || r.height === 0) return '';
+                        const txt = (el.innerText || el.textContent || '').trim();
+                        return txt.toLowerCase().includes(want) ? txt : '';
+                    }""",
+                    ctz_lower,
+                )
+                if already_selected:
+                    logger.info(f"Step 8: Гражданство already verified as '{already_selected}'.")
+                    return True
+
+                # Clear if another value (e.g. accidental text) was inside #dic13_ctz
+                self.page.evaluate(
+                    """() => {
+                        const clr = document.querySelector('lib-lookup button.search-clear, button.search-clear');
+                        if (clr) {
+                            const r = clr.getBoundingClientRect();
+                            if (r.width > 0 && r.height > 0) clr.click();
+                        }
+                    }"""
+                )
+
+                ctz_inp = self.page.locator(
+                    "#dic13_ctz:visible, input[id*='ctz']:visible, lib-lookup input.search-input:visible"
+                ).first
+                if ctz_inp.count() == 0:
+                    return False
+
+                try:
+                    ctz_inp.scroll_into_view_if_needed(timeout=1000)
+                except Exception:
+                    pass
+
+                # 2) Focus #dic13_ctz, clear any text, and type so Angular filters the list
+                ctz_inp.click(timeout=1500)
+                self.page.wait_for_timeout(80)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.wait_for_timeout(80)
+                ctz_inp.press_sequentially(ctz_val, delay=35)
+
+                # 3) Poll every 150ms (up to 2.1s max) and click the matching country option once it appears
+                clicked_country = False
+                for _ in range(14):
+                    self.check_and_handle_error_modal()
+                    self.page.wait_for_timeout(150)
+                    try:
+                        dom_clicked = self.page.evaluate(
+                            """(targetCountry) => {
+                                const want = targetCountry.trim().toLowerCase();
+                                const items = Array.from(document.querySelectorAll(
+                                    '#lookup-list-wrap .lookup-item:not(.nothing-found):not(.displayed), ' +
+                                    'lib-lookup .lookup-item:not(.nothing-found):not(.displayed), ' +
+                                    '.lookup-item:not(.nothing-found):not(.displayed), ' +
+                                    '[role="option"]'
+                                ));
+                                let chosen = null;
+                                for (const el of items) {
+                                    const r = el.getBoundingClientRect();
+                                    if (r.width < 10 || r.height < 10) continue;
+                                    const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                                    if (txt.includes('ничего не найдено') || txt.includes('не найдено')) continue;
+                                    if (txt === want) { chosen = { el, r, txt }; break; }
+                                }
+                                if (!chosen) {
+                                    for (const el of items) {
+                                        const r = el.getBoundingClientRect();
+                                        if (r.width < 10 || r.height < 10) continue;
+                                        const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                                        if (txt.includes('ничего не найдено') || txt.includes('не найдено')) continue;
+                                        if (txt.includes(want)) { chosen = { el, r, txt }; break; }
+                                    }
+                                }
+                                if (chosen) {
+                                    const clickable = chosen.el.closest('.lookup-item, [role="option"], li') || chosen.el;
+                                    clickable.click();
+                                    clickable.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                    clickable.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                    clickable.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                    return { x: chosen.r.left + chosen.r.width / 2, y: chosen.r.top + chosen.r.height / 2, text: chosen.txt };
+                                }
+                                return null;
+                            }""",
+                            ctz_val,
+                        )
+                        if isinstance(dom_clicked, dict) and dom_clicked.get("x") and dom_clicked.get("y"):
+                            logger.info(f"Step 8: Selecting Гражданство option '{dom_clicked.get('text')}'...")
+                            self.page.mouse.click(float(dom_clicked["x"]), float(dom_clicked["y"]))
+                            clicked_country = True
+                            self.page.wait_for_timeout(250)
+                            break
+                    except Exception:
+                        pass
+
+                if clicked_country:
+                    return True
+
+                # Keyboard fallback if option list didn't match via DOM
+                self.page.keyboard.press("ArrowDown")
+                self.page.wait_for_timeout(100)
+                self.page.keyboard.press("Enter")
+                self.page.wait_for_timeout(200)
+                return True
+            except Exception as e:
+                logger.debug(f"fill_citizenship_strict attempt {attempt} note: {e}")
+                self.page.wait_for_timeout(200)
+
+        return False
 
     def set_address_checkbox(self, label_text: str, form_control_name: str, should_check: bool):
         """Reliably sets 'Нет дома' or 'Нет квартиры' checkbox to should_check (True/False) without matching parent divs."""
@@ -1416,6 +1551,7 @@ class GosuslugiDismissalBot:
         if state.get("hasByHand") or state.get("hasMvdHeading"):
             self.enable_background_focus_emulation()
             for mvd_try in range(1, 7):
+                self.check_and_handle_error_modal()
                 if self._click_step13_confirm_js():
                     return True
                 if self._has_advanced_past_step12_js():
@@ -1500,6 +1636,7 @@ class GosuslugiDismissalBot:
                     logger.warning(f"Step 12 input typing note: {e}")
 
                 for tick in range(32):
+                    self.check_and_handle_error_modal()
                     self.page.wait_for_timeout(250)
                     if self._click_step13_confirm_js():
                         return True
@@ -2054,6 +2191,7 @@ class GosuslugiDismissalBot:
         # Steps 3b -> 4 -> 5 -> 6 -> 7 Smart Transition Polling Loop until Step 8 (#si13_lastNameRu) appears!
         last_name_input = self.page.locator("#si13_lastNameRu, input[name*='lastNameRu'], input[id*='lastNameRu']").first
         verno_clicks = 0
+        okved_done = False
         for _step_tick in range(90):
             self.check_and_handle_error_modal()
 
@@ -2117,7 +2255,7 @@ class GosuslugiDismissalBot:
                 if status_input.count() > 0 and status_input.is_visible():
                     logger.info("Step 6: Selecting Organization Status ('Статус организации')...")
                     self.select_lookup_option_mvd_style(
-                        input_selector="input#dic11_UL_TD, lib-lookup input.search-input",
+                        input_selector="input#dic11_UL_TD",
                         type_text=self.cfg["TYPE_COMPANY"],
                         match_keywords=[self.cfg["TYPE_COMPANY"], "ЮРИДИЧЕСКОЕ ЛИЦО", "КОММЕРЧЕСКАЯ ОРГАНИЗАЦИЯ"],
                         step_label="Step 6 (Статус организации)",
@@ -2127,26 +2265,27 @@ class GosuslugiDismissalBot:
             except Exception:
                 pass
 
-            # 5) Step 7: Select OKVED 43.29 ('Укажите вид деятельности по ОКВЭД' -> #dic12)
-            try:
-                is_okved_screen = bool(
-                    self.page.evaluate(
-                        """() => {
-                            const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
-                            const dic12 = document.querySelector('input#dic12, input[id*="dic12"]');
-                            if (vis(dic12)) return true;
-                            const h1 = Array.from(document.querySelectorAll('h1, h2, h3')).find(
-                                h => vis(h) && (h.innerText || '').includes('ОКВЭД')
-                            );
-                            return !!h1;
-                        }"""
+            # 5) Step 7: Select OKVED 43.29 ('Укажите вид деятельности по ОКВЭД' -> #dic12) — ONLY ONCE!
+            if not okved_done:
+                try:
+                    is_okved_screen = bool(
+                        self.page.evaluate(
+                            """() => {
+                                const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
+                                const step8 = document.querySelector('#si13_lastNameRu, input[name*="lastNameRu"]');
+                                if (vis(step8)) return false;
+                                const dic12 = document.querySelector('input#dic12, input[id*="dic12"]');
+                                return vis(dic12);
+                            }"""
+                        )
                     )
-                )
-                if is_okved_screen:
-                    self.ensure_okved_selected()
-                    continue
-            except Exception:
-                pass
+                    if is_okved_screen:
+                        if self.ensure_okved_selected():
+                            okved_done = True
+                            break
+                        continue
+                except Exception:
+                    pass
 
             self.page.wait_for_timeout(450)
 
