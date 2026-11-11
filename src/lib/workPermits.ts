@@ -107,7 +107,14 @@ export function getDatasetReferenceDates(db: any): {
   inRefDate: string;
   outRefDate: string;
 } {
-  let fallback = '2026-10-18';
+  const mskTodayIso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
+  let fallback = mskTodayIso;
   try {
     const dfRow = db
       .prepare("SELECT value FROM system_info WHERE key = 'data_freshness'")
@@ -121,19 +128,34 @@ export function getDatasetReferenceDates(db: any): {
     }
   } catch {}
 
+  const upperBase = fallback > mskTodayIso ? fallback : mskTodayIso;
   let inRefDate = fallback;
   let outRefDate = fallback;
 
   try {
+    const hasTransferTable = Boolean(
+      (
+        db
+          .prepare("SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name='inter_site_transfers'")
+          .get() as { c?: number } | undefined
+      )?.c
+    );
+    const nonTrInFilter = hasTransferTable
+      ? "AND id NOT IN (SELECT personnel_id FROM inter_site_transfers WHERE transfer_direction IN ('ENTRY', 'BOTH'))"
+      : '';
+    const nonTrOutFilter = hasTransferTable
+      ? "AND LOWER(COALESCE(cikis_sebebi, '')) NOT LIKE '%transfer%' AND id NOT IN (SELECT personnel_id FROM inter_site_transfers WHERE transfer_direction IN ('EXIT', 'BOTH'))"
+      : "AND LOWER(COALESCE(cikis_sebebi, '')) NOT LIKE '%transfer%'";
+
     const inExpr = buildNormalizedDateSql('ise_giris_tarihi');
     const outExpr = buildNormalizedDateSql('cikis_tarihi');
     const row = db
       .prepare(
         `SELECT
-          (SELECT MAX(${inExpr}) FROM personnel WHERE (${inExpr}) >= '2020-01-01' AND (${inExpr}) <= '2026-11-05') as max_in,
-          (SELECT MAX(${outExpr}) FROM personnel WHERE (${outExpr}) >= '2020-01-01' AND (${outExpr}) <= '2026-11-05') as max_out`
+          (SELECT MAX(${inExpr}) FROM personnel WHERE (${inExpr}) >= '2020-01-01' AND (${inExpr}) <= date(?, '+2 days') ${nonTrInFilter}) as max_in,
+          (SELECT MAX(${outExpr}) FROM personnel WHERE (${outExpr}) >= '2020-01-01' AND (${outExpr}) <= date(?, '+2 days') ${nonTrOutFilter}) as max_out`
       )
-      .get() as { max_in?: string; max_out?: string } | undefined;
+      .get(upperBase, upperBase) as { max_in?: string; max_out?: string } | undefined;
     if (row?.max_in && /^\d{4}-\d{2}-\d{2}$/.test(row.max_in)) {
       inRefDate = row.max_in;
     }

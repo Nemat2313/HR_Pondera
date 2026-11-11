@@ -1142,9 +1142,11 @@ export async function sendZupVsRealTelegramReport(force = false): Promise<{
     return `${shortName.padEnd(16)} ${String(p.zupCount).padStart(7)} ${String(p.realActiveCount).padStart(8)} ${diffStr.padStart(6)}`;
   });
 
+  const ebaStamp = meta.ebaDateTime || meta.ebaDate;
+  const zupStamp = meta.zupDateTime || meta.zupDate;
   const dateWarningLine = meta.isZupOutdated
-    ? `⚠️ <b>Not:</b> <i>Real eBA listesi <b>${meta.ebaDate}</b>, 1C ZUP resmi listesi <b>${meta.zupDate}</b> tarihlidir (ZUP listesinin güncellenmesi gerekmektedir).</i>`
-    : `✅ <i>1C ZUP Resmi Liste: <b>${meta.zupDate}</b> • eBA Real Liste: <b>${meta.ebaDate}</b></i>`;
+    ? `⚠️ <b>Not:</b> <i>Real eBA listesi <b>${ebaStamp}</b>, 1C ZUP resmi listesi <b>${zupStamp}</b> tarihlidir (ZUP listesinin güncellenmesi gerekmektedir).</i>`
+    : `✅ <i>1C ZUP Resmi Liste: <b>${zupStamp}</b> • eBA Real Liste: <b>${ebaStamp}</b></i>`;
 
   const msg = [
     `⚖️ <b>HR Pondera — 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu</b>`,
@@ -1152,8 +1154,8 @@ export async function sendZupVsRealTelegramReport(force = false): Promise<{
     dateWarningLine,
     ``,
     `📊 <b>1. Genel Kadro Mutabakatı (Mevcut Çalışanların Resmi Durumu):</b>`,
-    `• <b>eBA Real Aktif Kadro (${meta.ebaDate}):</b> <b>${s.realActiveTotal}</b> kişi <i>(Ana Kadro: ${s.realActiveMainFirm} | Taşeron: ${s.realActiveSubcon})</i>`,
-    `• <b>1C ZUP Resmi Kadro (${meta.zupDate}):</b> <b>${s.zupOfficialTotal}</b> kişi`,
+    `• <b>eBA Real Aktif Kadro (${ebaStamp}):</b> <b>${s.realActiveTotal}</b> kişi <i>(Ana Kadro: ${s.realActiveMainFirm} | Taşeron: ${s.realActiveSubcon})</i>`,
+    `• <b>1C ZUP Resmi Kadro (${zupStamp}):</b> <b>${s.zupOfficialTotal}</b> kişi`,
     `• ✅ <b>Hem Real'de Aktif Hem Resmide Çalışan:</b> <b>${s.matchedActiveBoth}</b> kişi <i>(Ana Kadro Resmi Oranı: <b>%${s.matchedActiveRateMainFirm}</b> | Genel: <b>%${s.matchedActiveRateAll}</b>)</i>`,
     ``,
     `🚨 <b>2. Kadro & Durum Farkları (Kritik Sapmalar):</b>`,

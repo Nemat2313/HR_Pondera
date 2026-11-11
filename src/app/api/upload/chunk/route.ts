@@ -195,9 +195,13 @@ export async function POST(request: Request) {
     // Ensure system_info is updated directly in SQLite
     try {
       const { DatabaseSync } = require('node:sqlite');
+      const { getCurrentMskTimestamp } = require('@/lib/interSiteTransfers');
+      const mskTs = getCurrentMskTimestamp();
       const db = new DatabaseSync(dbPath);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('data_freshness', ?)").run(safeFreshness);
       db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', ?)").run(safeFileName);
+      db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('last_updated', ?)").run(new Date().toISOString());
+      db.prepare("INSERT OR REPLACE INTO system_info (key, value) VALUES ('eba_updated_at_msk', ?)").run(mskTs.full);
       try { db.close(); } catch {}
     } catch {}
 

@@ -376,6 +376,9 @@ export default function OverviewView({
         mainFirmCount={pbi?.mainFirmCount || 4888}
         subconCount={pbi?.subconCount || 475}
         dataFreshness={stats?.systemInfo?.data_freshness || '03.10.2026'}
+        dataFreshnessTime={stats?.systemInfo?.eba_time_msk}
+        zupFreshness={stats?.systemInfo?.zup_data_freshness}
+        zupFreshnessTime={stats?.systemInfo?.zup_time_msk}
         monthlyEntries={stats?.monthlyEntries || []}
         monthlyExits={stats?.monthlyExits || []}
         turnoverRate={pbi?.turnoverRate || 3.8}

@@ -47,6 +47,10 @@ export interface PersonnelRecord {
   kamp_no: string;
   oda_no: string;
   raw?: Record<string, any>;
+  transfer_from_site?: string;
+  transfer_to_site?: string;
+  original_hire_date?: string;
+  transfer_direction?: string;
 }
 
 export interface TreeDepartment {
@@ -100,6 +104,8 @@ export interface TurnoverPeriodMetric {
   outTotal: number;
   outVks: number;
   outOther: number;
+  transferTotal?: number;
+  transferVks?: number;
 }
 
 export interface TurnoverAnalytics {

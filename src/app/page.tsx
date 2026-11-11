@@ -374,6 +374,9 @@ export default function Home() {
         includeExits={includeExits}
         setIncludeExits={setIncludeExits}
         dataFreshness={stats?.systemInfo?.data_freshness || '03.10.2026'}
+        dataFreshnessTime={stats?.systemInfo?.eba_time_msk}
+        zupFreshness={stats?.systemInfo?.zup_data_freshness}
+        zupFreshnessTime={stats?.systemInfo?.zup_time_msk}
         onOpenUpload={() => {
           if (user?.role !== 'viewer' && user?.role !== 'idari_isler') setIsUploadModalOpen(true);
         }}

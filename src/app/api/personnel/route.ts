@@ -9,6 +9,11 @@ import {
 } from '@/lib/workPermits';
 import { stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
 import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  ensureInterSiteTransfersSynced,
+  NON_TRANSFER_ENTRY_SQL,
+  NON_TRANSFER_EXIT_SQL,
+} from '@/lib/interSiteTransfers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,6 +58,7 @@ export async function GET(request: Request) {
     }
 
     const db = getDb();
+    ensureInterSiteTransfersSynced(db);
     const conditions: string[] = [];
     const params: any[] = [];
 
@@ -141,23 +147,46 @@ export async function GET(request: Request) {
     const inDateExpr = buildNormalizedDateSql('ise_giris_tarihi');
     const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
 
-    // Movement & Period filter (for Management & Turnover view — excludes inter-site transfers from exits)
-    if (movementType === 'entry' || movementType === 'exit') {
+    // Movement & Period filter (for Management & Turnover view — excludes inter-site transfers from both entries and exits, and exposes transfers separately)
+    if (movementType === 'entry' || movementType === 'exit' || movementType === 'transfer') {
       const { inRefDate, outRefDate } = getDatasetReferenceDates(db);
-      const refDate = movementType === 'entry' ? inRefDate : outRefDate;
-      const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
       const daysMap: Record<string, number> = { '1d': 1, '3d': 3, '7d': 7, '30d': 30 };
       const days = daysMap[period];
-      if (movementType === 'exit') {
-        conditions.push(`LOWER(COALESCE(cikis_sebebi, '')) NOT LIKE '%transfer%'`);
-      }
-      if (days) {
-        conditions.push(`(${dateColExpr}) >= date(?, '-${days} days') AND (${dateColExpr}) <= ?`);
-        params.push(refDate, refDate);
-      } else if (movementType === 'exit') {
-        conditions.push(`(genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL)`);
+
+      if (movementType === 'transfer') {
+        const maxTrRow = db
+          .prepare(
+            `SELECT MAX(transfer_date) as d FROM inter_site_transfers WHERE transfer_date >= '2020-01-01'`
+          )
+          .get() as { d: string | null } | undefined;
+        const baseRef = inRefDate >= outRefDate ? inRefDate : outRefDate;
+        const trRefDate = maxTrRow?.d && maxTrRow.d > baseRef ? maxTrRow.d : baseRef;
+        if (days) {
+          conditions.push(
+            `id IN (SELECT personnel_id FROM inter_site_transfers WHERE is_primary_record = 1 AND transfer_date >= date(?, '-${days} days') AND transfer_date <= ?)`
+          );
+          params.push(trRefDate, trRefDate);
+        } else {
+          conditions.push(
+            `id IN (SELECT personnel_id FROM inter_site_transfers WHERE is_primary_record = 1 AND transfer_date IS NOT NULL)`
+          );
+        }
       } else {
-        conditions.push(`(${inDateExpr}) IS NOT NULL`);
+        const refDate = movementType === 'entry' ? inRefDate : outRefDate;
+        const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
+        if (movementType === 'entry') {
+          conditions.push(NON_TRANSFER_ENTRY_SQL);
+        } else {
+          conditions.push(NON_TRANSFER_EXIT_SQL);
+        }
+        if (days) {
+          conditions.push(`(${dateColExpr}) >= date(?, '-${days} days') AND (${dateColExpr}) <= ?`);
+          params.push(refDate, refDate);
+        } else if (movementType === 'exit') {
+          conditions.push(`(genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL)`);
+        } else {
+          conditions.push(`(${inDateExpr}) IS NOT NULL`);
+        }
       }
     } else if (dismissalCandidate) {
       conditions.push(`(
@@ -278,8 +307,8 @@ export async function GET(request: Request) {
     const defaultSortCol =
       movementType === 'exit'
         ? `(${outDateExpr})`
-        : movementType === 'entry'
-        ? `(${inDateExpr})`
+        : movementType === 'entry' || movementType === 'transfer'
+        ? `COALESCE((${inDateExpr}), (${outDateExpr}))`
         : 'sira_no';
     const orderColumn =
       movementType && !searchParams.get('sortBy')
@@ -311,9 +340,47 @@ export async function GET(request: Request) {
     const dataStmt = db.prepare(dataSql);
     const rows = dataStmt.all(...params, limit, offset) as any[];
 
+    // Enrich transfer metadata when viewing inter-site transfers
+    let transferMetaById = new Map<
+      number,
+      {
+        from_site: string;
+        to_site: string;
+        original_hire_date: string;
+        transfer_direction: string;
+        transfer_date: string;
+      }
+    >();
+    if (movementType === 'transfer' && rows.length > 0) {
+      const rowIds = rows.map((r) => Number(r.id)).filter((n) => !isNaN(n));
+      if (rowIds.length > 0) {
+        const placeholders = rowIds.map(() => '?').join(',');
+        const trRows = db
+          .prepare(
+            `SELECT personnel_id, from_site, to_site, original_hire_date, transfer_direction, transfer_date
+             FROM inter_site_transfers
+             WHERE personnel_id IN (${placeholders})`
+          )
+          .all(...rowIds) as any[];
+        for (const tr of trRows) {
+          transferMetaById.set(Number(tr.personnel_id), tr);
+        }
+      }
+    }
+
     // Parse all_data_json if requested (stripping any official salary fields per privacy policy)
     const formattedRows = rows.map((r) => {
       r.region = resolveEffectiveRegion(r.region, r.proje_adi, r.region);
+      const trMeta = transferMetaById.get(Number(r.id));
+      if (trMeta) {
+        r.transfer_from_site = trMeta.from_site || '';
+        r.transfer_to_site = trMeta.to_site || r.region || '';
+        r.original_hire_date = trMeta.original_hire_date || '';
+        r.transfer_direction = trMeta.transfer_direction || '';
+        if (!r.ise_giris_tarihi && trMeta.transfer_date) {
+          r.ise_giris_tarihi = trMeta.transfer_date;
+        }
+      }
       if (r.all_data_json && typeof r.all_data_json === 'string') {
         try {
           r.raw = stripOfficialSalaryFromRaw(JSON.parse(r.all_data_json));

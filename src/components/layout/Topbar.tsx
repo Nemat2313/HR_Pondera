@@ -32,6 +32,9 @@ interface TopbarProps {
   includeExits: boolean;
   setIncludeExits: (val: boolean) => void;
   dataFreshness: string;
+  dataFreshnessTime?: string;
+  zupFreshness?: string;
+  zupFreshnessTime?: string;
   onOpenUpload: () => void;
   onOpenLogin: () => void;
   activeFilterCount: number;
@@ -47,6 +50,9 @@ export default function Topbar({
   includeExits,
   setIncludeExits,
   dataFreshness,
+  dataFreshnessTime,
+  zupFreshness,
+  zupFreshnessTime,
   onOpenUpload,
   onOpenLogin,
   activeFilterCount,
@@ -280,16 +286,50 @@ export default function Topbar({
         </div>
         )}
 
-        {/* Data Freshness Badge */}
+        {/* Data Freshness Badges (eBA + 1C ZUP Date & Time) */}
         {user?.role !== 'idari_isler' && (
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-300 rounded-xl text-xs font-medium">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="font-medium text-emerald-950 dark:text-emerald-200">{t('label_data_date')}</span>
-          <span>{dataFreshness || '03.10.2026'}</span>
-        </div>
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-300 rounded-xl leading-tight"
+              title={`eBA Real Liste Güncelleme: ${dataFreshness || '—'}${dataFreshnessTime ? ` ${dataFreshnessTime} (MSK)` : ''}`}
+            >
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-950 dark:text-emerald-200">
+                  <span>eBA:</span>
+                  <span>{dataFreshness || '03.10.2026'}</span>
+                </div>
+                {dataFreshnessTime && (
+                  <span className="text-[9.5px] font-medium text-emerald-700/90 dark:text-emerald-400/90">
+                    🕒 {dataFreshnessTime}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {zupFreshness && (
+              <div
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-900 dark:text-indigo-300 rounded-xl leading-tight"
+                title={`1C ZUP Resmi Liste Güncelleme: ${zupFreshness}${zupFreshnessTime ? ` ${zupFreshnessTime} (MSK)` : ''}`}
+              >
+                <span className="inline-flex rounded-full h-2 w-2 bg-indigo-500 shrink-0"></span>
+                <div className="flex flex-col items-start">
+                  <div className="flex items-center gap-1 text-[11px] font-semibold text-indigo-950 dark:text-indigo-200">
+                    <span>1C ZUP:</span>
+                    <span>{zupFreshness}</span>
+                  </div>
+                  {zupFreshnessTime && (
+                    <span className="text-[9.5px] font-medium text-indigo-700/90 dark:text-indigo-400/90">
+                      🕒 {zupFreshnessTime}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Excel Upload Button (hidden for viewer & idari_isler roles) */}

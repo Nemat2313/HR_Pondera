@@ -191,7 +191,7 @@ const DEFAULT_REPORT_RULES: EmailReportRule[] = [
     titleTr: '4. Yönetim & Turnover (Giriş / Çıkış & VKS Oranı) Raporu',
     titleRu: '4. Управленческий отчет по текучести кадров (Прием / Увольнение / ВКС)',
     descriptionTr:
-      'Şirket içi şantiye transferleri hariç gerçek işten çıkışlar, aktif kadro, VKS uzman oranları ve şantiye kırılımlı yönetim özeti.',
+      'Şirket içi şantiyeler arası transferler hem işe giriş hem işten çıkıştan hariç tutularak ayrı takip edilir; gerçek giriş/çıkış, VKS oranları ve şantiye kırılımlı yönetim özeti.',
     descriptionRu:
       'Отчет для руководства по численности, внутренним переводам и доле специалистов ВКС.',
     enabled: true,
@@ -1305,13 +1305,15 @@ export function buildReportEmailHtml(
   // --- REPORT 2: 1C ZUP (Official) vs eBA (Real) Reconciliation ---
   if (reportId === 'zup_vs_real') {
     const meta = recon.metadata;
-    const subject = `⚖️ [Pondera İK] 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu (${meta.zupDate} ↔ ${meta.ebaDate})`;
+    const ebaStamp = meta.ebaDateTime || meta.ebaDate;
+    const zupStamp = meta.zupDateTime || meta.zupDate;
+    const subject = `⚖️ [Pondera İK] 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu (${zupStamp} ↔ ${ebaStamp})`;
 
     const kpiHtml = renderKpiGrid4([
       {
         label: 'EBA REAL AKTİF',
         value: fmtNum(s.realActiveTotal),
-        sub: `Ana: ${fmtNum(s.realActiveMainFirm)} | Taşeron: ${fmtNum(s.realActiveSubcon)}`,
+        sub: `Liste: ${ebaStamp} | Ana: ${fmtNum(s.realActiveMainFirm)}`,
         bgHex: '#f8fafc',
         borderHex: '#cbd5e1',
         valueHex: '#0f172a',
@@ -1319,7 +1321,7 @@ export function buildReportEmailHtml(
       {
         label: '1C ZUP RESMİ KADRO',
         value: fmtNum(s.zupOfficialTotal),
-        sub: `Liste: ${meta.zupDate}`,
+        sub: `Liste: ${zupStamp}`,
         bgHex: '#eef2ff',
         borderHex: '#c7d2fe',
         valueHex: '#312e81',
@@ -1344,10 +1346,10 @@ export function buildReportEmailHtml(
 
     const dateBannerHtml = meta.isZupOutdated
       ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fffbeb" style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; margin-bottom: 18px;">
-           <tr><td style="padding: 11px 15px; color: #92400e; font-size: 12.5px;">⚠️ <strong>Liste Güncellik Uyarısı:</strong> Real eBA listesi <strong>${meta.ebaDate}</strong>, 1C ZUP resmi listesi <strong>${meta.zupDate}</strong> tarihlidir.</td></tr>
+           <tr><td style="padding: 11px 15px; color: #92400e; font-size: 12.5px;">⚠️ <strong>Liste Güncellik Uyarısı:</strong> Real eBA listesi <strong>${ebaStamp}</strong>, 1C ZUP resmi listesi <strong>${zupStamp}</strong> tarihlidir.</td></tr>
          </table>`
       : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f0fdf4" style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; margin-bottom: 18px;">
-           <tr><td style="padding: 10px 15px; color: #166534; font-size: 12.5px;">✅ <strong>Tam Eşzamanlı Veri:</strong> 1C ZUP Resmi Liste (<strong>${meta.zupDate}</strong>) ↔ eBA Real Liste (<strong>${meta.ebaDate}</strong>)</td></tr>
+           <tr><td style="padding: 10px 15px; color: #166534; font-size: 12.5px;">✅ <strong>Tam Eşzamanlı Veri:</strong> 1C ZUP Resmi Liste (<strong>${zupStamp}</strong>) ↔ eBA Real Liste (<strong>${ebaStamp}</strong>)</td></tr>
          </table>`;
 
     const permitRowsHtml = (recon.byPermitStatus || [])
@@ -1392,11 +1394,11 @@ export function buildReportEmailHtml(
       <h3 style="margin: 0 0 8px; font-size: 14.5px; color: #0f172a;">📊 1. Genel Kadro Mutabakatı &amp; Kritik Sapmalar</h3>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; margin-bottom: 20px; font-size: 12.5px; border: 1px solid #cbd5e1;">
         <tr bgcolor="#f8fafc" style="background-color: #f8fafc;">
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>eBA Real Aktif Kadro (${meta.ebaDate})</strong></td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>eBA Real Aktif Kadro (${ebaStamp})</strong></td>
           <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(s.realActiveTotal)} Kişi</strong> (Ana Kadro: ${fmtNum(s.realActiveMainFirm)} | Taşeron: ${fmtNum(s.realActiveSubcon)})</td>
         </tr>
         <tr>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>1C ZUP Resmi Kadro (${meta.zupDate})</strong></td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>1C ZUP Resmi Kadro (${zupStamp})</strong></td>
           <td align="right" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><strong>${fmtNum(s.zupOfficialTotal)} Kişi</strong></td>
         </tr>
         <tr bgcolor="#f0fdf4" style="background-color: #f0fdf4;">
@@ -1483,7 +1485,7 @@ export function buildReportEmailHtml(
         headerBgHex: '#1e1b4b',
         badgeText: 'PONDERA İK • RESMİ (1C ZUP) ↔ REAL (eBA) MUTABAKAT RAPORU',
         title: '⚖️ 1C ZUP (Resmi) & eBA (Real) Karşılaştırma ve Fark Raporu',
-        subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • ZUP Liste: ${meta.zupDate} • eBA Liste: ${meta.ebaDate}`,
+        subtitle: `Moskova Saati: ${msk.dateDisplay} ${msk.timeDisplay} • ZUP Liste: ${zupStamp} • eBA Liste: ${ebaStamp}`,
         bodyHtml,
         ctaLabel: 'Resmi & Real Karşılaştırma Modülünü Aç →',
       }),
@@ -1771,7 +1773,7 @@ export function buildReportEmailHtml(
     {
       label: 'TOPLAM AKTİF KADRO',
       value: fmtNum(s.realActiveTotal),
-      sub: `Liste: ${recon.metadata.ebaDate}`,
+      sub: `eBA: ${recon.metadata.ebaDateTime || recon.metadata.ebaDate}`,
       bgHex: '#f8fafc',
       borderHex: '#cbd5e1',
       valueHex: '#0f172a',
@@ -1795,7 +1797,7 @@ export function buildReportEmailHtml(
     {
       label: 'ŞANTİYE TRANSFERİ',
       value: fmtNum(s.zupTransferPermitCheckCount || 0),
-      sub: 'Turnover Çıkış Hariç',
+      sub: 'Giriş & Çıkıştan Hariç (Ayrı)',
       bgHex: '#eef2ff',
       borderHex: '#c7d2fe',
       valueHex: '#3730a3',

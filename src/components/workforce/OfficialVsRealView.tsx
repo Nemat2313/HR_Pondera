@@ -32,6 +32,7 @@ import {
   Filter,
   BarChart3,
   ArrowLeftRight,
+  Clock,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -49,7 +50,11 @@ import { useLanguage } from '@/context/LanguageContext';
 
 interface ZupMetadata {
   ebaDate: string;
+  ebaTime?: string;
+  ebaDateTime?: string;
   zupDate: string;
+  zupTime?: string;
+  zupDateTime?: string;
   zupSourceFile: string;
   zupLastUpdated: string;
   isZupOutdated: boolean;
@@ -426,13 +431,13 @@ export default function OfficialVsRealView() {
     const s = data.summary;
     const summaryRows = [
       {
-        Metrik: 'eBA Real Veri Tarihi',
-        Deger: data.metadata.ebaDate,
-        Aciklama: 'Canlı eBA sistemindeki son personel listesi tarihi',
+        Metrik: 'eBA Real Veri Tarihi & Saati',
+        Deger: data.metadata.ebaDateTime || data.metadata.ebaDate,
+        Aciklama: 'Canlı eBA sistemindeki son personel listesi güncellenme zamanı (MSK)',
       },
       {
-        Metrik: '1C ZUP Resmi Liste Tarihi',
-        Deger: data.metadata.zupDate,
+        Metrik: '1C ZUP Resmi Liste Tarihi & Saati',
+        Deger: data.metadata.zupDateTime || data.metadata.zupDate,
         Aciklama: data.metadata.isZupOutdated
           ? 'UYARI: 1C ZUP listesi eBA tarihinden eskidir, güncellenmesi gerekir'
           : 'Güncel',
@@ -932,7 +937,9 @@ export default function OfficialVsRealView() {
                   {lang === 'ru' ? 'Текущий список 1С ЗУП (Офиц.):' : 'Mevcut 1C ZUP Resmi Liste Tarihi:'}
                 </span>
                 <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-400/40">
-                  {metadata.zupDate} ({summary.zupOfficialTotal.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'})
+                  {metadata.zupDate}
+                  {metadata.zupTime ? ` • ${metadata.zupTime}` : ''} ({summary.zupOfficialTotal.toLocaleString('tr-TR')}{' '}
+                  {lang === 'ru' ? 'чел.' : 'Kişi'})
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -940,7 +947,9 @@ export default function OfficialVsRealView() {
                   {lang === 'ru' ? 'Реальная база eBA (Актив):' : 'Canlı eBA (Real) Liste Tarihi:'}
                 </span>
                 <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-400/40">
-                  {metadata.ebaDate} ({summary.realActiveTotal.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'})
+                  {metadata.ebaDate}
+                  {metadata.ebaTime ? ` • ${metadata.ebaTime}` : ''} ({summary.realActiveTotal.toLocaleString('tr-TR')}{' '}
+                  {lang === 'ru' ? 'чел.' : 'Kişi'})
                 </span>
               </div>
               <div className="pt-1 border-t border-amber-200/70 dark:border-amber-800/60 text-[11px] text-slate-600 dark:text-slate-300">
@@ -998,8 +1007,8 @@ export default function OfficialVsRealView() {
           </div>
           <span className="text-[11px] text-slate-500 dark:text-slate-400">
             {lang === 'ru'
-              ? `Источник ЗУП: ${metadata.zupSourceFile} (${metadata.zupDate}) ↔ База eBA (${metadata.ebaDate})`
-              : `1C ZUP Kaynak: ${metadata.zupSourceFile} (${metadata.zupDate}) ↔ Real eBA (${metadata.ebaDate})`}
+              ? `Источник ЗУП: ${metadata.zupSourceFile} (${metadata.zupDate}${metadata.zupTime ? ` • ${metadata.zupTime}` : ''}) ↔ База eBA (${metadata.ebaDate}${metadata.ebaTime ? ` • ${metadata.ebaTime}` : ''})`
+              : `1C ZUP Kaynak: ${metadata.zupSourceFile} (${metadata.zupDate}${metadata.zupTime ? ` • ${metadata.zupTime}` : ''}) ↔ Real eBA (${metadata.ebaDate}${metadata.ebaTime ? ` • ${metadata.ebaTime}` : ''})`}
           </span>
         </div>
 
@@ -1010,11 +1019,17 @@ export default function OfficialVsRealView() {
             onClick={() => setSelectedFilter('ALL')}
             className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all cursor-pointer shadow-2xs space-y-1.5"
           >
-            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span>{lang === 'ru' ? 'РЕАЛЬНЫЙ АКТИВ (eBA)' : 'REAL (eBA) AKTİF KADRO'}</span>
-              <span className="px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px]">
-                {metadata.ebaDate}
-              </span>
+            <div className="flex items-start justify-between gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="pt-0.5">{lang === 'ru' ? 'РЕАЛЬНЫЙ АКТИВ (eBA)' : 'REAL (eBA) AKTİF KADRO'}</span>
+              <div className="flex flex-col items-end px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[10px] leading-tight shrink-0">
+                <span className="font-semibold">{metadata.ebaDate}</span>
+                {metadata.ebaTime && (
+                  <span className="inline-flex items-center gap-0.5 text-[9.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <Clock className="w-2.5 h-2.5" />
+                    {metadata.ebaTime}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="text-2xl text-slate-900 dark:text-white">
               {summary.realActiveTotal.toLocaleString('tr-TR')}
@@ -1035,11 +1050,17 @@ export default function OfficialVsRealView() {
             onClick={() => setSelectedFilter('ALL')}
             className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all cursor-pointer shadow-2xs space-y-1.5"
           >
-            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span>{lang === 'ru' ? 'ОФИЦИАЛЬНЫЙ ШТАТ (1С ЗУП)' : '1C ZUP RESMİ KADRO'}</span>
-              <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px]">
-                {metadata.zupDate}
-              </span>
+            <div className="flex items-start justify-between gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="pt-0.5">{lang === 'ru' ? 'ОФИЦИАЛЬНЫЙ ШТАТ (1С ЗУП)' : '1C ZUP RESMİ KADRO'}</span>
+              <div className="flex flex-col items-end px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-200 border border-amber-500/30 text-[10px] leading-tight shrink-0">
+                <span className="font-semibold">{metadata.zupDate}</span>
+                {metadata.zupTime && (
+                  <span className="inline-flex items-center gap-0.5 text-[9.5px] text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+                    <Clock className="w-2.5 h-2.5" />
+                    {metadata.zupTime}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="text-2xl text-indigo-600 dark:text-indigo-400">
               {summary.zupOfficialTotal.toLocaleString('tr-TR')}

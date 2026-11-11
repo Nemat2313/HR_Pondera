@@ -596,8 +596,15 @@ export default function DatabaseManagementView({
               {lang === 'ru' ? 'Актуальность Excel' : 'Son Excel Senkronizasyonu'}
             </span>
             <h3 className="text-sm font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">
-              {sys.data_freshness || 'Güncel'}
+              eBA: {sys.data_freshness || 'Güncel'}
+              {sys.eba_time_msk ? ` • ${sys.eba_time_msk}` : ''}
             </h3>
+            {sys.zup_data_freshness && (
+              <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mt-0.5">
+                1C ZUP: {sys.zup_data_freshness}
+                {sys.zup_time_msk ? ` • ${sys.zup_time_msk}` : ''}
+              </p>
+            )}
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 truncate">
               {sys.source_file || 'tum liste.xlsx'}
             </p>

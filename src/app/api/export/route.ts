@@ -9,6 +9,11 @@ import {
 } from '@/lib/workPermits';
 import { isOfficialSalaryColumn, stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
 import { buildEffectiveRegionSqlCondition } from '@/lib/regionSiteHelper';
+import {
+  ensureInterSiteTransfersSynced,
+  NON_TRANSFER_ENTRY_SQL,
+  NON_TRANSFER_EXIT_SQL,
+} from '@/lib/interSiteTransfers';
 import * as XLSX from 'xlsx';
 
 export const runtime = 'nodejs';
@@ -245,25 +250,52 @@ export async function GET(request: Request) {
     }
 
     const db = getDb();
+    ensureInterSiteTransfersSynced(db);
     const conditions: string[] = [];
     const params: any[] = [];
     const inDateExpr = buildNormalizedDateSql('ise_giris_tarihi');
     const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
 
-    // Status or Movement/Period filter
-    if (movementType === 'entry' || movementType === 'exit') {
+    // Status or Movement/Period filter (excludes inter-site transfers from entries & exits; supports separate 'transfer')
+    if (movementType === 'entry' || movementType === 'exit' || movementType === 'transfer') {
       const { inRefDate, outRefDate } = getDatasetReferenceDates(db);
-      const refDate = movementType === 'entry' ? inRefDate : outRefDate;
-      const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
       const daysMap: Record<string, number> = { '1d': 1, '3d': 3, '7d': 7, '30d': 30 };
       const days = daysMap[period];
-      if (days) {
-        conditions.push(`(${dateColExpr}) >= date(?, '-${days} days') AND (${dateColExpr}) <= ?`);
-        params.push(refDate, refDate);
-      } else if (movementType === 'exit') {
-        conditions.push(`(genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL)`);
+
+      if (movementType === 'transfer') {
+        const maxTrRow = db
+          .prepare(
+            `SELECT MAX(transfer_date) as d FROM inter_site_transfers WHERE transfer_date >= '2020-01-01'`
+          )
+          .get() as { d: string | null } | undefined;
+        const baseRef = inRefDate >= outRefDate ? inRefDate : outRefDate;
+        const trRefDate = maxTrRow?.d && maxTrRow.d > baseRef ? maxTrRow.d : baseRef;
+        if (days) {
+          conditions.push(
+            `id IN (SELECT personnel_id FROM inter_site_transfers WHERE is_primary_record = 1 AND transfer_date >= date(?, '-${days} days') AND transfer_date <= ?)`
+          );
+          params.push(trRefDate, trRefDate);
+        } else {
+          conditions.push(
+            `id IN (SELECT personnel_id FROM inter_site_transfers WHERE is_primary_record = 1 AND transfer_date IS NOT NULL)`
+          );
+        }
       } else {
-        conditions.push(`(${inDateExpr}) IS NOT NULL`);
+        const refDate = movementType === 'entry' ? inRefDate : outRefDate;
+        const dateColExpr = movementType === 'entry' ? inDateExpr : outDateExpr;
+        if (movementType === 'entry') {
+          conditions.push(NON_TRANSFER_ENTRY_SQL);
+        } else {
+          conditions.push(NON_TRANSFER_EXIT_SQL);
+        }
+        if (days) {
+          conditions.push(`(${dateColExpr}) >= date(?, '-${days} days') AND (${dateColExpr}) <= ?`);
+          params.push(refDate, refDate);
+        } else if (movementType === 'exit') {
+          conditions.push(`(genel_durum = 'Cikis' OR (${outDateExpr}) IS NOT NULL)`);
+        } else {
+          conditions.push(`(${inDateExpr}) IS NOT NULL`);
+        }
       }
     } else if (status !== 'all') {
       conditions.push('genel_durum = ?');
@@ -354,7 +386,7 @@ export async function GET(request: Request) {
     };
     const orderColumn = allowedSortCols[sortBy] || 'sira_no';
 
-    const selectCols = `sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no, all_data_json`;
+    const selectCols = `id, sira_no, sicil_no, rhi_id, saren_no, genel_durum, guncel_durum, region, proje_adi, calisma_lokasyon, kategori, firma, departman, uyruk, adi, soyadi, baba_adi, ad_soyad, tam_adi_kiril, gorevi, rhi_gorevi, sorumlu_kisi, grup_sefi, endirekt_direkt, ise_giris_tarihi, santiye_giris_tarihi, cikis_tarihi, cikis_sebebi, gunduz_gece, propusk_no, propusk_bitis_tarihi, cinsiyet, dogum_tarihi, pasaport_no, pasaport_gecerlilik, tc_kimlik_no, dogum_yeri, migrasyon_no, inn_no, vize_no, vize_bitis_tarihi, patent_alis_tarihi, patent_bitis_tarihi, telefon_no, email, kamp_no, oda_no, all_data_json`;
 
     const dataSql = `
       SELECT ${selectCols}
@@ -366,6 +398,27 @@ export async function GET(request: Request) {
 
     const dataStmt = db.prepare(dataSql);
     const rows = dataStmt.all(...params) as any[];
+
+    let transferMetaById = new Map<
+      number,
+      { from_site: string; to_site: string; original_hire_date: string; transfer_date: string }
+    >();
+    if (movementType === 'transfer' && rows.length > 0) {
+      const rowIds = rows.map((r) => Number(r.id)).filter((n) => !isNaN(n));
+      if (rowIds.length > 0) {
+        const placeholders = rowIds.map(() => '?').join(',');
+        const trRows = db
+          .prepare(
+            `SELECT personnel_id, from_site, to_site, original_hire_date, transfer_date
+             FROM inter_site_transfers
+             WHERE personnel_id IN (${placeholders})`
+          )
+          .all(...rowIds) as any[];
+        for (const tr of trRows) {
+          transferMetaById.set(Number(tr.personnel_id), tr);
+        }
+      }
+    }
 
     // Parse requested custom columns if provided
     const requestedCols = customColsParam
@@ -385,6 +438,13 @@ export async function GET(request: Request) {
       }
 
       const rowObj: Record<string, any> = {};
+      const trMeta = transferMetaById.get(Number(r.id));
+      if (trMeta) {
+        rowObj['Eski Şantiye'] = trMeta.from_site || '-';
+        rowObj['Yeni Şantiye'] = trMeta.to_site || r.region || '-';
+        rowObj['Şantiye Transfer Tarihi'] = formatDateVal(trMeta.transfer_date || r.ise_giris_tarihi);
+        rowObj['İlk Sözleşme Tarihi'] = formatDateVal(trMeta.original_hire_date);
+      }
 
       if (requestedCols.length > 0) {
         for (const colKey of requestedCols) {

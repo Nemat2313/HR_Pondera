@@ -11,6 +11,12 @@ import {
   buildEffectiveRegionSqlCondition,
   resolveEffectiveRegion,
 } from '@/lib/regionSiteHelper';
+import {
+  ensureInterSiteTransfersSynced,
+  formatSystemTimestampToMsk,
+  NON_TRANSFER_ENTRY_SQL,
+  NON_TRANSFER_EXIT_SQL,
+} from '@/lib/interSiteTransfers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,12 +51,19 @@ export async function GET(request: Request) {
     }
 
     const db = getDb();
+    ensureInterSiteTransfersSynced(db);
 
-    // Fast in-memory cache keyed by personnel table state + query parameters
+    // Fast in-memory cache keyed by personnel table state + system_info timestamps + query parameters
     const verRow = db
       .prepare('SELECT COUNT(*) as cnt, COALESCE(MAX(id), 0) as maxId FROM personnel')
       .get() as { cnt: number; maxId: number };
-    const statsCacheKey = `${verRow.cnt}:${verRow.maxId}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const sysStampRows = db
+      .prepare(
+        "SELECT key, value FROM system_info WHERE key IN ('data_freshness', 'last_updated', 'zup_data_freshness', 'zup_last_updated')"
+      )
+      .all() as { key: string; value: string }[];
+    const sysStampSig = sysStampRows.map((r) => `${r.key}=${r.value}`).join('|');
+    const statsCacheKey = `v2:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
     const gStats = globalThis as unknown as {
       __ponderaStatsCache?: Map<string, any>;
     };
@@ -258,13 +271,16 @@ export async function GET(request: Request) {
     `);
     const genderDistribution = genderQuery.all(...genderWhere.params);
 
-    // 9. Monthly Entries & Exits for Trend Analysis (normalized ISO dates + VKS counts)
+    // 9. Monthly Entries & Exits for Trend Analysis (normalized ISO dates + VKS counts, inter-site transfers excluded)
     const inDateExpr = buildNormalizedDateSql('ise_giris_tarihi');
     const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
     const nonStatusWhere = buildWhere('status');
+    const nonTransferEntryCond = NON_TRANSFER_ENTRY_SQL;
+    const nonTransferExitCond = NON_TRANSFER_EXIT_SQL;
+
     const monthlyWhere = nonStatusWhere.clause
-      ? `${nonStatusWhere.clause} AND (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31'`
-      : `WHERE (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31'`;
+      ? `${nonStatusWhere.clause} AND (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31' AND ${nonTransferEntryCond}`
+      : `WHERE (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31' AND ${nonTransferEntryCond}`;
 
     const monthlyEntries = db.prepare(`
       SELECT 
@@ -277,7 +293,6 @@ export async function GET(request: Request) {
       ORDER BY month ASC
     `).all(...nonStatusWhere.params);
 
-    const nonTransferExitCond = "LOWER(COALESCE(cikis_sebebi, '')) NOT LIKE '%transfer%'";
     const monthlyExitWhere = nonStatusWhere.clause
       ? `${nonStatusWhere.clause} AND (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`
       : `WHERE (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`;
@@ -526,8 +541,13 @@ export async function GET(request: Request) {
       workPermits = [];
     }
 
-    // 11b. Turnover & Entry/Exit Period Analytics (1d, 3d, 7d, 30d, all + VKS Breakdown)
+    // 11b. Turnover & Entry/Exit Period Analytics (1d, 3d, 7d, 30d, all + VKS Breakdown — inter-site transfers excluded from both Entry & Exit and tracked separately)
     const { refDate, inRefDate, outRefDate } = getDatasetReferenceDates(db);
+    const maxTransferDateRow = db
+      .prepare("SELECT MAX(transfer_date) as m FROM inter_site_transfers WHERE transfer_date >= '2020-01-01'")
+      .get() as { m?: string } | undefined;
+    const trRefDate =
+      maxTransferDateRow?.m && maxTransferDateRow.m > refDate ? maxTransferDateRow.m : refDate;
     const turnoverBaseWhere = buildWhere(['status', 'permit']);
     let turnoverAnalytics: any = undefined;
     try {
@@ -540,34 +560,55 @@ export async function GET(request: Request) {
             date(?, '-3 days') as start_3d,
             date(?, '-7 days') as start_7d,
             date(?, '-30 days') as start_30d,
-            SUM(CASE WHEN in_d >= date(?, '-1 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_1d,
-            SUM(CASE WHEN in_d >= date(?, '-1 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_1d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-1 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_1d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-1 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_1d,
-            SUM(CASE WHEN in_d >= date(?, '-3 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_3d,
-            SUM(CASE WHEN in_d >= date(?, '-3 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_3d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-3 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_3d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-3 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_3d,
-            SUM(CASE WHEN in_d >= date(?, '-7 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_7d,
-            SUM(CASE WHEN in_d >= date(?, '-7 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_7d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-7 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_7d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-7 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_7d,
-            SUM(CASE WHEN in_d >= date(?, '-30 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_30d,
-            SUM(CASE WHEN in_d >= date(?, '-30 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_30d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-30 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_30d,
-            SUM(CASE WHEN is_transfer = 0 AND out_d >= date(?, '-30 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_30d,
-            SUM(CASE WHEN in_d IS NOT NULL THEN 1 ELSE 0 END) as in_all,
-            SUM(CASE WHEN in_d IS NOT NULL AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_all,
-            SUM(CASE WHEN is_transfer = 0 AND (genel_durum = 'Cikis' OR out_d IS NOT NULL) THEN 1 ELSE 0 END) as out_all,
-            SUM(CASE WHEN is_transfer = 0 AND (genel_durum = 'Cikis' OR out_d IS NOT NULL) AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_all
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-1 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_1d,
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-1 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_1d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-1 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_1d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-1 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_1d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-1 days') AND tr_d <= ? THEN 1 ELSE 0 END) as tr_1d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-1 days') AND tr_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as tr_vks_1d,
+
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-3 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_3d,
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-3 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_3d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-3 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_3d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-3 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_3d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-3 days') AND tr_d <= ? THEN 1 ELSE 0 END) as tr_3d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-3 days') AND tr_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as tr_vks_3d,
+
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-7 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_7d,
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-7 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_7d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-7 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_7d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-7 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_7d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-7 days') AND tr_d <= ? THEN 1 ELSE 0 END) as tr_7d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-7 days') AND tr_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as tr_vks_7d,
+
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-30 days') AND in_d <= ? THEN 1 ELSE 0 END) as in_30d,
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d >= date(?, '-30 days') AND in_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_30d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-30 days') AND out_d <= ? THEN 1 ELSE 0 END) as out_30d,
+            SUM(CASE WHEN is_transfer_out = 0 AND out_d >= date(?, '-30 days') AND out_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_30d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-30 days') AND tr_d <= ? THEN 1 ELSE 0 END) as tr_30d,
+            SUM(CASE WHEN is_primary_tr = 1 AND tr_d >= date(?, '-30 days') AND tr_d <= ? AND is_vks = 1 THEN 1 ELSE 0 END) as tr_vks_30d,
+
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d IS NOT NULL THEN 1 ELSE 0 END) as in_all,
+            SUM(CASE WHEN is_transfer_in = 0 AND in_d IS NOT NULL AND is_vks = 1 THEN 1 ELSE 0 END) as in_vks_all,
+            SUM(CASE WHEN is_transfer_out = 0 AND (genel_durum = 'Cikis' OR out_d IS NOT NULL) THEN 1 ELSE 0 END) as out_all,
+            SUM(CASE WHEN is_transfer_out = 0 AND (genel_durum = 'Cikis' OR out_d IS NOT NULL) AND is_vks = 1 THEN 1 ELSE 0 END) as out_vks_all,
+            SUM(CASE WHEN is_primary_tr = 1 THEN 1 ELSE 0 END) as tr_all,
+            SUM(CASE WHEN is_primary_tr = 1 AND is_vks = 1 THEN 1 ELSE 0 END) as tr_vks_all
           FROM (
             SELECT
               genel_durum,
               (${inDateExpr}) as in_d,
               (${outDateExpr}) as out_d,
               CASE WHEN (${WORK_PERMIT_CASE_SQL}) = 'VKS' THEN 1 ELSE 0 END as is_vks,
-              CASE WHEN LOWER(COALESCE(cikis_sebebi, '')) LIKE '%transfer%' THEN 1 ELSE 0 END as is_transfer
+              CASE WHEN ist.transfer_direction IN ('ENTRY', 'BOTH') THEN 1 ELSE 0 END as is_transfer_in,
+              CASE WHEN LOWER(COALESCE(cikis_sebebi, '')) LIKE '%transfer%' OR ist.transfer_direction IN ('EXIT', 'BOTH') THEN 1 ELSE 0 END as is_transfer_out,
+              CASE WHEN ist.personnel_id IS NOT NULL AND ist.is_primary_record = 1 THEN 1 ELSE 0 END as is_primary_tr,
+              ist.transfer_date as tr_d
             FROM personnel
+            LEFT JOIN (
+              SELECT personnel_id, transfer_direction, transfer_date, is_primary_record
+              FROM inter_site_transfers
+            ) ist ON ist.personnel_id = personnel.id
             ${turnoverBaseWhere.clause}
           )`
         )
@@ -576,6 +617,7 @@ export async function GET(request: Request) {
           outRefDate,
           outRefDate,
           outRefDate,
+          // 1d
           inRefDate,
           inRefDate,
           inRefDate,
@@ -584,6 +626,11 @@ export async function GET(request: Request) {
           outRefDate,
           outRefDate,
           outRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
+          // 3d
           inRefDate,
           inRefDate,
           inRefDate,
@@ -592,6 +639,11 @@ export async function GET(request: Request) {
           outRefDate,
           outRefDate,
           outRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
+          // 7d
           inRefDate,
           inRefDate,
           inRefDate,
@@ -600,6 +652,11 @@ export async function GET(request: Request) {
           outRefDate,
           outRefDate,
           outRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
+          // 30d
           inRefDate,
           inRefDate,
           inRefDate,
@@ -608,6 +665,10 @@ export async function GET(request: Request) {
           outRefDate,
           outRefDate,
           outRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
+          trRefDate,
           ...turnoverBaseWhere.params
         ) as any;
 
@@ -643,7 +704,9 @@ export async function GET(request: Request) {
         inTot: number,
         inVks: number,
         outTot: number,
-        outVks: number
+        outVks: number,
+        trTot: number,
+        trVks: number
       ) => ({
         periodKey: key,
         startDate,
@@ -654,6 +717,8 @@ export async function GET(request: Request) {
         outTotal: outTot || 0,
         outVks: outVks || 0,
         outOther: Math.max(0, (outTot || 0) - (outVks || 0)),
+        transferTotal: trTot || 0,
+        transferVks: trVks || 0,
       });
 
       turnoverAnalytics = {
@@ -661,23 +726,37 @@ export async function GET(request: Request) {
         totalHistoricalCount: periodStatsRow?.total_historical || 32725,
         activeVksCount: periodStatsRow?.active_vks || 1923,
         periods: {
-          '1d': makePeriod('1d', periodStatsRow?.start_1d || refDate, periodStatsRow?.in_1d, periodStatsRow?.in_vks_1d, periodStatsRow?.out_1d, periodStatsRow?.out_vks_1d),
-          '3d': makePeriod('3d', periodStatsRow?.start_3d || refDate, periodStatsRow?.in_3d, periodStatsRow?.in_vks_3d, periodStatsRow?.out_3d, periodStatsRow?.out_vks_3d),
-          '7d': makePeriod('7d', periodStatsRow?.start_7d || refDate, periodStatsRow?.in_7d, periodStatsRow?.in_vks_7d, periodStatsRow?.out_7d, periodStatsRow?.out_vks_7d),
-          '30d': makePeriod('30d', periodStatsRow?.start_30d || refDate, periodStatsRow?.in_30d, periodStatsRow?.in_vks_30d, periodStatsRow?.out_30d, periodStatsRow?.out_vks_30d),
-          all: makePeriod('all', '2016-01-01', periodStatsRow?.in_all, periodStatsRow?.in_vks_all, periodStatsRow?.out_all, periodStatsRow?.out_vks_all),
+          '1d': makePeriod('1d', periodStatsRow?.start_1d || refDate, periodStatsRow?.in_1d, periodStatsRow?.in_vks_1d, periodStatsRow?.out_1d, periodStatsRow?.out_vks_1d, periodStatsRow?.tr_1d, periodStatsRow?.tr_vks_1d),
+          '3d': makePeriod('3d', periodStatsRow?.start_3d || refDate, periodStatsRow?.in_3d, periodStatsRow?.in_vks_3d, periodStatsRow?.out_3d, periodStatsRow?.out_vks_3d, periodStatsRow?.tr_3d, periodStatsRow?.tr_vks_3d),
+          '7d': makePeriod('7d', periodStatsRow?.start_7d || refDate, periodStatsRow?.in_7d, periodStatsRow?.in_vks_7d, periodStatsRow?.out_7d, periodStatsRow?.out_vks_7d, periodStatsRow?.tr_7d, periodStatsRow?.tr_vks_7d),
+          '30d': makePeriod('30d', periodStatsRow?.start_30d || refDate, periodStatsRow?.in_30d, periodStatsRow?.in_vks_30d, periodStatsRow?.out_30d, periodStatsRow?.out_vks_30d, periodStatsRow?.tr_30d, periodStatsRow?.tr_vks_30d),
+          all: makePeriod('all', '2016-01-01', periodStatsRow?.in_all, periodStatsRow?.in_vks_all, periodStatsRow?.out_all, periodStatsRow?.out_vks_all, periodStatsRow?.tr_all, periodStatsRow?.tr_vks_all),
         },
         exitReasons,
       };
     } catch {}
 
-    // 12. System info
+    // 12. System info (enriched with Moscow HH:mm times for both eBA & 1C ZUP)
     const sysQuery = db.prepare(`SELECT key, value FROM system_info`);
     const sysRows = sysQuery.all() as { key: string; value: string }[];
     const systemInfo: Record<string, string> = {};
     for (const row of sysRows) {
       systemInfo[row.key] = row.value;
     }
+    const ebaMsk = formatSystemTimestampToMsk(
+      systemInfo['last_updated'],
+      systemInfo['data_freshness'],
+      systemInfo['eba_updated_at_msk']
+    );
+    const zupMsk = formatSystemTimestampToMsk(
+      systemInfo['zup_last_updated'],
+      systemInfo['zup_data_freshness'],
+      systemInfo['zup_updated_at_msk']
+    );
+    systemInfo['eba_time_msk'] = ebaMsk.time;
+    systemInfo['eba_datetime_msk'] = ebaMsk.full;
+    systemInfo['zup_time_msk'] = zupMsk.time;
+    systemInfo['zup_datetime_msk'] = zupMsk.full;
 
     const responsePayload = {
       success: true,

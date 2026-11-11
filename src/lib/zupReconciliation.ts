@@ -3,6 +3,7 @@ import path from 'path';
 import zlib from 'zlib';
 import { classifyWorkPermitFromRow, buildNormalizedDateSql } from '@/lib/workPermits';
 import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import { formatSystemTimestampToMsk, getCurrentMskTimestamp } from '@/lib/interSiteTransfers';
 
 export interface ZupOfficialRecord {
   id?: number;
@@ -378,11 +379,13 @@ export function saveZupRecordsToDb(
     }
 
     db.exec(`CREATE TABLE IF NOT EXISTS system_info (key TEXT PRIMARY KEY, value TEXT);`);
+    const mskTs = getCurrentMskTimestamp();
     const infoStmt = db.prepare('INSERT OR REPLACE INTO system_info (key, value) VALUES (?, ?)');
     infoStmt.run('zup_data_freshness', reportDate);
     infoStmt.run('zup_source_file', sourceFile);
     infoStmt.run('zup_total_records', String(records.length));
-    infoStmt.run('zup_last_updated', new Date().toISOString().slice(0, 19).replace('T', ' '));
+    infoStmt.run('zup_last_updated', new Date().toISOString());
+    infoStmt.run('zup_updated_at_msk', mskTs.full);
 
     db.exec('COMMIT;');
   } catch (err) {
@@ -692,7 +695,7 @@ export function computeZupVsRealReconciliation(db: any) {
 
   const sysRows = db
     .prepare(
-      "SELECT key, value FROM system_info WHERE key IN ('data_freshness', 'source_file', 'zup_data_freshness', 'zup_source_file', 'zup_last_updated')"
+      "SELECT key, value FROM system_info WHERE key IN ('data_freshness', 'source_file', 'last_updated', 'eba_updated_at_msk', 'zup_data_freshness', 'zup_source_file', 'zup_last_updated', 'zup_updated_at_msk')"
     )
     .all() as { key: string; value: string }[];
   const sysMap: Record<string, string> = {};
@@ -707,10 +710,12 @@ export function computeZupVsRealReconciliation(db: any) {
     ? 'Список сотрудников 06.11.2026.xlsx'
     : rawZupSource;
   const zupLastUpdated = sysMap['zup_last_updated'] || '';
+  const ebaTs = formatSystemTimestampToMsk(sysMap['last_updated'], ebaDate, sysMap['eba_updated_at_msk']);
+  const zupTs = formatSystemTimestampToMsk(zupLastUpdated, zupDate, sysMap['zup_updated_at_msk']);
   const zupCutoffIso = normalizeDateValue(zupDate) || '2026-11-06';
   const zupShortDate = zupDate.slice(0, 5);
 
-  const cacheKey = `${pVer.cnt}:${pVer.maxId}:${zVer.cnt}:${zVer.maxId}:${ebaDate}:${zupDate}:${zupLastUpdated}`;
+  const cacheKey = `${pVer.cnt}:${pVer.maxId}:${zVer.cnt}:${zVer.maxId}:${ebaDate}:${ebaTs.time}:${zupDate}:${zupTs.time}:${zupLastUpdated}`;
   const gCache = globalThis as unknown as {
     __ponderaZupReconciliationCache?: { key: string; data: any };
   };
@@ -1435,7 +1440,11 @@ export function computeZupVsRealReconciliation(db: any) {
     success: true,
     metadata: {
       ebaDate,
+      ebaTime: ebaTs.time,
+      ebaDateTime: ebaTs.full,
       zupDate,
+      zupTime: zupTs.time,
+      zupDateTime: zupTs.full,
       zupSourceFile,
       zupLastUpdated,
       isZupOutdated: Boolean(

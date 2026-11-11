@@ -17,6 +17,8 @@ import {
   Filter,
   Sparkles,
   PieChart as PieChartIcon,
+  ArrowLeftRight,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { StatsData, PersonnelRecord, TurnoverPeriodMetric } from '@/types';
@@ -42,7 +44,7 @@ interface ManagementReportsViewProps {
 }
 
 type PeriodKey = '1d' | '3d' | '7d' | '30d' | 'all';
-type MovementType = 'exit' | 'entry';
+type MovementType = 'exit' | 'entry' | 'transfer';
 type VksFilterMode = 'all' | 'VKS' | 'NON_VKS';
 
 function formatDisplayDate(raw?: string | null): string {
@@ -125,7 +127,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
       .then((resData) => {
         if (resData.success) {
           setPersonnelList(resData.data || []);
-          setTotalRecords(resData.pagination?.total || 0);
+          setTotalRecords(resData.pagination?.totalRows ?? resData.pagination?.total ?? 0);
           setTotalPages(resData.pagination?.totalPages || 1);
         }
       })
@@ -242,7 +244,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
   ];
 
   // Combine monthly in and out into a chart friendly dataset
-  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
+  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
   const trendData = months.map((m) => {
     const entry = stats?.monthlyEntries.find((e) => e.month === m);
     const exit = stats?.monthlyExits.find((e) => e.month === m);
@@ -255,6 +257,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
       '2026-08': 'Ağustos 26',
       '2026-09': 'Eylül 26',
       '2026-10': 'Ekim 26',
+      '2026-11': 'Kasım 26',
     };
     const monthNamesRU: Record<string, string> = {
       '2026-03': 'Март 26',
@@ -265,6 +268,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
       '2026-08': 'Авг 26',
       '2026-09': 'Сен 26',
       '2026-10': 'Окт 26',
+      '2026-11': 'Ноя 26',
     };
     const monthName = lang === 'ru' ? monthNamesRU[m] || m : monthNamesTR[m] || m;
     const gTotal = entry ? entry.in_count : 0;
@@ -294,15 +298,17 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
           Dönem: periodLabels[pk].tr,
           Başlangıç: pm.startDate === 'ALL' ? 'Başlangıçtan' : formatDisplayDate(pm.startDate),
           Bitiş: formatDisplayDate(pm.endDate),
-          'Toplam Giriş (+)': pm.inTotal,
+          'Toplam Giriş (+, Transfer Hariç)': pm.inTotal,
           'VKS Giriş (+)': pm.inVks,
           'VKS Giriş Oranı (%)': pm.inTotal > 0 ? Math.round((pm.inVks / pm.inTotal) * 100) : 0,
           'Diğer Giriş (+)': pm.inOther,
-          'Toplam Çıkış (-)': pm.outTotal,
+          'Toplam Çıkış (-, Transfer Hariç)': pm.outTotal,
           'VKS Çıkış (-)': pm.outVks,
           'VKS Çıkış Oranı (%)': pm.outTotal > 0 ? Math.round((pm.outVks / pm.outTotal) * 100) : 0,
           'Diğer Çıkış (-)': pm.outOther,
           'Net Değişim': pm.inTotal - pm.outTotal,
+          'Şantiyeler Arası Transfer (Ayrı)': pm.transferTotal ?? 0,
+          'VKS Şantiye Transferi (Ayrı)': pm.transferVks ?? 0,
         };
       })
     );
@@ -346,9 +352,15 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
       params.set('userScopeType', user.scope_type);
       params.set('userScopeValue', user.scope_value);
     }
+    const movLabel =
+      selectedMovement === 'exit'
+        ? 'Cikis'
+        : selectedMovement === 'transfer'
+        ? 'SantiyeTransfer'
+        : 'Giris';
     const a = document.createElement('a');
     a.href = `/api/export?${params.toString()}`;
-    a.download = `Pondera_${selectedMovement === 'exit' ? 'Cikis' : 'Giris'}_${selectedPeriod}_${selectedVksMode}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.download = `Pondera_${movLabel}_${selectedPeriod}_${selectedVksMode}_${new Date().toISOString().slice(0, 10)}.xlsx`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -439,18 +451,25 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
       {/* 1. COMPACT TITLE & EXPORT ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
               {lang === 'ru' ? 'Отчет руководства и анализ текучести' : 'Yönetim Raporu & Turnover Analizi'}
             </h1>
             <span className="px-2.5 py-0.5 text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 rounded-full border border-emerald-200 dark:border-emerald-800/60">
-              {lang === 'ru' ? 'Сводка для руководства' : 'Üst Yönetim Özeti'}
+              eBA: {stats?.systemInfo?.data_freshness || '—'}
+              {stats?.systemInfo?.eba_time_msk ? ` • ${stats.systemInfo.eba_time_msk}` : ''}
             </span>
+            {stats?.systemInfo?.zup_data_freshness && (
+              <span className="px-2.5 py-0.5 text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded-full border border-indigo-200 dark:border-indigo-800/60">
+                1C ZUP: {stats.systemInfo.zup_data_freshness}
+                {stats?.systemInfo?.zup_time_msk ? ` • ${stats.systemInfo.zup_time_msk}` : ''}
+              </span>
+            )}
           </div>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-0.5">
             {lang === 'ru'
-              ? 'Анализ входов и выходов по датам увольнения/приема (1 дн., 3 дн., 1 нед., 1 мес.) и доля ВКС.'
-              : 'Çıkış ve giriş tarihlerine göre (Son 1 gün, 3 gün, 1 hafta, 1 ay) sirkülasyon ve VKS oran analizi.'}
+              ? 'Анализ приемов и увольнений без межплощадочных переводов (межплощадочные переводы учитываются отдельно).'
+              : 'Şantiyeler arası transferler giriş ve çıkış sayılarına dahil edilmez; ayrı olarak takip edilir.'}
           </p>
         </div>
 
@@ -482,7 +501,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
       </div>
 
       {/* 2. COMPACT KPI CARDS ROW (LOW HEIGHT, PROMINENT VKS BADGES) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
         {/* Card 1: Aktif Kadro (Mevcut) & Aktif VKS */}
         <div className="py-2.5 px-3.5 bg-white dark:bg-[#131C31] rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex items-center justify-between gap-2">
           <div>
@@ -598,6 +617,52 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
             </button>
             <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-300">
               VKS Oranı: %{curInVksPct}
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3B: Şantiyeler Arası Transfer (Separate Record — Excluded from Giriş & Çıkış) */}
+        <div
+          onClick={() => {
+            setSelectedMovement('transfer');
+            setSelectedVksMode('all');
+          }}
+          className={`py-2.5 px-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs ${
+            selectedMovement === 'transfer' && selectedVksMode === 'all'
+              ? 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-500 dark:border-amber-500/80'
+              : 'bg-white dark:bg-[#131C31] border-slate-200/80 dark:border-slate-800 hover:border-amber-400'
+          }`}
+        >
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <ArrowLeftRight className="w-3.5 h-3.5 text-amber-500" />
+              {lang === 'ru' ? `Переводы (${activePeriodLabel})` : `${activePeriodLabel} Şantiye Transferi`}
+            </span>
+            <div className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 leading-tight mt-0.5">
+              {(currentMetric.transferTotal ?? 0).toLocaleString('tr-TR')}
+            </div>
+            <span className="text-[10.5px] text-slate-500 dark:text-slate-400 font-semibold">
+              {lang === 'ru' ? 'Отдельно от вход/выход' : 'Giriş/Çıkıştan Hariç'}
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedMovement('transfer');
+                setSelectedVksMode('VKS');
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs sm:text-sm font-extrabold transition-all cursor-pointer shadow-2xs ${
+                selectedMovement === 'transfer' && selectedVksMode === 'VKS'
+                  ? 'bg-purple-600 text-white ring-2 ring-purple-300'
+                  : 'bg-purple-100 dark:bg-purple-950/90 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-700 hover:bg-purple-200'
+              }`}
+            >
+              VKS: {(currentMetric.transferVks ?? 0).toLocaleString('tr-TR')}
+            </button>
+            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300">
+              {lang === 'ru' ? 'Межплощад.' : 'Ayrı Kayıt'}
             </span>
           </div>
         </div>
@@ -922,6 +987,20 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                   +{currentMetric.inTotal}
                 </span>
               </button>
+              <button
+                onClick={() => setSelectedMovement('transfer')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                  selectedMovement === 'transfer'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                <span>{lang === 'ru' ? 'Переводы' : 'Şantiye Transferi'}</span>
+                <span className="px-1.5 py-0.5 rounded bg-black/20 text-xs">
+                  {currentMetric.transferTotal ?? 0}
+                </span>
+              </button>
             </div>
 
             <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700">
@@ -946,7 +1025,11 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>{lang === 'ru' ? 'Только ВКС' : 'Sadece VKS'}</span>
                 <span className="px-1.5 py-0.5 rounded bg-black/20 text-xs">
-                  {selectedMovement === 'exit' ? `-${currentMetric.outVks}` : `+${currentMetric.inVks}`}
+                  {selectedMovement === 'exit'
+                    ? `-${currentMetric.outVks}`
+                    : selectedMovement === 'transfer'
+                    ? `${currentMetric.transferVks ?? 0}`
+                    : `+${currentMetric.inVks}`}
                 </span>
               </button>
               <button
@@ -973,10 +1056,14 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                 {selectedMovement === 'exit'
                   ? lang === 'ru'
                     ? `Детальный список уволенных сотрудников (${activePeriodLabel})`
-                    : `${activePeriodLabel} Detaylı İşten Çıkış Alanı`
+                    : `${activePeriodLabel} Detaylı İşten Çıkış Alanı (Transferler Hariç)`
+                  : selectedMovement === 'transfer'
+                  ? lang === 'ru'
+                    ? `Межплощадочные переводы (${activePeriodLabel})`
+                    : `${activePeriodLabel} Şantiyeler Arası Transfer Kayıtları (Ayrı Liste)`
                   : lang === 'ru'
                   ? `Детальный список принятых сотрудников (${activePeriodLabel})`
-                  : `${activePeriodLabel} Detaylı İşe Giriş Alanı`}
+                  : `${activePeriodLabel} Detaylı İşe Giriş Alanı (Transferler Hariç)`}
               </h2>
               {selectedVksMode === 'VKS' && (
                 <span className="px-3 py-0.5 text-xs font-extrabold bg-purple-600 text-white rounded-full shadow-2xs">
@@ -1083,6 +1170,32 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
           >
             {lang === 'ru' ? 'Входы ВКС' : 'VKS Girişler'} (+{currentMetric.inVks} / %{curInVksPct})
           </button>
+          <button
+            onClick={() => {
+              setSelectedMovement('transfer');
+              setSelectedVksMode('all');
+            }}
+            className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+              selectedMovement === 'transfer' && selectedVksMode === 'all'
+                ? 'bg-amber-600 text-white'
+                : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700'
+            }`}
+          >
+            {lang === 'ru' ? 'Переводы (отдельно)' : 'Şantiye Transferleri'} ({currentMetric.transferTotal ?? 0})
+          </button>
+          <button
+            onClick={() => {
+              setSelectedMovement('transfer');
+              setSelectedVksMode('VKS');
+            }}
+            className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+              selectedMovement === 'transfer' && selectedVksMode === 'VKS'
+                ? 'bg-purple-600 text-white'
+                : 'bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-200 border border-purple-300 dark:border-purple-700'
+            }`}
+          >
+            {lang === 'ru' ? 'Переводы ВКС' : 'VKS Transferler'} ({currentMetric.transferVks ?? 0})
+          </button>
         </div>
 
         {/* Table Content */}
@@ -1094,11 +1207,35 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                 <th className="py-3 px-4">{lang === 'ru' ? 'ФИО Сотрудника' : 'Ad Soyad'}</th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Статус / ВКС' : 'Çalışma İzni / VKS'}</th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Должность' : 'Görevi'}</th>
-                <th className="py-3 px-4">{lang === 'ru' ? 'Регион / Проект' : 'Bölge / Proje'}</th>
+                <th className="py-3 px-4">
+                  {selectedMovement === 'transfer'
+                    ? lang === 'ru'
+                      ? 'Маршрут перевода (Объекты)'
+                      : 'Transfer Yönü (Şantiye)'
+                    : lang === 'ru'
+                    ? 'Регион / Проект'
+                    : 'Bölge / Proje'}
+                </th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Отдел / Фирма' : 'Departman / Firma'}</th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Гражданство' : 'Uyruk'}</th>
-                <th className="py-3 px-4">{lang === 'ru' ? 'Дата приема' : 'İşe Giriş'}</th>
-                <th className="py-3 px-4">{lang === 'ru' ? 'Дата ухода' : 'Çıkış Tarihi'}</th>
+                <th className="py-3 px-4">
+                  {selectedMovement === 'transfer'
+                    ? lang === 'ru'
+                      ? 'Дата перевода'
+                      : 'Şantiye Transfer Tarihi'
+                    : lang === 'ru'
+                    ? 'Дата приема'
+                    : 'İşe Giriş'}
+                </th>
+                <th className="py-3 px-4">
+                  {selectedMovement === 'transfer'
+                    ? lang === 'ru'
+                      ? 'Первый договор'
+                      : 'İlk Sözleşme Tarihi'
+                    : lang === 'ru'
+                    ? 'Дата ухода'
+                    : 'Çıkış Tarihi'}
+                </th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Причина / Статус' : 'Çıkış Sebebi / Durum'}</th>
               </tr>
             </thead>
@@ -1114,7 +1251,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                   <td colSpan={10} className="py-10 text-center text-slate-500 dark:text-slate-400">
                     {lang === 'ru'
                       ? 'За выбранный период записи не найдены.'
-                      : 'Seçilen dönem ve filtre kriterlerine uygun giriş/çıkış kaydı bulunamadı.'}
+                      : 'Seçilen dönem ve filtre kriterlerine uygun kayıt bulunamadı.'}
                   </td>
                 </tr>
               ) : (
@@ -1147,12 +1284,33 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                         {translateVal(p.gorevi || '—')}
                       </td>
                       <td className="py-2.5 px-4">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          {translateVal(p.region || '—')}
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {translateVal(p.proje_adi || '—')}
-                        </div>
+                        {selectedMovement === 'transfer' ? (
+                          <div>
+                            <div className="font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1 flex-wrap">
+                              {p.transfer_from_site ? (
+                                <>
+                                  <span>{translateVal(p.transfer_from_site)}</span>
+                                  <span>→</span>
+                                  <span>{translateVal(p.transfer_to_site || p.region || '—')}</span>
+                                </>
+                              ) : (
+                                <span>→ {translateVal(p.transfer_to_site || p.region || '—')}</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {translateVal(p.proje_adi || '—')}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                              {translateVal(p.region || '—')}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {translateVal(p.proje_adi || '—')}
+                            </div>
+                          </>
+                        )}
                       </td>
                       <td className="py-2.5 px-4">
                         <div className="text-slate-700 dark:text-slate-300">
@@ -1166,13 +1324,24 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                         {translateVal(p.uyruk || '—')}
                       </td>
                       <td className="py-2.5 px-4 font-bold text-emerald-700 dark:text-emerald-400">
-                        {formatDisplayDate(p.ise_giris_tarihi)}
+                        {formatDisplayDate(p.ise_giris_tarihi || p.cikis_tarihi)}
                       </td>
                       <td className="py-2.5 px-4 font-bold text-rose-600 dark:text-rose-400">
-                        {formatDisplayDate(p.cikis_tarihi)}
+                        {selectedMovement === 'transfer' ? (
+                          <span className="text-slate-700 dark:text-slate-300">
+                            {formatDisplayDate(p.original_hire_date)}
+                          </span>
+                        ) : (
+                          formatDisplayDate(p.cikis_tarihi)
+                        )}
                       </td>
                       <td className="py-2.5 px-4">
-                        {p.cikis_sebebi ? (
+                        {selectedMovement === 'transfer' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/70">
+                            <ArrowLeftRight className="w-3 h-3" />
+                            {lang === 'ru' ? 'Перевод' : 'Şantiye Transferi'}
+                          </span>
+                        ) : p.cikis_sebebi ? (
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
                             {translateVal(p.cikis_sebebi)}
                           </span>

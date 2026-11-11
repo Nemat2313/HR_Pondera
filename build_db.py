@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 import gzip
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 import sys
 
 openpyxl = None
@@ -710,7 +710,10 @@ def build_database():
     cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('source_file', ?)", (SOURCE_FILE,))
     cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('total_records', ?)", (str(total_count),))
     cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('active_records', ?)", (str(active_count),))
-    cursor.execute(f"INSERT OR REPLACE INTO system_info (key, value) VALUES ('last_updated', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}')")
+    utc_now = datetime.now(timezone.utc)
+    msk_now = utc_now.astimezone(timezone(timedelta(hours=3)))
+    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('last_updated', ?)", (utc_now.strftime('%Y-%m-%dT%H:%M:%SZ'),))
+    cursor.execute("INSERT OR REPLACE INTO system_info (key, value) VALUES ('eba_updated_at_msk', ?)", (msk_now.strftime('%d.%m.%Y %H:%M'),))
 
     # Preserve existing users and gosuslugi_submissions tables from previous DB if not in_place
     if not in_place and os.path.exists(DB_PATH):

@@ -29,6 +29,9 @@ interface PowerBIHeroBarProps {
   mainFirmCount: number;
   subconCount: number;
   dataFreshness: string;
+  dataFreshnessTime?: string;
+  zupFreshness?: string;
+  zupFreshnessTime?: string;
   monthlyEntries: { month: string; in_count: number }[];
   monthlyExits: { month: string; out_count: number }[];
   turnoverRate?: number;
@@ -55,6 +58,9 @@ export default function PowerBIHeroBar({
   mainFirmCount,
   subconCount,
   dataFreshness,
+  dataFreshnessTime,
+  zupFreshness,
+  zupFreshnessTime,
   monthlyEntries,
   monthlyExits,
   turnoverRate = 3.8,
@@ -75,15 +81,15 @@ export default function PowerBIHeroBar({
   const [selectedMonthRange, setSelectedMonthRange] = useState<number>(8); // 3 to 8 months
 
   // Month range text calculation
-  const monthNamesTr = ['Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim'];
-  const monthNamesRu = ['Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь'];
+  const monthNamesTr = ['Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım'];
+  const monthNamesRu = ['Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь'];
   const monthNames = lang === 'ru' ? monthNamesRu : monthNamesTr;
 
-  const startIdx = Math.max(0, 8 - selectedMonthRange);
+  const startIdx = Math.max(0, 9 - selectedMonthRange);
   const startMonthName = monthNames[startIdx] || (lang === 'ru' ? 'Март' : 'Mart');
   const rangeText = lang === 'ru'
-    ? `За последние ${selectedMonthRange} мес. (${startMonthName} 2026 - Октябрь 2026)`
-    : `Son ${selectedMonthRange} Ay (${startMonthName} 2026 - Ekim 2026)`;
+    ? `За последние ${selectedMonthRange} мес. (${startMonthName} 2026 - Ноябрь 2026)`
+    : `Son ${selectedMonthRange} Ay (${startMonthName} 2026 - Kasım 2026)`;
 
   // In / Out ratio bar (latest 30d or latest month flow)
   const inLatest =
@@ -103,17 +109,17 @@ export default function PowerBIHeroBar({
   const outPct = Math.round((outLatest / totalFlow) * 100);
 
   // Sparkline data for mini trend chart
-  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
-  const allCounts = [4800, 4950, 5080, 5150, 5200, 5250, 5280, totalCount || 5313];
-  const monthLabelsTr = ['Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki'];
-  const monthLabelsRu = ['Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт'];
-  const activeMonthLabels = (lang === 'ru' ? monthLabelsRu : monthLabelsTr).slice(startIdx, 8);
+  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
+  const allCounts = [4800, 4950, 5080, 5150, 5200, 5250, 5280, 5330, totalCount || 5382];
+  const monthLabelsTr = ['Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas'];
+  const monthLabelsRu = ['Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя'];
+  const activeMonthLabels = (lang === 'ru' ? monthLabelsRu : monthLabelsTr).slice(startIdx, 9);
 
-  const sparklineData = months.slice(startIdx, 8).map((m, idx) => {
-    const counts = allCounts.slice(startIdx, 8);
+  const sparklineData = months.slice(startIdx, 9).map((m, idx) => {
+    const counts = allCounts.slice(startIdx, 9);
     return {
       name: activeMonthLabels[idx],
-      count: counts[idx] || totalCount || 5313,
+      count: counts[idx] || totalCount || 5382,
     };
   });
 
@@ -134,8 +140,15 @@ export default function PowerBIHeroBar({
                 {lang === 'ru' ? 'Численность персонала Pondera' : 'Pondera Personel Sayıları'}
               </h1>
               <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-teal-500/20 text-emerald-800 dark:text-teal-300 border border-emerald-200 dark:border-teal-500/40 text-[10.5px] font-medium">
-                {dataFreshness || '03.10.2026'}
+                eBA: {dataFreshness || '03.10.2026'}
+                {dataFreshnessTime ? ` • ${dataFreshnessTime}` : ''}
               </span>
+              {zupFreshness && (
+                <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/40 text-[10.5px] font-medium">
+                  1C ZUP: {zupFreshness}
+                  {zupFreshnessTime ? ` • ${zupFreshnessTime}` : ''}
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
               {lang === 'ru'
