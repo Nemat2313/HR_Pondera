@@ -468,11 +468,34 @@ def build_database():
             headers = [clean_val(c) or f"Col_{idx+1}" for idx, c in enumerate(row)]
             col_map = map_headers(headers)
 
-            # Populate columns_meta with 16 operational document groups
+            def is_salary_col_name(name):
+                n = (
+                    str(name or "")
+                    .strip()
+                    .lower()
+                    .replace("İ", "i").replace("I", "i").replace("ı", "i")
+                    .replace("ş", "s").replace("ğ", "g").replace("ü", "u").replace("ö", "o").replace("ç", "c")
+                )
+                n = re.sub(r"[_\s/-]+", " ", n).strip()
+                if not n or n == "deduct from salary":
+                    return False
+                if n in (
+                    "resmi maas", "resmi maas yazili", "maas", "maasi", "maas yazili",
+                    "maas ucret", "net maas", "brut maas", "gercek maas", "eski resmi maas",
+                    "оклад", "зарплата", "тарифная ставка", "размервыплаты", "размер выплаты", "сумма выплаты"
+                ):
+                    return True
+                if n.startswith("resmi maas") or n.startswith("eski resmi maas"):
+                    return True
+                if any(tok in n.split() for tok in ("maas", "maasi", "оклад", "зарплата")):
+                    return True
+                return False
+
+            # Populate columns_meta with 16 operational document groups (strictly omitting any salary columns)
             cols_meta = [
                 (idx + 1, h, classify_column_group(h))
                 for idx, h in enumerate(headers)
-                if not re.match(r"^Col_\d+$", h, re.IGNORECASE)
+                if not re.match(r"^Col_\d+$", h, re.IGNORECASE) and not is_salary_col_name(h)
             ]
             cursor.executemany("INSERT OR REPLACE INTO columns_meta (col_index, col_name, col_group) VALUES (?, ?, ?)", cols_meta)
 

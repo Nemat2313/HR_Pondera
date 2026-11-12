@@ -41,10 +41,10 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
     { id: 'core', label: lang === 'ru' ? 'Основное и должность' : 'Temel & Görev', icon: User },
     { id: 'location', label: lang === 'ru' ? 'Локация и городок' : 'Lokasyon & Kamp', icon: MapPin },
     { id: 'identity', label: lang === 'ru' ? 'Паспорт и данные' : 'Özlük & Pasaport', icon: CreditCard },
-    { id: 'contract', label: lang === 'ru' ? 'Договор и оклад' : 'Sözleşme & Maaş', icon: FileText },
+    { id: 'contract', label: lang === 'ru' ? 'Договор и приём' : 'Sözleşme & Kayıt', icon: FileText },
     { id: 'visa', label: lang === 'ru' ? 'Виза и ВНЖ' : 'Vize & İkamet', icon: Shield },
     { id: 'hse', label: lang === 'ru' ? 'ОТ и здоровье' : 'İSG & Sağlık', icon: Activity },
-    { id: 'all', label: lang === 'ru' ? 'Все 198 колонок' : 'Tüm 198 Kolon', icon: Layers },
+    { id: 'all', label: lang === 'ru' ? 'Все колонки' : 'Tüm Kolonlar', icon: Layers },
   ];
 
   // Helper to format date and values
@@ -80,8 +80,9 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
     );
   };
 
-  // Filter raw 198 columns for "all" tab
+  // Filter raw columns for "all" tab (strictly omitting any salary columns)
   const rawEntries = Object.entries(raw).filter(([k, v]) => {
+    if (isOfficialSalaryColumn(k)) return false;
     if (!searchField) return true;
     return k.toLowerCase().includes(searchField.toLowerCase()) || String(v).toLowerCase().includes(searchField.toLowerCase());
   });
@@ -224,7 +225,7 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
           {/* TAB 4: Contract */}
           {activeTab === 'contract' && (
             <div className="space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sözleşme, İşe Giriş/Çıkış & Maaş</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sözleşme & İşe Giriş/Çıkış</h3>
               <div className="grid grid-cols-2 gap-3">
                 {renderField('İşe Giriş Tarihi', personnel.ise_giris_tarihi, true)}
                 {renderField('Şantiye Giriş Tarihi', personnel.santiye_giris_tarihi)}
@@ -232,8 +233,6 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
                 {renderField('Çıkış Sebebi', personnel.cikis_sebebi)}
                 {renderField('İş Sözleşmesi Numarası', raw['İş Sözleşmesi Numarası'])}
                 {renderField('İş Sözleşmesi İmza Tarihi', raw['İş Sözleşmesi İmza Tarihi'])}
-                {renderField('Resmi Maaş', '')}
-                {renderField('Resmi Maaş Yazılı', '')}
                 {renderField('Resmi Çıkış Tarihi', raw['Resmi Çıkış Tarihi'])}
                 {renderField('Resmi Çıkış Sebebi', raw['Resmi Çıkış Sebebi'])}
                 {renderField('İzine Gidiş Tarihi', raw['İzine Gidiş Tarihi'])}
@@ -297,7 +296,7 @@ export default function PersonnelDetailDrawer({ personnel, onClose }: PersonnelD
                   type="text"
                   value={searchField}
                   onChange={(e) => setSearchField(e.target.value)}
-                  placeholder={lang === 'ru' ? 'Поиск среди 198 колонок... (напр. Паспорт, Виза, Оклад)' : '198 kolon içinde alan ara... (örn: Propusk, Vize, Tarih, Not)'}
+                  placeholder={lang === 'ru' ? 'Поиск среди колонок... (напр. Паспорт, Виза, Пропуск)' : 'Kolonlar içinde alan ara... (örn: Propusk, Vize, Tarih, Not)'}
                   className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>

@@ -20,13 +20,15 @@ import {
   Edit3,
   Trash2,
   RefreshCw,
-  Send,
   Clock,
   ArrowRight,
   Globe2,
-  Award,
+  X,
+  Save,
+  Filter,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useAuth } from '@/context/AuthContext';
 import type {
   CriticalQuotaAlertItem,
   QuotaAlertSettings,
@@ -36,6 +38,7 @@ import type {
   QuotaOccupationRef,
   QuotaProjectMappingRef,
   QuotaRegionRef,
+  QuotaSourceFileRow,
   QuotaWorkerApplicationRow,
 } from '@/lib/quotaManager';
 import {
@@ -50,16 +53,27 @@ interface RegionMatrixRow {
   regionNameTr: string;
   regionNameRu: string;
   projects: string[];
+  esasQty: number;
+  artirmaQty: number;
+  azaltmaQty: number;
   requestedQty: number;
   submittedQty: number;
   plannedQty: number;
   approvedQty: number;
+  inReviewQty: number;
   legacyIrsQty: number;
   certIrsQty: number;
+  irs1Qty: number;
+  irs2Qty: number;
+  irs3Qty: number;
+  irsOtherQty: number;
   totalIrsReceived: number;
+  carryoverIrsQty: number;
+  regionNote: string;
   irsTranches: Array<{
     index: number;
     certificateNo: string;
+    trancheCode: string;
     label: string;
     allocatedQty: number;
     usedQty: number;
@@ -79,12 +93,21 @@ interface QuotaOverviewData {
   availableYears: number[];
   selectedYear: number | 'all';
   kpis: {
+    esasTotal: number;
+    artirmaTotal: number;
+    azaltmaTotal: number;
     requestedTotal: number;
     submittedTotal: number;
     plannedTotal: number;
     approvedTotal: number;
+    inReviewTotal: number;
+    irs1Total: number;
+    irs2Total: number;
+    irs3Total: number;
+    irsOtherTotal: number;
     irsReceivedTotal: number;
     unallocatedReserveTotal: number;
+    carryoverIrsTotal: number;
     usedTotal: number;
     newUseTotal: number;
     extensionsTotal: number;
@@ -92,8 +115,10 @@ interface QuotaOverviewData {
     availableTotal: number;
     certificatesCount: number;
     workerApplicationsCount: number;
+    sourceFilesCount: number;
   };
   regionMatrix: RegionMatrixRow[];
+  sourceFiles: QuotaSourceFileRow[];
   certificates: QuotaIrsCertificateComputed[];
   workerApplications: QuotaWorkerApplicationRow[];
   allocations: QuotaAllocationRow[];
@@ -107,23 +132,33 @@ interface QuotaOverviewData {
   };
 }
 
-type SubTabId = 'zahid_matrix' | 'certificates' | 'workers' | 'allocations' | 'codes_guide';
+type SubTabId = 'region_irs' | 'ozet_pivot' | 'certificates' | 'workers' | 'files_veri' | 'codes_guide';
+
+function fmtSigned(n: number): string {
+  if (n > 0) return `+${n.toLocaleString('tr-TR')}`;
+  return n.toLocaleString('tr-TR');
+}
+
+function fmtNum(n: number): string {
+  return (Number(n) || 0).toLocaleString('tr-TR');
+}
 
 export function QuotaTrackingView() {
+  const { user, showPermissionDenied } = useAuth();
+  const isViewer = user?.role === 'viewer';
+
   const [data, setData] = useState<QuotaOverviewData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedYear, setSelectedYear] = useState<string>('2026');
-  const [activeTab, setActiveTab] = useState<SubTabId>('zahid_matrix');
+  const [activeTab, setActiveTab] = useState<SubTabId>('region_irs');
 
   // Global Filters
   const [regionFilter, setRegionFilter] = useState<string>('ALL');
-  const [projectFilter, setProjectFilter] = useState<string>('ALL');
   const [countryFilter, setCountryFilter] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-
-  // Selected certificate in Zahid Şef's 3-table view
-  const [selectedCertNo, setSelectedCertNo] = useState<string>('2600030066');
+  const [fileCodeFilter, setFileCodeFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [pivotMode, setPivotMode] = useState<'country' | 'region'>('country');
 
   // Code reference search
   const [codeSearch, setCodeSearch] = useState<string>('');
@@ -133,6 +168,7 @@ export function QuotaTrackingView() {
 
   // Modals state
   const [certModalOpen, setCertModalOpen] = useState(false);
+  const [certDefaultRegion, setCertDefaultRegion] = useState<string | undefined>(undefined);
   const [editingCert, setEditingCert] = useState<QuotaIrsCertificateComputed | null>(null);
   const [workerModalOpen, setWorkerModalOpen] = useState(false);
   const [workerModalCertNo, setWorkerModalCertNo] = useState<string | undefined>(undefined);
@@ -140,16 +176,43 @@ export function QuotaTrackingView() {
   const [editingAlloc, setEditingAlloc] = useState<QuotaAllocationRow | null>(null);
   const [alertModalOpen, setAlertModalOpen] = useState(false);
 
+  // Quick Region IRS & Note Editor Modal (for Ust-Luga / Regional IRS1..IRS3 updates)
+  const [quickIrsTarget, setQuickIrsTarget] = useState<{
+    regionCode: string;
+    regionNameTr: string;
+    approvedQty: number;
+    irs1Qty: number;
+    irs2Qty: number;
+    irs3Qty: number;
+    validUntil: string;
+    noteText: string;
+  } | null>(null);
+  const [savingQuickIrs, setSavingQuickIrs] = useState(false);
+
   // Toast / banner feedback
   const [bannerMsg, setBannerMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
-  const [sendingAlertNow, setSendingAlertNow] = useState(false);
+  const [uploadingExcel, setUploadingExcel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const guardWrite = useCallback(
+    (labelTr: string, labelRu?: string): boolean => {
+      if (isViewer) {
+        showPermissionDenied({
+          actionLabelTr: labelTr,
+          actionLabelRu: labelRu || labelTr,
+        });
+        return false;
+      }
+      return true;
+    },
+    [isViewer, showPermissionDenied]
+  );
 
   const showNotice = useCallback((text: string, type: 'ok' | 'err' = 'ok') => {
     setBannerMsg({ type, text });
     setTimeout(() => {
       setBannerMsg((prev) => (prev?.text === text ? null : prev));
-    }, 6000);
+    }, 6500);
   }, []);
 
   const fetchOverview = useCallback(
@@ -160,14 +223,6 @@ export function QuotaTrackingView() {
         const json = await res.json();
         if (json?.success) {
           setData(json);
-          if (
-            json.certificates?.length > 0 &&
-            !json.certificates.some(
-              (c: QuotaIrsCertificateComputed) => c.certificate_no === selectedCertNo
-            )
-          ) {
-            setSelectedCertNo(json.certificates[0].certificate_no);
-          }
         }
       } catch {
         showNotice('Kota verileri yüklenirken bağlantı hatası oluştu.', 'err');
@@ -175,7 +230,7 @@ export function QuotaTrackingView() {
         setLoading(false);
       }
     },
-    [selectedYear, selectedCertNo, showNotice]
+    [selectedYear, showNotice]
   );
 
   useEffect(() => {
@@ -193,41 +248,56 @@ export function QuotaTrackingView() {
     [data]
   );
 
-  const availableProjects = useMemo(() => {
-    if (!data) return [];
-    const set = new Set<string>();
-    for (const a of data.allocations) {
-      if (regionFilter !== 'ALL' && a.region_code !== regionFilter) continue;
-      if (a.project_name) set.add(a.project_name);
-    }
-    for (const c of data.certificates) {
-      if (regionFilter !== 'ALL' && c.region_code !== regionFilter) continue;
-      if (c.project_name) set.add(c.project_name);
-    }
-    return Array.from(set).sort();
-  }, [data, regionFilter]);
-
   const filteredRegionMatrix = useMemo(() => {
     if (!data) return [];
     return data.regionMatrix.filter((r) => {
       if (regionFilter !== 'ALL' && r.regionCode !== regionFilter) return false;
-      if (projectFilter !== 'ALL' && !r.projects.includes(projectFilter)) return false;
       return true;
     });
-  }, [data, regionFilter, projectFilter]);
+  }, [data, regionFilter]);
+
+  const filteredAllocations = useMemo(() => {
+    if (!data) return [];
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR');
+    return data.allocations.filter((a) => {
+      if (regionFilter !== 'ALL' && a.region_code !== regionFilter) return false;
+      if (countryFilter !== 'ALL' && a.country_code !== countryFilter) return false;
+      if (fileCodeFilter !== 'ALL' && (a.file_code || '') !== fileCodeFilter) return false;
+      if (statusFilter === 'APPROVED' && !a.migrakvota_status.toLocaleLowerCase('tr-TR').includes('onay')) {
+        return false;
+      }
+      if (statusFilter === 'IN_REVIEW' && !a.migrakvota_status.toLocaleLowerCase('tr-TR').includes('inceleme')) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        a.record_code.toLowerCase().includes(q) ||
+        (a.file_code || '').toLowerCase().includes(q) ||
+        (a.source_filename || '').toLowerCase().includes(q) ||
+        a.region_code.toLowerCase().includes(q) ||
+        a.project_name.toLocaleLowerCase('tr-TR').includes(q) ||
+        a.occupation_code.includes(q) ||
+        a.occupation_tr.toLocaleLowerCase('tr-TR').includes(q) ||
+        a.occupation_ru.toLowerCase().includes(q) ||
+        a.country_tr.toLocaleLowerCase('tr-TR').includes(q) ||
+        a.country_code.includes(q)
+      );
+    });
+  }, [data, regionFilter, countryFilter, fileCodeFilter, statusFilter, searchQuery]);
 
   const filteredCertificates = useMemo(() => {
     if (!data) return [];
     const q = searchQuery.trim().toLocaleLowerCase('tr-TR');
     return data.certificates.filter((c) => {
       if (regionFilter !== 'ALL' && c.region_code !== regionFilter) return false;
-      if (projectFilter !== 'ALL' && c.project_name !== projectFilter) return false;
       if (!q) return true;
       return (
         c.certificate_no.toLowerCase().includes(q) ||
+        c.tranche_code.toLowerCase().includes(q) ||
         c.tranche_label.toLocaleLowerCase('tr-TR').includes(q) ||
         c.region_code.toLowerCase().includes(q) ||
         c.project_name.toLocaleLowerCase('tr-TR').includes(q) ||
+        c.notes.toLocaleLowerCase('tr-TR').includes(q) ||
         c.lines.some(
           (l) =>
             l.occupation_code.includes(q) ||
@@ -235,22 +305,13 @@ export function QuotaTrackingView() {
         )
       );
     });
-  }, [data, regionFilter, projectFilter, searchQuery]);
-
-  const activeCertificateForMatrix = useMemo(() => {
-    if (!data || data.certificates.length === 0) return null;
-    const pool = filteredCertificates.length > 0 ? filteredCertificates : data.certificates;
-    return pool.find((c) => c.certificate_no === selectedCertNo) || pool[0] || null;
-  }, [data, filteredCertificates, selectedCertNo]);
+  }, [data, regionFilter, searchQuery]);
 
   const filteredWorkers = useMemo(() => {
     if (!data) return [];
     const q = searchQuery.trim().toLocaleLowerCase('tr-TR');
     return data.workerApplications.filter((w) => {
       if (regionFilter !== 'ALL' && w.region_code && w.region_code !== regionFilter) return false;
-      if (projectFilter !== 'ALL' && w.project_name && w.project_name !== projectFilter) {
-        return false;
-      }
       if (countryFilter !== 'ALL' && w.country_code !== countryFilter) return false;
       if (!q) return true;
       return (
@@ -262,805 +323,883 @@ export function QuotaTrackingView() {
         w.passport_no.toLowerCase().includes(q)
       );
     });
-  }, [data, regionFilter, projectFilter, countryFilter, searchQuery]);
+  }, [data, regionFilter, countryFilter, searchQuery]);
 
-  const matrixWorkers = useMemo(() => {
-    if (!activeCertificateForMatrix) return filteredWorkers;
-    return filteredWorkers.filter(
-      (w) => w.certificate_no === activeCertificateForMatrix.certificate_no
-    );
-  }, [filteredWorkers, activeCertificateForMatrix]);
-
-  const filteredAllocations = useMemo(() => {
+  const filteredSourceFiles = useMemo(() => {
     if (!data) return [];
-    const q = searchQuery.trim().toLocaleLowerCase('tr-TR');
-    return data.allocations.filter((a) => {
-      if (regionFilter !== 'ALL' && a.region_code !== regionFilter) return false;
-      if (projectFilter !== 'ALL' && a.project_name !== projectFilter) return false;
-      if (countryFilter !== 'ALL' && a.country_code !== countryFilter) return false;
-      if (statusFilter !== 'ALL' && a.migrakvota_status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        a.record_code.toLowerCase().includes(q) ||
-        a.region_code.toLowerCase().includes(q) ||
-        a.project_name.toLocaleLowerCase('tr-TR').includes(q) ||
-        a.occupation_code.includes(q) ||
-        a.occupation_tr.toLocaleLowerCase('tr-TR').includes(q) ||
-        a.occupation_ru.toLowerCase().includes(q) ||
-        a.country_tr.toLocaleLowerCase('tr-TR').includes(q) ||
-        a.country_code.includes(q)
-      );
+    return (data.sourceFiles || []).filter((sf) => {
+      if (regionFilter !== 'ALL' && sf.region_code !== regionFilter) return false;
+      if (statusFilter === 'APPROVED' && !sf.status_text.toLocaleLowerCase('tr-TR').includes('onay')) {
+        return false;
+      }
+      if (statusFilter === 'IN_REVIEW' && !sf.status_text.toLocaleLowerCase('tr-TR').includes('inceleme')) {
+        return false;
+      }
+      return true;
     });
-  }, [data, regionFilter, projectFilter, countryFilter, statusFilter, searchQuery]);
+  }, [data, regionFilter, statusFilter]);
 
-  const filteredKpis = useMemo(() => {
+  // Dynamic KPI computation respecting region/country/status filters
+  const activeKpis = useMemo(() => {
     if (!data) {
       return {
+        esasTotal: 0,
+        artirmaTotal: 0,
+        azaltmaTotal: 0,
         requestedTotal: 0,
-        submittedTotal: 0,
-        plannedTotal: 0,
         approvedTotal: 0,
+        inReviewTotal: 0,
+        irs1Total: 0,
+        irs2Total: 0,
+        irs3Total: 0,
         irsReceivedTotal: 0,
         unallocatedReserveTotal: 0,
+        carryoverIrsTotal: 0,
         usedTotal: 0,
         newUseTotal: 0,
         extensionsTotal: 0,
         irsRemainingTotal: 0,
-        availableTotal: 0,
       };
     }
-    if (regionFilter === 'ALL' && projectFilter === 'ALL' && countryFilter === 'ALL') {
+    if (
+      regionFilter === 'ALL' &&
+      countryFilter === 'ALL' &&
+      statusFilter === 'ALL' &&
+      fileCodeFilter === 'ALL' &&
+      !searchQuery.trim()
+    ) {
       return data.kpis;
     }
-    const requestedTotal = filteredAllocations.reduce((s, a) => s + Number(a.requested_qty || 0), 0);
-    const plannedTotal = filteredAllocations
-      .filter((a) => String(a.migrakvota_status || '').includes('YAPILACAK'))
-      .reduce((s, a) => s + Number(a.requested_qty || 0), 0);
-    const submittedTotal = requestedTotal - plannedTotal;
-    const approvedTotal = filteredAllocations.reduce((s, a) => s + Number(a.approved_qty || 0), 0);
-    const legacyIrs = filteredAllocations.reduce((s, a) => s + Number(a.legacy_irs_qty || 0), 0);
-    const certIrs = filteredCertificates.reduce((s, c) => s + Number(c.total_allocated_qty || 0), 0);
-    const irsReceivedTotal = legacyIrs + certIrs;
-    const newUseTotal =
-      filteredAllocations.reduce((s, a) => s + Number(a.opening_new_use || 0), 0) +
-      filteredWorkers.filter(
-        (w) => w.application_status !== 'cancelled' && w.usage_type !== 'visa_extension'
-      ).length;
-    const extensionsTotal =
-      filteredAllocations.reduce((s, a) => s + Number(a.extensions_use || 0), 0) +
-      filteredWorkers.filter(
-        (w) => w.application_status !== 'cancelled' && w.usage_type === 'visa_extension'
-      ).length;
+
+    let esasTotal = 0;
+    let artirmaTotal = 0;
+    let azaltmaTotal = 0;
+    let requestedTotal = 0;
+    let approvedTotal = 0;
+
+    for (const a of filteredAllocations) {
+      const req = Number(a.requested_qty || 0);
+      const app = Number(a.approved_qty || 0);
+      const t = a.application_type.toLocaleLowerCase('tr-TR');
+      if (t.includes('azalt') || req < 0) azaltmaTotal += req;
+      else if (t.includes('artır') || t.includes('artir') || t.includes('корр')) artirmaTotal += req;
+      else esasTotal += req;
+      requestedTotal += req;
+      approvedTotal += app;
+    }
+
+    const inReviewTotal = requestedTotal - approvedTotal;
+    const irs1Total = filteredCertificates
+      .filter((c) => c.tranche_code === 'IRS1')
+      .reduce((s, c) => s + c.total_allocated_qty, 0);
+    const irs2Total = filteredCertificates
+      .filter((c) => c.tranche_code === 'IRS2')
+      .reduce((s, c) => s + c.total_allocated_qty, 0);
+    const irs3Total = filteredCertificates
+      .filter((c) => c.tranche_code === 'IRS3')
+      .reduce((s, c) => s + c.total_allocated_qty, 0);
+    const irsReceivedTotal = filteredCertificates.reduce((s, c) => s + c.total_allocated_qty, 0);
+    const carryoverIrsTotal = filteredCertificates
+      .filter((c) => c.is_cross_year_carryover && c.status !== 'expired')
+      .reduce((s, c) => s + Math.max(0, c.total_remaining_qty), 0);
+
+    const activeWrk = filteredWorkers.filter((w) => w.application_status !== 'cancelled');
+    const newUseTotal = activeWrk.filter((w) => w.usage_type !== 'visa_extension').length;
+    const extensionsTotal = activeWrk.filter((w) => w.usage_type === 'visa_extension').length;
     const usedTotal = newUseTotal + extensionsTotal;
     const irsRemainingTotal = Math.max(0, irsReceivedTotal - usedTotal);
-    const unallocatedReserveTotal = Math.max(0, approvedTotal - irsReceivedTotal);
-    const availableTotal = approvedTotal - usedTotal;
+    const unallocatedReserveTotal = approvedTotal - irsReceivedTotal;
 
     return {
+      esasTotal,
+      artirmaTotal,
+      azaltmaTotal,
       requestedTotal,
-      submittedTotal,
-      plannedTotal,
       approvedTotal,
+      inReviewTotal,
+      irs1Total,
+      irs2Total,
+      irs3Total,
       irsReceivedTotal,
       unallocatedReserveTotal,
+      carryoverIrsTotal,
       usedTotal,
       newUseTotal,
       extensionsTotal,
       irsRemainingTotal,
-      availableTotal,
     };
-  }, [data, regionFilter, projectFilter, countryFilter, filteredAllocations, filteredCertificates, filteredWorkers]);
+  }, [
+    data,
+    regionFilter,
+    countryFilter,
+    statusFilter,
+    fileCodeFilter,
+    searchQuery,
+    filteredAllocations,
+    filteredCertificates,
+    filteredWorkers,
+  ]);
 
-  const handleWorkerStatusChange = async (id: number, nextStatus: string) => {
-    try {
-      const res = await fetch('/api/quotas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update_worker_application',
-          id,
-          application_status: nextStatus,
-        }),
-      });
-      const json = await res.json();
-      if (json?.success) {
-        showNotice('Çalışan İРС başvuru durumu güncellendi.');
-        fetchOverview();
-      }
-    } catch {
-      showNotice('Durum güncellenemedi.', 'err');
-    }
-  };
+  // Pivot Matrix computation matching Zahid Bey's Özet sheet (Ülke × Görev and Bölge × Görev)
+  const pivotTable = useMemo(() => {
+    const occMap = new Map<string, { code: string; tr: string; ru: string; total: number }>();
+    const rowMap = new Map<
+      string,
+      { key: string; labelTr: string; labelRu: string; cells: Record<string, number>; total: number }
+    >();
 
-  const handleDeleteWorker = async (id: number, name: string) => {
-    if (!window.confirm(`${name} isimli çalışanın İРС başvurusunu silmek istediğinize emin misiniz?`)) {
-      return;
-    }
-    try {
-      const res = await fetch('/api/quotas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete_worker_application', id }),
-      });
-      const json = await res.json();
-      if (json?.success) {
-        showNotice('Çalışan başvurusu silindi ve sertifika kontenjanı iade edildi.');
-        fetchOverview();
-      }
-    } catch {
-      showNotice('Silme işlemi başarısız.', 'err');
-    }
-  };
-
-  const handleDeleteCertificate = async (cert: QuotaIrsCertificateComputed) => {
-    if (
-      !window.confirm(
-        `№ ${cert.certificate_no} (${cert.tranche_label}) sertifikasını silmek istediğinize emin misiniz?`
-      )
-    ) {
-      return;
-    }
-    try {
-      const res = await fetch('/api/quotas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'delete_irs_certificate',
-          id: cert.id,
-          certificateNo: cert.certificate_no,
-        }),
-      });
-      const json = await res.json();
-      if (json?.success) {
-        showNotice(`ИРС № ${cert.certificate_no} sertifikası silindi.`);
-        fetchOverview();
-      }
-    } catch {
-      showNotice('Sertifika silinemedi.', 'err');
-    }
-  };
-
-  const handleDeleteAllocation = async (row: QuotaAllocationRow) => {
-    if (
-      !window.confirm(
-        `${row.record_code} (${row.region_code} - ${row.occupation_tr}) kota kaydını silmek istediğinize emin misiniz?`
-      )
-    ) {
-      return;
-    }
-    try {
-      const res = await fetch('/api/quotas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete_allocation', id: row.id }),
-      });
-      const json = await res.json();
-      if (json?.success) {
-        showNotice(`${row.record_code} kota kaydı silindi.`);
-        fetchOverview();
-      }
-    } catch {
-      showNotice('Kayıt silinemedi.', 'err');
-    }
-  };
-
-  const handleTriggerAlertNow = async () => {
-    setSendingAlertNow(true);
-    try {
-      const res = await fetch('/api/quotas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'send_test_alert' }),
-      });
-      const json = await res.json();
-      showNotice(
-        json?.message || 'Kritik kota bildirimi Telegram ve E-Posta kanallarına iletildi.',
-        json?.success ? 'ok' : 'err'
-      );
-      fetchOverview();
-    } catch {
-      showNotice('Bildirim gönderilirken hata oluştu.', 'err');
-    } finally {
-      setSendingAlertNow(false);
-    }
-  };
-
-  const handleExportExcel = () => {
-    if (!data) return;
-    const wb = XLSX.utils.book_new();
-
-    // Sheet 1: Zahid Şef Bölge & İРС Matrisi
-    const matrixRows = filteredRegionMatrix.map((r) => ({
-      'Bölge (Субъект РФ)': r.regionCode,
-      'Bölge Adı (RU)': r.regionNameRu,
-      Projeler: r.projects.join(', '),
-      'Заявлено (Başvurulan Kota)': r.requestedQty,
-      'Gönderilen (Отправлено)': r.submittedQty,
-      'Planlanan (Не отправлена)': r.plannedQty,
-      'Подтверждено (Onaylanan Kota)': r.approvedQty,
-      'ИРС(РНП)1': r.irsTranches[0]?.allocatedQty || 0,
-      'ИРС(РНП)1 No': r.irsTranches[0]?.certificateNo || '',
-      'ИРС(РНП)2': r.irsTranches[1]?.allocatedQty || 0,
-      'ИРС(РНП)3': r.irsTranches[2]?.allocatedQty || 0,
-      'Toplam Alınan İРС': r.totalIrsReceived,
-      'Kullanılan Kota': r.usedQty,
-      'Kalan İРС Kontenjanı': r.irsRemainingQty,
-      'Sonraya Saklanan Kota (Onaylanan - İРС)': r.unallocatedQuotaReserve,
-      'Toplam Kalan Kota': r.availableTotal,
-    }));
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(matrixRows),
-      '1_Bolge_IRS_Matrisi'
-    );
-
-    // Sheet 2: Sertifika İçi Görev Kodu Dağılımı
-    const certLinesRows: Array<Record<string, any>> = [];
-    for (const c of filteredCertificates) {
-      for (const ln of c.lines) {
-        certLinesRows.push({
-          'ИРС (РНП) No': c.certificate_no,
-          Dilim: c.tranche_label,
-          'Kota Yılı': c.quota_year,
-          Bölge: c.region_code,
-          Proje: c.project_name,
-          'Geçerlilik Başlangıç': c.valid_from,
-          'Geçerlilik Bitiş': c.valid_until,
-          'Dönem Kaydırma': c.is_cross_year_carryover ? 'EVET (Sonraki Yıla Aktarıldı)' : 'HAYIR',
-          'ОКПДТР 2025 Görev Kodu': ln.occupation_code,
-          'Görev (TR)': ln.occupation_tr,
-          'Görev (RU)': ln.occupation_ru,
-          'ОКСМ Ülke Kodu': ln.country_code || 'GENEL',
-          'İРС Kontenjan': ln.allocated_qty,
-          'Kullanıldı (COUNTIFS)': ln.used_qty,
-          'Kalan İРС': ln.remaining_qty,
+    for (const a of filteredAllocations) {
+      const occCode = a.occupation_code || 'DIGER';
+      if (!occMap.has(occCode)) {
+        occMap.set(occCode, {
+          code: occCode,
+          tr: a.occupation_tr || occCode,
+          ru: a.occupation_ru || '',
+          total: 0,
         });
       }
+      const qty = Number(a.requested_qty || 0);
+      occMap.get(occCode)!.total += qty;
+
+      const rKey =
+        pivotMode === 'country'
+          ? a.country_code || a.country_tr || 'DIGER'
+          : a.region_code || 'DIGER';
+      const rTr =
+        pivotMode === 'country'
+          ? a.country_tr || rKey
+          : data?.regionMatrix.find((rm) => rm.regionCode === rKey)?.regionNameTr || rKey;
+      const rRu =
+        pivotMode === 'country'
+          ? a.country_ru || ''
+          : data?.regionMatrix.find((rm) => rm.regionCode === rKey)?.regionNameRu || '';
+
+      if (!rowMap.has(rKey)) {
+        rowMap.set(rKey, { key: rKey, labelTr: rTr, labelRu: rRu, cells: {}, total: 0 });
+      }
+      const row = rowMap.get(rKey)!;
+      row.cells[occCode] = (row.cells[occCode] || 0) + qty;
+      row.total += qty;
     }
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(certLinesRows),
-      '2_IRS_Gorev_Dagilimi'
-    );
 
-    // Sheet 3: Çalışan İРС Başvuruları
-    const workerRows = filteredWorkers.map((w) => ({
-      Sicil: w.sicil_no,
-      FIO: w.full_name,
-      Pasaport: w.passport_no,
-      'Ülke Kodu (ОКСМ)': w.country_code,
-      Ülke: w.country_tr,
-      'Görev Kodu (ОКПДТР)': w.occupation_code,
-      Görev: w.occupation_tr,
-      Bölge: w.region_code,
-      Proje: w.project_name,
-      IRS: w.certificate_no,
-      Tür: w.usage_type === 'visa_extension' ? 'Vize Uzatımı' : 'Yeni РНР Başvurusu',
-      Durum: w.application_status,
-      Tarih: w.application_date,
-    }));
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(workerRows),
-      '3_Calisan_IRS_Basvurulari'
-    );
+    const columns = Array.from(occMap.values()).sort((a, b) => b.total - a.total);
+    const rows = Array.from(rowMap.values()).sort((a, b) => b.total - a.total);
+    const grandTotal = rows.reduce((s, r) => s + r.total, 0);
 
-    // Sheet 4: Bakanlık Kota LOG
-    const logRows = filteredAllocations.map((a) => ({
-      'Kayıt Kodu': a.record_code,
-      Yıl: a.year,
-      'Başvuru Türü': a.application_type,
-      Durum: a.migrakvota_status,
-      Bölge: a.region_code,
-      Proje: a.project_name,
-      'Ülke Kodu (ОКСМ)': a.country_code,
-      Ülke: a.country_tr,
-      'Görev Kodu (ОКПДТР 2025)': a.occupation_code,
-      'Görev (TR)': a.occupation_tr,
-      'Görev (RU)': a.occupation_ru,
-      'Başvurulan (Заявлено)': a.requested_qty,
-      'Onaylanan (Подтверждено)': a.approved_qty,
-      'Alınan İРС': a.legacy_irs_qty,
-      'Yeni Kullanım': (a.opening_new_use || 0) + (a.live_worker_new_use || 0),
-      'Vize Uzatımı': (a.extensions_use || 0) + (a.live_worker_ext_use || 0),
-      'Kalan Kota': a.available_qty,
-      Not: a.notes,
-    }));
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(logRows),
-      '4_Bakanlik_Kota_LOG'
-    );
+    return { columns, rows, grandTotal };
+  }, [filteredAllocations, pivotMode, data?.regionMatrix]);
 
-    XLSX.writeFile(wb, `Pondera_Kota_ve_IRS_Takip_${selectedYear}_${data.todayIso}.xlsx`);
-  };
-
-  const handleImportExcelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Multi-sheet Kota_2026-2027.xlsx uploader & parser
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+    if (!guardWrite('Kota Excel Dosyası Yükleme', 'Загрузка Excel квот')) return;
+
+    setUploadingExcel(true);
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const targetSheetName =
-        wb.SheetNames.find(
-          (n) =>
-            n.toUpperCase().includes('LOG') ||
-            n.toUpperCase().includes('BAKANLIK') ||
-            n.toUpperCase().includes('KOTA')
-        ) || wb.SheetNames[0];
-      const ws = wb.Sheets[targetSheetName];
-      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
-      if (!rows.length) {
-        showNotice('Excel dosyasında aktarılacak satır bulunamadı.', 'err');
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+
+      const findSheet = (candidates: string[]) =>
+        wb.SheetNames.find((sn) =>
+          candidates.some((c) => sn.toLocaleLowerCase('tr-TR') === c.toLocaleLowerCase('tr-TR'))
+        );
+
+      const veriSheetName = findSheet(['Veri']);
+      const dosyalarSheetName = findSheet(['Dosyalar']);
+      const irsSheetName = findSheet(['IRS', 'İRS']);
+
+      if (veriSheetName || irsSheetName) {
+        const sourceFiles: Array<Record<string, any>> = [];
+        if (dosyalarSheetName) {
+          const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[dosyalarSheetName], {
+            header: 1,
+            defval: '',
+          });
+          for (let i = 3; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || !r[0] || !/^\d{2}-D\d+/i.test(String(r[0]).trim())) continue;
+            const dtVal = r[6];
+            const fillDate =
+              dtVal instanceof Date
+                ? `${String(dtVal.getDate()).padStart(2, '0')}.${String(dtVal.getMonth() + 1).padStart(2, '0')}.${dtVal.getFullYear()}`
+                : String(dtVal || '').trim();
+            sourceFiles.push({
+              fileCode: String(r[0]).trim(),
+              year: Number(r[1] || 2026),
+              sourceFilename: String(r[2] || '').trim(),
+              regionLabel: String(r[3] || '').trim(),
+              applicationType: String(r[4] || '').trim(),
+              status: String(r[5] || '').trim(),
+              fillDate,
+              countriesSummary: String(r[7] || '').trim(),
+              rowCount: Number(r[8] || 0),
+              netEffect: Number(r[9] || 0),
+              rawTotal: Number(r[10] || 0),
+            });
+          }
+        }
+
+        const veriRows: Array<Record<string, any>> = [];
+        if (veriSheetName) {
+          const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[veriSheetName], {
+            header: 1,
+            defval: '',
+          });
+          for (let i = 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || !r[0] || !r[1] || Number.isNaN(Number(r[1]))) continue;
+            veriRows.push({
+              fileCode: String(r[0]).trim(),
+              year: Number(r[1]),
+              countryTr: String(r[2] || '').trim(),
+              occupationTr: String(r[3] || '').trim(),
+              region: String(r[4] || '').trim(),
+              status: String(r[5] || '').trim(),
+              applicationType: String(r[6] || '').trim(),
+              netQty: Number(r[7] || 0),
+              countryRu: String(r[8] || '').trim(),
+              occupationRu: String(r[9] || '').trim(),
+              occupationCode: String(r[10] || '').trim(),
+              sourceRow: Number(r[11] || 0),
+              rawQty: Number(r[12] || 0),
+            });
+          }
+        }
+
+        const irsRows: Array<Record<string, any>> = [];
+        if (irsSheetName) {
+          const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[irsSheetName], {
+            header: 1,
+            defval: '',
+          });
+          for (let i = 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r) continue;
+            // Support column offset (either col A or col B has Bolge)
+            const hasLeadingBlank = !r[0] && r[1];
+            const base = hasLeadingBlank ? 1 : 0;
+            const reg = String(r[base] || '').trim();
+            if (!reg || reg.toLocaleLowerCase('tr-TR') === 'bolge' || reg.toLocaleLowerCase('tr-TR') === 'toplam') {
+              continue;
+            }
+            irsRows.push({
+              quotaYear: 2026,
+              region: reg,
+              approvedQuota: Number(r[base + 1] || 0),
+              irs1: Number(r[base + 2] || 0),
+              irs2: Number(r[base + 3] || 0),
+              irs3: Number(r[base + 4] || 0),
+              noteText: String(r[base + 6] || '').trim(),
+            });
+          }
+        }
+
+        const res = await fetch('/api/quotas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'import_kota_workbook',
+            sourceFiles,
+            veriRows,
+            irsRows,
+            replaceExisting: veriRows.length > 0,
+          }),
+        });
+        const json = await res.json();
+        if (json?.success) {
+          showNotice(json.message, 'ok');
+          fetchOverview(selectedYear);
+        } else {
+          showNotice(json?.message || 'Kota Excel yüklenemedi.', 'err');
+        }
         return;
       }
 
-      const normalized = rows.map((r) => ({
-        record_code: r['Kayıt Kodu'] || r['Kayıt ID'] || r['record_code'] || '',
-        year: Number(r['Yıl'] || r['YIL'] || r['year'] || selectedYear || 2026),
-        application_type:
-          r['Başvuru Türü'] || r['TÜR (İlk / Korek.)'] || r['application_type'] || 'ILK BASVURU',
-        migrakvota_status:
-          r['Durum'] || r['DURUM'] || r['migrakvota_status'] || 'TAMAMLANDI',
-        region_code: r['Bölge'] || r['BÖLGE'] || r['region_code'] || 'TATARISTAN',
-        project_name: r['Proje'] || r['PROJE'] || r['project_name'] || '',
-        country_code: String(
-          r['Ülke Kodu (ОКСМ)'] || r['ÜLKE KODU'] || r['country_code'] || '356'
-        ),
-        country_tr: r['Ülke'] || r['ÜLKE (TR)'] || '',
-        occupation_code: String(
-          r['Görev Kodu (ОКПДТР 2025)'] || r['GÖREV KODU'] || r['occupation_code'] || '102660'
-        ),
-        occupation_tr: r['Görev (TR)'] || r['GÖREV (TR)'] || '',
-        requested_qty: Number(
-          r['Başvurulan (Заявлено)'] || r['BAŞVURULAN'] || r['requested_qty'] || 0
-        ),
-        approved_qty: Number(
-          r['Onaylanan (Подтверждено)'] || r['ONAYLANAN'] || r['approved_qty'] || 0
-        ),
-        legacy_irs_qty: Number(r['Alınan İРС'] || r['İРС ALINAN'] || r['legacy_irs_qty'] || 0),
-        opening_new_use: Number(
-          r['Yeni Kullanım'] || r['YENİ KULLANIM'] || r['opening_new_use'] || 0
-        ),
-        extensions_use: Number(
-          r['Vize Uzatımı'] || r['UZATIMLAR'] || r['extensions_use'] || 0
-        ),
-        notes: r['Not'] || r['KOMENT'] || r['notes'] || '',
-      }));
+      // Fallback: flat sheet import
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      const flat = XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, { defval: '' });
+      const mapped = flat
+        .map((r) => ({
+          year: Number(r['Yıl'] || r['YIL'] || r['year'] || 2026),
+          region_code: String(r['Bölge'] || r['BOLGE'] || r['region_code'] || ''),
+          country_tr: String(r['Ülke'] || r['ULKE'] || r['country_tr'] || ''),
+          occupation_code: String(r['ОКПДТР kodu'] || r['GOREV_KODU'] || r['occupation_code'] || ''),
+          occupation_tr: String(r['Görev'] || r['GOREV'] || r['occupation_tr'] || ''),
+          application_type: String(r['Başvuru tipi'] || r['application_type'] || 'Esas başvuru'),
+          migrakvota_status: String(r['Statü'] || r['migrakvota_status'] || 'Onaylı (emir taslağında)'),
+          requested_qty: Number(r['Net etki (+/−)'] ?? r['requested_qty'] ?? 0),
+        }))
+        .filter((r) => r.region_code && r.requested_qty !== 0);
 
       const res = await fetch('/api/quotas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'import_excel_rows', rows: normalized }),
+        body: JSON.stringify({ action: 'import_excel_rows', rows: mapped }),
       });
       const json = await res.json();
       if (json?.success) {
-        showNotice(json.message);
-        fetchOverview();
+        showNotice(json.message, 'ok');
+        fetchOverview(selectedYear);
       } else {
-        showNotice(json?.message || 'Excel aktarımı başarısız.', 'err');
+        showNotice(json?.message || 'Excel satırları aktarılamadı.', 'err');
       }
     } catch {
-      showNotice('Excel dosyası okunamadı.', 'err');
+      showNotice('Excel dosyası okunurken hata oluştu.', 'err');
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setUploadingExcel(false);
+    }
+  };
+
+  // Multi-sheet Excel Export matching Zahid Bey's Kota_2026-2027.xlsx structure
+  const handleExportWorkbook = () => {
+    if (!data) return;
+    const wb = XLSX.utils.book_new();
+
+    const regRows = filteredRegionMatrix.map((r) => ({
+      Bölge: r.regionNameTr,
+      'Bölge (Rusça)': r.regionNameRu,
+      'Esas Başvuru': r.esasQty,
+      'Artırma Düzeltmesi (+)': r.artirmaQty,
+      'Azaltma Düzeltmesi (−)': r.azaltmaQty,
+      'Net Toplam': r.requestedQty,
+      'Onaylı Kota': r.approvedQty,
+      İncelemede: r.inReviewQty,
+      IRS1: r.irs1Qty || '',
+      IRS2: r.irs2Qty || '',
+      IRS3: r.irs3Qty || '',
+      'Toplam Alınan İRS': r.totalIrsReceived,
+      'Kalan Kota (Onaylı - İRS)': r.unallocatedQuotaReserve,
+      'İRS İçi İşçi Alımı (РНР)': r.usedQty,
+      'Kalan İRS Kontenjanı': r.irsRemainingQty,
+      'Sonraki Yıla Devreden İRS': r.carryoverIrsQty,
+      Açıklama: r.regionNote,
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(regRows), 'Bolge_ve_IRS_Ozeti');
+
+    const veriExport = filteredAllocations.map((a) => ({
+      'Dosya No': a.file_code || a.record_code,
+      Yıl: a.year,
+      Ülke: a.country_tr,
+      Görev: a.occupation_tr,
+      Bölge: a.region_code,
+      Statü: a.migrakvota_status,
+      'Başvuru tipi': a.application_type,
+      'Net etki (+/−)': a.requested_qty,
+      'Onaylı Kota': a.approved_qty,
+      'Ülke (Rusça)': a.country_ru,
+      'Görev (Rusça)': a.occupation_ru,
+      'ОКПДТР kodu': a.occupation_code,
+      'Kaynak Dosya': a.source_filename || '',
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(veriExport), 'Veri');
+
+    if (filteredSourceFiles.length > 0) {
+      const dosExport = filteredSourceFiles.map((sf) => ({
+        'Dosya No': sf.file_code,
+        Yıl: sf.year,
+        'Orijinal dosya adı': sf.source_filename,
+        Bölge: sf.region_label,
+        'Başvuru tipi': sf.application_type,
+        Statü: sf.status_text,
+        'Doldurma tarihi': sf.fill_date,
+        Ülkeler: sf.countries_summary,
+        'Satır sayısı': sf.row_count,
+        'Net etki (+/−)': sf.net_effect,
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dosExport), 'Dosyalar');
+    }
+
+    if (filteredWorkers.length > 0) {
+      const wrkExport = filteredWorkers.map((w) => ({
+        'İRS Sertifika No': w.certificate_no,
+        'Sicil No': w.sicil_no,
+        'Ad Soyad': w.full_name,
+        Pasaport: w.passport_no,
+        Ülke: w.country_tr,
+        'ОКПДТР Kodu': w.occupation_code,
+        Görev: w.occupation_tr,
+        Bölge: w.region_code,
+        'Kullanım Türü': w.usage_type === 'visa_extension' ? 'Vize Uzatma' : 'Yeni РНР İşçi Alımı',
+        Durum: w.application_status,
+        'Başvuru Tarihi': w.application_date,
+        'РНР No': w.rnr_number,
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wrkExport), 'Isci_Alimi_RNR');
+    }
+
+    XLSX.writeFile(wb, `Pondera_Kota_ve_IRS_${selectedYear === 'all' ? '2026_2027' : selectedYear}.xlsx`);
+  };
+
+  const handleSaveQuickRegionIrs = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickIrsTarget) return;
+    setSavingQuickIrs(true);
+    try {
+      const yr = selectedYear === 'all' ? 2026 : Number(selectedYear) || 2026;
+      const res = await fetch('/api/quotas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'quick_save_region_irs',
+          quotaYear: yr,
+          regionCode: quickIrsTarget.regionCode,
+          irs1Qty: quickIrsTarget.irs1Qty,
+          irs2Qty: quickIrsTarget.irs2Qty,
+          irs3Qty: quickIrsTarget.irs3Qty,
+          validUntil: quickIrsTarget.validUntil,
+          noteText: quickIrsTarget.noteText,
+        }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        showNotice(json.message, 'ok');
+        setQuickIrsTarget(null);
+        fetchOverview(selectedYear);
+      } else {
+        showNotice(json?.message || 'İRS dilimleri kaydedilemedi.', 'err');
+      }
+    } catch {
+      showNotice('Sunucu bağlantı hatası.', 'err');
+    } finally {
+      setSavingQuickIrs(false);
+    }
+  };
+
+  const handleDeleteCertificate = async (certNo: string) => {
+    if (!guardWrite('İRS Sertifikası Silme', 'Удаление сертификата ИРС')) return;
+    if (!window.confirm(`ИРС № ${certNo} sertifikasını silmek istediğinize emin misiniz?`)) return;
+    const res = await fetch('/api/quotas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete_irs_certificate', certificateNo: certNo }),
+    });
+    const json = await res.json();
+    if (json?.success) {
+      showNotice(json.message, 'ok');
+      fetchOverview(selectedYear);
+    }
+  };
+
+  const handleUpdateWorkerStatus = async (id: number, applicationStatus: string) => {
+    if (!guardWrite('İşçi РНР Durumu Güncelleme', 'Обновление статуса РНР')) return;
+    const res = await fetch('/api/quotas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_worker_application', id, applicationStatus }),
+    });
+    const json = await res.json();
+    if (json?.success) {
+      fetchOverview(selectedYear);
+    }
+  };
+
+  const handleDeleteWorker = async (id: number) => {
+    if (!guardWrite('İşçi РНР Kaydı Silme', 'Удаление записи РНР')) return;
+    if (!window.confirm('Bu çalışan kota başvurusunu silip İRS kontenjanını iade etmek istiyor musunuz?')) {
+      return;
+    }
+    const res = await fetch('/api/quotas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete_worker_application', id }),
+    });
+    const json = await res.json();
+    if (json?.success) {
+      showNotice(json.message, 'ok');
+      fetchOverview(selectedYear);
+    }
+  };
+
+  const handleDeleteAllocation = async (recCode: string) => {
+    if (!guardWrite('Kota Başvuru Satırı Silme', 'Удаление строки квоты')) return;
+    if (!window.confirm(`${recCode} kota satırını silmek istediğinize emin misiniz?`)) return;
+    const res = await fetch('/api/quotas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete_allocation', recordCode: recCode }),
+    });
+    const json = await res.json();
+    if (json?.success) {
+      showNotice(json.message, 'ok');
+      fetchOverview(selectedYear);
     }
   };
 
   return (
-    <div className="space-y-5">
-      {/* Top Hero Header & Primary Actions */}
-      <div className="bg-gradient-to-r from-[#1A363E] via-[#1E444E] to-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl border border-teal-800/40">
+    <div className="p-4 sm:p-6 max-w-[1600px] mx-auto space-y-5">
+      {/* Hidden Excel File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls,.xlsm"
+        onChange={handleExcelUpload}
+        className="hidden"
+      />
+
+      {/* TOP HEADER & YEAR SWITCHER + ACTION BUTTONS */}
+      <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-400/30 text-teal-200 text-xs">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
-              <span>
-                Минтруд РФ (migrakvota.gov.ru) • МВД ИРС (РНП) • ОКПДТР 2025 & ОКСМ Resmi Kod Sistemi
-              </span>
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-700 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <Briefcase className="w-5 h-5" />
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
-              Çalışma Kotaları & ИРС (РНП) Sertifika Takip Merkezi
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-200/90 max-w-4xl">
-              Onaylanan kotaları tek seferde harcamak yerine ihtiyaç oldukça parçalı{' '}
-              <strong className="text-emerald-300">ИРС (РНП) sertifikalarına</strong> (Örn:{' '}
-              <span className="underline decoration-emerald-400">№ 2600030066 — 160 Kişi</span>)
-              dönüştürün, geçerlilik süresini bir sonraki yılın ilk çeyreğine kaydırın ve her yeni
-              çalışan başvurusunu sertifika numarası üzerinden anlık takip edin.
-            </p>
-          </div>
-
-          {/* Primary Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setWorkerModalCertNo(activeCertificateForMatrix?.certificate_no);
-                setWorkerModalOpen(true);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold text-xs shadow-lg shadow-emerald-950/30 transition cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>+ Çalışan İРС Başvurusu Gir</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setEditingCert(null);
-                setCertModalOpen(true);
-              }}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-medium transition cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 text-teal-300" />
-              <span>+ ИРС (РНП) Sertifikası Tanımla</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setEditingAlloc(null);
-                setAllocModalOpen(true);
-              }}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-medium transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4 text-sky-300" />
-              <span>+ Kota Başvurusu</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setAlertModalOpen(true)}
-              className="relative inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 text-xs font-medium transition cursor-pointer"
-            >
-              <Bell className="w-4 h-4 text-amber-300" />
-              <span>Bildirim Ayarları</span>
-              {(data?.criticalAlerts?.length || 0) > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-bold">
-                  {data?.criticalAlerts.length}
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                  Yabancı Çalışan Kota & Parçalı İRS (РНП) Takip Merkezi
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-teal-50 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                  Kota_2026-2027 • Canlı
                 </span>
-              )}
-            </button>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                1) Yıllık Kota Başvurusu & Düzeltmeler (+/−) <ArrowRight className="inline w-3 h-3 mx-0.5" /> 2) Bakanlık Onayı <ArrowRight className="inline w-3 h-3 mx-0.5" /> 3) Onaylı Kotadan Parçalı İRS (IRS1, IRS2, IRS3) Çekimi <ArrowRight className="inline w-3 h-3 mx-0.5" /> 4) İşçi Alımı (РНР) & Sonraki Yıla Devir
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Filter Bar inside Hero */}
-        <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+          {/* Year Selector + Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Year pills */}
-            <div className="inline-flex items-center bg-slate-950/40 p-1 rounded-xl border border-white/10">
-              {['2026', '2027', 'all'].map((yr) => (
+            {/* Year Pills */}
+            <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700">
+              {[
+                { id: '2026', label: '2026 Kotaları' },
+                { id: '2027', label: '2027 Kotaları' },
+                { id: 'all', label: '2026 + 2027 (Tümü)' },
+              ].map((yOpt) => (
                 <button
-                  key={yr}
+                  key={yOpt.id}
                   type="button"
-                  onClick={() => setSelectedYear(yr)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
-                    selectedYear === yr
-                      ? 'bg-teal-500 text-slate-950 font-semibold shadow-xs'
-                      : 'text-slate-300 hover:text-white'
+                  onClick={() => {
+                    setSelectedYear(yOpt.id);
+                    setFileCodeFilter('ALL');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedYear === yOpt.id
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  {yr === 'all' ? 'Tüm Yıllar (2026+2027)' : `${yr} Kotası`}
+                  {yOpt.label}
                 </button>
               ))}
             </div>
 
-            {/* Region Filter */}
-            <select
-              value={regionFilter}
-              onChange={(e) => {
-                setRegionFilter(e.target.value);
-                setProjectFilter('ALL');
+            <button
+              type="button"
+              disabled={uploadingExcel}
+              onClick={() => {
+                if (!guardWrite('Kota_2026-2027 Excel Yükleme', 'Загрузка Excel квот')) return;
+                fileInputRef.current?.click();
               }}
-              className="px-3 py-1.5 rounded-xl bg-slate-950/40 border border-white/15 text-xs text-white"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-300 dark:border-indigo-500/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 text-xs font-semibold cursor-pointer transition-all"
             >
-              <option value="ALL" className="text-slate-900">
-                Tüm Bölgeler (8 Субъект РФ)
-              </option>
-              {references.regions.map((r) => (
-                <option key={r.code} value={r.code} className="text-slate-900">
-                  {r.code} — {r.nameRu}
-                </option>
-              ))}
-            </select>
-
-            {/* Project Filter */}
-            <select
-              value={projectFilter}
-              onChange={(e) => setProjectFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-slate-950/40 border border-white/15 text-xs text-white"
-            >
-              <option value="ALL" className="text-slate-900">
-                Tüm Şantiyeler / Projeler
-              </option>
-              {availableProjects.map((p) => (
-                <option key={p} value={p} className="text-slate-900">
-                  {p}
-                </option>
-              ))}
-            </select>
-
-            {/* Country Filter */}
-            <select
-              value={countryFilter}
-              onChange={(e) => setCountryFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-slate-950/40 border border-white/15 text-xs text-white"
-            >
-              <option value="ALL" className="text-slate-900">
-                Tüm Ülkeler (ОКСМ)
-              </option>
-              <option value="356" className="text-slate-900">
-                356 — HİNDİSTAN (ИНДИЯ)
-              </option>
-              <option value="795" className="text-slate-900">
-                795 — TÜRKMENİSTAN (ТУРКМЕНИЯ)
-              </option>
-              <option value="792" className="text-slate-900">
-                792 — TÜRKİYE (ТУРЦИЯ)
-              </option>
-              <option value="050" className="text-slate-900">
-                050 — BANGLADEŞ
-              </option>
-              <option value="360" className="text-slate-900">
-                360 — ENDONEZYA
-              </option>
-              <option value="608" className="text-slate-900">
-                608 — FİLİPİNLER
-              </option>
-            </select>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-300 absolute left-3 top-2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="İРС No, Görev Kodu (102660), FIO, Sicil ara..."
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/40 border border-white/15 text-xs text-white placeholder:text-slate-400 w-60"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs text-white border border-white/15 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Excel İndir</span>
-            </button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xlsm,.xls"
-              onChange={handleImportExcelFile}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs text-white border border-white/15 cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Excel Yükle</span>
+              {uploadingExcel ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-700 dark:text-indigo-300" />
+              ) : (
+                <Upload className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
+              )}
+              <span>Kota Excel Yükle (.xlsx)</span>
             </button>
 
             <button
               type="button"
-              onClick={() => fetchOverview()}
-              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 cursor-pointer"
-              title="Yenile"
+              onClick={handleExportWorkbook}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 text-xs font-semibold cursor-pointer transition-all"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <Download className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
+              <span>Rapor İndir (.xlsx)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!guardWrite('Yeni Parçalı İRS (РНП) Ekleme', 'Добавление сертификата ИРС')) return;
+                setEditingCert(null);
+                setCertDefaultRegion(regionFilter !== 'ALL' ? regionFilter : 'LENINGRADSKAYA');
+                setCertModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold cursor-pointer shadow-xs transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Parçalı İRS Ekle</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!guardWrite('İRS Üzerinden İşçi Alımı (РНР) Kaydı', 'Привязка работника к ИРС')) return;
+                setWorkerModalCertNo(filteredCertificates[0]?.certificate_no);
+                setWorkerModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-cyan-300 dark:border-cyan-500/40 bg-cyan-100/85 hover:bg-cyan-200/80 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-950 dark:text-cyan-100 text-xs font-semibold cursor-pointer transition-all"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-cyan-700 dark:text-cyan-300" />
+              <span>+ İşçi Alımı (РНР)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!guardWrite('Bakanlık Kota Başvurusu Ekleme', 'Добавление заявки на квоту')) return;
+                setEditingAlloc(null);
+                setAllocModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold cursor-pointer transition-all"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>+ Kota Satırı</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!guardWrite('Kritik Kota Alarm Ayarları', 'Настройки оповещений квот')) return;
+                setAlertModalOpen(true);
+              }}
+              className="p-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 hover:bg-amber-100 cursor-pointer"
+              title="Kritik Kota & İRS Alarm Ayarları"
+            >
+              <Bell className="w-4 h-4" />
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Feedback Banner */}
-      {bannerMsg && (
-        <div
-          className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between ${
-            bannerMsg.type === 'ok'
-              ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-              : 'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
-          }`}
-        >
-          <span>{bannerMsg.text}</span>
-          <button
-            type="button"
-            onClick={() => setBannerMsg(null)}
-            className="text-[11px] underline cursor-pointer"
+        {/* Banner Notice */}
+        {bannerMsg && (
+          <div
+            className={`px-4 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between border ${
+              bannerMsg.type === 'ok'
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                : 'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+            }`}
           >
-            Kapat
-          </button>
-        </div>
-      )}
+            <span>{bannerMsg.text}</span>
+            <button
+              type="button"
+              onClick={() => setBannerMsg(null)}
+              className="p-1 hover:opacity-75 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
-      {/* 6 Executive KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
-        <div className="bg-white dark:bg-[#131C31] p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>1. Başvurulan Kota (Заявлено)</span>
-            <FileSpreadsheet className="w-4 h-4 text-slate-400" />
-          </div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5">
-            {filteredKpis.requestedTotal.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Gönderilen:{' '}
-            <strong className="text-slate-700 dark:text-slate-200">
-              {filteredKpis.submittedTotal.toLocaleString('tr-TR')}
-            </strong>{' '}
-            • Planlanan: {filteredKpis.plannedTotal.toLocaleString('tr-TR')}
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#131C31] p-4 rounded-2xl border border-teal-200/80 dark:border-teal-900/60 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-teal-700 dark:text-teal-300">
-            <span>2. Onaylanan Kota (Подтверждено)</span>
-            <CheckCircle2 className="w-4 h-4 text-teal-600" />
-          </div>
-          <div className="text-2xl font-bold text-teal-700 dark:text-teal-300 mt-1.5">
-            {filteredKpis.approvedTotal.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Минтруд РФ Приказ Onay Oranı:{' '}
-            <strong>
-              {filteredKpis.submittedTotal > 0
-                ? `%${Math.round((filteredKpis.approvedTotal / filteredKpis.submittedTotal) * 100)}`
-                : '%0'}
-            </strong>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#131C31] p-4 rounded-2xl border border-indigo-200/80 dark:border-indigo-900/60 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-indigo-700 dark:text-indigo-300">
-            <span>3. Alınan ИРС (РНП) Dilimleri</span>
-            <ShieldCheck className="w-4 h-4 text-indigo-600" />
-          </div>
-          <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mt-1.5">
-            {filteredKpis.irsReceivedTotal.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Aktif Sertifika: <strong>{data?.certificates.length || 0} Adet</strong> (Harca tabi
-            dilim)
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#131C31] p-4 rounded-2xl border border-amber-200/80 dark:border-amber-900/60 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
-            <span>4. Sonraya Saklanan Kota</span>
-            <Clock className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="text-2xl font-bold text-amber-600 dark:text-amber-300 mt-1.5">
-            {filteredKpis.unallocatedReserveTotal.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Onaylanan − Alınan İРС (Sonraki dilimler için yedek)
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#131C31] p-4 rounded-2xl border border-sky-200/80 dark:border-sky-900/60 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-sky-700 dark:text-sky-300">
-            <span>5. Kullanılan Kota (Toplam)</span>
-            <Briefcase className="w-4 h-4 text-sky-600" />
-          </div>
-          <div className="text-2xl font-bold text-sky-700 dark:text-sky-300 mt-1.5">
-            {filteredKpis.usedTotal.toLocaleString('tr-TR')}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Yeni РНР: <strong>{filteredKpis.newUseTotal.toLocaleString('tr-TR')}</strong> • Vize
-            Uzatımı: <strong>{filteredKpis.extensionsTotal.toLocaleString('tr-TR')}</strong>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#131C31] p-4 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-300">
-            <span>6. Kalan Boş İРС / Kota</span>
-            <Award className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1.5">
-            {filteredKpis.irsRemainingTotal.toLocaleString('tr-TR')}{' '}
-            <span className="text-xs font-normal text-slate-500">
-              / {filteredKpis.availableTotal.toLocaleString('tr-TR')}
-            </span>
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Hazır İРС Kalan: <strong>{filteredKpis.irsRemainingTotal}</strong> • Toplam Kalan:{' '}
-            <strong>{filteredKpis.availableTotal.toLocaleString('tr-TR')}</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* Critical Low-Quota Banner (Only shown when items breach threshold) */}
-      {data && data.criticalAlerts.length > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-800/70 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
-                Kritik Kota & ИРС Kontenjan Azaldı Uyarısı ({data.criticalAlerts.length} Kalem Eşik
-                Altında)
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {data.criticalAlerts.slice(0, 5).map((al) => (
-                  <span
-                    key={al.key}
-                    className={`px-2.5 py-0.5 rounded-lg text-[11px] font-medium border ${
-                      al.severity === 'critical'
-                        ? 'bg-rose-100 dark:bg-rose-950/70 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200'
-                        : 'bg-amber-100 dark:bg-amber-900/50 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
-                    }`}
-                  >
-                    {al.titleTr}
+        {/* 6 LIFECYCLE KPI CARDS */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {/* Card 1: Net Kota Başvurusu */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+            <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              1. NET KOTA BAŞVURUSU
+            </div>
+            <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
+              {fmtNum(activeKpis.requestedTotal)}
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1 text-[10px] text-slate-600 dark:text-slate-400">
+              <span>Esas: {fmtNum(activeKpis.esasTotal)}</span>
+              <span>•</span>
+              <span className="text-emerald-700 dark:text-emerald-400">
+                {fmtSigned(activeKpis.artirmaTotal)}
+              </span>
+              {activeKpis.azaltmaTotal !== 0 && (
+                <>
+                  <span>•</span>
+                  <span className="text-rose-600 dark:text-rose-400">
+                    {fmtSigned(activeKpis.azaltmaTotal)}
                   </span>
-                ))}
-                {data.criticalAlerts.length > 5 && (
-                  <span className="text-[11px] text-amber-700 dark:text-amber-300 self-center">
-                    +{data.criticalAlerts.length - 5} diğer kalem
-                  </span>
-                )}
-              </div>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              disabled={sendingAlertNow}
-              onClick={handleTriggerAlertNow}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium cursor-pointer disabled:opacity-50"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>{sendingAlertNow ? 'Gönderiliyor...' : 'Telegram & E-Posta Gönder'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setAlertModalOpen(true)}
-              className="px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 text-xs text-amber-900 dark:text-amber-200 hover:bg-amber-100/60 dark:hover:bg-amber-900/30 cursor-pointer"
-            >
-              Eşikleri Ayarla
-            </button>
+          {/* Card 2: Onaylanan Kota vs İncelemede */}
+          <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60">
+            <div className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+              2. ONAYLI KOTA (EMİRDE)
+            </div>
+            <div className="text-xl font-bold text-emerald-900 dark:text-emerald-200 mt-1">
+              {fmtNum(activeKpis.approvedTotal)}
+            </div>
+            <div className="mt-1.5 text-[10.5px] font-medium text-amber-700 dark:text-amber-300">
+              ⏳ İncelemede: {fmtSigned(activeKpis.inReviewTotal)} kişi
+            </div>
+          </div>
+
+          {/* Card 3: Parçalı Alınan İRS */}
+          <div className="p-3.5 rounded-2xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/60">
+            <div className="text-[11px] font-semibold text-teal-800 dark:text-teal-300">
+              3. ALINAN PARÇALI İRS
+            </div>
+            <div className="text-xl font-bold text-teal-900 dark:text-teal-200 mt-1">
+              {fmtNum(activeKpis.irsReceivedTotal)}
+            </div>
+            <div className="mt-1.5 text-[10px] text-teal-700 dark:text-teal-300/90">
+              IRS1: {fmtNum(activeKpis.irs1Total)} • IRS2: {fmtNum(activeKpis.irs2Total)} • IRS3:{' '}
+              {fmtNum(activeKpis.irs3Total)}
+            </div>
+          </div>
+
+          {/* Card 4: Kalan Onaylı Kota (Onaylı - İRS) */}
+          <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/60">
+            <div className="text-[11px] font-semibold text-indigo-800 dark:text-indigo-300">
+              4. KALAN ONAYLI KOTA
+            </div>
+            <div className="text-xl font-bold text-indigo-900 dark:text-indigo-200 mt-1">
+              {fmtNum(activeKpis.unallocatedReserveTotal)}
+            </div>
+            <div className="mt-1.5 text-[10px] text-indigo-700 dark:text-indigo-300/90">
+              Onaylı ({fmtNum(activeKpis.approvedTotal)}) − İRS ({fmtNum(activeKpis.irsReceivedTotal)})
+            </div>
+          </div>
+
+          {/* Card 5: İRS İçi İşçi Alımı (РНР) */}
+          <div className="p-3.5 rounded-2xl bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200/80 dark:border-cyan-800/60">
+            <div className="text-[11px] font-semibold text-cyan-800 dark:text-cyan-300">
+              5. İRS İŞÇİ ALIMI (РНР)
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-xl font-bold text-cyan-900 dark:text-cyan-200">
+                {fmtNum(activeKpis.usedTotal)}
+              </span>
+              <span className="text-[11px] text-cyan-700 dark:text-cyan-400">
+                / Boş İRS: {fmtNum(activeKpis.irsRemainingTotal)}
+              </span>
+            </div>
+            <div className="mt-1.5 text-[10px] text-cyan-700 dark:text-cyan-300/90">
+              Yeni РНР: {fmtNum(activeKpis.newUseTotal)} • Uzatma: {fmtNum(activeKpis.extensionsTotal)}
+            </div>
+          </div>
+
+          {/* Card 6: Sonraki Yıla Devreden İRS */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60">
+            <div className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+              6. SONRAKİ YILA DEVİR İRS
+            </div>
+            <div className="text-xl font-bold text-amber-900 dark:text-amber-200 mt-1">
+              {fmtNum(activeKpis.carryoverIrsTotal)}
+            </div>
+            <div className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-300/90">
+              Yıl sonu yanmadan devreden İRS bakiyesi
+            </div>
           </div>
         </div>
-      )}
 
-      {/* 5 Sub-Tabs Navigation */}
-      <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-[#131C31] p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+        {/* FILTER BAR */}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mr-1">
+            <Filter className="w-3.5 h-3.5" />
+            <span>Filtreler:</span>
+          </div>
+
+          <select
+            value={regionFilter}
+            onChange={(e) => setRegionFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+          >
+            <option value="ALL">Tüm Bölgeler (Субъекты РФ)</option>
+            {(data?.regionMatrix || []).map((rm) => (
+              <option key={rm.regionCode} value={rm.regionCode}>
+                {rm.regionNameTr} ({fmtNum(rm.requestedQty)})
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+          >
+            <option value="ALL">Tüm Statüler (Onaylı + İncelemede)</option>
+            <option value="APPROVED">Sadece Onaylı (Emir Taslağında)</option>
+            <option value="IN_REVIEW">Sadece İncelemede (На рассмотрении)</option>
+          </select>
+
+          <select
+            value={countryFilter}
+            onChange={(e) => setCountryFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+          >
+            <option value="ALL">Tüm Ülkeler (ОКСМ)</option>
+            {references.countries.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.nameTr} ({c.code})
+              </option>
+            ))}
+          </select>
+
+          <div className="relative flex-1 min-w-[210px]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Bölge, görev, ОКПДТР kodu, dosya no (26-D1), İRS veya çalışan ara..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+            />
+          </div>
+
+          {(regionFilter !== 'ALL' ||
+            statusFilter !== 'ALL' ||
+            countryFilter !== 'ALL' ||
+            fileCodeFilter !== 'ALL' ||
+            searchQuery) && (
+            <button
+              type="button"
+              onClick={() => {
+                setRegionFilter('ALL');
+                setStatusFilter('ALL');
+                setCountryFilter('ALL');
+                setFileCodeFilter('ALL');
+                setSearchQuery('');
+              }}
+              className="px-2.5 py-1.5 rounded-xl text-xs bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 cursor-pointer"
+            >
+              Filtreyi Temizle
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* SUB-TABS NAVIGATION */}
+      <div className="flex flex-wrap items-center gap-1.5 bg-white dark:bg-[#111827] p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
         {[
           {
-            id: 'zahid_matrix' as SubTabId,
-            label: '1. Zahid Şef 3’lü Kota & ИРС (РНП) Takip Tablosu',
-            icon: Layers,
-            badge: '3 Tablo Birlikte',
+            id: 'region_irs' as SubTabId,
+            label: '1. Bölge, Statü & Parçalı İRS Özeti',
+            badge: `${filteredRegionMatrix.length} Bölge`,
+            icon: Building2,
+          },
+          {
+            id: 'ozet_pivot' as SubTabId,
+            label: '2. Özet Matris (Ülke & Bölge × Görev)',
+            badge: fmtNum(pivotTable.grandTotal),
+            icon: Globe2,
           },
           {
             id: 'certificates' as SubTabId,
-            label: '2. ИРС (РНП) Sertifikaları & Dönem Kaydırma',
+            label: '3. İRS Sertifikaları & Yıl Devri',
+            badge: `${filteredCertificates.length} Dilim`,
             icon: ShieldCheck,
-            badge: `${filteredCertificates.length} Sertifika`,
           },
           {
             id: 'workers' as SubTabId,
-            label: '3. Çalışan İРС Başvuruları',
-            icon: UserPlus,
+            label: '4. İRS İşçi Alımı (РНР)',
             badge: `${filteredWorkers.length} Kişi`,
+            icon: UserPlus,
           },
           {
-            id: 'allocations' as SubTabId,
-            label: '4. Bakanlık Kota Kayıtları (migrakvota.gov.ru)',
-            icon: FileSpreadsheet,
-            badge: `${filteredAllocations.length} Kayıt`,
+            id: 'files_veri' as SubTabId,
+            label: '5. Kaynak Dosyalar (26-D / 27-D) & Veri',
+            badge: `${filteredAllocations.length} Satır`,
+            icon: Layers,
           },
           {
             id: 'codes_guide' as SubTabId,
-            label: '5. ОКПДТР 2025 Görev & ОКСМ Ülke Kodları Rehberi',
+            label: '6. ОКПДТР / ОКСМ Rehberi',
+            badge: 'Sözlük',
             icon: BookOpen,
-            badge: '211 Görev • 239 Ülke',
           },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1070,10 +1209,10 @@ export function QuotaTrackingView() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 active
-                  ? 'bg-[#1A363E] text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  ? 'bg-teal-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -1081,8 +1220,8 @@ export function QuotaTrackingView() {
               <span
                 className={`px-1.5 py-0.5 rounded-md text-[10px] ${
                   active
-                    ? 'bg-teal-400/20 text-teal-200'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                 }`}
               >
                 {tab.badge}
@@ -1092,395 +1231,563 @@ export function QuotaTrackingView() {
         })}
       </div>
 
-      {/* ==========================================================================
-          TAB 1: ZAHİD ŞEF 3'LÜ KOTA & ИРС (РНП) MATRİSİ (3 LINKED TABLES)
-          ========================================================================== */}
-      {activeTab === 'zahid_matrix' && (
-        <div className="space-y-5">
-          {/* TABLE 1: ÜST KOTA HAVUZU & PARÇALI ИРС(РНП) DİLİMLERİ */}
-          <div className="bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-lg bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-[11px] font-bold">
-                    1. TABLO
-                  </span>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Üst Kota Havuzu & Parçalı ИРС (РНП) Sertifika Dilimleri (Заявлено → Подтверждено
-                    → ИРС(РНП)1..n)
-                  </h3>
+      {/* LOADING STATE */}
+      {loading ? (
+        <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center text-xs text-slate-500">
+          Kota ve parçalı İRS verileri yükleniyor...
+        </div>
+      ) : (
+        <>
+          {/* ========================================================================
+              TAB 1: BÖLGE, STATÜ & PARÇALI İRS ÖZETİ (Bölge-Statü + IRS Sheet)
+              ======================================================================== */}
+          {activeTab === 'region_irs' && (
+            <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Bölge Bazlı Kota Onay Durumu & Parçalı İRS (IRS1 / IRS2 / IRS3) Dağılımı
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Onaylanan kota tavanından yıl içinde parçalı alınan İRS dilimleri, kalan onaylı kota ve bölge açıklamaları (Örn: Ust-Luga İRS girişi için satırdaki Düzenle butonuna tıklayın).
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Onaylanan kota (Örn: Murmansk 2.000 başvuru → 1.351 onay) tek seferde harcanmaz;
-                  ihtiyaç oldukça parçalı <strong>ИРС(РНП)</strong> sertifikası alınır, kalan kota
-                  sonraki dönemler veya gelecek yılın ilk çeyreği için saklanır.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingCert(null);
-                  setCertModalOpen(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs font-medium cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Yeni ИРС(РНП) Dilimi Ekle
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#1A363E] text-white">
-                    <th className="py-2.5 px-3 font-semibold">Bölge (Субъект РФ) / Proje</th>
-                    <th className="py-2.5 px-3 text-right font-semibold">
-                      <div>Заявлено</div>
-                      <div className="text-[10px] font-normal text-teal-200">
-                        Отправлено к рассмотрению
-                      </div>
-                    </th>
-                    <th className="py-2.5 px-3 text-right font-semibold">
-                      <div>Подтверждено</div>
-                      <div className="text-[10px] font-normal text-teal-200">
-                        Включена в приказ
-                      </div>
-                    </th>
-                    <th className="py-2.5 px-3 text-center font-semibold">ИРС(РНП)1</th>
-                    <th className="py-2.5 px-3 text-center font-semibold">ИРС(РНП)2</th>
-                    <th className="py-2.5 px-3 text-center font-semibold">ИРС(РНП)3</th>
-                    <th className="py-2.5 px-3 text-center font-semibold">ИРС(РНП)4+ / Mevcut</th>
-                    <th className="py-2.5 px-3 text-right font-semibold">Kullanılan Kota</th>
-                    <th className="py-2.5 px-3 text-right font-semibold">Kalan İРС</th>
-                    <th className="py-2.5 px-3 text-right font-semibold">
-                      <div>Saklanan / Kalan Kota</div>
-                      <div className="text-[10px] font-normal text-amber-200">
-                        Onaylanan − ∑ИРС
-                      </div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredRegionMatrix.map((r) => {
-                    const t1 = r.irsTranches[0];
-                    const t2 = r.irsTranches[1];
-                    const t3 = r.irsTranches[2];
-                    const restCertQty = r.irsTranches
-                      .slice(3)
-                      .reduce((s, x) => s + x.allocatedQty, 0);
-                    return (
-                      <tr
-                        key={r.regionCode}
-                        className="hover:bg-slate-50/90 dark:hover:bg-slate-800/40 transition"
-                      >
-                        <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-900 dark:text-white">
-                            {r.regionCode}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {r.projects.join(', ') || r.regionNameRu}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-slate-800 dark:text-slate-200">
-                          <div>{r.requestedQty.toLocaleString('tr-TR')}</div>
-                          {r.plannedQty > 0 && (
-                            <div className="text-[10px] text-amber-600">
-                              ({r.submittedQty} gönderildi + {r.plannedQty} plan)
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-teal-700 dark:text-teal-300">
-                          {r.approvedQty.toLocaleString('tr-TR')}
-                        </td>
-
-                        {[t1, t2, t3].map((tr, idx) => (
-                          <td key={idx} className="py-2.5 px-3 text-center">
-                            {tr ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedCertNo(tr.certificateNo)}
-                                className={`inline-flex flex-col items-center px-2.5 py-1 rounded-xl border text-[11px] transition cursor-pointer ${
-                                  selectedCertNo === tr.certificateNo
-                                    ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                                    : 'bg-teal-50/70 dark:bg-teal-950/50 border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 hover:bg-teal-100'
-                                }`}
-                              >
-                                <span className="font-bold">{tr.allocatedQty}</span>
-                                <span className="text-[10px] opacity-85">№ {tr.certificateNo}</span>
-                                {tr.isCrossYear && (
-                                  <span className="text-[9px] px-1 rounded bg-amber-400/30 text-amber-900 dark:text-amber-200 font-semibold">
-                                    → {tr.validUntil.slice(0, 4)} Q1
-                                  </span>
-                                )}
-                              </button>
-                            ) : (
-                              <span className="text-slate-300 dark:text-slate-700">—</span>
-                            )}
-                          </td>
-                        ))}
-
-                        <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300">
-                          {restCertQty + r.legacyIrsQty > 0 ? (
-                            <span className="font-medium">
-                              {(restCertQty + r.legacyIrsQty).toLocaleString('tr-TR')}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300 dark:text-slate-700">—</span>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-3 text-right font-semibold text-sky-700 dark:text-sky-300">
-                          {r.usedQty.toLocaleString('tr-TR')}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                          {r.irsRemainingQty.toLocaleString('tr-TR')}
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <span className="px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-bold border border-amber-200/70 dark:border-amber-800/60">
-                            {r.unallocatedQuotaReserve.toLocaleString('tr-TR')}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* TABLE 2 & TABLE 3 SIDE BY SIDE (OR STACKED ON SMALL SCREENS) */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-            {/* TABLE 2: SEÇİLİ ИРС(РНП) SERTİFİKASI GÖREV KODU DAĞILIMI (COUNTIFS) */}
-            <div className="xl:col-span-5 bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
-              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">
-                      2. TABLO
-                    </span>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Görev Kodu Bazlı İРС Kullanımı (COUNTIFS)
-                    </h3>
-                  </div>
-
-                  {activeCertificateForMatrix && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingCert(activeCertificateForMatrix);
-                        setCertModalOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:underline cursor-pointer"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" /> Sertifikayı Düzenle
-                    </button>
-                  )}
-                </div>
-
-                {/* Certificate Selector Bar */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={activeCertificateForMatrix?.certificate_no || ''}
-                    onChange={(e) => setSelectedCertNo(e.target.value)}
-                    className="flex-1 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white"
-                  >
-                    {(data?.certificates || []).map((c) => (
-                      <option key={c.certificate_no} value={c.certificate_no}>
-                        ИРС № {c.certificate_no} ({c.tranche_label}) — {c.region_code} /{' '}
-                        {c.project_name} ({c.total_allocated_qty} Kişi)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {activeCertificateForMatrix && (
-                  <div className="p-2.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/70 dark:border-teal-800/60 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                    <div>
-                      <span className="text-slate-500 dark:text-slate-400">Sertifika No:</span>{' '}
-                      <strong className="text-teal-800 dark:text-teal-200">
-                        № {activeCertificateForMatrix.certificate_no}
-                      </strong>{' '}
-                      • <span className="text-slate-500">Geçerlilik:</span>{' '}
-                      <strong>
-                        {activeCertificateForMatrix.valid_from} →{' '}
-                        {activeCertificateForMatrix.valid_until}
-                      </strong>
-                    </div>
-                    {activeCertificateForMatrix.is_cross_year_carryover && (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-semibold">
-                        2027 Q1 Dönem Kaydırma Aktif
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
 
-              <div className="overflow-x-auto flex-1">
+              <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-[#1A363E] text-white">
-                      <th className="py-2.5 px-3 font-semibold">Görev (ОКПДТР 2025 Kodu)</th>
-                      <th className="py-2.5 px-3 text-right font-semibold">IRS</th>
-                      <th className="py-2.5 px-3 text-right font-semibold">Kullanıldı</th>
-                      <th className="py-2.5 px-3 text-right font-semibold">Kalan</th>
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                      <th className="py-3 px-3">Bölge / Şantiye</th>
+                      <th className="py-3 px-2.5 text-right">Esas</th>
+                      <th className="py-3 px-2.5 text-right">Artırma (+)</th>
+                      <th className="py-3 px-2.5 text-right">Azaltma (−)</th>
+                      <th className="py-3 px-2.5 text-right">Net Toplam</th>
+                      <th className="py-3 px-2.5 text-right bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300">
+                        Onaylı Kota
+                      </th>
+                      <th className="py-3 px-2.5 text-right text-amber-700 dark:text-amber-300">
+                        İncelemede
+                      </th>
+                      <th className="py-3 px-2 text-right bg-teal-50/50 dark:bg-teal-950/20">IRS1</th>
+                      <th className="py-3 px-2 text-right bg-teal-50/50 dark:bg-teal-950/20">IRS2</th>
+                      <th className="py-3 px-2 text-right bg-teal-50/50 dark:bg-teal-950/20">IRS3</th>
+                      <th className="py-3 px-2.5 text-right bg-teal-50/80 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300">
+                        Alınan İRS
+                      </th>
+                      <th className="py-3 px-2.5 text-right bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300">
+                        Kalan Kota
+                      </th>
+                      <th className="py-3 px-2.5 text-right">İşçi Alımı (РНР)</th>
+                      <th className="py-3 px-3">Açıklama / Durum Notu</th>
+                      <th className="py-3 px-3 text-right">İşlem</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {(activeCertificateForMatrix?.lines || []).map((ln) => (
+                    {filteredRegionMatrix.map((r) => (
                       <tr
-                        key={ln.id}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+                        key={r.regionCode}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
                       >
-                        <td className="py-2.5 px-3">
-                          <div className="font-semibold text-slate-900 dark:text-white">
-                            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-300 font-mono mr-1.5">
-                              {ln.occupation_code}
+                        <td className="py-3 px-3">
+                          <div className="font-bold text-slate-900 dark:text-white">
+                            {r.regionNameTr}
+                          </div>
+                          <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                            {r.regionNameRu}
+                          </div>
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono text-slate-700 dark:text-slate-300">
+                          {r.esasQty ? fmtNum(r.esasQty) : '—'}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                          {r.artirmaQty ? fmtSigned(r.artirmaQty) : '—'}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono text-rose-600 dark:text-rose-400">
+                          {r.azaltmaQty ? fmtSigned(r.azaltmaQty) : '—'}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                          {fmtNum(r.requestedQty)}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono font-bold bg-emerald-50/40 dark:bg-emerald-950/15 text-emerald-800 dark:text-emerald-300">
+                          {fmtNum(r.approvedQty)}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono text-amber-700 dark:text-amber-300">
+                          {r.inReviewQty !== 0 ? fmtSigned(r.inReviewQty) : '0'}
+                        </td>
+                        <td className="py-3 px-2 text-right font-mono bg-teal-50/30 dark:bg-teal-950/10 text-teal-800 dark:text-teal-300">
+                          {r.irs1Qty ? fmtNum(r.irs1Qty) : '—'}
+                        </td>
+                        <td className="py-3 px-2 text-right font-mono bg-teal-50/30 dark:bg-teal-950/10 text-teal-800 dark:text-teal-300">
+                          {r.irs2Qty ? fmtNum(r.irs2Qty) : '—'}
+                        </td>
+                        <td className="py-3 px-2 text-right font-mono bg-teal-50/30 dark:bg-teal-950/10 text-teal-800 dark:text-teal-300">
+                          {r.irs3Qty ? fmtNum(r.irs3Qty) : '—'}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono font-bold bg-teal-50/50 dark:bg-teal-950/25 text-teal-900 dark:text-teal-200">
+                          {r.totalIrsReceived ? fmtNum(r.totalIrsReceived) : '—'}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono font-bold bg-indigo-50/40 dark:bg-indigo-950/15 text-indigo-800 dark:text-indigo-300">
+                          {fmtNum(r.unallocatedQuotaReserve)}
+                        </td>
+                        <td className="py-3 px-2.5 text-right font-mono">
+                          {r.usedQty > 0 ? (
+                            <span className="px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 font-semibold">
+                              {fmtNum(r.usedQty)} / {fmtNum(r.totalIrsReceived)}
                             </span>
-                            {ln.occupation_tr}
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">
-                            {ln.occupation_ru}
-                            {ln.country_code ? ` • Ülke: ${ln.country_code} (${ln.country_tr})` : ''}
-                          </div>
+                          ) : (
+                            <span className="text-slate-400">0</span>
+                          )}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-slate-800 dark:text-slate-200">
-                          {ln.allocated_qty}
+                        <td className="py-3 px-3 max-w-[260px]">
+                          {r.regionNote ? (
+                            <span className="inline-block px-2 py-1 rounded-lg bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/60 text-[11px] text-amber-900 dark:text-amber-200">
+                              {r.regionNote}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">—</span>
+                          )}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-sky-700 dark:text-sky-300">
-                          {ln.used_qty}
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <span
-                            className={`px-2 py-0.5 rounded-lg font-bold ${
-                              ln.remaining_qty <= 10
-                                ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
-                                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                            }`}
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                !guardWrite(
+                                  `${r.regionNameTr} Parçalı İRS ve Açıklama Düzenleme`,
+                                  'Редактирование ИРС по региону'
+                                )
+                              ) {
+                                return;
+                              }
+                              setQuickIrsTarget({
+                                regionCode: r.regionCode,
+                                regionNameTr: r.regionNameTr,
+                                approvedQty: r.approvedQty,
+                                irs1Qty: r.irs1Qty,
+                                irs2Qty: r.irs2Qty,
+                                irs3Qty: r.irs3Qty,
+                                validUntil:
+                                  r.irsTranches[0]?.validUntil ||
+                                  `${(selectedYear === 'all' ? 2026 : Number(selectedYear)) + 1}-05-31`,
+                                noteText: r.regionNote || '',
+                              });
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-[11px] font-semibold cursor-pointer"
                           >
-                            {ln.remaining_qty}
-                          </span>
+                            <Edit3 className="w-3 h-3" />
+                            <span>İRS / Not Düzenle</span>
+                          </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
-                  {activeCertificateForMatrix && (
-                    <tfoot>
-                      <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-bold text-slate-900 dark:text-white border-t-2 border-slate-300 dark:border-slate-700">
-                        <td className="py-2.5 px-3">Total (Toplam Sertifika Kontenjanı)</td>
-                        <td className="py-2.5 px-3 text-right">
-                          {activeCertificateForMatrix.total_allocated_qty}
-                        </td>
-                        <td className="py-2.5 px-3 text-right text-sky-700 dark:text-sky-300">
-                          {activeCertificateForMatrix.total_used_qty}
-                        </td>
-                        <td className="py-2.5 px-3 text-right text-emerald-700 dark:text-emerald-300">
-                          {activeCertificateForMatrix.total_remaining_qty}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
+                  <tfoot>
+                    <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-t-2 border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white">
+                      <td className="py-3 px-3">TOPLAM ({filteredRegionMatrix.length} Bölge)</td>
+                      <td className="py-3 px-2.5 text-right font-mono">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.esasQty, 0))}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                        {fmtSigned(filteredRegionMatrix.reduce((s, r) => s + r.artirmaQty, 0))}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono text-rose-600 dark:text-rose-400">
+                        {fmtSigned(filteredRegionMatrix.reduce((s, r) => s + r.azaltmaQty, 0))}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.requestedQty, 0))}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono text-emerald-800 dark:text-emerald-300">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.approvedQty, 0))}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono text-amber-700 dark:text-amber-300">
+                        {fmtSigned(filteredRegionMatrix.reduce((s, r) => s + r.inReviewQty, 0))}
+                      </td>
+                      <td className="py-3 px-2 text-right font-mono text-teal-800 dark:text-teal-300">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.irs1Qty, 0))}
+                      </td>
+                      <td className="py-3 px-2 text-right font-mono text-teal-800 dark:text-teal-300">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.irs2Qty, 0))}
+                      </td>
+                      <td className="py-3 px-2 text-right font-mono text-teal-800 dark:text-teal-300">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.irs3Qty, 0))}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono text-teal-900 dark:text-teal-200">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.totalIrsReceived, 0))}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono text-indigo-800 dark:text-indigo-300">
+                        {fmtNum(
+                          filteredRegionMatrix.reduce((s, r) => s + r.unallocatedQuotaReserve, 0)
+                        )}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono">
+                        {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.usedQty, 0))}
+                      </td>
+                      <td colSpan={2} className="py-3 px-3 text-right text-[11px] text-slate-500">
+                        Sonraki Yıla Devreden İRS:{' '}
+                        <strong className="text-amber-700 dark:text-amber-300">
+                          {fmtNum(filteredRegionMatrix.reduce((s, r) => s + r.carryoverIrsQty, 0))}
+                        </strong>
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
+          )}
 
-            {/* TABLE 3: ÇALIŞAN / ADAY ИРС BAŞVURU LİSTESİ & HIZLI GİRİŞ */}
-            <div className="xl:col-span-7 bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
-              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+          {/* ========================================================================
+              TAB 2: ÖZET MATRİS (ÜLKE × GÖREV & BÖLGE × GÖREV — Özet Sheet)
+              ======================================================================== */}
+          {activeTab === 'ozet_pivot' && (
+            <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold">
-                      3. TABLO
-                    </span>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Yeni Çalışan / Aday ИРС Başvuruları (Sicil • FIO • Görev • Proje • IRS No)
-                    </h3>
-                  </div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Özet Çapraz Matris — {pivotMode === 'country' ? 'Ülke × Görev (Страна × Профессия)' : 'Bölge × Görev (Регион × Профессия)'}
+                  </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Bu tabloya eklenen her çalışan, yazılan <strong>IRS (РНП)</strong> numarasının
-                    ilgili görev kontenjanından otomatik düşer.
+                    Seçili yıl, bölge ve statü filtrelerine göre net yabancı işçi kota dağılımı (Toplam: {fmtNum(pivotTable.grandTotal)} kişi).
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWorkerModalCertNo(activeCertificateForMatrix?.certificate_no);
-                    setWorkerModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>
-                    + № {activeCertificateForMatrix?.certificate_no || 'İРС'} ile Çalışan Ekle
-                  </span>
-                </button>
+                <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setPivotMode('country')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
+                      pivotMode === 'country'
+                        ? 'bg-teal-600 text-white'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Ülke × Görev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPivotMode('region')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
+                      pivotMode === 'region'
+                        ? 'bg-teal-600 text-white'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Bölge × Görev
+                  </button>
+                </div>
               </div>
 
-              <div className="overflow-x-auto flex-1">
+              <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-[#1A363E] text-white">
-                      <th className="py-2.5 px-3 font-semibold">Sicil</th>
-                      <th className="py-2.5 px-3 font-semibold">FIO (Ad Soyad)</th>
-                      <th className="py-2.5 px-3 font-semibold">Görev (ОКПДТР)</th>
-                      <th className="py-2.5 px-3 font-semibold">Proje</th>
-                      <th className="py-2.5 px-3 font-semibold">IRS (РНП No)</th>
-                      <th className="py-2.5 px-3 font-semibold">Durum</th>
-                      <th className="py-2.5 px-3 text-right font-semibold">İşlem</th>
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                      <th className="py-3 px-3 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10">
+                        {pivotMode === 'country' ? 'Ülke (ОКСМ)' : 'Bölge (Субъект РФ)'}
+                      </th>
+                      {pivotTable.columns.map((col) => (
+                        <th key={col.code} className="py-2.5 px-2.5 text-right min-w-[115px]">
+                          <div className="leading-tight">{col.tr}</div>
+                          <div className="text-[9.5px] font-mono font-normal text-slate-500">
+                            {col.code}
+                          </div>
+                        </th>
+                      ))}
+                      <th className="py-3 px-3 text-right bg-teal-50/70 dark:bg-teal-950/30 text-teal-800 dark:text-teal-300">
+                        Toplam
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {matrixWorkers.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="py-8 text-center text-xs text-slate-400 dark:text-slate-500"
-                        >
-                          Bu ИРС sertifikasına kayıtlı çalışan başvurusu bulunmuyor. Sağ üstteki
-                          butonla yeni çalışan ekleyebilirsiniz.
+                    {pivotTable.rows.map((row) => (
+                      <tr key={row.key} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                        <td className="py-2.5 px-3 sticky left-0 bg-white dark:bg-[#111827] z-10">
+                          <div className="font-semibold text-slate-900 dark:text-white">
+                            {row.labelTr}
+                          </div>
+                          {row.labelRu && (
+                            <div className="text-[10px] text-slate-500">{row.labelRu}</div>
+                          )}
+                        </td>
+                        {pivotTable.columns.map((col) => {
+                          const v = row.cells[col.code] || 0;
+                          return (
+                            <td
+                              key={col.code}
+                              className={`py-2.5 px-2.5 text-right font-mono ${
+                                v < 0
+                                  ? 'text-rose-600 font-semibold'
+                                  : v > 0
+                                  ? 'text-slate-800 dark:text-slate-200'
+                                  : 'text-slate-300 dark:text-slate-700'
+                              }`}
+                            >
+                              {v !== 0 ? fmtNum(v) : '0'}
+                            </td>
+                          );
+                        })}
+                        <td className="py-2.5 px-3 text-right font-mono font-bold bg-teal-50/40 dark:bg-teal-950/15 text-teal-900 dark:text-teal-200">
+                          {fmtNum(row.total)}
                         </td>
                       </tr>
-                    ) : (
-                      matrixWorkers.map((w) => (
-                        <tr
-                          key={w.id}
-                          className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
-                        >
-                          <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
-                            {w.sicil_no || '—'}
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 dark:bg-slate-800/90 border-t-2 border-slate-300 dark:border-slate-700 font-bold">
+                      <td className="py-3 px-3 sticky left-0 bg-slate-100 dark:bg-slate-800 z-10">
+                        GENEL TOPLAM
+                      </td>
+                      {pivotTable.columns.map((col) => (
+                        <td key={col.code} className="py-3 px-2.5 text-right font-mono">
+                          {fmtNum(col.total)}
+                        </td>
+                      ))}
+                      <td className="py-3 px-3 text-right font-mono text-teal-800 dark:text-teal-300">
+                        {fmtNum(pivotTable.grandTotal)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================
+              TAB 3: İRS SERTİFİKALARI & SONRAKİ YILA DEVİR
+              ======================================================================== */}
+          {activeTab === 'certificates' && (
+            <div className="space-y-4">
+              {filteredCertificates.length === 0 ? (
+                <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 p-10 text-center text-xs text-slate-500">
+                  Seçili yıl/bölge için tanımlanmış parçalı İRS sertifikası bulunmuyor. Üstteki &ldquo;+ Parçalı İRS Ekle&rdquo; butonu ile yeni dilim açabilirsiniz.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {filteredCertificates.map((cert) => {
+                    const usedPct =
+                      cert.total_allocated_qty > 0
+                        ? Math.min(100, Math.round((cert.total_used_qty / cert.total_allocated_qty) * 100))
+                        : 0;
+                    return (
+                      <div
+                        key={cert.certificate_no}
+                        className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs space-y-3"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="px-2 py-0.5 rounded-lg bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 font-bold text-xs">
+                                {cert.tranche_code}
+                              </span>
+                              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                                № {cert.certificate_no}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                • {cert.region_code} ({cert.project_name})
+                              </span>
+                              {cert.is_cross_year_carryover && (
+                                <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 text-[10.5px] font-semibold">
+                                  🔄 {cert.quota_year} → {cert.valid_until.slice(0, 4)} Yıl Devri
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                              <span>
+                                <Calendar className="inline w-3 h-3 mr-1" />
+                                Geçerlilik: {cert.valid_from || '—'} → {cert.valid_until || '—'}
+                              </span>
+                              {cert.days_until_expiry !== null && (
+                                <span className="font-medium text-teal-700 dark:text-teal-400">
+                                  ({cert.days_until_expiry} gün)
+                                </span>
+                              )}
+                              {cert.notes && <span>• Not: {cert.notes}</span>}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!guardWrite('İRS Üzerinden İşçi Alımı Ekleme', 'Привязка работника к ИРС')) {
+                                  return;
+                                }
+                                setWorkerModalCertNo(cert.certificate_no);
+                                setWorkerModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 text-[11px] font-semibold cursor-pointer"
+                            >
+                              + İşçi Bağla
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!guardWrite('İRS Sertifikası Düzenleme', 'Редактирование ИРС')) return;
+                                setEditingCert(cert);
+                                setCertModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                              title="Düzenle"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCertificate(cert.certificate_no)}
+                              className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-600 cursor-pointer"
+                              title="Sil"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-600 dark:text-slate-400">
+                              Tahsis: <strong>{fmtNum(cert.total_allocated_qty)}</strong> • Kullanılan (РНР):{' '}
+                              <strong className="text-cyan-700 dark:text-cyan-400">
+                                {fmtNum(cert.total_used_qty)}
+                              </strong>
+                            </span>
+                            <span className="font-bold text-teal-700 dark:text-teal-300">
+                              Kalan İRS: {fmtNum(cert.total_remaining_qty)} ({100 - usedPct}%)
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-teal-500 to-cyan-500 transition-all"
+                              style={{ width: `${Math.max(usedPct, cert.total_used_qty > 0 ? 4 : 0)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Occupation Lines */}
+                        <div className="border-t border-slate-100 dark:border-slate-800 pt-2 max-h-44 overflow-y-auto">
+                          <table className="w-full text-[11px]">
+                            <thead>
+                              <tr className="text-slate-400">
+                                <th className="text-left py-1">ОКПДТР Görev</th>
+                                <th className="text-right py-1">Tahsis</th>
+                                <th className="text-right py-1">Kullanılan</th>
+                                <th className="text-right py-1">Kalan</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800/60">
+                              {cert.lines.map((ln) => (
+                                <tr key={ln.id}>
+                                  <td className="py-1 text-slate-700 dark:text-slate-300">
+                                    <span className="font-mono text-slate-400 mr-1.5">
+                                      {ln.occupation_code}
+                                    </span>
+                                    {ln.occupation_tr}
+                                  </td>
+                                  <td className="py-1 text-right font-mono">{fmtNum(ln.allocated_qty)}</td>
+                                  <td className="py-1 text-right font-mono text-cyan-700 dark:text-cyan-400">
+                                    {fmtNum(ln.used_qty)}
+                                  </td>
+                                  <td className="py-1 text-right font-mono font-semibold text-teal-700 dark:text-teal-300">
+                                    {fmtNum(ln.remaining_qty)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================
+              TAB 4: İRS İŞÇİ ALIMI (РНР) LİSTESİ
+              ======================================================================== */}
+          {activeTab === 'workers' && (
+            <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Parçalı İRS Sertifikaları Üzerinden İşçi Alımı (РНР) & Vize Uzatma Kayıtları
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    İRS kontenjanından düşülen çalışan/aday başvuruları; iptal edilen kayıtlar otomatik olarak İRS bakiyesine geri eklenir.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!guardWrite('İRS İşçi Alımı (РНР) Ekleme', 'Привязка работника к ИРС')) return;
+                    setWorkerModalCertNo(filteredCertificates[0]?.certificate_no);
+                    setWorkerModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold cursor-pointer"
+                >
+                  + Yeni İşçi Alımı (РНР) Bağla
+                </button>
+              </div>
+
+              {filteredWorkers.length === 0 ? (
+                <div className="p-10 text-center text-xs text-slate-500">
+                  Henüz İRS sertifikalarına bağlanmış bireysel çalışan (РНР) kaydı bulunmuyor.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                        <th className="py-3 px-3">İRS Sertifika</th>
+                        <th className="py-3 px-3">Sicil / Ad Soyad</th>
+                        <th className="py-3 px-3">Pasaport / Ülke</th>
+                        <th className="py-3 px-3">Görev (ОКПДТР)</th>
+                        <th className="py-3 px-3">Bölge / Şantiye</th>
+                        <th className="py-3 px-3">Tür</th>
+                        <th className="py-3 px-3">Başvuru Durumu</th>
+                        <th className="py-3 px-3 text-right">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {filteredWorkers.map((w) => (
+                        <tr key={w.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                          <td className="py-2.5 px-3 font-mono font-semibold text-teal-700 dark:text-teal-300">
+                            {w.certificate_no}
                           </td>
-                          <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-white">
-                            <div>{w.full_name}</div>
-                            {w.passport_no && (
-                              <div className="text-[10px] text-slate-400">
-                                Pasaport: {w.passport_no} • Ülke: {w.country_code}
+                          <td className="py-2.5 px-3">
+                            <div className="font-semibold text-slate-900 dark:text-white">
+                              {w.full_name}
+                            </div>
+                            {w.sicil_no && (
+                              <div className="text-[10.5px] font-mono text-slate-500">
+                                Sicil: {w.sicil_no}
                               </div>
                             )}
                           </td>
                           <td className="py-2.5 px-3">
-                            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-300 font-mono mr-1">
-                              {w.occupation_code}
-                            </span>
-                            <span className="text-slate-800 dark:text-slate-200">
-                              {w.occupation_tr}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
-                            {w.project_name || w.region_code || '—'}
+                            <div className="font-mono">{w.passport_no || '—'}</div>
+                            <div className="text-[10.5px] text-slate-500">{w.country_tr}</div>
                           </td>
                           <td className="py-2.5 px-3">
-                            <span className="px-2 py-0.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 font-mono font-semibold">
-                              {w.certificate_no}
-                            </span>
+                            <span className="font-mono text-slate-500 mr-1">{w.occupation_code}</span>
+                            {w.occupation_tr}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div>{w.region_code}</div>
+                            <div className="text-[10.5px] text-slate-500">{w.project_name}</div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            {w.usage_type === 'visa_extension' ? 'Vize Uzatma' : 'Yeni РНР'}
                           </td>
                           <td className="py-2.5 px-3">
                             <select
                               value={w.application_status}
-                              onChange={(e) => handleWorkerStatusChange(w.id, e.target.value)}
-                              className="px-2 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-800 dark:text-slate-200"
+                              onChange={(e) => handleUpdateWorkerStatus(w.id, e.target.value)}
+                              className="px-2 py-1 rounded-lg text-[11px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                             >
-                              <option value="applied">İРС Başvuruldu</option>
+                              <option value="applied">Başvuruldu</option>
                               <option value="rnr_approved">РНР Onaylandı</option>
-                              <option value="visa_issued">Vize Çıktı</option>
+                              <option value="visa_issued">Vize Basıldı</option>
                               <option value="arrived">Sahaya Geldi</option>
                               <option value="cancelled">İptal (Kontenjan İade)</option>
                             </select>
@@ -1488,701 +1795,546 @@ export function QuotaTrackingView() {
                           <td className="py-2.5 px-3 text-right">
                             <button
                               type="button"
-                              onClick={() => handleDeleteWorker(w.id, w.full_name)}
-                              className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
-                              title="Sil"
+                              onClick={() => handleDeleteWorker(w.id)}
+                              className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================================================
-          TAB 2: ИРС (РНП) SERTİFİKALARI & DÖNEM KAYDIRMA KARTLARI
-          ========================================================================== */}
-      {activeTab === 'certificates' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Kayıtlı ИРС (РНП) Kurumsal Çalıştırma İzin Sertifikaları
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Yıl sonunda alınan ИРС (РНП) sertifikaları 1 yıla kadar geçerli olduğu için kalan
-                kotaları bir sonraki yılın ilk çeyreğine (Örn: 2027 Q1) kaydırarak kullanmanızı
-                sağlar.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingCert(null);
-                setCertModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> Yeni ИРС (РНП) Sertifikası Tanımla
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filteredCertificates.map((cert) => (
-              <div
-                key={cert.id}
-                className="bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs space-y-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-lg bg-teal-600 text-white text-xs font-mono font-bold">
-                        № {cert.certificate_no}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-                        {cert.tranche_label}
-                      </span>
-                      {cert.is_cross_year_carryover && (
-                        <span className="px-2.5 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300/70 text-[11px] font-semibold">
-                          {cert.quota_year} Kotası → {cert.valid_until.slice(0, 4)} Dönem Kaydırma
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-2">
-                      {cert.region_code} — {cert.project_name}
-                    </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Geçerlilik: <strong>{cert.valid_from}</strong> →{' '}
-                      <strong>{cert.valid_until}</strong>
-                      {cert.days_until_expiry !== null && (
-                        <span> ({cert.days_until_expiry} gün kaldı)</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setWorkerModalCertNo(cert.certificate_no);
-                        setWorkerModalOpen(true);
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium cursor-pointer"
-                    >
-                      + Çalışan Ekle
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingCert(cert);
-                        setCertModalOpen(true);
-                      }}
-                      className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                      title="Düzenle"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCertificate(cert)}
-                      className="p-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                      title="Sil"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-
-                {/* Summary numbers */}
-                <div className="grid grid-cols-4 gap-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 text-center">
-                  <div>
-                    <div className="text-[11px] text-slate-500">Sertifika İРС</div>
-                    <div className="text-base font-bold text-slate-900 dark:text-white">
-                      {cert.total_allocated_qty}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Kullanılan</div>
-                    <div className="text-base font-bold text-sky-600 dark:text-sky-400">
-                      {cert.total_used_qty}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">Kalan Boş</div>
-                    <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-                      {cert.total_remaining_qty}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-slate-500">МВД Harcı</div>
-                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">
-                      {(cert.total_allocated_qty * cert.state_duty_per_person).toLocaleString(
-                        'tr-TR'
-                      )}{' '}
-                      ₽
-                    </div>
-                  </div>
-                </div>
-
-                {/* Per occupation lines */}
-                <div className="space-y-1.5">
-                  {cert.lines.map((ln) => {
-                    const pct =
-                      ln.allocated_qty > 0
-                        ? Math.min(100, Math.round((ln.used_qty / ln.allocated_qty) * 100))
-                        : 0;
-                    return (
-                      <div key={ln.id} className="text-xs space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span>
-                            <strong className="font-mono text-teal-700 dark:text-teal-300">
-                              {ln.occupation_code}
-                            </strong>{' '}
-                            — {ln.occupation_tr}
-                          </span>
-                          <span>
-                            Kullanılan: <strong>{ln.used_qty}</strong> / {ln.allocated_qty} • Kalan:{' '}
-                            <strong className="text-emerald-600 dark:text-emerald-400">
-                              {ln.remaining_qty}
-                            </strong>
-                          </span>
-                        </div>
-                        <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                          <div
-                            className="h-full bg-teal-600 rounded-full"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {cert.notes && (
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                    Not: {cert.notes}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================================================
-          TAB 3: TÜM ÇALIŞAN ИРС BAŞVURULARI TABLOSU
-          ========================================================================== */}
-      {activeTab === 'workers' && (
-        <div className="bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Tüm Çalışan / Aday ИРС (РНП) Başvuruları ({filteredWorkers.length} Kayıt)
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Her çalışan başvurusu seçilen ИРС numarasının ilgili ОКПДТР 2025 görev kodundan
-                düşülür.
-              </p>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setWorkerModalCertNo(activeCertificateForMatrix?.certificate_no);
-                setWorkerModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4" /> + Yeni Çalışan İРС Başvurusu Ekle
-            </button>
-          </div>
+          )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-[#1A363E] text-white">
-                  <th className="py-2.5 px-3 font-semibold">Sicil No</th>
-                  <th className="py-2.5 px-3 font-semibold">FIO (Ad Soyad)</th>
-                  <th className="py-2.5 px-3 font-semibold">Pasaport No</th>
-                  <th className="py-2.5 px-3 font-semibold">Ülke (ОКСМ)</th>
-                  <th className="py-2.5 px-3 font-semibold">Görev Kodu (ОКПДТР 2025)</th>
-                  <th className="py-2.5 px-3 font-semibold">Bölge / Proje</th>
-                  <th className="py-2.5 px-3 font-semibold">ИРС (РНП) No</th>
-                  <th className="py-2.5 px-3 font-semibold">Durum</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">İşlem</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredWorkers.map((w) => (
-                  <tr
-                    key={w.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
-                  >
-                    <td className="py-2.5 px-3 font-mono">{w.sicil_no || '—'}</td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-white">
-                      {w.full_name}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
-                      {w.passport_no || '—'}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="font-mono text-slate-500">{w.country_code}</span>{' '}
-                      {w.country_tr}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-300 font-mono mr-1">
-                        {w.occupation_code}
-                      </span>
-                      {w.occupation_tr}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      {w.region_code} / {w.project_name}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-teal-700 dark:text-teal-300">
-                      № {w.certificate_no}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <select
-                        value={w.application_status}
-                        onChange={(e) => handleWorkerStatusChange(w.id, e.target.value)}
-                        className="px-2 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px]"
-                      >
-                        <option value="applied">İРС Başvuruldu</option>
-                        <option value="rnr_approved">РНР Onaylandı</option>
-                        <option value="visa_issued">Vize Çıktı</option>
-                        <option value="arrived">Sahaya Geldi</option>
-                        <option value="cancelled">İptal</option>
-                      </select>
-                    </td>
-                    <td className="py-2.5 px-3 text-right">
+          {/* ========================================================================
+              TAB 5: KAYNAK DOSYALAR (26-D1..27-D7) & TÜM SATIRLAR (Veri — 297 Satır)
+              ======================================================================== */}
+          {activeTab === 'files_veri' && (
+            <div className="space-y-5">
+              {/* Dosyalar Table */}
+              {filteredSourceFiles.length > 0 && (
+                <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Resmi Bakanlık Başvuru Dosyaları (`Dosyalar` — {filteredSourceFiles.length} Dosya)
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Bir dosya satırına tıklayarak aşağıdaki `Veri` tablosunu o dosyaya göre filtreleyebilirsiniz.
+                      </p>
+                    </div>
+                    {fileCodeFilter !== 'ALL' && (
                       <button
                         type="button"
-                        onClick={() => handleDeleteWorker(w.id, w.full_name)}
-                        className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                        onClick={() => setFileCodeFilter('ALL')}
+                        className="px-3 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 text-xs font-semibold cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        Seçili Dosya: {fileCodeFilter} (Tümünü Göster)
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================================================
-          TAB 4: BAKANLIK KOTA KAYITLARI (migrakvota.gov.ru — 260 KAYIT)
-          ========================================================================== */}
-      {activeTab === 'allocations' && (
-        <div className="bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Bakanlık Kota Başvuru & Onay Kayıtları (АИК «Миграционные квоты» —{' '}
-                {filteredAllocations.length} Kayıt)
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Pondera_Kota_Dynamic_Projects_17102026.xlsm dosyasındaki tüm 2026 ve 2027 resmi
-                görev ve ülke kodlu kayıtlar.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200"
-              >
-                <option value="ALL">Tüm Durumlar</option>
-                <option value="TAMAMLANDI">TAMAMLANDI (Утверждена / Приказ)</option>
-                <option value="BASVURU YAPILDI">BAŞVURU YAPILDI (Отправлена)</option>
-                <option value="BASVURU YAPILACAK">BAŞVURU YAPILACAK (Не отправлена)</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingAlloc(null);
-                  setAllocModalOpen(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> + Yeni Kota Kaydı Ekle
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto max-h-[640px]">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-[#1A363E] text-white">
-                  <th className="py-2.5 px-3 font-semibold">Kayıt Kodu</th>
-                  <th className="py-2.5 px-3 font-semibold">Yıl / Tür</th>
-                  <th className="py-2.5 px-3 font-semibold">Durum (migrakvota)</th>
-                  <th className="py-2.5 px-3 font-semibold">Bölge / Proje</th>
-                  <th className="py-2.5 px-3 font-semibold">Ülke (ОКСМ)</th>
-                  <th className="py-2.5 px-3 font-semibold">Görev (ОКПДТР 2025)</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Başvurulan</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Onaylanan</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Alınan İРС</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Kullanılan</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Kalan</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">İşlem</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredAllocations.map((a) => (
-                  <tr
-                    key={a.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
-                  >
-                    <td className="py-2 px-3 font-mono font-semibold text-slate-700 dark:text-slate-300">
-                      {a.record_code}
-                    </td>
-                    <td className="py-2 px-3">
-                      <span className="font-bold">{a.year}</span> •{' '}
-                      <span className="text-[11px] text-slate-500">{a.application_type}</span>
-                    </td>
-                    <td className="py-2 px-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
-                          a.migrakvota_status === 'TAMAMLANDI'
-                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                            : a.migrakvota_status === 'BASVURU YAPILDI'
-                            ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
-                            : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                        }`}
-                      >
-                        {a.migrakvota_status}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3">
-                      <div className="font-semibold text-slate-900 dark:text-white">
-                        {a.region_code}
-                      </div>
-                      <div className="text-[10px] text-slate-500">{a.project_name}</div>
-                    </td>
-                    <td className="py-2 px-3">
-                      <span className="font-mono text-teal-700 dark:text-teal-300 font-semibold">
-                        {a.country_code}
-                      </span>{' '}
-                      — {a.country_tr}
-                    </td>
-                    <td className="py-2 px-3">
-                      <div>
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-300 font-mono mr-1">
-                          {a.occupation_code}
-                        </span>
-                        <span className="font-medium text-slate-900 dark:text-white">
-                          {a.occupation_tr}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate max-w-xs">
-                        {a.occupation_ru}
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 text-right font-semibold">{a.requested_qty}</td>
-                    <td className="py-2 px-3 text-right font-bold text-teal-700 dark:text-teal-300">
-                      {a.approved_qty}
-                    </td>
-                    <td className="py-2 px-3 text-right font-semibold text-indigo-600 dark:text-indigo-300">
-                      {a.legacy_irs_qty}
-                    </td>
-                    <td className="py-2 px-3 text-right text-sky-700 dark:text-sky-300">
-                      {a.total_used_qty || 0}
-                    </td>
-                    <td className="py-2 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                      {a.available_qty ?? a.approved_qty}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingAlloc(a);
-                            setAllocModalOpen(true);
-                          }}
-                          className="p-1 text-slate-500 hover:text-teal-600 cursor-pointer"
-                          title="Düzenle"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAllocation(a)}
-                          className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded cursor-pointer"
-                          title="Sil"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================================================
-          TAB 5: ОКПДТР 2025 GÖREV & ОКСМ ÜLKE KOD REHBERİ + RUSYA MEVZUAT ÖZETİ
-          ========================================================================== */}
-      {activeTab === 'codes_guide' && (
-        <div className="space-y-5">
-          {/* 4-Step Russian Quota & ИРС Legal Process Guide */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
-            {[
-              {
-                step: '1. ADIM • Работа в России (trudvsem.ru)',
-                title: 'Açık İş İlanı Zorunluluğu',
-                desc: 'Kota başvurusundan önce ilgili görev kodu (ОКПДТР 2025) için yerel işgücü piyasasında en az 30 gün açık ilan bulundurulur.',
-              },
-              {
-                step: '2. ADIM • АИК «Миграционные квоты»',
-                title: 'migrakvota.gov.ru Kota Başvurusu & Приказ',
-                desc: 'Bölge (Субъект РФ), Ülke (ОКСМ 3 haneli kod) ve Görev (ОКПДТР 6 haneli kod) bazında Основная заявка veya Корректировка квоты yapılır.',
-              },
-              {
-                step: '3. ADIM • МВД РФ — ИРС (РНП) Sertifikası',
-                title: 'Parçalı Kurumsal Çekim İzni & Dönem Kaydırma',
-                desc: 'Onaylanan kotanın tamamına aynı anda harç ödenmez. İhtiyaç oldukça parçalı ИРС(РНП) sertifikası (Örn: № 2600030066 — 160 kişi) alınır; yıl sonunda alınan sertifika gelecek yılın ilk çeyreğinde de geçerlidir.',
-              },
-              {
-                step: '4. ADIM • РНР & Vize Davetiyesi',
-                title: 'Sertifika No Üzerinden Kişisel Çalışma İzni',
-                desc: 'Her yeni çalışan başvurusu aktif ИРС(РНП) sertifika numarası ve sertifikadaki ОКПДТР görev kodu üzerinden yapılarak bakiyeden düşülür.',
-              },
-            ].map((item, idx) => (
-              <div
-                key={idx}
-                className="bg-white dark:bg-[#131C31] p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-1.5"
-              >
-                <div className="text-[11px] font-bold text-teal-600 dark:text-teal-400">
-                  {item.step}
+                    )}
+                  </div>
+                  <div className="overflow-x-auto max-h-72">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                          <th className="py-2.5 px-3">Dosya No</th>
+                          <th className="py-2.5 px-2">Yıl</th>
+                          <th className="py-2.5 px-3">Bölge</th>
+                          <th className="py-2.5 px-3">Başvuru Tipi</th>
+                          <th className="py-2.5 px-3">Statü</th>
+                          <th className="py-2.5 px-2.5">Tarih</th>
+                          <th className="py-2.5 px-3">Orijinal Dosya Adı</th>
+                          <th className="py-2.5 px-2 text-right">Satır</th>
+                          <th className="py-2.5 px-3 text-right">Net Etki (+/−)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {filteredSourceFiles.map((sf) => {
+                          const selected = fileCodeFilter === sf.file_code;
+                          const isApproved = sf.status_text.toLocaleLowerCase('tr-TR').includes('onay');
+                          return (
+                            <tr
+                              key={sf.file_code}
+                              onClick={() =>
+                                setFileCodeFilter(selected ? 'ALL' : sf.file_code)
+                              }
+                              className={`cursor-pointer transition-colors ${
+                                selected
+                                  ? 'bg-teal-50 dark:bg-teal-950/40'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                              }`}
+                            >
+                              <td className="py-2 px-3 font-mono font-bold text-teal-700 dark:text-teal-300">
+                                {sf.file_code}
+                              </td>
+                              <td className="py-2 px-2 font-mono">{sf.year}</td>
+                              <td className="py-2 px-3 font-semibold">{sf.region_label}</td>
+                              <td className="py-2 px-3">{sf.application_type}</td>
+                              <td className="py-2 px-3">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${
+                                    isApproved
+                                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                      : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                  }`}
+                                >
+                                  {sf.status_text}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2.5 font-mono text-[11px]">{sf.fill_date}</td>
+                              <td className="py-2 px-3 text-[11px] text-slate-600 dark:text-slate-400 truncate max-w-[300px]">
+                                {sf.source_filename}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono">{sf.row_count}</td>
+                              <td
+                                className={`py-2 px-3 text-right font-mono font-bold ${
+                                  sf.net_effect < 0
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : 'text-emerald-700 dark:text-emerald-400'
+                                }`}
+                              >
+                                {fmtSigned(sf.net_effect)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white">{item.title}</div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {item.desc}
-                </p>
-              </div>
-            ))}
-          </div>
+              )}
 
-          {/* Official Codes Lookup Table */}
-          <div className="bg-white dark:bg-[#131C31] rounded-3xl border border-slate-200/80 dark:border-slate-800 p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCodeSection('occupations')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${
-                    codeSection === 'occupations'
-                      ? 'bg-[#1A363E] text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  ОКПДТР 2025 Görev Kodları ({references.occupations.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCodeSection('countries')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${
-                    codeSection === 'countries'
-                      ? 'bg-[#1A363E] text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  ОКСМ Ülke Kodları ({references.countries.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCodeSection('projects')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${
-                    codeSection === 'projects'
-                      ? 'bg-[#1A363E] text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  MOB MAP Şantiye ↔ Bölge Eşleşmeleri ({references.projectMappings.length})
-                </button>
+              {/* Veri Rows Table */}
+              <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Detaylı Kota Satırları (`Veri` — {filteredAllocations.length} Satır • Net Toplam:{' '}
+                    {fmtNum(filteredAllocations.reduce((s, a) => s + Number(a.requested_qty || 0), 0))})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto max-h-[540px]">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                        <th className="py-2.5 px-3">Dosya / Kod</th>
+                        <th className="py-2.5 px-2">Yıl</th>
+                        <th className="py-2.5 px-3">Bölge</th>
+                        <th className="py-2.5 px-3">Ülke (ОКСМ)</th>
+                        <th className="py-2.5 px-3">Görev & ОКПДТР</th>
+                        <th className="py-2.5 px-3">Başvuru Tipi</th>
+                        <th className="py-2.5 px-3">Statü</th>
+                        <th className="py-2.5 px-3 text-right">Net Etki (+/−)</th>
+                        <th className="py-2.5 px-3 text-right">Onaylı</th>
+                        <th className="py-2.5 px-2.5 text-right">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {filteredAllocations.map((a) => {
+                        const isApproved = a.migrakvota_status
+                          .toLocaleLowerCase('tr-TR')
+                          .includes('onay');
+                        return (
+                          <tr
+                            key={a.record_code}
+                            className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                          >
+                            <td className="py-2 px-3 font-mono">
+                              <span className="font-bold text-slate-800 dark:text-slate-200">
+                                {a.file_code || a.record_code}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2 font-mono">{a.year}</td>
+                            <td className="py-2 px-3 font-semibold">{a.region_code}</td>
+                            <td className="py-2 px-3">
+                              <div>{a.country_tr}</div>
+                              <div className="text-[10px] text-slate-400">{a.country_ru}</div>
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="font-medium text-slate-900 dark:text-white">
+                                <span className="font-mono text-teal-700 dark:text-teal-400 mr-1.5">
+                                  {a.occupation_code}
+                                </span>
+                                {a.occupation_tr}
+                              </div>
+                              <div className="text-[10px] text-slate-400">{a.occupation_ru}</div>
+                            </td>
+                            <td className="py-2 px-3">{a.application_type}</td>
+                            <td className="py-2 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${
+                                  isApproved
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                }`}
+                              >
+                                {a.migrakvota_status}
+                              </span>
+                            </td>
+                            <td
+                              className={`py-2 px-3 text-right font-mono font-bold ${
+                                a.requested_qty < 0
+                                  ? 'text-rose-600 dark:text-rose-400'
+                                  : 'text-slate-900 dark:text-white'
+                              }`}
+                            >
+                              {fmtSigned(a.requested_qty)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                              {a.approved_qty !== 0 ? fmtNum(a.approved_qty) : '0'}
+                            </td>
+                            <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!guardWrite('Kota Satırı Düzenleme', 'Редактирование квоты')) return;
+                                  setEditingAlloc(a);
+                                  setAllocModalOpen(true);
+                                }}
+                                className="p-1 text-slate-500 hover:text-teal-600 cursor-pointer"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAllocation(a.record_code)}
+                                className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+            </div>
+          )}
 
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2" />
+          {/* ========================================================================
+              TAB 6: ОКПДТР & ОКСМ RESMİ KOD REHBERİ
+              ======================================================================== */}
+          {activeTab === 'codes_guide' && (
+            <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
+                  {[
+                    { id: 'occupations' as const, label: `Görev Kodları — ОКПДТР (${references.occupations.length})` },
+                    { id: 'countries' as const, label: `Ülke Kodları — ОКСМ (${references.countries.length})` },
+                    { id: 'projects' as const, label: `Şantiye → Bölge Eşleşmeleri (${references.projectMappings.length})` },
+                  ].map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setCodeSection(s.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
+                        codeSection === s.id ? 'bg-teal-600 text-white' : 'text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+
                 <input
                   type="text"
                   value={codeSearch}
                   onChange={(e) => setCodeSearch(e.target.value)}
-                  placeholder="Kod veya Türkçe / Rusça görev & ülke ara..."
-                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs w-64 text-slate-900 dark:text-white"
+                  placeholder="Kod veya meslek/ülke ara..."
+                  className="px-3 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 w-64"
                 />
               </div>
+
+              {codeSection === 'occupations' && (
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                        <th className="py-2 px-3">ОКПДТР Kodu</th>
+                        <th className="py-2 px-3">Görev (Türkçe)</th>
+                        <th className="py-2 px-3">Профессия (Rusça Resmi Adı)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {references.occupations
+                        .filter((o) => {
+                          const q = codeSearch.trim().toLocaleLowerCase('tr-TR');
+                          if (!q) return true;
+                          return (
+                            o.code.includes(q) ||
+                            o.nameTr.toLocaleLowerCase('tr-TR').includes(q) ||
+                            o.nameRu.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((o) => (
+                          <tr key={o.code}>
+                            <td className="py-2 px-3 font-mono font-bold text-teal-700 dark:text-teal-300">
+                              {o.code}
+                            </td>
+                            <td className="py-2 px-3 font-medium">{o.nameTr}</td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{o.nameRu}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {codeSection === 'countries' && (
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                        <th className="py-2 px-3">ОКСМ Kodu</th>
+                        <th className="py-2 px-3">Ülke (Türkçe)</th>
+                        <th className="py-2 px-3">Страна (Rusça)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {references.countries
+                        .filter((c) => {
+                          const q = codeSearch.trim().toLocaleLowerCase('tr-TR');
+                          if (!q) return true;
+                          return (
+                            c.code.includes(q) ||
+                            c.nameTr.toLocaleLowerCase('tr-TR').includes(q) ||
+                            c.nameRu.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((c) => (
+                          <tr key={c.code}>
+                            <td className="py-2 px-3 font-mono font-bold text-teal-700 dark:text-teal-300">
+                              {c.code}
+                            </td>
+                            <td className="py-2 px-3 font-medium">{c.nameTr}</td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{c.nameRu}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {codeSection === 'projects' && (
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                        <th className="py-2 px-3">Saha / eBA Projesi</th>
+                        <th className="py-2 px-3">Kota Grubu</th>
+                        <th className="py-2 px-3">Bölge Kodu</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {references.projectMappings.map((pm, idx) => (
+                        <tr key={idx}>
+                          <td className="py-2 px-3 font-medium">{pm.mobProject}</td>
+                          <td className="py-2 px-3">{pm.quotaProject}</td>
+                          <td className="py-2 px-3 font-mono text-teal-700 dark:text-teal-300">
+                            {pm.regionCode}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* QUICK REGION IRS & NOTE MODAL (e.g. Ust-Luga IRS1/IRS2/IRS3 + Açıklama) */}
+      {quickIrsTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-700 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-[#1A363E] to-teal-900 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold">
+                  {quickIrsTarget.regionNameTr} — Parçalı İRS & Açıklama Güncelle
+                </h3>
+                <p className="text-[11px] text-emerald-200">
+                  Onaylı Kota Tavanı: {fmtNum(quickIrsTarget.approvedQty)} kişi
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickIrsTarget(null)}
+                className="p-1.5 rounded-xl hover:bg-white/10 text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {codeSection === 'occupations' && (
-              <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="sticky top-0 bg-[#1A363E] text-white">
-                    <tr>
-                      <th className="py-2 px-3 font-semibold">ОКПДТР 2025 Kodu</th>
-                      <th className="py-2 px-3 font-semibold">Türkçe Görev Adı</th>
-                      <th className="py-2 px-3 font-semibold">Rusça Resmi Adı (Профессия / Должность)</th>
-                      <th className="py-2 px-3 font-semibold">ОКЗ Kodu</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {references.occupations
-                      .filter((o) => {
-                        const q = codeSearch.trim().toLocaleLowerCase('tr-TR');
-                        if (!q) return true;
-                        return (
-                          o.code.includes(q) ||
-                          o.nameTr.toLocaleLowerCase('tr-TR').includes(q) ||
-                          o.nameRu.toLowerCase().includes(q)
-                        );
-                      })
-                      .map((o) => (
-                        <tr key={o.code} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="py-2 px-3 font-mono font-bold text-teal-700 dark:text-teal-300">
-                            {o.code}
-                          </td>
-                          <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white">
-                            {o.nameTr}
-                          </td>
-                          <td className="py-2 px-3 text-slate-600 dark:text-slate-300">
-                            {o.nameRu}
-                          </td>
-                          <td className="py-2 px-3 font-mono text-slate-500">{o.okz}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+            <form onSubmit={handleSaveQuickRegionIrs} className="p-6 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    IRS1 Kontenjanı
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={quickIrsTarget.irs1Qty}
+                    onChange={(e) =>
+                      setQuickIrsTarget({ ...quickIrsTarget, irs1Qty: Number(e.target.value) || 0 })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    IRS2 Kontenjanı
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={quickIrsTarget.irs2Qty}
+                    onChange={(e) =>
+                      setQuickIrsTarget({ ...quickIrsTarget, irs2Qty: Number(e.target.value) || 0 })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    IRS3 Kontenjanı
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={quickIrsTarget.irs3Qty}
+                    onChange={(e) =>
+                      setQuickIrsTarget({ ...quickIrsTarget, irs3Qty: Number(e.target.value) || 0 })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono"
+                  />
+                </div>
               </div>
-            )}
 
-            {codeSection === 'countries' && (
-              <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="sticky top-0 bg-[#1A363E] text-white">
-                    <tr>
-                      <th className="py-2 px-3 font-semibold">ОКСМ 3 Haneli Kod</th>
-                      <th className="py-2 px-3 font-semibold">Ülke Adı (TR)</th>
-                      <th className="py-2 px-3 font-semibold">Ülke Adı (RU)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {references.countries
-                      .filter((c) => {
-                        const q = codeSearch.trim().toLocaleLowerCase('tr-TR');
-                        if (!q) return true;
-                        return (
-                          c.code.includes(q) ||
-                          c.nameTr.toLocaleLowerCase('tr-TR').includes(q) ||
-                          c.nameRu.toLowerCase().includes(q)
-                        );
-                      })
-                      .map((c) => (
-                        <tr key={c.code} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="py-2 px-3 font-mono font-bold text-teal-700 dark:text-teal-300">
-                            {c.code}
-                          </td>
-                          <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white">
-                            {c.nameTr}
-                          </td>
-                          <td className="py-2 px-3 text-slate-600 dark:text-slate-300">
-                            {c.nameRu}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <div className="p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 flex items-center justify-between text-xs">
+                <span>
+                  Toplam Alınan İRS:{' '}
+                  <strong>
+                    {fmtNum(
+                      quickIrsTarget.irs1Qty + quickIrsTarget.irs2Qty + quickIrsTarget.irs3Qty
+                    )}
+                  </strong>
+                </span>
+                <span>
+                  Kalan Onaylı Kota:{' '}
+                  <strong className="text-indigo-700 dark:text-indigo-300">
+                    {fmtNum(
+                      quickIrsTarget.approvedQty -
+                        (quickIrsTarget.irs1Qty + quickIrsTarget.irs2Qty + quickIrsTarget.irs3Qty)
+                    )}
+                  </strong>
+                </span>
               </div>
-            )}
 
-            {codeSection === 'projects' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-[#1A363E] text-white">
-                    <tr>
-                      <th className="py-2 px-3 font-semibold">MOB Saha / Proje Kodu</th>
-                      <th className="py-2 px-3 font-semibold">Kota Tablosu Proje Adı</th>
-                      <th className="py-2 px-3 font-semibold">Rusya Federasyonu Bölgesi (Субъект РФ)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {references.projectMappings.map((pm, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white">
-                          {pm.mobProject}
-                        </td>
-                        <td className="py-2 px-3 text-teal-700 dark:text-teal-300 font-medium">
-                          {pm.quotaProject}
-                        </td>
-                        <td className="py-2 px-3 font-mono font-bold">{pm.regionCode}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  İRS Geçerlilik Bitiş Tarihi (Sonraki Yıla Devir İçin)
+                </label>
+                <input
+                  type="date"
+                  value={quickIrsTarget.validUntil}
+                  onChange={(e) =>
+                    setQuickIrsTarget({ ...quickIrsTarget, validUntil: e.target.value })
+                  }
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                />
               </div>
-            )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Bölge Açıklaması / Not (`IRS` Sayfası Notu)
+                </label>
+                <input
+                  type="text"
+                  value={quickIrsTarget.noteText}
+                  onChange={(e) =>
+                    setQuickIrsTarget({ ...quickIrsTarget, noteText: e.target.value })
+                  }
+                  placeholder="Örn: Kalan kota aktive edilebilir / Ust-Luga İRS eklendi"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setQuickIrsTarget(null)}
+                  className="px-4 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
+                >
+                  İptal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingQuickIrs}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{savingQuickIrs ? 'Kaydediliyor...' : 'Kaydet'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* MODALS */}
+      {/* EXISTING MODALS */}
       <QuotaIrsCertificateModal
         open={certModalOpen}
         onClose={() => setCertModalOpen(false)}
-        initialCert={editingCert}
-        defaultYear={selectedYear === 'all' ? 2026 : Number(selectedYear)}
-        references={references}
         onSaved={(msg) => {
-          showNotice(msg);
-          fetchOverview();
+          showNotice(msg, 'ok');
+          fetchOverview(selectedYear);
         }}
+        initialCert={editingCert}
+        defaultYear={selectedYear === 'all' ? 2026 : Number(selectedYear) || 2026}
+        defaultRegionCode={certDefaultRegion}
+        references={references}
       />
 
       <QuotaWorkerIrsModal
         open={workerModalOpen}
         onClose={() => setWorkerModalOpen(false)}
+        onSaved={(msg) => {
+          showNotice(msg, 'ok');
+          fetchOverview(selectedYear);
+        }}
         certificates={data?.certificates || []}
         preselectedCertNo={workerModalCertNo}
         references={references}
-        onSaved={(msg) => {
-          showNotice(msg);
-          fetchOverview();
-        }}
       />
 
       <QuotaAllocationModal
         open={allocModalOpen}
         onClose={() => setAllocModalOpen(false)}
-        initialRow={editingAlloc}
-        defaultYear={selectedYear === 'all' ? 2027 : Number(selectedYear)}
-        references={references}
         onSaved={(msg) => {
-          showNotice(msg);
-          fetchOverview();
+          showNotice(msg, 'ok');
+          fetchOverview(selectedYear);
         }}
+        initialRow={editingAlloc}
+        defaultYear={selectedYear === 'all' ? 2026 : Number(selectedYear) || 2026}
+        references={references}
       />
 
-      {data && (
+      {data?.alertSettings && (
         <QuotaAlertSettingsModal
           open={alertModalOpen}
           onClose={() => setAlertModalOpen(false)}
           settings={data.alertSettings}
-          criticalCount={data.criticalAlerts.length}
+          criticalCount={data.criticalAlerts?.length || 0}
           onSaved={(msg) => {
-            showNotice(msg);
-            fetchOverview();
+            showNotice(msg, 'ok');
+            fetchOverview(selectedYear);
           }}
         />
       )}
@@ -2191,4 +2343,3 @@ export function QuotaTrackingView() {
 }
 
 export default QuotaTrackingView;
-

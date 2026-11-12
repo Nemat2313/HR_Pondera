@@ -252,7 +252,7 @@ export default function GosuslugiDismissalPanel({
   isLaunchingChrome,
   onShowAgentGuide,
 }: GosuslugiDismissalPanelProps) {
-  const { user } = useAuth();
+  const { user, showPermissionDenied } = useAuth();
   const { lang } = useLanguage();
 
   // Dismissal Default Form Configuration (Pondera 600585/1 & VKS MVD Moscow Parameters)
@@ -927,6 +927,13 @@ export default function GosuslugiDismissalPanel({
     }));
 
   const handleStartRobot = async (limit: number = 0, singleWorker?: GosuslugiDismissalWorkerRecord) => {
+    if (user?.role === 'viewer') {
+      showPermissionDenied({
+        actionLabelTr: 'Gosuslugi İşten Çıkış Robotu Çalıştırma',
+        actionLabelRu: 'Запуск робота увольнений Госуслуги',
+      });
+      return;
+    }
     if (singleWorker) {
       const singleVal = validationMap[singleWorker.id];
       if (singleVal && !singleVal.isValid) {
@@ -1121,7 +1128,16 @@ export default function GosuslugiDismissalPanel({
               className="hidden"
             />
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (user?.role === 'viewer') {
+                  showPermissionDenied({
+                    actionLabelTr: 'İşten Çıkış Excel Yükleme',
+                    actionLabelRu: 'Загрузка Excel увольнений',
+                  });
+                  return;
+                }
+                fileInputRef.current?.click();
+              }}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition-all cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />

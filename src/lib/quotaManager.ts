@@ -31,9 +31,30 @@ export interface QuotaProjectMappingRef {
   regionCode: string;
 }
 
+export interface QuotaSourceFileRow {
+  file_code: string;
+  year: number;
+  source_filename: string;
+  region_code: string;
+  region_label: string;
+  project_name: string;
+  application_type: string;
+  status_text: string;
+  fill_date: string;
+  countries_summary: string;
+  row_count: number;
+  net_effect: number;
+  raw_total: number;
+  updated_at: string;
+}
+
 export interface QuotaAllocationRow {
   id: number;
   record_code: string;
+  file_code?: string;
+  source_filename?: string;
+  source_row?: number;
+  raw_qty?: number;
   year: number;
   application_type: string;
   migrakvota_status: string;
@@ -79,6 +100,7 @@ export interface QuotaIrsLineComputed {
 export interface QuotaIrsCertificateComputed {
   id: number;
   certificate_no: string;
+  tranche_code: string;
   tranche_label: string;
   quota_year: number;
   region_code: string;
@@ -158,8 +180,56 @@ const seedTyped = quotaSeedData as {
   projectMappings: QuotaProjectMappingRef[];
   countries: QuotaCountryRef[];
   occupations: QuotaOccupationRef[];
+  sourceFiles?: Array<{
+    fileCode: string;
+    year: number;
+    sourceFilename: string;
+    regionLabel: string;
+    regionCode: string;
+    projectName: string;
+    applicationType: string;
+    status: string;
+    fillDate: string;
+    countriesSummary: string;
+    rowCount: number;
+    netEffect: number;
+    rawTotal: number;
+  }>;
+  seedRegionNotes?: Array<{
+    quotaYear: number;
+    regionCode: string;
+    regionLabel: string;
+    noteText: string;
+  }>;
+  seedIrsCertificates?: Array<{
+    certificateNo: string;
+    trancheCode: string;
+    trancheLabel: string;
+    quotaYear: number;
+    regionCode: string;
+    projectName: string;
+    issueDate: string;
+    validFrom: string;
+    validUntil: string;
+    stateDutyPerPerson: number;
+    status: string;
+    notes: string;
+    allocatedQty: number;
+    lines: Array<{
+      occupationCode: string;
+      occupationTr: string;
+      occupationRu: string;
+      countryCode: string;
+      countryTr: string;
+      allocatedQty: number;
+    }>;
+  }>;
   logRecords: Array<{
     recordCode: string;
+    fileCode?: string;
+    sourceFilename?: string;
+    sourceRow?: number;
+    rawQty?: number;
     year: number;
     applicationType: string;
     targetDate: string;
@@ -193,6 +263,139 @@ const OCCUPATION_MAP = new Map<string, QuotaOccupationRef>(
 const REGION_MAP = new Map<string, QuotaRegionRef>(
   (seedTyped.regions || []).map((r) => [r.code.toUpperCase(), r])
 );
+
+export function normalizeRegionCode(input?: string): {
+  regionCode: string;
+  projectName: string;
+  regionLabelTr: string;
+  regionLabelRu: string;
+} {
+  const raw = String(input || '').trim();
+  const up = raw.toUpperCase();
+  const low = raw.toLocaleLowerCase('tr-TR');
+
+  if (up === 'AMUR' || low.includes('amur') || low.includes('амур')) {
+    return {
+      regionCode: 'AMUR',
+      projectName: 'AGHK',
+      regionLabelTr: 'Amur Bölgesi (Svobodny)',
+      regionLabelRu: 'Амурская область',
+    };
+  }
+  if (
+    up === 'LENINGRADSKAYA' ||
+    up === 'LENINGRAD' ||
+    low.includes('leningrad') ||
+    low.includes('ленинград') ||
+    low.includes('ust-luga') ||
+    low.includes('ust luga')
+  ) {
+    return {
+      regionCode: 'LENINGRADSKAYA',
+      projectName: 'Ust-Luga',
+      regionLabelTr: 'Leningrad Bölgesi (Ust-Luga)',
+      regionLabelRu: 'Ленинградская область',
+    };
+  }
+  if (up === 'MURMANSK' || low.includes('murmansk') || low.includes('мурманск')) {
+    return {
+      regionCode: 'MURMANSK',
+      projectName: 'MURMANSK',
+      regionLabelTr: 'Murmansk Bölgesi',
+      regionLabelRu: 'Мурманская область',
+    };
+  }
+  if (
+    up === 'NIJNIY NOVGOROD' ||
+    low.includes('nijniy') ||
+    low.includes('nizhny') ||
+    low.includes('нижегород')
+  ) {
+    return {
+      regionCode: 'NIJNIY NOVGOROD',
+      projectName: 'NIJNIY NOVGOROD',
+      regionLabelTr: 'Nijniy Novgorod Bölgesi',
+      regionLabelRu: 'Нижегородская область',
+    };
+  }
+  if (up === 'TATARISTAN' || low.includes('tatar') || low.includes('татар')) {
+    return {
+      regionCode: 'TATARISTAN',
+      projectName: 'NIJNIKAMPSK+KAZAN',
+      regionLabelTr: 'Tataristan Cumhuriyeti',
+      regionLabelRu: 'Республика Татарстан',
+    };
+  }
+  if (
+    up === 'TUMEN' ||
+    low.includes('tümen') ||
+    low.includes('tumen') ||
+    low.includes('tyumen') ||
+    low.includes('тюмен')
+  ) {
+    return {
+      regionCode: 'TUMEN',
+      projectName: 'Tobolsk DGP2',
+      regionLabelTr: 'Tümen Bölgesi (Tobolsk)',
+      regionLabelRu: 'Тюменская область',
+    };
+  }
+
+  const ref = REGION_MAP.get(up);
+  const projHit = (seedTyped.projectMappings || []).find((m) => m.regionCode === up);
+  return {
+    regionCode: up || 'DIGER',
+    projectName: projHit?.quotaProject || up || 'DIGER',
+    regionLabelTr: ref?.nameTr || raw || 'Diğer',
+    regionLabelRu: ref?.nameRu || raw || 'Прочие',
+  };
+}
+
+export function isApprovedQuotaStatus(statusStr?: string): boolean {
+  const s = String(statusStr || '').toLocaleLowerCase('tr-TR');
+  if (s.includes('incelemede') || s.includes('на рассмотрении') || s.includes('yapılacak')) {
+    return false;
+  }
+  return (
+    s.includes('onaylı') ||
+    s.includes('onayli') ||
+    s.includes('emir taslağında') ||
+    s.includes('включена в проект приказа') ||
+    s.includes('tamamlandi') ||
+    s.includes('tamamlandı') ||
+    s.includes('onaylandı')
+  );
+}
+
+export function classifyApplicationType(
+  appType?: string,
+  signedQty?: number
+): 'esas' | 'artirma' | 'azaltma' {
+  const s = String(appType || '').toLocaleLowerCase('tr-TR');
+  if (s.includes('azalt') || s.includes('уменьш') || (signedQty !== undefined && signedQty < 0)) {
+    return 'azaltma';
+  }
+  if (s.includes('artır') || s.includes('artir') || s.includes('ek ') || s.includes('увелич') || s.includes('корр')) {
+    return 'artirma';
+  }
+  return 'esas';
+}
+
+export function normalizeTrancheCode(codeOrLabel?: string, fallbackIndex = 1): string {
+  const s = String(codeOrLabel || '').toUpperCase().replace(/\s+/g, '');
+  if (s.includes('IRS1') || s.includes('ИРС1') || s.includes('РНП)1') || s.includes('РНП-1')) {
+    return 'IRS1';
+  }
+  if (s.includes('IRS2') || s.includes('ИРС2') || s.includes('РНП)2') || s.includes('РНП-2')) {
+    return 'IRS2';
+  }
+  if (s.includes('IRS3') || s.includes('ИРС3') || s.includes('РНП)3') || s.includes('РНП-3')) {
+    return 'IRS3';
+  }
+  const m = s.match(/(?:IRS|ИРС|РНП)[^\d]*(\d+)/);
+  if (m) return `IRS${m[1]}`;
+  return `IRS${fallbackIndex}`;
+}
 
 export function getQuotaReferences() {
   return {
@@ -229,11 +432,17 @@ export function resolveCountryByCodeOrName(inputCode?: string, inputName?: strin
         (normName.includes('turkiye') && c.code === '792') ||
         (normName.includes('турци') && c.code === '792') ||
         (normName.includes('bangla') && c.code === '050') ||
+        (normName.includes('бангла') && c.code === '050') ||
         (normName.includes('endonez') && c.code === '360') ||
+        (normName.includes('индонез') && c.code === '360') ||
         (normName.includes('filipin') && c.code === '608') ||
+        (normName.includes('филипп') && c.code === '608') ||
         (normName.includes('pakist') && c.code === '586') ||
+        (normName.includes('пакист') && c.code === '586') ||
         (normName.includes('nepal') && c.code === '524') ||
+        (normName.includes('непал') && c.code === '524') ||
         (normName.includes('vietnam') && c.code === '704') ||
+        (normName.includes('вьетнам') && c.code === '704') ||
         (normName.includes('özbek') && c.code === '860') ||
         (normName.includes('ozbek') && c.code === '860') ||
         (normName.includes('tacik') && c.code === '762')
@@ -254,7 +463,7 @@ export function resolveOccupationByCodeOrName(inputCode?: string, inputName?: st
   nameTr: string;
   nameRu: string;
 } {
-  const cleanCode = String(inputCode || '').trim();
+  const cleanCode = String(inputCode || '').trim().replace(/\.0$/, '');
   if (cleanCode) {
     const hit = OCCUPATION_MAP.get(cleanCode);
     if (hit) {
@@ -272,11 +481,11 @@ export function resolveOccupationByCodeOrName(inputCode?: string, inputName?: st
         return { code: o.code, nameTr: o.nameTr, nameRu: o.nameRu };
       }
     }
-    if (norm.includes('montaj') || norm.includes('borucu')) {
+    if (norm.includes('montaj') || norm.includes('borucu') || norm.includes('трубопровод')) {
       const hit = OCCUPATION_MAP.get('102660');
       if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
     }
-    if (norm.includes('izolas') || norm.includes('изолир')) {
+    if (norm.includes('izolas') || norm.includes('yalıtım') || norm.includes('изолир')) {
       const hit = OCCUPATION_MAP.get('101435');
       if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
     }
@@ -284,12 +493,28 @@ export function resolveOccupationByCodeOrName(inputCode?: string, inputName?: st
       const hit = OCCUPATION_MAP.get('105558');
       if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
     }
-    if (norm.includes('beton')) {
+    if (norm.includes('beton') || norm.includes('бетонщ')) {
       const hit = OCCUPATION_MAP.get('100663');
       if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
     }
     if (norm.includes('demir') || norm.includes('арматур')) {
       const hit = OCCUPATION_MAP.get('100627');
+      if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
+    }
+    if (norm.includes('prorab') || norm.includes('şantiye şefi') || norm.includes('прораб')) {
+      const hit = OCCUPATION_MAP.get('206362');
+      if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
+    }
+    if (norm.includes('elektrik') || norm.includes('электрик')) {
+      const hit = OCCUPATION_MAP.get('208351');
+      if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
+    }
+    if (norm.includes('mühendis') || norm.includes('инженер')) {
+      const hit = OCCUPATION_MAP.get('201469');
+      if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
+    }
+    if (norm.includes('iş güvenliği') || norm.includes('охране труда')) {
+      const hit = OCCUPATION_MAP.get('207807');
       if (hit) return { code: hit.code, nameTr: hit.nameTr, nameRu: hit.nameRu };
     }
     if (norm.includes('iskele')) {
@@ -319,15 +544,15 @@ function getTableCols(db: any, tableName: string): Set<string> {
 export function ensureQuotaTables(dbArg?: any) {
   const db = dbArg || getDb();
   const gState = globalThis as unknown as {
-    __ponderaQuotaTablesEnsured?: boolean;
+    __ponderaQuotaV2856Ensured?: boolean;
   };
 
-  if (gState.__ponderaQuotaTablesEnsured) {
-    const cols = getTableCols(db, 'quota_worker_applications');
-    if (cols.has('certificate_no') && cols.has('occupation_code')) {
+  if (gState.__ponderaQuotaV2856Ensured) {
+    const cols = getTableCols(db, 'quota_allocations');
+    if (cols.has('file_code')) {
       return db;
     }
-    gState.__ponderaQuotaTablesEnsured = false;
+    gState.__ponderaQuotaV2856Ensured = false;
   }
 
   try {
@@ -338,9 +563,13 @@ export function ensureQuotaTables(dbArg?: any) {
     CREATE TABLE IF NOT EXISTS quota_allocations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       record_code TEXT UNIQUE NOT NULL,
+      file_code TEXT NOT NULL DEFAULT '',
+      source_filename TEXT NOT NULL DEFAULT '',
+      source_row INTEGER NOT NULL DEFAULT 0,
+      raw_qty INTEGER NOT NULL DEFAULT 0,
       year INTEGER NOT NULL DEFAULT 2026,
-      application_type TEXT NOT NULL DEFAULT 'ILK BASVURU',
-      migrakvota_status TEXT NOT NULL DEFAULT 'BASVURU YAPILACAK',
+      application_type TEXT NOT NULL DEFAULT 'Esas başvuru',
+      migrakvota_status TEXT NOT NULL DEFAULT 'Onaylı (emir taslağında)',
       target_date TEXT NOT NULL DEFAULT '',
       region_code TEXT NOT NULL DEFAULT '',
       project_name TEXT NOT NULL DEFAULT '',
@@ -361,10 +590,37 @@ export function ensureQuotaTables(dbArg?: any) {
       updated_at TEXT NOT NULL DEFAULT ''
     );
 
+    CREATE TABLE IF NOT EXISTS quota_source_files (
+      file_code TEXT PRIMARY KEY,
+      year INTEGER NOT NULL DEFAULT 2026,
+      source_filename TEXT NOT NULL DEFAULT '',
+      region_code TEXT NOT NULL DEFAULT '',
+      region_label TEXT NOT NULL DEFAULT '',
+      project_name TEXT NOT NULL DEFAULT '',
+      application_type TEXT NOT NULL DEFAULT '',
+      status_text TEXT NOT NULL DEFAULT '',
+      fill_date TEXT NOT NULL DEFAULT '',
+      countries_summary TEXT NOT NULL DEFAULT '',
+      row_count INTEGER NOT NULL DEFAULT 0,
+      net_effect INTEGER NOT NULL DEFAULT 0,
+      raw_total INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS quota_region_notes (
+      quota_year INTEGER NOT NULL DEFAULT 2026,
+      region_code TEXT NOT NULL,
+      note_text TEXT NOT NULL DEFAULT '',
+      updated_by TEXT NOT NULL DEFAULT 'Sistem',
+      updated_at TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (quota_year, region_code)
+    );
+
     CREATE TABLE IF NOT EXISTS quota_irs_certificates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       certificate_no TEXT UNIQUE NOT NULL,
-      tranche_label TEXT NOT NULL DEFAULT 'ИРС(РНП)-1',
+      tranche_code TEXT NOT NULL DEFAULT 'IRS1',
+      tranche_label TEXT NOT NULL DEFAULT 'IRS1',
       quota_year INTEGER NOT NULL DEFAULT 2026,
       region_code TEXT NOT NULL DEFAULT '',
       project_name TEXT NOT NULL DEFAULT '',
@@ -441,39 +697,115 @@ export function ensureQuotaTables(dbArg?: any) {
     CREATE INDEX IF NOT EXISTS idx_quota_workers_sicil ON quota_worker_applications(sicil_no);
   `);
 
-  // One-time seed of Pondera's 260 official 2026 & 2027 quota records from Pondera_Kota_Dynamic_Projects_17102026.xlsm
+  // Safe column migrations for existing DBs
+  const allocCols = getTableCols(db, 'quota_allocations');
+  if (!allocCols.has('file_code')) {
+    try {
+      db.exec("ALTER TABLE quota_allocations ADD COLUMN file_code TEXT NOT NULL DEFAULT '';");
+    } catch {}
+  }
+  if (!allocCols.has('source_filename')) {
+    try {
+      db.exec("ALTER TABLE quota_allocations ADD COLUMN source_filename TEXT NOT NULL DEFAULT '';");
+    } catch {}
+  }
+  if (!allocCols.has('source_row')) {
+    try {
+      db.exec('ALTER TABLE quota_allocations ADD COLUMN source_row INTEGER NOT NULL DEFAULT 0;');
+    } catch {}
+  }
+  if (!allocCols.has('raw_qty')) {
+    try {
+      db.exec('ALTER TABLE quota_allocations ADD COLUMN raw_qty INTEGER NOT NULL DEFAULT 0;');
+    } catch {}
+  }
   try {
-    db.exec(`CREATE TABLE IF NOT EXISTS system_info (key TEXT PRIMARY KEY, value TEXT);`);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_quota_alloc_file ON quota_allocations(file_code);');
+  } catch {}
+
+  const certCols = getTableCols(db, 'quota_irs_certificates');
+  if (!certCols.has('tranche_code')) {
+    try {
+      db.exec("ALTER TABLE quota_irs_certificates ADD COLUMN tranche_code TEXT NOT NULL DEFAULT 'IRS1';");
+    } catch {}
+  }
+
+  // One-time migration to Zahid Bey's official Kota_2026-2027.xlsx dataset (297 Veri rows + 20 Dosyalar + 8 IRS tranches + 5 Region Notes)
+  try {
+    db.exec('CREATE TABLE IF NOT EXISTS system_info (key TEXT PRIMARY KEY, value TEXT);');
     const seedFlag = db
-      .prepare("SELECT value FROM system_info WHERE key = 'pondera_quota_v2831_seeded'")
+      .prepare("SELECT value FROM system_info WHERE key = 'pondera_quota_v2856_kota2026_2027_seeded'")
       .get() as { value?: string } | undefined;
 
-    if (seedFlag?.value !== '1' && Array.isArray(seedTyped.logRecords)) {
+    if (seedFlag?.value !== '1') {
       const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19);
-      const insertStmt = db.prepare(`
-        INSERT OR IGNORE INTO quota_allocations (
-          record_code, year, application_type, migrakvota_status, target_date,
-          region_code, project_name, country_code, country_tr, country_ru,
-          occupation_code, occupation_tr, occupation_ru,
-          requested_qty, approved_qty, legacy_irs_qty, opening_new_use, extensions_use,
-          irs_doc_no, notes, updated_by, updated_at
-        ) VALUES (
-          ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?,
-          ?, ?, ?,
-          ?, ?, ?, ?, ?,
-          ?, ?, 'Excel Seed (Pondera Kota)', ?
-        )
-      `);
-
       db.exec('BEGIN');
       try {
-        for (const rec of seedTyped.logRecords) {
-          insertStmt.run(
+        // Remove old October v2831 seed rows & placeholder demo certificate 2600030066
+        db.prepare(
+          "DELETE FROM quota_allocations WHERE updated_by LIKE '%Excel Seed%' OR record_code LIKE 'LOG-%'"
+        ).run();
+        db.prepare(
+          "DELETE FROM quota_worker_applications WHERE certificate_no = '2600030066' AND created_by LIKE '%Seed%'"
+        ).run();
+        db.prepare("DELETE FROM quota_irs_lines WHERE certificate_no = '2600030066'").run();
+        db.prepare("DELETE FROM quota_irs_certificates WHERE certificate_no = '2600030066'").run();
+
+        // Insert 20 Dosyalar entries
+        const insFile = db.prepare(`
+          INSERT OR REPLACE INTO quota_source_files (
+            file_code, year, source_filename, region_code, region_label, project_name,
+            application_type, status_text, fill_date, countries_summary,
+            row_count, net_effect, raw_total, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const sf of seedTyped.sourceFiles || []) {
+          insFile.run(
+            sf.fileCode,
+            Number(sf.year || 2026),
+            sf.sourceFilename || '',
+            sf.regionCode || '',
+            sf.regionLabel || '',
+            sf.projectName || '',
+            sf.applicationType || '',
+            sf.status || '',
+            sf.fillDate || '',
+            sf.countriesSummary || '',
+            Number(sf.rowCount || 0),
+            Number(sf.netEffect || 0),
+            Number(sf.rawTotal || 0),
+            nowIso
+          );
+        }
+
+        // Insert 297 Veri rows
+        const insAlloc = db.prepare(`
+          INSERT OR REPLACE INTO quota_allocations (
+            record_code, file_code, source_filename, source_row, raw_qty,
+            year, application_type, migrakvota_status, target_date,
+            region_code, project_name, country_code, country_tr, country_ru,
+            occupation_code, occupation_tr, occupation_ru,
+            requested_qty, approved_qty, legacy_irs_qty, opening_new_use, extensions_use,
+            irs_doc_no, notes, updated_by, updated_at
+          ) VALUES (
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, 'Kota_2026-2027.xlsx', ?
+          )
+        `);
+        for (const rec of seedTyped.logRecords || []) {
+          insAlloc.run(
             rec.recordCode,
+            rec.fileCode || '',
+            rec.sourceFilename || '',
+            Number(rec.sourceRow || 0),
+            Number(rec.rawQty ?? Math.abs(Number(rec.requestedQty || 0))),
             Number(rec.year || 2026),
-            rec.applicationType || 'ILK BASVURU',
-            rec.status || 'BASVURU YAPILACAK',
+            rec.applicationType || 'Esas başvuru',
+            rec.status || 'Onaylı (emir taslağında)',
             rec.targetDate || '',
             String(rec.regionCode || '').toUpperCase(),
             rec.projectName || '',
@@ -485,131 +817,84 @@ export function ensureQuotaTables(dbArg?: any) {
             rec.occupationRu || '',
             Number(rec.requestedQty || 0),
             Number(rec.approvedQty || 0),
-            Number(rec.irsQty || 0),
-            Number(rec.newUseQty || 0),
-            Number(rec.extensionsQty || 0),
-            rec.irsDocNo || '',
+            0,
+            0,
+            0,
+            '',
             rec.notes || '',
             nowIso
           );
         }
-        db.prepare(
-          "INSERT OR REPLACE INTO system_info (key, value) VALUES ('pondera_quota_v2831_seeded', '1')"
-        ).run();
-        db.exec('COMMIT');
-      } catch {
-        try {
-          db.exec('ROLLBACK');
-        } catch {}
-      }
-    }
 
-    // Also seed Zahid Şef's initial ИРС(РНП) certificate № 2600030066 & 4 sample rows from tablo kota kullanim.xlsx once
-    const irsSeedFlag = db
-      .prepare("SELECT value FROM system_info WHERE key = 'pondera_quota_irs_2600030066_seeded'")
-      .get() as { value?: string } | undefined;
-    if (irsSeedFlag?.value !== '1') {
-      const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19);
-      db.exec('BEGIN');
-      try {
-        db.prepare(`
+        // Insert Regional Notes from IRS sheet
+        const insNote = db.prepare(`
+          INSERT OR REPLACE INTO quota_region_notes (
+            quota_year, region_code, note_text, updated_by, updated_at
+          ) VALUES (?, ?, ?, 'Zahid Rahimov (Kota_2026-2027.xlsx)', ?)
+        `);
+        for (const rn of seedTyped.seedRegionNotes || []) {
+          insNote.run(Number(rn.quotaYear || 2026), rn.regionCode, rn.noteText || '', nowIso);
+        }
+
+        // Insert 2026 Parçalı IRS Tranche Certificates (IRS1, IRS2, IRS3)
+        const insCert = db.prepare(`
           INSERT OR IGNORE INTO quota_irs_certificates (
-            certificate_no, tranche_label, quota_year, region_code, project_name,
+            certificate_no, tranche_code, tranche_label, quota_year, region_code, project_name,
             issue_date, valid_from, valid_until, state_duty_per_person, status, notes,
             created_by, created_at, updated_at
-          ) VALUES (
-            '2600030066', 'ИРС(РНП)1', 2026, 'MURMANSK', 'MURMANSK',
-            '2026-11-01', '2026-12-15', '2027-03-31', 15000, 'active',
-            '2026 onaylanan 1.351 kotadan 2027 ilk 3 ay (Q1) için alınan 160 kişilik 1. dilim ИРС(РНП) sertifikası',
-            'Zahid Şef Excel Seed', ?, ?
-          )
-        `).run(nowIso, nowIso);
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Kota_2026-2027.xlsx', ?, ?)
+        `);
+        const insLine = db.prepare(`
+          INSERT INTO quota_irs_lines (
+            certificate_id, certificate_no, quota_record_code,
+            country_code, country_tr, occupation_code, occupation_tr, occupation_ru, allocated_qty
+          ) VALUES (?, ?, '', ?, ?, ?, ?, ?, ?)
+        `);
 
-        const certRow = db
-          .prepare("SELECT id FROM quota_irs_certificates WHERE certificate_no = '2600030066'")
-          .get() as { id?: number } | undefined;
+        for (const sc of seedTyped.seedIrsCertificates || []) {
+          insCert.run(
+            sc.certificateNo,
+            sc.trancheCode || 'IRS1',
+            sc.trancheLabel || sc.trancheCode || 'IRS1',
+            Number(sc.quotaYear || 2026),
+            sc.regionCode,
+            sc.projectName || sc.regionCode,
+            sc.issueDate || '2026-06-01',
+            sc.validFrom || '2026-06-01',
+            sc.validUntil || '2027-05-31',
+            Number(sc.stateDutyPerPerson || 15000),
+            sc.status || 'active',
+            sc.notes || '',
+            nowIso,
+            nowIso
+          );
 
-        if (certRow?.id) {
-          const existingLines = db
-            .prepare("SELECT COUNT(*) as cnt FROM quota_irs_lines WHERE certificate_no = '2600030066'")
-            .get() as { cnt?: number } | undefined;
-          if (!existingLines?.cnt) {
-            db.prepare(`
-              INSERT INTO quota_irs_lines (
-                certificate_id, certificate_no, quota_record_code, country_code, country_tr,
-                occupation_code, occupation_tr, occupation_ru, allocated_qty
-              ) VALUES (?, '2600030066', '', '356', 'HİNDİSTAN', ?, ?, ?, ?)
-            `).run(
-              certRow.id,
-              '102660',
-              'BORUCU (MONTAJCI)',
-              'МОНТАЖНИК ТЕХНОЛОГИЧЕСКИХ ТРУБОПРОВОДОВ',
-              112
-            );
-            db.prepare(`
-              INSERT INTO quota_irs_lines (
-                certificate_id, certificate_no, quota_record_code, country_code, country_tr,
-                occupation_code, occupation_tr, occupation_ru, allocated_qty
-              ) VALUES (?, '2600030066', '', '356', 'HİNDİSTAN', ?, ?, ?, ?)
-            `).run(certRow.id, '101435', 'İZOLASYONCU', 'ИЗОЛИРОВЩИК НА ТЕРМОИЗОЛЯЦИИ', 48);
-          }
-
-          const existingWorkers = db
-            .prepare(
-              "SELECT COUNT(*) as cnt FROM quota_worker_applications WHERE certificate_no = '2600030066'"
-            )
-            .get() as { cnt?: number } | undefined;
-          if (!existingWorkers?.cnt) {
-            const insertW = db.prepare(`
-              INSERT INTO quota_worker_applications (
-                certificate_no, quota_record_code, sicil_no, full_name, passport_no,
-                country_code, country_tr, occupation_code, occupation_tr, occupation_ru,
-                region_code, project_name, usage_type, application_status, application_date,
-                rnr_number, notes, created_by, created_at, updated_at
-              ) VALUES (
-                '2600030066', '', '', ?, '',
-                '356', 'HİNDİSTAN', ?, ?, ?,
-                'MURMANSK', 'MURMANSK', 'new_rnr', 'applied', '2026-11-07',
-                '', '', 'Zahid Şef Excel Seed', ?, ?
-              )
-            `);
-            insertW.run(
-              'Rahimov Zahid',
-              '102660',
-              'BORUCU (MONTAJCI)',
-              'МОНТАЖНИК ТЕХНОЛОГИЧЕСКИХ ТРУБОПРОВОДОВ',
-              nowIso,
-              nowIso
-            );
-            insertW.run(
-              'Nematjon',
-              '102660',
-              'BORUCU (MONTAJCI)',
-              'МОНТАЖНИК ТЕХНОЛОГИЧЕСКИХ ТРУБОПРОВОДОВ',
-              nowIso,
-              nowIso
-            );
-            insertW.run(
-              'Ihtiyar',
-              '101435',
-              'İZOLASYONCU',
-              'ИЗОЛИРОВЩИК НА ТЕРМОИЗОЛЯЦИИ',
-              nowIso,
-              nowIso
-            );
-            insertW.run(
-              'Abdullah',
-              '101435',
-              'İZOLASYONCU',
-              'ИЗОЛИРОВЩИК НА ТЕРМОИЗОЛЯЦИИ',
-              nowIso,
-              nowIso
-            );
+          const cRow = db
+            .prepare('SELECT id FROM quota_irs_certificates WHERE certificate_no = ?')
+            .get(sc.certificateNo) as { id?: number } | undefined;
+          if (cRow?.id) {
+            const cnt = db
+              .prepare('SELECT COUNT(*) AS c FROM quota_irs_lines WHERE certificate_no = ?')
+              .get(sc.certificateNo) as { c?: number } | undefined;
+            if (!cnt?.c) {
+              for (const ln of sc.lines || []) {
+                insLine.run(
+                  cRow.id,
+                  sc.certificateNo,
+                  ln.countryCode || '',
+                  ln.countryTr || '',
+                  ln.occupationCode || '',
+                  ln.occupationTr || '',
+                  ln.occupationRu || '',
+                  Number(ln.allocatedQty || 0)
+                );
+              }
+            }
           }
         }
 
         db.prepare(
-          "INSERT OR REPLACE INTO system_info (key, value) VALUES ('pondera_quota_irs_2600030066_seeded', '1')"
+          "INSERT OR REPLACE INTO system_info (key, value) VALUES ('pondera_quota_v2856_kota2026_2027_seeded', '1')"
         ).run();
         db.exec('COMMIT');
       } catch {
@@ -620,11 +905,7 @@ export function ensureQuotaTables(dbArg?: any) {
     }
   } catch {}
 
-  const verifiedCols = getTableCols(db, 'quota_worker_applications');
-  if (verifiedCols.has('certificate_no')) {
-    gState.__ponderaQuotaTablesEnsured = true;
-  }
-
+  gState.__ponderaQuotaV2856Ensured = true;
   return db;
 }
 
@@ -735,24 +1016,46 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     selectedYear && selectedYear !== 'all'
       ? db
           .prepare(
-            'SELECT * FROM quota_allocations WHERE year = ? ORDER BY region_code ASC, project_name ASC, country_code ASC, occupation_code ASC'
+            'SELECT * FROM quota_allocations WHERE year = ? ORDER BY file_code ASC, id ASC'
           )
           .all(Number(selectedYear))
       : db
           .prepare(
-            'SELECT * FROM quota_allocations ORDER BY year DESC, region_code ASC, project_name ASC, country_code ASC, occupation_code ASC'
+            'SELECT * FROM quota_allocations ORDER BY year ASC, file_code ASC, id ASC'
           )
           .all()
   ) as QuotaAllocationRow[];
 
+  const sourceFiles = (
+    selectedYear && selectedYear !== 'all'
+      ? db
+          .prepare('SELECT * FROM quota_source_files WHERE year = ? ORDER BY file_code ASC')
+          .all(Number(selectedYear))
+      : db.prepare('SELECT * FROM quota_source_files ORDER BY year ASC, file_code ASC').all()
+  ) as QuotaSourceFileRow[];
+
+  const regionNotesRows = (
+    selectedYear && selectedYear !== 'all'
+      ? db
+          .prepare('SELECT * FROM quota_region_notes WHERE quota_year = ?')
+          .all(Number(selectedYear))
+      : db.prepare('SELECT * FROM quota_region_notes ORDER BY quota_year ASC').all()
+  ) as Array<{ quota_year: number; region_code: string; note_text: string }>;
+
+  const regionNotesMap = new Map<string, string>();
+  for (const rn of regionNotesRows) {
+    const k = String(rn.region_code || '').toUpperCase();
+    if (!regionNotesMap.has(k) || rn.note_text) {
+      regionNotesMap.set(k, rn.note_text || '');
+    }
+  }
+
   const rawCertificates = (
     selectedYear && selectedYear !== 'all'
       ? db
-          .prepare(
-            'SELECT * FROM quota_irs_certificates WHERE quota_year = ? ORDER BY id ASC'
-          )
+          .prepare('SELECT * FROM quota_irs_certificates WHERE quota_year = ? ORDER BY id ASC')
           .all(Number(selectedYear))
-      : db.prepare('SELECT * FROM quota_irs_certificates ORDER BY quota_year DESC, id ASC').all()
+      : db.prepare('SELECT * FROM quota_irs_certificates ORDER BY quota_year ASC, id ASC').all()
   ) as Array<Record<string, any>>;
 
   const rawLines = db
@@ -765,7 +1068,6 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
 
   const activeWorkers = allWorkers.filter((w) => w.application_status !== 'cancelled');
 
-  // Map worker usage per certificate & occupation (exact COUNTIFS from Zahid Şef's Table 2)
   const certLinesByCertNo = new Map<string, Array<Record<string, any>>>();
   for (const ln of rawLines) {
     const cno = String(ln.certificate_no || '');
@@ -781,12 +1083,11 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     workersByCertNo.get(cno)!.push(w);
   }
 
-  const certificates: QuotaIrsCertificateComputed[] = rawCertificates.map((c) => {
+  const certificates: QuotaIrsCertificateComputed[] = rawCertificates.map((c, certIdx) => {
     const cno = String(c.certificate_no || '').trim();
     const certWorkers = workersByCertNo.get(cno) || [];
     const linesRaw = certLinesByCertNo.get(cno) || [];
 
-    // Count worker consumption per line
     const consumedWorkerIds = new Set<number>();
     const computedLines: QuotaIrsLineComputed[] = linesRaw.map((ln) => {
       const occCode = String(ln.occupation_code || '').trim();
@@ -827,6 +1128,7 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     const daysLeft = computeDaysUntil(String(c.valid_until || ''), todayIso);
     const validUntilYear = Number(String(c.valid_until || '').slice(0, 4)) || 0;
     const quotaYearNum = Number(c.quota_year || 2026);
+    const trancheCode = normalizeTrancheCode(c.tranche_code || c.tranche_label, certIdx + 1);
 
     let effStatus: 'active' | 'planned' | 'expired' =
       c.status === 'planned' ? 'planned' : c.status === 'expired' ? 'expired' : 'active';
@@ -837,7 +1139,8 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     return {
       id: Number(c.id),
       certificate_no: cno,
-      tranche_label: String(c.tranche_label || 'ИРС(РНП)'),
+      tranche_code: trancheCode,
+      tranche_label: String(c.tranche_label || trancheCode),
       quota_year: quotaYearNum,
       region_code: String(c.region_code || '').toUpperCase(),
       project_name: String(c.project_name || ''),
@@ -879,23 +1182,27 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
         })
       : allWorkers;
 
-  // Link live worker applications back to quota_allocations rows
   const usedAllocWorkerIds = new Set<number>();
   const allocations: QuotaAllocationRow[] = rawAllocations.map((a) => {
-    const matchingWorkers = activeWorkers.filter((w) => {
-      if (usedAllocWorkerIds.has(w.id)) return false;
-      if (w.quota_record_code && w.quota_record_code === a.record_code) return true;
-      const cy = certYearMap.get(w.certificate_no);
-      if (cy && cy !== a.year) return false;
-      if (w.region_code && w.region_code.toUpperCase() !== a.region_code.toUpperCase()) return false;
-      if (w.occupation_code && a.occupation_code && w.occupation_code !== a.occupation_code) {
-        return false;
-      }
-      if (w.country_code && a.country_code && w.country_code !== a.country_code) {
-        return false;
-      }
-      return Boolean(w.region_code && w.occupation_code);
-    });
+    const matchingWorkers =
+      Number(a.approved_qty || 0) > 0
+        ? activeWorkers.filter((w) => {
+            if (usedAllocWorkerIds.has(w.id)) return false;
+            if (w.quota_record_code && w.quota_record_code === a.record_code) return true;
+            const cy = certYearMap.get(w.certificate_no);
+            if (cy && cy !== a.year) return false;
+            if (w.region_code && w.region_code.toUpperCase() !== a.region_code.toUpperCase()) {
+              return false;
+            }
+            if (w.occupation_code && a.occupation_code && w.occupation_code !== a.occupation_code) {
+              return false;
+            }
+            if (w.country_code && a.country_code && w.country_code !== a.country_code) {
+              return false;
+            }
+            return Boolean(w.region_code && w.occupation_code);
+          })
+        : [];
 
     for (const mw of matchingWorkers) usedAllocWorkerIds.add(mw.id);
 
@@ -914,7 +1221,7 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     };
   });
 
-  // Region Summary Matrix (Zahid Şef's Table 1: Заявлено | Подтверждено | ИРС(РНП)1..n | Kullanılan | Kalan İРС | Saklanan Kota)
+  // Build Region Matrix matching Zahid Bey's Bölge-Statü + IRS sheets
   const regionGroups = new Map<
     string,
     {
@@ -922,10 +1229,14 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
       regionNameTr: string;
       regionNameRu: string;
       projects: Set<string>;
+      esasQty: number;
+      artirmaQty: number;
+      azaltmaQty: number;
       requestedQty: number;
       submittedQty: number;
       plannedQty: number;
       approvedQty: number;
+      inReviewQty: number;
       legacyIrsQty: number;
       openingUsedQty: number;
       extensionsQty: number;
@@ -942,10 +1253,14 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
         regionNameTr: rRef?.nameTr || rCode,
         regionNameRu: rRef?.nameRu || rCode,
         projects: new Set(),
+        esasQty: 0,
+        artirmaQty: 0,
+        azaltmaQty: 0,
         requestedQty: 0,
         submittedQty: 0,
         plannedQty: 0,
         approvedQty: 0,
+        inReviewQty: 0,
         legacyIrsQty: 0,
         openingUsedQty: 0,
         extensionsQty: 0,
@@ -955,13 +1270,20 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     const g = regionGroups.get(rCode)!;
     if (a.project_name) g.projects.add(a.project_name);
     const req = Number(a.requested_qty || 0);
+    const app = Number(a.approved_qty || 0);
+    const kind = classifyApplicationType(a.application_type, req);
+    if (kind === 'esas') g.esasQty += req;
+    else if (kind === 'artirma') g.artirmaQty += req;
+    else g.azaltmaQty += req;
+
     g.requestedQty += req;
     if (String(a.migrakvota_status || '').toUpperCase().includes('YAPILACAK')) {
       g.plannedQty += req;
     } else {
       g.submittedQty += req;
     }
-    g.approvedQty += Number(a.approved_qty || 0);
+    g.approvedQty += app;
+    g.inReviewQty += req - app;
     g.legacyIrsQty += Number(a.legacy_irs_qty || 0);
     g.openingUsedQty += Number(a.opening_new_use || 0);
     g.extensionsQty += Number(a.extensions_use || 0);
@@ -977,10 +1299,14 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
         regionNameTr: rRef?.nameTr || rCode,
         regionNameRu: rRef?.nameRu || rCode,
         projects: new Set(),
+        esasQty: 0,
+        artirmaQty: 0,
+        azaltmaQty: 0,
         requestedQty: 0,
         submittedQty: 0,
         plannedQty: 0,
         approvedQty: 0,
+        inReviewQty: 0,
         legacyIrsQty: 0,
         openingUsedQty: 0,
         extensionsQty: 0,
@@ -990,11 +1316,34 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     if (c.project_name) regionGroups.get(rCode)!.projects.add(c.project_name);
   }
 
+  const regionOrder = [
+    'AMUR',
+    'LENINGRADSKAYA',
+    'MURMANSK',
+    'NIJNIY NOVGOROD',
+    'TATARISTAN',
+    'TUMEN',
+  ];
+
   const regionMatrix = Array.from(regionGroups.values())
     .map((g) => {
       const regCerts = certificates.filter((c) => c.region_code === g.regionCode);
+      const irs1Qty = regCerts
+        .filter((c) => c.tranche_code === 'IRS1')
+        .reduce((s, c) => s + c.total_allocated_qty, 0);
+      const irs2Qty = regCerts
+        .filter((c) => c.tranche_code === 'IRS2')
+        .reduce((s, c) => s + c.total_allocated_qty, 0);
+      const irs3Qty = regCerts
+        .filter((c) => c.tranche_code === 'IRS3')
+        .reduce((s, c) => s + c.total_allocated_qty, 0);
       const certIrsTotal = regCerts.reduce((s, c) => s + c.total_allocated_qty, 0);
+      const irsOtherQty = certIrsTotal - irs1Qty - irs2Qty - irs3Qty;
       const certUsedTotal = regCerts.reduce((s, c) => s + c.total_used_qty, 0);
+      const carryoverIrsQty = regCerts
+        .filter((c) => c.is_cross_year_carryover && c.status !== 'expired')
+        .reduce((s, c) => s + Math.max(0, c.total_remaining_qty), 0);
+
       const totalIrsReceived = g.legacyIrsQty + certIrsTotal;
       const totalUsed = g.openingUsedQty + g.extensionsQty + certUsedTotal;
       const irsRemaining = Math.max(0, totalIrsReceived - totalUsed);
@@ -1006,17 +1355,28 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
         regionNameTr: g.regionNameTr,
         regionNameRu: g.regionNameRu,
         projects: Array.from(g.projects),
+        esasQty: g.esasQty,
+        artirmaQty: g.artirmaQty,
+        azaltmaQty: g.azaltmaQty,
         requestedQty: g.requestedQty,
         submittedQty: g.submittedQty,
         plannedQty: g.plannedQty,
         approvedQty: g.approvedQty,
+        inReviewQty: g.inReviewQty,
         legacyIrsQty: g.legacyIrsQty,
         certIrsQty: certIrsTotal,
+        irs1Qty,
+        irs2Qty,
+        irs3Qty,
+        irsOtherQty,
         totalIrsReceived,
+        carryoverIrsQty,
+        regionNote: regionNotesMap.get(g.regionCode) || '',
         irsTranches: regCerts.map((c, idx) => ({
           index: idx + 1,
           certificateNo: c.certificate_no,
-          label: c.tranche_label || `ИРС(РНП)${idx + 1}`,
+          trancheCode: c.tranche_code,
+          label: c.tranche_label || c.tranche_code || `IRS${idx + 1}`,
           allocatedQty: c.total_allocated_qty,
           usedQty: c.total_used_qty,
           remainingQty: c.total_remaining_qty,
@@ -1030,18 +1390,31 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
         recordsCount: g.recordsCount,
       };
     })
-    .sort((a, b) => b.requestedQty - a.requestedQty);
+    .sort((a, b) => {
+      const ia = regionOrder.indexOf(a.regionCode);
+      const ib = regionOrder.indexOf(b.regionCode);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return b.requestedQty - a.requestedQty;
+    });
 
   const kpis = {
+    esasTotal: regionMatrix.reduce((s, r) => s + r.esasQty, 0),
+    artirmaTotal: regionMatrix.reduce((s, r) => s + r.artirmaQty, 0),
+    azaltmaTotal: regionMatrix.reduce((s, r) => s + r.azaltmaQty, 0),
     requestedTotal: regionMatrix.reduce((s, r) => s + r.requestedQty, 0),
     submittedTotal: regionMatrix.reduce((s, r) => s + r.submittedQty, 0),
     plannedTotal: regionMatrix.reduce((s, r) => s + r.plannedQty, 0),
     approvedTotal: regionMatrix.reduce((s, r) => s + r.approvedQty, 0),
+    inReviewTotal: regionMatrix.reduce((s, r) => s + r.inReviewQty, 0),
+    irs1Total: regionMatrix.reduce((s, r) => s + r.irs1Qty, 0),
+    irs2Total: regionMatrix.reduce((s, r) => s + r.irs2Qty, 0),
+    irs3Total: regionMatrix.reduce((s, r) => s + r.irs3Qty, 0),
+    irsOtherTotal: regionMatrix.reduce((s, r) => s + r.irsOtherQty, 0),
     irsReceivedTotal: regionMatrix.reduce((s, r) => s + r.totalIrsReceived, 0),
-    unallocatedReserveTotal: regionMatrix.reduce(
-      (s, r) => s + Math.max(0, r.unallocatedQuotaReserve),
-      0
-    ),
+    unallocatedReserveTotal: regionMatrix.reduce((s, r) => s + r.unallocatedQuotaReserve, 0),
+    carryoverIrsTotal: regionMatrix.reduce((s, r) => s + r.carryoverIrsQty, 0),
     usedTotal: regionMatrix.reduce((s, r) => s + r.usedQty, 0),
     newUseTotal:
       allocations.reduce((s, a) => s + Number(a.opening_new_use || 0), 0) +
@@ -1057,6 +1430,7 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     availableTotal: regionMatrix.reduce((s, r) => s + r.availableTotal, 0),
     certificatesCount: certificates.length,
     workerApplicationsCount: filteredWorkers.length,
+    sourceFilesCount: sourceFiles.length,
   };
 
   const alertSettings = getQuotaAlertSettings(db);
@@ -1068,6 +1442,7 @@ export function getQuotaOverviewData(selectedYear?: number | 'all', dbArg?: any)
     selectedYear: selectedYear || 'all',
     kpis,
     regionMatrix,
+    sourceFiles,
     certificates,
     workerApplications: filteredWorkers,
     allocations,
@@ -1120,7 +1495,7 @@ export function collectCriticalQuotaAlerts(
       const used = matched.length;
       const rem = alloc - used;
 
-      if (alloc > 0 && rem <= settings.lowIrsThresholdQty) {
+      if (alloc > 0 && used > 0 && rem <= settings.lowIrsThresholdQty) {
         alerts.push({
           key: `irs_line_${cno}_${occCode}_${cntryCode}_${rem}`,
           severity: rem <= 5 ? 'critical' : 'warning',
@@ -1163,36 +1538,6 @@ export function collectCriticalQuotaAlerts(
         remaining: totalRem,
         validUntil: String(c.valid_until || ''),
         daysLeft,
-      });
-    }
-  }
-
-  // Also check active approved quota lines (2026+) that still have >=1 remaining but <= threshold %
-  const currentYear = Number(todayIso.slice(0, 4)) || 2026;
-  const allocRows = db
-    .prepare(
-      'SELECT * FROM quota_allocations WHERE year >= ? AND approved_qty >= 20 ORDER BY approved_qty DESC'
-    )
-    .all(currentYear) as QuotaAllocationRow[];
-
-  for (const a of allocRows) {
-    const used = Number(a.opening_new_use || 0) + Number(a.extensions_use || 0);
-    const rem = Number(a.approved_qty || 0) - used;
-    const pct = a.approved_qty > 0 ? (rem / a.approved_qty) * 100 : 100;
-    if (rem > 0 && (rem <= settings.lowIrsThresholdQty || pct <= settings.lowQuotaThresholdPct)) {
-      alerts.push({
-        key: `quota_low_${a.record_code}_${rem}`,
-        severity: rem <= 5 ? 'critical' : 'warning',
-        category: 'quota_low',
-        titleTr: `${a.region_code} (${a.project_name}) — ${a.country_tr} • ${a.occupation_tr} (${a.occupation_code}) kotası azaldı: ${rem}/${a.approved_qty} kaldı`,
-        titleRu: `${a.region_code} (${a.project_name}) — ${a.country_tr} • ${a.occupation_ru || a.occupation_tr}: осталось ${rem} из ${a.approved_qty}`,
-        regionCode: a.region_code,
-        projectName: a.project_name,
-        occupationCode: a.occupation_code,
-        occupationLabel: `${a.occupation_code} • ${a.occupation_tr}`,
-        allocated: a.approved_qty,
-        used,
-        remaining: rem,
       });
     }
   }
@@ -1373,4 +1718,3 @@ export async function checkAndSendQuotaAlerts(force = false): Promise<{
     detail: `Kritik kota uyarısı işlendi (${alerts.length} kalem • TG: ${telegramSent ? 'Gönderildi' : 'Atlandı'}, E-Posta: ${emailSent ? 'Gönderildi' : 'Atlandı'}).`,
   };
 }
-

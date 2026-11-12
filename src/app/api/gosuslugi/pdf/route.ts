@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
+import { getSessionUserFromRequest } from '@/lib/auth';
 import { invalidateStatusPdfCache } from '@/lib/gosuslugiPdfCache';
 
 export const runtime = 'nodejs';
@@ -39,12 +40,26 @@ function doesFileMatchAppNo(filename: string, appNo: string): boolean {
 
 export async function GET(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    const isAdminSession = sessionUser?.role === 'admin';
     const { searchParams } = new URL(request.url);
     const rawFile = searchParams.get('file') || searchParams.get('filename') || '';
     let appNo = searchParams.get('appNo') || searchParams.get('application_no') || '';
     let sicilNo = searchParams.get('sicil') || searchParams.get('sicil_no') || '';
     const forceDownload = searchParams.get('download') === '1';
     const wantScreenshot = searchParams.get('screenshot') === '1';
+    const isExplicitStatusFile = rawFile.toUpperCase().includes('_STATUS_A4');
+
+    if (!wantScreenshot && !isExplicitStatusFile && !isAdminSession) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Yetkisiz İşlem: Şirket maaş gizliliği politikası gereği maaş bilgisi içeren Başvuru (Заявка) PDF belgeleri yalnızca Sistem Yöneticisi (Admin) yetkisi ile indirilebilir. Yalnızca "Statü A4 PDF" belgesini indirebilirsiniz.',
+        },
+        { status: 403 }
+      );
+    }
 
     if (rawFile) {
       const mBoth = rawFile.match(/^(\d{4,8})_([789]\d{8,12})_/);
@@ -215,7 +230,7 @@ export async function GET(request: Request) {
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="window.print()">🖨️ A4 Olarak Yazdır / PDF Kaydet</button>
       <a class="btn btn-secondary" href="https://lk.gosuslugi.ru/orders?q=${encodeURIComponent(dispAppNo)}" target="_blank" rel="noreferrer">🔗 Gosuslugi Portalında Aç (№ ${dispAppNo})</a>
-      ${receiptFile ? `<a class="btn btn-secondary" href="/api/gosuslugi/pdf?filename=${encodeURIComponent(receiptFile)}">📄 Başvuru Makbuzu PDF Aç</a>` : ''}
+      ${isAdminSession && receiptFile ? `<a class="btn btn-secondary" href="/api/gosuslugi/pdf?filename=${encodeURIComponent(receiptFile)}">📄 Başvuru Makbuzu PDF Aç</a>` : ''}
     </div>
   </div>
   <div class="sheet">
@@ -260,6 +275,17 @@ export async function GET(request: Request) {
 
     if (!targetFile) {
       return NextResponse.json({ success: false, message: 'PDF dosya adı belirtilmedi.' }, { status: 400 });
+    }
+
+    if (!targetFile.toUpperCase().includes('_STATUS_A4') && !isAdminSession) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Yetkisiz İşlem: Başvuru (Заявка) PDF belgeleri yalnızca Sistem Yöneticisi (Admin) yetkisi ile indirilebilir. Yalnızca "Statü A4 PDF" belgesini indirebilirsiniz.',
+        },
+        { status: 403 }
+      );
     }
 
     const fullPath = path.join(storageDir, targetFile);

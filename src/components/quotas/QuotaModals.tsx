@@ -41,6 +41,7 @@ export function QuotaIrsCertificateModal({
   onSaved,
   initialCert,
   defaultYear,
+  defaultRegionCode,
   references,
 }: {
   open: boolean;
@@ -48,10 +49,12 @@ export function QuotaIrsCertificateModal({
   onSaved: (msg: string) => void;
   initialCert?: QuotaIrsCertificateComputed | null;
   defaultYear: number;
+  defaultRegionCode?: string;
   references: ReferenceBundle;
 }) {
   const [certNo, setCertNo] = useState('');
-  const [trancheLabel, setTrancheLabel] = useState('ИРС(РНП)-1');
+  const [trancheCode, setTrancheCode] = useState('IRS1');
+  const [trancheLabel, setTrancheLabel] = useState('IRS1');
   const [quotaYear, setQuotaYear] = useState<number>(defaultYear || 2026);
   const [regionCode, setRegionCode] = useState('MURMANSK');
   const [projectName, setProjectName] = useState('MURMANSK');
@@ -79,13 +82,14 @@ export function QuotaIrsCertificateModal({
     setErrMsg('');
     if (initialCert) {
       setCertNo(initialCert.certificate_no);
-      setTrancheLabel(initialCert.tranche_label || 'ИРС(РНП)-1');
+      setTrancheCode(initialCert.tranche_code || 'IRS1');
+      setTrancheLabel(initialCert.tranche_label || initialCert.tranche_code || 'IRS1');
       setQuotaYear(initialCert.quota_year || 2026);
       setRegionCode(initialCert.region_code || 'MURMANSK');
       setProjectName(initialCert.project_name || initialCert.region_code || 'MURMANSK');
       setIssueDate(initialCert.issue_date || '2026-11-07');
       setValidFrom(initialCert.valid_from || '2026-11-07');
-      setValidUntil(initialCert.valid_until || '2027-03-31');
+      setValidUntil(initialCert.valid_until || '2027-05-31');
       setStateDuty(initialCert.state_duty_per_person || 15000);
       setStatus(initialCert.status || 'active');
       setNotes(initialCert.notes || '');
@@ -100,23 +104,25 @@ export function QuotaIrsCertificateModal({
       );
     } else {
       const yr = defaultYear || 2026;
-      setCertNo('');
-      setTrancheLabel('ИРС(РНП)-1');
+      const initReg = defaultRegionCode || 'LENINGRADSKAYA';
+      const projHit = references.projectMappings.find((m) => m.regionCode === initReg);
+      setCertNo(`${yr}-${initReg.slice(0, 6)}-IRS1`);
+      setTrancheCode('IRS1');
+      setTrancheLabel('IRS1');
       setQuotaYear(yr);
-      setRegionCode('MURMANSK');
-      setProjectName('MURMANSK');
+      setRegionCode(initReg);
+      setProjectName(projHit?.quotaProject || initReg);
       setIssueDate(new Date().toISOString().slice(0, 10));
-      setValidFrom(`${yr + 1}-01-01`);
-      setValidUntil(`${yr + 1}-03-31`);
+      setValidFrom(new Date().toISOString().slice(0, 10));
+      setValidUntil(`${yr + 1}-05-31`);
       setStateDuty(15000);
       setStatus('active');
       setNotes('');
       setLines([
-        { occupationCode: '102660', countryCode: '', allocatedQty: 112 },
-        { occupationCode: '101435', countryCode: '', allocatedQty: 48 },
+        { occupationCode: '102660', countryCode: '', allocatedQty: 100 },
       ]);
     }
-  }, [open, initialCert, defaultYear]);
+  }, [open, initialCert, defaultYear, defaultRegionCode, references.projectMappings]);
 
   const totalCapacity = useMemo(
     () => lines.reduce((s, l) => s + (Number(l.allocatedQty) || 0), 0),
@@ -153,7 +159,8 @@ export function QuotaIrsCertificateModal({
           action: 'save_irs_certificate',
           certificate: {
             certificate_no: certNo.trim(),
-            tranche_label: trancheLabel.trim(),
+            tranche_code: trancheCode,
+            tranche_label: trancheLabel.trim() || trancheCode,
             quota_year: quotaYear,
             region_code: regionCode,
             project_name: projectName.trim(),
@@ -234,15 +241,34 @@ export function QuotaIrsCertificateModal({
 
             <div>
               <label className="block text-xs text-slate-600 dark:text-slate-300 mb-1">
-                Dilim Etiketi (ИРС Sırası)
+                Parçalı İRS Dilimi (IRS1 / IRS2 / IRS3)
               </label>
-              <input
-                type="text"
-                value={trancheLabel}
-                onChange={(e) => setTrancheLabel(e.target.value)}
-                placeholder="ИРС(РНП)-1"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-              />
+              <div className="flex gap-1.5">
+                <select
+                  value={trancheCode}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setTrancheCode(next);
+                    setTrancheLabel(next);
+                    if (!initialCert && certNo.includes('-IRS')) {
+                      setCertNo(certNo.replace(/-IRS\d+$/, `-${next}`));
+                    }
+                  }}
+                  className="w-24 px-2.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold"
+                >
+                  <option value="IRS1">IRS1</option>
+                  <option value="IRS2">IRS2</option>
+                  <option value="IRS3">IRS3</option>
+                  <option value="IRS4">IRS4</option>
+                </select>
+                <input
+                  type="text"
+                  value={trancheLabel}
+                  onChange={(e) => setTrancheLabel(e.target.value)}
+                  placeholder="IRS1"
+                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
             </div>
 
             <div>
@@ -1083,8 +1109,8 @@ export function QuotaAllocationModal({
     if (initialRow) {
       setRecordCode(initialRow.record_code);
       setYear(initialRow.year);
-      setAppType(initialRow.application_type || 'ILK BASVURU');
-      setStatus(initialRow.migrakvota_status || 'TAMAMLANDI');
+      setAppType(initialRow.application_type || 'Esas başvuru');
+      setStatus(initialRow.migrakvota_status || 'Onaylı (emir taslağında)');
       setRegionCode(initialRow.region_code || 'TATARISTAN');
       setProjectName(initialRow.project_name || '');
       setCountryCode(initialRow.country_code || '356');
@@ -1097,15 +1123,15 @@ export function QuotaAllocationModal({
       setNotes(initialRow.notes || '');
     } else {
       setRecordCode('');
-      setYear(defaultYear || 2027);
-      setAppType('ILK BASVURU');
-      setStatus('BASVURU YAPILACAK');
+      setYear(defaultYear || 2026);
+      setAppType('Artırma düzeltmesi');
+      setStatus('Onaylı (emir taslağında)');
       setRegionCode('TATARISTAN');
       setProjectName('NIJNIKAMPSK+KAZAN');
       setCountryCode('356');
       setOccupationCode('102660');
       setRequestedQty(100);
-      setApprovedQty(0);
+      setApprovedQty(100);
       setLegacyIrsQty(0);
       setOpeningNewUse(0);
       setExtensionsUse(0);
@@ -1200,33 +1226,46 @@ export function QuotaAllocationModal({
             </div>
             <div>
               <label className="block text-xs text-slate-600 dark:text-slate-300 mb-1">
-                Başvuru Türü (АИК Квоты)
+                Başvuru Tipi
               </label>
               <select
                 value={appType}
-                onChange={(e) => setAppType(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAppType(v);
+                  if (v === 'Azaltma düzeltmesi' && requestedQty > 0) {
+                    setRequestedQty(-requestedQty);
+                    if (approvedQty > 0) setApprovedQty(-approvedQty);
+                  } else if (v !== 'Azaltma düzeltmesi' && requestedQty < 0) {
+                    setRequestedQty(Math.abs(requestedQty));
+                    if (approvedQty < 0) setApprovedQty(Math.abs(approvedQty));
+                  }
+                }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
               >
-                <option value="ILK BASVURU">Основная заявка (İlk Başvuru)</option>
-                <option value="KOREKETIROVKA-1">Корректировка (+ Artış 1)</option>
-                <option value="KOREKETIROVKA-2">Корректировка (+ Artış 2)</option>
-                <option value="KOREKETIROVKA-AZALTMA">Корректировка (- Azaltma / İade)</option>
+                <option value="Esas başvuru">Esas başvuru (Основная заявка)</option>
+                <option value="Artırma düzeltmesi">Artırma düzeltmesi (+ Корректировка)</option>
+                <option value="Azaltma düzeltmesi">Azaltma düzeltmesi (− Уменьшение / İade)</option>
               </select>
             </div>
             <div>
               <label className="block text-xs text-slate-600 dark:text-slate-300 mb-1">
-                migrakvota.gov.ru Durumu
+                Bakanlık Statüsü
               </label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) => {
+                  const st = e.target.value;
+                  setStatus(st);
+                  if (st === 'İncelemede') setApprovedQty(0);
+                  else if (st === 'Onaylı (emir taslağında)') setApprovedQty(requestedQty);
+                }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
               >
-                <option value="BASVURU YAPILACAK">Не отправлена (Başvuru Yapılacak)</option>
-                <option value="INCELEMEDE">Отправлена на рассмотрение (İncelemede)</option>
-                <option value="TEKLIFTE">Включена в предложение (Teklif Listesinde)</option>
-                <option value="TASLAK_EMIRDE">Включена в проект приказа (Taslak Emirde)</option>
-                <option value="TAMAMLANDI">Утверждена приказом (Onaylandı / Tamamlandı)</option>
+                <option value="Onaylı (emir taslağında)">
+                  Onaylı (emir taslağında) — Включена в проект приказа
+                </option>
+                <option value="İncelemede">İncelemede — На рассмотрении</option>
               </select>
             </div>
           </div>
@@ -1304,23 +1343,25 @@ export function QuotaAllocationModal({
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             <div>
               <label className="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">
-                Başvurulan (Заявлено)
+                Net Etki (+/−)
               </label>
               <input
                 type="number"
-                min={0}
                 value={requestedQty}
-                onChange={(e) => setRequestedQty(Number(e.target.value) || 0)}
+                onChange={(e) => {
+                  const val = Number(e.target.value) || 0;
+                  setRequestedQty(val);
+                  if (status.toLowerCase().includes('onaylı')) setApprovedQty(val);
+                }}
                 className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
               />
             </div>
             <div>
               <label className="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">
-                Onaylanan (Приказ)
+                Onaylı (Emirde)
               </label>
               <input
                 type="number"
-                min={0}
                 value={approvedQty}
                 onChange={(e) => setApprovedQty(Number(e.target.value) || 0)}
                 className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"

@@ -31,6 +31,7 @@ import {
   CheckSquare,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface CandidateMatch {
   sicil_no: string;
@@ -99,6 +100,7 @@ interface SummaryInfo {
 
 export default function InvitationsTrackingView() {
   const { lang } = useLanguage();
+  const { user, showPermissionDenied } = useAuth();
   const [rows, setRows] = useState<InvitationRow[]>([]);
   const [summary, setSummary] = useState<SummaryInfo>({
     total: 0,
@@ -161,6 +163,13 @@ export default function InvitationsTrackingView() {
   }, []);
 
   const handleSyncZohoImap = async () => {
+    if (user?.role === 'viewer') {
+      showPermissionDenied({
+        actionLabelTr: 'Zoho Mail Kutusu Tarama',
+        actionLabelRu: 'Сканирование почты Zoho',
+      });
+      return;
+    }
     setSyncingImap(true);
     setBanner(null);
     try {
@@ -241,6 +250,13 @@ export default function InvitationsTrackingView() {
   };
 
   const handleRematchAll = async () => {
+    if (user?.role === 'viewer') {
+      showPermissionDenied({
+        actionLabelTr: 'Davetiye Personel Eşleştirme',
+        actionLabelRu: 'Сверка приглашений с базой',
+      });
+      return;
+    }
     setRematching(true);
     setBanner(null);
     try {
@@ -262,6 +278,13 @@ export default function InvitationsTrackingView() {
   };
 
   const handleSendDailyReport = async () => {
+    if (user?.role === 'viewer') {
+      showPermissionDenied({
+        actionLabelTr: 'Davetiye Özeti Gönderimi',
+        actionLabelRu: 'Отправка сводки приглашений',
+      });
+      return;
+    }
     setSendingReport(true);
     setBanner(null);
     try {
@@ -581,7 +604,16 @@ export default function InvitationsTrackingView() {
             <button
               type="button"
               disabled={uploadingPdf}
-              onClick={() => pdfInputRef.current?.click()}
+              onClick={() => {
+                if (user?.role === 'viewer') {
+                  showPermissionDenied({
+                    actionLabelTr: 'Davetiye PDF Yükleme',
+                    actionLabelRu: 'Загрузка PDF приглашения',
+                  });
+                  return;
+                }
+                pdfInputRef.current?.click();
+              }}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-indigo-300 dark:border-indigo-500/40 bg-indigo-100/90 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 text-xs font-semibold transition-all cursor-pointer shadow-2xs disabled:opacity-60"
             >
               <Upload className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />

@@ -28,6 +28,7 @@ import { PersonnelRecord, FilterOptions } from '@/types';
 import PersonnelDetailDrawer from './PersonnelDetailDrawer';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { isOfficialSalaryColumn } from '@/lib/salaryPrivacy';
 
 interface PersonnelListViewProps {
   initialFilter?: { type: string; value: string } | null;
@@ -215,7 +216,6 @@ const INITIAL_COLUMN_GROUPS: ColumnGroupDef[] = [
       { key: 'is_sozlesmesi_imza', name: 'İş Sözleşmesi İmza Tarihi', defaultVisible: false },
       { key: 'is_sozlesmesi_giris', name: 'İş Sözleşmesi Giriş Tarihi', defaultVisible: false },
       { key: 'ek_is_sozlesmesi_tarihi', name: 'Ek İş Sözleşmesi Tarihi', defaultVisible: false },
-      { key: 'resmi_maas', name: 'Resmi Maaş', defaultVisible: false },
       { key: 'resmi_firma', name: 'Resmi Firma', defaultVisible: false },
       { key: 'resmi_gorevi', name: 'Resmi Görevi', defaultVisible: false },
       { key: 'resmi_cikis_tarihi', name: 'Resmi Çıkış Tarihi', defaultVisible: false },
@@ -412,24 +412,26 @@ export default function PersonnelListView({
       .then((res) => res.json())
       .then((resData) => {
         if (resData.success && resData.grouped) {
-          const loadedGroups: ColumnGroupDef[] = Object.entries(resData.grouped).map(
-            ([groupName, cols]: [string, any], idx) => ({
+          const loadedGroups: ColumnGroupDef[] = Object.entries(resData.grouped)
+            .map(([groupName, cols]: [string, any], idx) => ({
               id: `api_grup_${idx + 1}`,
               name: groupName,
-              columns: cols.map((c: any) => {
-                let cleanColName = c.name;
-                if (cleanColName === 'RHI ID') cleanColName = 'Şirket ID';
-                else if (cleanColName === 'RHI Görevi') cleanColName = 'Ek Görev';
-                else if (cleanColName.includes('RHI')) cleanColName = cleanColName.replace(/RHI/g, 'Şirket');
+              columns: cols
+                .filter((c: any) => !isOfficialSalaryColumn(c.key) && !isOfficialSalaryColumn(c.name))
+                .map((c: any) => {
+                  let cleanColName = c.name;
+                  if (cleanColName === 'RHI ID') cleanColName = 'Şirket ID';
+                  else if (cleanColName === 'RHI Görevi') cleanColName = 'Ek Görev';
+                  else if (cleanColName.includes('RHI')) cleanColName = cleanColName.replace(/RHI/g, 'Şirket');
 
-                return {
-                  key: c.key || c.name,
-                  name: cleanColName,
-                  defaultVisible: DEFAULT_VISIBLE_NAMES.has(cleanColName) || DEFAULT_VISIBLE_NAMES.has(c.name),
-                };
-              }),
-            })
-          );
+                  return {
+                    key: c.key || c.name,
+                    name: cleanColName,
+                    defaultVisible: DEFAULT_VISIBLE_NAMES.has(cleanColName) || DEFAULT_VISIBLE_NAMES.has(c.name),
+                  };
+                }),
+            }))
+            .filter((g) => g.columns.length > 0);
           if (loadedGroups.length > 0) {
             setColumnGroups(loadedGroups);
           }

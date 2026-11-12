@@ -5,6 +5,7 @@ import {
   classifyPonderaColumnGroup,
   isPlaceholderColumnName,
 } from '@/lib/columnGroupsClassifier';
+import { isOfficialSalaryColumn } from '@/lib/salaryPrivacy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,12 +24,17 @@ export async function GET() {
       col_group: string | null;
     }>;
 
-    // Self-heal legacy 'Genel' / empty col_group values in SQLite
+    // Self-heal legacy 'Genel' / empty col_group values and purge any salary columns from SQLite
     const updates: Array<{ col_index: number; col_group: string }> = [];
+    const salaryDeletes: number[] = [];
     const validRows: Array<{ col_index: number; col_name: string; col_group: string }> = [];
 
     for (const r of rawRows) {
       if (isPlaceholderColumnName(r.col_name)) {
+        continue;
+      }
+      if (isOfficialSalaryColumn(r.col_name)) {
+        salaryDeletes.push(r.col_index);
         continue;
       }
       const currentGroup = String(r.col_group || '').trim();
@@ -50,13 +56,17 @@ export async function GET() {
       });
     }
 
-    if (updates.length > 0) {
+    if (updates.length > 0 || salaryDeletes.length > 0) {
       try {
         const updateStmt = db.prepare('UPDATE columns_meta SET col_group = ? WHERE col_index = ?');
+        const deleteStmt = db.prepare('DELETE FROM columns_meta WHERE col_index = ?');
         db.exec('BEGIN');
         try {
           for (const u of updates) {
             updateStmt.run(u.col_group, u.col_index);
+          }
+          for (const colIdx of salaryDeletes) {
+            deleteStmt.run(colIdx);
           }
           db.exec('COMMIT');
         } catch {

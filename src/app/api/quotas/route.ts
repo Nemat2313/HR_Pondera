@@ -4,8 +4,12 @@ import { createPreActionBackup } from '@/lib/backup';
 import { searchPonderaPeople35k } from '@/lib/aiTicketEngine';
 import {
   checkAndSendQuotaAlerts,
+  classifyApplicationType,
   ensureQuotaTables,
   getQuotaOverviewData,
+  isApprovedQuotaStatus,
+  normalizeRegionCode,
+  normalizeTrancheCode,
   resolveCountryByCodeOrName,
   resolveOccupationByCodeOrName,
   saveQuotaAlertSettings,
@@ -45,12 +49,82 @@ export async function GET(request: Request) {
   }
 }
 
+function buildProportionalLinesForRegion(
+  db: any,
+  year: number,
+  regionCode: string,
+  targetQty: number
+): Array<{
+  occupationCode: string;
+  occupationTr: string;
+  occupationRu: string;
+  countryCode: string;
+  countryTr: string;
+  allocatedQty: number;
+}> {
+  const rows = db
+    .prepare(
+      'SELECT occupation_code, occupation_tr, occupation_ru, SUM(approved_qty) AS tot FROM quota_allocations WHERE year = ? AND region_code = ? GROUP BY occupation_code'
+    )
+    .all(year, regionCode) as Array<{
+    occupation_code: string;
+    occupation_tr: string;
+    occupation_ru: string;
+    tot: number;
+  }>;
+
+  const pos = rows.filter((r) => Number(r.tot || 0) > 0).sort((a, b) => b.tot - a.tot);
+  const sumPool = pos.reduce((s, r) => s + Number(r.tot || 0), 0);
+
+  if (pos.length > 0 && sumPool > 0) {
+    const out: Array<{
+      occupationCode: string;
+      occupationTr: string;
+      occupationRu: string;
+      countryCode: string;
+      countryTr: string;
+      allocatedQty: number;
+    }> = [];
+    let assigned = 0;
+    for (let i = 0; i < pos.length; i++) {
+      const it = pos[i];
+      const q =
+        i === pos.length - 1
+          ? targetQty - assigned
+          : Math.min(targetQty - assigned, Math.round(targetQty * (Number(it.tot) / sumPool)));
+      if (q > 0) {
+        out.push({
+          occupationCode: it.occupation_code || '102660',
+          occupationTr: it.occupation_tr || 'Proses borusu montajcısı',
+          occupationRu: it.occupation_ru || 'Монтажник технологических трубопроводов',
+          countryCode: '',
+          countryTr: '',
+          allocatedQty: q,
+        });
+        assigned += q;
+      }
+    }
+    if (out.length > 0) return out;
+  }
+
+  return [
+    {
+      occupationCode: '102660',
+      occupationTr: 'Proses borusu montajcısı',
+      occupationRu: 'Монтажник технологических трубопроводов',
+      countryCode: '',
+      countryTr: '',
+      allocatedQty: targetQty,
+    },
+  ];
+}
+
 export async function POST(request: Request) {
   try {
     const sessionUser = getSessionUserFromRequest(request);
     if (!sessionUser || sessionUser.role === 'viewer') {
       return NextResponse.json(
-        { success: false, message: 'Bu işlem için düzenleme yetkisi gereklidir.' },
+        { success: false, message: 'Bu işlem için Admin / düzenleme yetkisi gereklidir.' },
         { status: 403 }
       );
     }
@@ -69,20 +143,20 @@ export async function POST(request: Request) {
       const certNo = String(cert.certificate_no ?? cert.certificateNo ?? '').trim();
       if (!certNo) {
         return NextResponse.json(
-          { success: false, message: 'ИРС (РНП) sertifika numarası zorunludur (Örn: 2600030066).' },
+          { success: false, message: 'ИРС (РНП) sertifika numarası zorunludur.' },
           { status: 400 }
         );
       }
 
       const quotaYear = Number(cert.quota_year ?? cert.quotaYear ?? 2026) || 2026;
-      const regionCode = String(cert.region_code ?? cert.regionCode ?? 'MURMANSK')
-        .trim()
-        .toUpperCase();
-      const projectName = String(cert.project_name ?? cert.projectName ?? regionCode).trim();
-      const trancheLabel = String(cert.tranche_label ?? cert.trancheLabel ?? 'ИРС(РНП)-1').trim();
+      const normReg = normalizeRegionCode(cert.region_code ?? cert.regionCode ?? 'MURMANSK');
+      const regionCode = normReg.regionCode;
+      const projectName = String(cert.project_name ?? cert.projectName ?? normReg.projectName).trim();
+      const trancheLabel = String(cert.tranche_label ?? cert.trancheLabel ?? 'IRS1').trim();
+      const trancheCode = normalizeTrancheCode(cert.tranche_code ?? cert.trancheCode ?? trancheLabel);
       const issueDate = String(cert.issue_date ?? cert.issueDate ?? todayDate).trim();
       const validFrom = String(cert.valid_from ?? cert.validFrom ?? todayDate).trim();
-      const validUntil = String(cert.valid_until ?? cert.validUntil ?? `${quotaYear + 1}-03-31`).trim();
+      const validUntil = String(cert.valid_until ?? cert.validUntil ?? `${quotaYear + 1}-05-31`).trim();
       const stateDuty = Number(cert.state_duty_per_person ?? cert.stateDutyPerPerson ?? 15000) || 15000;
       const status =
         cert.status === 'planned' ? 'planned' : cert.status === 'expired' ? 'expired' : 'active';
@@ -109,7 +183,8 @@ export async function POST(request: Request) {
         if (existing) {
           db.prepare(`
             UPDATE quota_irs_certificates
-            SET tranche_label = ?,
+            SET tranche_code = ?,
+                tranche_label = ?,
                 quota_year = ?,
                 region_code = ?,
                 project_name = ?,
@@ -122,6 +197,7 @@ export async function POST(request: Request) {
                 updated_at = ?
             WHERE id = ?
           `).run(
+            trancheCode,
             trancheLabel,
             quotaYear,
             regionCode,
@@ -140,13 +216,14 @@ export async function POST(request: Request) {
           const ins = db
             .prepare(`
               INSERT INTO quota_irs_certificates (
-                certificate_no, tranche_label, quota_year, region_code, project_name,
+                certificate_no, tranche_code, tranche_label, quota_year, region_code, project_name,
                 issue_date, valid_from, valid_until, state_duty_per_person, status,
                 notes, created_by, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `)
             .run(
               certNo,
+              trancheCode,
               trancheLabel,
               quotaYear,
               regionCode,
@@ -205,7 +282,148 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: `ИРС (РНП) № ${certNo} sertifikası ve görev kontenjanları kaydedildi.`,
+        message: `ИРС (РНП) № ${certNo} (${trancheCode}) sertifikası ve görev kontenjanları kaydedildi.`,
+      });
+    }
+
+    // 1b. Save Regional Note (Açıklama)
+    if (action === 'save_region_note') {
+      const quotaYear = Number(body?.quotaYear || 2026) || 2026;
+      const normReg = normalizeRegionCode(body?.regionCode || '');
+      const noteText = String(body?.noteText ?? '').trim();
+      db.prepare(`
+        INSERT OR REPLACE INTO quota_region_notes (
+          quota_year, region_code, note_text, updated_by, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(quotaYear, normReg.regionCode, noteText, actorName, nowIso);
+
+      return NextResponse.json({
+        success: true,
+        message: `${normReg.regionLabelTr} (${quotaYear}) açıklama notu güncellendi.`,
+      });
+    }
+
+    // 1c. Quick Save Regional IRS Tranches (IRS1, IRS2, IRS3 + Açıklama — e.g. Ust-Luga!)
+    if (action === 'quick_save_region_irs') {
+      const quotaYear = Number(body?.quotaYear || 2026) || 2026;
+      const normReg = normalizeRegionCode(body?.regionCode || '');
+      const noteText = body?.noteText !== undefined ? String(body.noteText).trim() : undefined;
+      const tranches: Array<{ trancheCode: string; qty: number; validUntil?: string }> = [
+        { trancheCode: 'IRS1', qty: Math.max(0, Number(body?.irs1Qty || 0) || 0), validUntil: body?.validUntil },
+        { trancheCode: 'IRS2', qty: Math.max(0, Number(body?.irs2Qty || 0) || 0), validUntil: body?.validUntil },
+        { trancheCode: 'IRS3', qty: Math.max(0, Number(body?.irs3Qty || 0) || 0), validUntil: body?.validUntil },
+      ];
+
+      db.exec('BEGIN');
+      try {
+        if (noteText !== undefined) {
+          db.prepare(`
+            INSERT OR REPLACE INTO quota_region_notes (
+              quota_year, region_code, note_text, updated_by, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+          `).run(quotaYear, normReg.regionCode, noteText, actorName, nowIso);
+        }
+
+        for (const t of tranches) {
+          const existing = db
+            .prepare(
+              'SELECT * FROM quota_irs_certificates WHERE quota_year = ? AND region_code = ? AND tranche_code = ? ORDER BY id ASC LIMIT 1'
+            )
+            .get(quotaYear, normReg.regionCode, t.trancheCode) as Record<string, any> | undefined;
+
+          if (t.qty <= 0) {
+            if (existing && String(existing.certificate_no || '').startsWith(`${quotaYear}-`)) {
+              const hasWorkers = db
+                .prepare('SELECT COUNT(*) AS c FROM quota_worker_applications WHERE certificate_no = ?')
+                .get(existing.certificate_no) as { c?: number } | undefined;
+              if (!hasWorkers?.c) {
+                db.prepare('DELETE FROM quota_irs_lines WHERE certificate_no = ?').run(
+                  existing.certificate_no
+                );
+                db.prepare('DELETE FROM quota_irs_certificates WHERE id = ?').run(existing.id);
+              }
+            }
+            continue;
+          }
+
+          const certNo =
+            existing?.certificate_no ||
+            `${quotaYear}-${normReg.regionCode.slice(0, 6)}-${t.trancheCode}`;
+          const validUntil =
+            String(t.validUntil || existing?.valid_until || `${quotaYear + 1}-05-31`).trim();
+
+          let certId = existing?.id || 0;
+          if (existing) {
+            db.prepare(`
+              UPDATE quota_irs_certificates
+              SET valid_until = ?, notes = COALESCE(?, notes), updated_at = ?
+              WHERE id = ?
+            `).run(validUntil, noteText ?? null, nowIso, certId);
+            db.prepare('DELETE FROM quota_irs_lines WHERE certificate_no = ?').run(certNo);
+          } else {
+            const ins = db
+              .prepare(`
+                INSERT INTO quota_irs_certificates (
+                  certificate_no, tranche_code, tranche_label, quota_year, region_code, project_name,
+                  issue_date, valid_from, valid_until, state_duty_per_person, status,
+                  notes, created_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 15000, 'active', ?, ?, ?, ?)
+              `)
+              .run(
+                certNo,
+                t.trancheCode,
+                `${t.trancheCode} (${normReg.regionLabelTr.split(' ')[0]})`,
+                quotaYear,
+                normReg.regionCode,
+                normReg.projectName,
+                todayDate,
+                todayDate,
+                validUntil,
+                noteText || '',
+                actorName,
+                nowIso,
+                nowIso
+              );
+            certId = Number(ins.lastInsertRowid);
+          }
+
+          const propLines = buildProportionalLinesForRegion(
+            db,
+            quotaYear,
+            normReg.regionCode,
+            t.qty
+          );
+          const insLine = db.prepare(`
+            INSERT INTO quota_irs_lines (
+              certificate_id, certificate_no, quota_record_code,
+              country_code, country_tr, occupation_code, occupation_tr, occupation_ru, allocated_qty
+            ) VALUES (?, ?, '', ?, ?, ?, ?, ?, ?)
+          `);
+          for (const ln of propLines) {
+            insLine.run(
+              certId,
+              certNo,
+              ln.countryCode,
+              ln.countryTr,
+              ln.occupationCode,
+              ln.occupationTr,
+              ln.occupationRu,
+              ln.allocatedQty
+            );
+          }
+        }
+
+        db.exec('COMMIT');
+      } catch (txErr) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        throw txErr;
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `${normReg.regionLabelTr} (${quotaYear}) parçalı İRS dilimleri (IRS1/IRS2/IRS3) ve açıklaması güncellendi.`,
       });
     }
 
@@ -255,14 +473,10 @@ export async function POST(request: Request) {
         .prepare('SELECT * FROM quota_irs_certificates WHERE certificate_no = ? LIMIT 1')
         .get(certNo) as Record<string, any> | undefined;
 
-      const defaultRegion = String(
-        body?.regionCode ?? certRow?.region_code ?? ''
-      )
+      const defaultRegion = String(body?.regionCode ?? certRow?.region_code ?? '')
         .trim()
         .toUpperCase();
-      const defaultProject = String(
-        body?.projectName ?? certRow?.project_name ?? ''
-      ).trim();
+      const defaultProject = String(body?.projectName ?? certRow?.project_name ?? '').trim();
 
       const insertStmt = db.prepare(`
         INSERT INTO quota_worker_applications (
@@ -344,7 +558,6 @@ export async function POST(request: Request) {
         throw txErr;
       }
 
-      // Trigger non-blocking low-quota check (sends TG + Email ONLY if a threshold was newly crossed)
       checkAndSendQuotaAlerts(false).catch(() => {});
 
       return NextResponse.json({
@@ -399,19 +612,19 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Create or Update Quota Allocation Row (migrakvota.gov.ru / LOG)
+    // 3. Create or Update Quota Allocation Row (Preserving signed +/- Azaltma quantities!)
     if (action === 'save_allocation') {
       const a = body?.allocation || {};
       const year = Number(a.year || 2026) || 2026;
-      const regionCode = String(a.region_code ?? a.regionCode ?? 'TATARISTAN')
-        .trim()
-        .toUpperCase();
-      const projectName = String(a.project_name ?? a.projectName ?? regionCode).trim();
-      const appType = String(a.application_type ?? a.applicationType ?? 'ILK BASVURU').trim();
+      const normReg = normalizeRegionCode(a.region_code ?? a.regionCode ?? 'TATARISTAN');
+      const regionCode = normReg.regionCode;
+      const projectName = String(a.project_name ?? a.projectName ?? normReg.projectName).trim();
+      const appType = String(a.application_type ?? a.applicationType ?? 'Esas başvuru').trim();
       const status = String(
-        a.migrakvota_status ?? a.migrakvotaStatus ?? 'BASVURU YAPILACAK'
+        a.migrakvota_status ?? a.migrakvotaStatus ?? 'Onaylı (emir taslağında)'
       ).trim();
       const targetDate = String(a.target_date ?? a.targetDate ?? `${year}-01-01`).trim();
+      const fileCode = String(a.file_code ?? a.fileCode ?? '').trim();
 
       const cntryResolved = resolveCountryByCodeOrName(
         a.country_code ?? a.countryCode,
@@ -422,8 +635,21 @@ export async function POST(request: Request) {
         a.occupation_tr ?? a.occupationTr
       );
 
-      const reqQty = Math.max(0, Number(a.requested_qty ?? a.requestedQty ?? 0) || 0);
-      const appQty = Math.max(0, Number(a.approved_qty ?? a.approvedQty ?? 0) || 0);
+      let reqQty = Math.trunc(Number(a.requested_qty ?? a.requestedQty ?? 0) || 0);
+      if (classifyApplicationType(appType, reqQty) === 'azaltma' && reqQty > 0) {
+        reqQty = -reqQty;
+      }
+
+      let appQty =
+        a.approved_qty !== undefined || a.approvedQty !== undefined
+          ? Math.trunc(Number(a.approved_qty ?? a.approvedQty ?? 0) || 0)
+          : isApprovedQuotaStatus(status)
+          ? reqQty
+          : 0;
+      if (reqQty < 0 && appQty > 0) {
+        appQty = -appQty;
+      }
+
       const irsQty = Math.max(0, Number(a.legacy_irs_qty ?? a.legacyIrsQty ?? 0) || 0);
       const openUse = Math.max(0, Number(a.opening_new_use ?? a.openingNewUse ?? 0) || 0);
       const extUse = Math.max(0, Number(a.extensions_use ?? a.extensionsUse ?? 0) || 0);
@@ -441,19 +667,21 @@ export async function POST(request: Request) {
 
       db.prepare(`
         INSERT INTO quota_allocations (
-          record_code, year, application_type, migrakvota_status, target_date,
+          record_code, file_code, raw_qty, year, application_type, migrakvota_status, target_date,
           region_code, project_name, country_code, country_tr, country_ru,
           occupation_code, occupation_tr, occupation_ru,
           requested_qty, approved_qty, legacy_irs_qty, opening_new_use, extensions_use,
           irs_doc_no, notes, updated_by, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?
         )
         ON CONFLICT(record_code) DO UPDATE SET
+          file_code = excluded.file_code,
+          raw_qty = excluded.raw_qty,
           year = excluded.year,
           application_type = excluded.application_type,
           migrakvota_status = excluded.migrakvota_status,
@@ -477,6 +705,8 @@ export async function POST(request: Request) {
           updated_at = excluded.updated_at
       `).run(
         recCode,
+        fileCode,
+        Math.abs(reqQty),
         year,
         appType,
         status,
@@ -520,7 +750,261 @@ export async function POST(request: Request) {
       });
     }
 
-    // 4. Bulk Excel Import (LOG sheet or Quota table)
+    // 4. Multi-Sheet Kota_2026-2027.xlsx Workbook Sync (Dosyalar + Veri + IRS sheets!)
+    if (action === 'import_kota_workbook') {
+      const sourceFiles: Array<Record<string, any>> = Array.isArray(body?.sourceFiles)
+        ? body.sourceFiles
+        : [];
+      const veriRows: Array<Record<string, any>> = Array.isArray(body?.veriRows)
+        ? body.veriRows
+        : [];
+      const irsRows: Array<Record<string, any>> = Array.isArray(body?.irsRows)
+        ? body.irsRows
+        : [];
+      const replaceExisting = body?.replaceExisting !== false;
+
+      if (veriRows.length === 0 && irsRows.length === 0) {
+        return NextResponse.json(
+          { success: false, message: 'Yüklenen Excel içinde Veri veya IRS sekmesi bulunamadı.' },
+          { status: 400 }
+        );
+      }
+
+      try {
+        createPreActionBackup(
+          'quota_excel_import',
+          'Kota_2026-2027 Excel Senkronizasyonu Öncesi Yedek',
+          'Авто-копия перед синхронизацией Kota_2026-2027'
+        );
+      } catch {}
+
+      let importedVeri = 0;
+      let importedFiles = 0;
+      let importedIrs = 0;
+
+      db.exec('BEGIN');
+      try {
+        if (replaceExisting && veriRows.length > 0) {
+          db.prepare('DELETE FROM quota_allocations').run();
+          if (sourceFiles.length > 0) {
+            db.prepare('DELETE FROM quota_source_files').run();
+          }
+        }
+
+        const fileMap = new Map<string, Record<string, any>>();
+        const insFile = db.prepare(`
+          INSERT OR REPLACE INTO quota_source_files (
+            file_code, year, source_filename, region_code, region_label, project_name,
+            application_type, status_text, fill_date, countries_summary,
+            row_count, net_effect, raw_total, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const sf of sourceFiles) {
+          const fc = String(sf.fileCode || '').trim();
+          if (!fc) continue;
+          const normR = normalizeRegionCode(sf.regionLabel || sf.regionCode || '');
+          fileMap.set(fc, sf);
+          insFile.run(
+            fc,
+            Number(sf.year || 2026),
+            String(sf.sourceFilename || '').trim(),
+            normR.regionCode,
+            String(sf.regionLabel || normR.regionLabelTr).trim(),
+            normR.projectName,
+            String(sf.applicationType || '').trim(),
+            String(sf.status || '').trim(),
+            String(sf.fillDate || '').trim(),
+            String(sf.countriesSummary || '').trim(),
+            Number(sf.rowCount || 0),
+            Math.trunc(Number(sf.netEffect || 0)),
+            Math.trunc(Number(sf.rawTotal || 0)),
+            nowIso
+          );
+          importedFiles += 1;
+        }
+
+        const seqByFile: Record<string, number> = {};
+        const insAlloc = db.prepare(`
+          INSERT OR REPLACE INTO quota_allocations (
+            record_code, file_code, source_filename, source_row, raw_qty,
+            year, application_type, migrakvota_status, target_date,
+            region_code, project_name, country_code, country_tr, country_ru,
+            occupation_code, occupation_tr, occupation_ru,
+            requested_qty, approved_qty, legacy_irs_qty, opening_new_use, extensions_use,
+            irs_doc_no, notes, updated_by, updated_at
+          ) VALUES (
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, 0, 0, 0,
+            '', ?, ?, ?
+          )
+        `);
+
+        for (let i = 0; i < veriRows.length; i++) {
+          const r = veriRows[i];
+          const fc = String(r.fileCode || '').trim();
+          const year = Number(r.year || 2026) || 2026;
+          const normR = normalizeRegionCode(r.region || r.regionCode || '');
+          const cntry = resolveCountryByCodeOrName(r.countryCode, r.countryTr || r.countryRu);
+          const occ = resolveOccupationByCodeOrName(r.occupationCode, r.occupationTr || r.occupationRu);
+          const status = String(r.status || 'Onaylı (emir taslağında)').trim();
+          const appType = String(r.applicationType || 'Esas başvuru').trim();
+          let netQty = Math.trunc(Number(r.netQty ?? r.requestedQty ?? 0) || 0);
+          if (classifyApplicationType(appType, netQty) === 'azaltma' && netQty > 0) {
+            netQty = -netQty;
+          }
+          const approvedQty = isApprovedQuotaStatus(status) ? netQty : 0;
+
+          const fKey = fc || `Y${year}`;
+          seqByFile[fKey] = (seqByFile[fKey] || 0) + 1;
+          const recCode =
+            String(r.recordCode || '').trim() ||
+            `${fKey}-R${String(seqByFile[fKey]).padStart(2, '0')}`;
+
+          const fMeta = fileMap.get(fc);
+          const srcFname = String(r.sourceFilename || fMeta?.sourceFilename || '').trim();
+          const fillDate = String(r.fillDate || fMeta?.fillDate || '').trim();
+
+          insAlloc.run(
+            recCode,
+            fc,
+            srcFname,
+            Number(r.sourceRow || 0),
+            Math.trunc(Number(r.rawQty ?? Math.abs(netQty))),
+            year,
+            appType,
+            status,
+            fillDate,
+            normR.regionCode,
+            normR.projectName,
+            cntry.code,
+            cntry.nameTr || String(r.countryTr || ''),
+            cntry.nameRu || String(r.countryRu || ''),
+            occ.code,
+            occ.nameTr || String(r.occupationTr || ''),
+            occ.nameRu || String(r.occupationRu || ''),
+            netQty,
+            approvedQty,
+            fc && srcFname ? `${fc} • ${srcFname}` : fc,
+            actorName,
+            nowIso
+          );
+          importedVeri += 1;
+        }
+
+        // Sync IRS sheet rows (IRS1, IRS2, IRS3 & Aciklama)
+        for (const ir of irsRows) {
+          const normR = normalizeRegionCode(ir.region || ir.regionCode || '');
+          const qYear = Number(ir.quotaYear || 2026) || 2026;
+          const noteText = String(ir.noteText || '').trim();
+          if (noteText) {
+            db.prepare(`
+              INSERT OR REPLACE INTO quota_region_notes (
+                quota_year, region_code, note_text, updated_by, updated_at
+              ) VALUES (?, ?, ?, ?, ?)
+            `).run(qYear, normR.regionCode, noteText, actorName, nowIso);
+          }
+
+          const tranches = [
+            { code: 'IRS1', qty: Math.max(0, Math.trunc(Number(ir.irs1 || 0) || 0)) },
+            { code: 'IRS2', qty: Math.max(0, Math.trunc(Number(ir.irs2 || 0) || 0)) },
+            { code: 'IRS3', qty: Math.max(0, Math.trunc(Number(ir.irs3 || 0) || 0)) },
+          ];
+
+          for (const t of tranches) {
+            if (t.qty <= 0) continue;
+            const existing = db
+              .prepare(
+                'SELECT * FROM quota_irs_certificates WHERE quota_year = ? AND region_code = ? AND tranche_code = ? ORDER BY id ASC LIMIT 1'
+              )
+              .get(qYear, normR.regionCode, t.code) as Record<string, any> | undefined;
+
+            const certNo =
+              existing?.certificate_no ||
+              `${qYear}-${normR.regionCode.slice(0, 6)}-${t.code}`;
+
+            let certId = existing?.id || 0;
+            if (existing) {
+              db.prepare(
+                'UPDATE quota_irs_certificates SET notes = ?, updated_at = ? WHERE id = ?'
+              ).run(noteText, nowIso, certId);
+              db.prepare('DELETE FROM quota_irs_lines WHERE certificate_no = ?').run(certNo);
+            } else {
+              const ins = db
+                .prepare(`
+                  INSERT INTO quota_irs_certificates (
+                    certificate_no, tranche_code, tranche_label, quota_year, region_code, project_name,
+                    issue_date, valid_from, valid_until, state_duty_per_person, status,
+                    notes, created_by, created_at, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 15000, 'active', ?, ?, ?, ?)
+                `)
+                .run(
+                  certNo,
+                  t.code,
+                  `${t.code} (${String(ir.region || normR.regionCode)})`,
+                  qYear,
+                  normR.regionCode,
+                  normR.projectName,
+                  todayDate,
+                  todayDate,
+                  `${qYear + 1}-05-31`,
+                  noteText,
+                  actorName,
+                  nowIso,
+                  nowIso
+                );
+              certId = Number(ins.lastInsertRowid);
+            }
+
+            const propLines = buildProportionalLinesForRegion(
+              db,
+              qYear,
+              normR.regionCode,
+              t.qty
+            );
+            const insLine = db.prepare(`
+              INSERT INTO quota_irs_lines (
+                certificate_id, certificate_no, quota_record_code,
+                country_code, country_tr, occupation_code, occupation_tr, occupation_ru, allocated_qty
+              ) VALUES (?, ?, '', ?, ?, ?, ?, ?, ?)
+            `);
+            for (const ln of propLines) {
+              insLine.run(
+                certId,
+                certNo,
+                ln.countryCode,
+                ln.countryTr,
+                ln.occupationCode,
+                ln.occupationTr,
+                ln.occupationRu,
+                ln.allocatedQty
+              );
+            }
+            importedIrs += 1;
+          }
+        }
+
+        db.exec('COMMIT');
+      } catch (txErr) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        throw txErr;
+      }
+
+      return NextResponse.json({
+        success: true,
+        importedVeri,
+        importedFiles,
+        importedIrs,
+        message: `Kota Excel başarıyla senkronize edildi (${importedFiles} kaynak dosya, ${importedVeri} kota satırı, ${importedIrs} İRS dilimi).`,
+      });
+    }
+
+    // 4b. Legacy Single-Sheet Bulk Excel Import
     if (action === 'import_excel_rows') {
       const rows: Array<Record<string, any>> = Array.isArray(body?.rows) ? body.rows : [];
       if (rows.length === 0) {
@@ -540,19 +1024,21 @@ export async function POST(request: Request) {
 
       const upsertStmt = db.prepare(`
         INSERT INTO quota_allocations (
-          record_code, year, application_type, migrakvota_status, target_date,
+          record_code, file_code, raw_qty, year, application_type, migrakvota_status, target_date,
           region_code, project_name, country_code, country_tr, country_ru,
           occupation_code, occupation_tr, occupation_ru,
           requested_qty, approved_qty, legacy_irs_qty, opening_new_use, extensions_use,
           irs_doc_no, notes, updated_by, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?
         )
         ON CONFLICT(record_code) DO UPDATE SET
+          file_code = excluded.file_code,
+          raw_qty = excluded.raw_qty,
           year = excluded.year,
           application_type = excluded.application_type,
           migrakvota_status = excluded.migrakvota_status,
@@ -581,31 +1067,46 @@ export async function POST(request: Request) {
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
           const year = Number(r.year || 2026) || 2026;
-          const regCode = String(r.region_code || '').trim().toUpperCase();
-          if (!regCode) continue;
+          const normR = normalizeRegionCode(r.region_code || r.region || '');
+          if (!normR.regionCode || normR.regionCode === 'DIGER') continue;
 
           const cntryResolved = resolveCountryByCodeOrName(r.country_code, r.country_tr);
           const occResolved = resolveOccupationByCodeOrName(r.occupation_code, r.occupation_tr);
           const recCode =
             String(r.record_code || '').trim() ||
             `KV-${year}-IMP-${String(i + 1).padStart(4, '0')}`;
+          const appType = String(r.application_type || 'Esas başvuru').trim();
+          const status = String(r.migrakvota_status || 'Onaylı (emir taslağında)').trim();
+
+          let reqQty = Math.trunc(Number(r.requested_qty || 0) || 0);
+          if (classifyApplicationType(appType, reqQty) === 'azaltma' && reqQty > 0) {
+            reqQty = -reqQty;
+          }
+          const appQty =
+            r.approved_qty !== undefined
+              ? Math.trunc(Number(r.approved_qty || 0) || 0)
+              : isApprovedQuotaStatus(status)
+              ? reqQty
+              : 0;
 
           upsertStmt.run(
             recCode,
+            String(r.file_code || '').trim(),
+            Math.abs(reqQty),
             year,
-            String(r.application_type || 'ILK BASVURU').trim(),
-            String(r.migrakvota_status || 'TAMAMLANDI').trim(),
+            appType,
+            status,
             String(r.target_date || '').trim(),
-            regCode,
-            String(r.project_name || regCode).trim(),
+            normR.regionCode,
+            String(r.project_name || normR.projectName).trim(),
             cntryResolved.code,
             cntryResolved.nameTr,
             cntryResolved.nameRu,
             occResolved.code,
             occResolved.nameTr,
             occResolved.nameRu,
-            Number(r.requested_qty || 0) || 0,
-            Number(r.approved_qty || 0) || 0,
+            reqQty,
+            appQty,
             Number(r.legacy_irs_qty || 0) || 0,
             Number(r.opening_new_use || 0) || 0,
             Number(r.extensions_use || 0) || 0,
@@ -658,4 +1159,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

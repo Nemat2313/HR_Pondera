@@ -126,7 +126,7 @@ export default function DocumentScanControlView({
   onNavigateToPersonnel,
   onLoadedMeta,
 }: DocumentScanControlViewProps) {
-  const { user } = useAuth();
+  const { user, showPermissionDenied } = useAuth();
   const { lang } = useLanguage();
 
   const [loading, setLoading] = useState(true);
@@ -905,16 +905,23 @@ export default function DocumentScanControlView({
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            {user?.role !== 'viewer' && (
-              <button
-                type="button"
-                onClick={() => setIsUploadOpen((v) => !v)}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-indigo-300 dark:border-indigo-500/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
-              >
-                <Upload className="w-4 h-4 text-indigo-700 dark:text-indigo-300" />
-                <span>{lang === 'ru' ? 'Загрузить Excel (eBA)' : 'eBA Excel Yükle'}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (user?.role === 'viewer') {
+                  showPermissionDenied({
+                    actionLabelTr: 'eBA Skan Raporu Excel Yükleme',
+                    actionLabelRu: 'Загрузка Excel сканов eBA',
+                  });
+                  return;
+                }
+                setIsUploadOpen((v) => !v);
+              }}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-indigo-300 dark:border-indigo-500/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+            >
+              <Upload className="w-4 h-4 text-indigo-700 dark:text-indigo-300" />
+              <span>{lang === 'ru' ? 'Загрузить Excel (eBA)' : 'eBA Excel Yükle'}</span>
+            </button>
 
             <button
               type="button"

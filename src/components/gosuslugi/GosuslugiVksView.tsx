@@ -831,16 +831,16 @@ export function validateVksWorkerRecord(
     );
   }
 
-  // 8. Salary Amount (РазмерВыплаты)
+  // 8. Salary Amount (РазмерВыплаты — stripped from network JSON for non-admin users, who receive hasSalaryReady)
   const cleanSal = String(w.salaryAmount || '')
     .replace(/\s+/g, '')
     .replace(',', '.');
   const salNum = Number(cleanSal);
-  if (!cleanSal || Number.isNaN(salNum) || salNum <= 0) {
+  if (!w.hasSalaryReady && (!cleanSal || Number.isNaN(salNum) || salNum <= 0)) {
     addIssue(
       'salary',
-      'Не указана или некорректна сумма выплаты ЗП',
-      'Maaş tutarı eksik veya geçersiz'
+      'Не указана сумма квартального отчёта ВКС',
+      'Dönem tutar kaydı eksik'
     );
   }
 
@@ -961,9 +961,25 @@ function isWorkerOkazana(w: { gosuslugiStatus?: string }): boolean {
 }
 
 export default function GosuslugiVksView() {
-  const { user } = useAuth();
+  const { user, isAdmin, showPermissionDenied, showSalaryPdfPermissionDenied } = useAuth();
   const { lang } = useLanguage();
   const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal'>('vks');
+
+  const requireWritePermission = (actionLabelTr: string, actionLabelRu?: string): boolean => {
+    if (user?.role === 'viewer') {
+      showPermissionDenied({ actionLabelTr, actionLabelRu });
+      return false;
+    }
+    return true;
+  };
+
+  const requireAdminPermission = (actionLabelTr: string, actionLabelRu?: string): boolean => {
+    if (!isAdmin) {
+      showPermissionDenied({ actionLabelTr, actionLabelRu });
+      return false;
+    }
+    return true;
+  };
 
   const [activeBridgeUrl, setActiveBridgeUrl] = useState(BRIDGE_URLS[0]);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({
@@ -1130,6 +1146,7 @@ export default function GosuslugiVksView() {
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   const triggerExcelFileSelect = () => {
+    if (!requireWritePermission('VKS Excel Yükle', 'Загрузка Excel ВКС')) return;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
@@ -1934,6 +1951,7 @@ export default function GosuslugiVksView() {
 
   // Load VKS specialists directly from Pondera HR SQLite database
   const handleLoadFromDatabase = async () => {
+    if (!requireWritePermission('Sistemden VKS Çek', 'Загрузка ВКС из базы')) return;
     setIsLoadingDb(true);
     try {
       const params = new URLSearchParams({
@@ -2081,6 +2099,7 @@ export default function GosuslugiVksView() {
   };
 
   const handleToggle15MinNotifications = async () => {
+    if (!requireWritePermission('15 Dk Bildirim Ayarı', 'Настройка 15-минутных уведомлений')) return;
     const currentlyEnabled = Boolean(quarterOverview?.notifications15MinEnabled);
     setIsToggling15Min(true);
     try {
@@ -2511,6 +2530,7 @@ export default function GosuslugiVksView() {
     targetWorkers: GosuslugiVksWorkerRecord[],
     silentNotice: boolean = false
   ) => {
+    if (!requireWritePermission('Tekrar Gönderime Aç', 'Повторная отправка')) return;
     const eligible = targetWorkers.filter((w) => !isWorkerOkazana(w));
     if (eligible.length === 0) return;
 
@@ -3549,6 +3569,7 @@ export default function GosuslugiVksView() {
   };
 
   const handleOpenChrome = async () => {
+    if (!requireWritePermission('Gosuslugi Chrome Başlat', 'Запуск Chrome Госуслуги')) return;
     setIsLaunchingChrome(true);
     try {
       const res = await fetch(`${activeBridgeUrl}/open-chrome`, { method: 'POST' });
@@ -3631,6 +3652,10 @@ export default function GosuslugiVksView() {
     });
 
   const handleSaveQueueJson = () => {
+    if (!isAdmin) {
+      showSalaryPdfPermissionDenied();
+      return;
+    }
     const validSelected = workers.filter((w) => w.selected && !isWorkerAlreadySentToGosuslugi(w));
     const recordsToSave = buildPayloadRecords(validSelected);
     if (recordsToSave.length === 0) {
@@ -3664,6 +3689,7 @@ export default function GosuslugiVksView() {
     singleWorker?: GosuslugiVksWorkerRecord,
     skipPdfDownload: boolean = false
   ) => {
+    if (!requireAdminPermission('Gosuslugi VKS Maaş Bildirimi Robotu Başlatma', 'Запуск робота уведомлений ВКС')) return;
     if (bridgeStatus.status !== 'online') {
       setShowAgentGuide(true);
       showNotice(
@@ -4717,61 +4743,62 @@ export default function GosuslugiVksView() {
             </div>
 
             {/* Add New Quarter Button (e.g. 2027 Q1) */}
-            {(!user || (user.role !== 'viewer' && user.role !== 'idari_isler')) && (
-              <button
-                type="button"
-                onClick={() => setShowAddQuarterModal(true)}
-                className="h-8 px-2.5 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
-                title={
-                  lang === 'ru'
-                    ? 'Добавить новый квартал ВКС (например, 1 Квартал 2027)'
-                    : 'Uygulamaya yeni çeyrek dönemi ekle (örn: 2027 1. Çeyrek)'
-                }
-              >
-                <Plus className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
-                <span>{lang === 'ru' ? 'Новый квартал' : 'Yeni Çeyrek'}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (!requireWritePermission('Yeni Çeyrek Ekleme', 'Добавление нового квартала')) return;
+                setShowAddQuarterModal(true);
+              }}
+              className="h-8 px-2.5 rounded-lg border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
+              title={
+                lang === 'ru'
+                  ? 'Добавить новый квартал ВКС (например, 1 Квартал 2027)'
+                  : 'Uygulamaya yeni çeyrek dönemi ekle (örn: 2027 1. Çeyrek)'
+              }
+            >
+              <Plus className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
+              <span>{lang === 'ru' ? 'Новый квартал' : 'Yeni Çeyrek'}</span>
+            </button>
 
             {/* 15-Minute VKS Notification Stop / Enable Toggle Button */}
-            {user?.role !== 'viewer' && (
-              <button
-                type="button"
-                onClick={handleToggle15MinNotifications}
-                disabled={isToggling15Min}
-                title={
-                  quarterOverview?.notifications15MinEnabled
-                    ? '15 dakikalık VKS bildirimlerini durdurmak için tıklayın'
-                    : 'VKS bildirim döneminde 15 dakikalık otomatik Telegram & E-posta özetini tekrar aktif etmek için tıklayın'
-                }
-                className={`h-8 px-2.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50 ${
-                  quarterOverview?.notifications15MinEnabled
-                    ? 'border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/90 hover:bg-emerald-200/80 dark:bg-emerald-500/20 text-emerald-950 dark:text-emerald-200'
-                    : 'border-amber-300 dark:border-amber-600/50 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200'
-                }`}
-              >
-                {quarterOverview?.notifications15MinEnabled ? (
-                  <>
-                    <Bell className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 animate-pulse" />
-                    <span>{isToggling15Min ? '...' : '15 Dk Bildirimi: Aktif'}</span>
-                  </>
-                ) : (
-                  <>
-                    <BellOff className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
-                    <span>{isToggling15Min ? '...' : '15 Dk Bildirimi: Durduruldu'}</span>
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleToggle15MinNotifications}
+              disabled={isToggling15Min}
+              title={
+                quarterOverview?.notifications15MinEnabled
+                  ? '15 dakikalık VKS bildirimlerini durdurmak için tıklayın'
+                  : 'VKS bildirim döneminde 15 dakikalık otomatik Telegram & E-posta özetini tekrar aktif etmek için tıklayın'
+              }
+              className={`h-8 px-2.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50 ${
+                quarterOverview?.notifications15MinEnabled
+                  ? 'border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/90 hover:bg-emerald-200/80 dark:bg-emerald-500/20 text-emerald-950 dark:text-emerald-200'
+                  : 'border-amber-300 dark:border-amber-600/50 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200'
+              }`}
+            >
+              {quarterOverview?.notifications15MinEnabled ? (
+                <>
+                  <Bell className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 animate-pulse" />
+                  <span>{isToggling15Min ? '...' : '15 Dk Bildirimi: Aktif'}</span>
+                </>
+              ) : (
+                <>
+                  <BellOff className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                  <span>{isToggling15Min ? '...' : '15 Dk Bildirimi: Durduruldu'}</span>
+                </>
+              )}
+            </button>
 
             {/* Admin Quarter Archive Button */}
-            {user?.role === 'admin' &&
-              !isArchivedQuarter &&
+            {!isArchivedQuarter &&
               ((quarterOverview?.activeMasterCount || 0) > 0 ||
                 (quarterOverview?.activeSentCount || 0) > 0) && (
                 <button
                   type="button"
-                  onClick={handleArchiveActiveQuarter}
+                  onClick={() => {
+                    if (!requireAdminPermission('Dönemi Arşivle', 'Архивация квартала')) return;
+                    handleArchiveActiveQuarter();
+                  }}
                   disabled={isArchivingQuarter}
                   className="h-8 px-2.5 rounded-lg border border-purple-300 dark:border-purple-600/50 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 text-purple-900 dark:text-purple-200 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition disabled:opacity-50"
                   title="Mevcut çeyrek verilerini arşivleyip bir sonraki çeyreğe temiz kuyrukla geç"
@@ -4859,9 +4886,15 @@ export default function GosuslugiVksView() {
             </a>
 
             <a
-              href="/api/gosuslugi/pdf/zip?type=receipt"
-              download="Pondera_VKS_Gosuslugi_Receipt_PDFs_2026-3.zip"
-              title="İndirilen tüm VKS başvuru makbuzu (Заявка) PDF'lerini tek ZIP arşivi olarak indir"
+              href={isAdmin ? '/api/gosuslugi/pdf/zip?type=receipt' : '#'}
+              download={isAdmin ? 'Pondera_VKS_Gosuslugi_Receipt_PDFs_2026-3.zip' : undefined}
+              onClick={(e) => {
+                if (!isAdmin) {
+                  e.preventDefault();
+                  showSalaryPdfPermissionDenied();
+                }
+              }}
+              title="İndirilen tüm VKS başvuru makbuzu (Заявка) PDF'lerini tek ZIP arşivi olarak indir (Admin Yetkisi)"
               className="h-8 px-2.5 rounded-lg border border-slate-300/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition no-underline"
             >
               <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -4927,20 +4960,21 @@ export default function GosuslugiVksView() {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {(!user || user.role === 'admin') && (
-                <button
-                  type="button"
-                  disabled={isActivatingQuarter}
-                  onClick={() => handleActivateSelectedQuarter(periodCode)}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition disabled:opacity-50"
-                >
-                  {isActivatingQuarter
-                    ? '...'
-                    : lang === 'ru'
-                    ? '🟢 Сделать активным периодом'
-                    : '🟢 Bu Çeyreği Aktif Dönem Yap'}
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={isActivatingQuarter}
+                onClick={() => {
+                  if (!requireAdminPermission('Bu Çeyreği Aktif Dönem Yap', 'Сделать активным периодом')) return;
+                  handleActivateSelectedQuarter(periodCode);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer transition disabled:opacity-50"
+              >
+                {isActivatingQuarter
+                  ? '...'
+                  : lang === 'ru'
+                  ? '🟢 Сделать активным периодом'
+                  : '🟢 Bu Çeyreği Aktif Dönem Yap'}
+              </button>
               {quarterOverview?.defaultQuarter && quarterOverview.defaultQuarter !== periodCode && (
                 <button
                   type="button"
@@ -5230,7 +5264,7 @@ export default function GosuslugiVksView() {
                       {activeWorkerObj.middleName}{' '}
                       <span className="text-teal-700 dark:text-teal-300 font-mono text-xs font-semibold">
                         (Sicil/Код: {activeWorkerObj.code || activeWorkerObj.sicil} • ИНН:{' '}
-                        {activeWorkerObj.inn || '—'} • Выплата: {activeWorkerObj.salaryAmount} ₽)
+                        {activeWorkerObj.inn || '—'})
                       </span>
                     </>
                   ) : bridgeStatus.active_worker_name ? (
@@ -5968,15 +6002,14 @@ export default function GosuslugiVksView() {
                     <th className="py-2.5 px-2.5">ИНН</th>
                     <th className="py-2.5 px-2.5 min-w-[165px]">Разрешение ВКС (РНР / Бланк)</th>
                     <th className="py-2.5 px-3 min-w-[185px]">Договор (Закл. / Начало / Конец)</th>
-                    <th className="py-2.5 px-2.5 min-w-[155px]">Период ЗП / Индекс</th>
-                    <th className="py-2.5 px-2.5 min-w-[215px]">Выплаты (1–3 мес. / Всего ₽)</th>
+                    <th className="py-2.5 px-2.5 min-w-[155px]">Период отчёта / Индекс</th>
                     <th className="py-2.5 px-2.5 text-right">Действие</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200/90 dark:divide-slate-800/80 text-[12px] font-normal text-slate-900 dark:text-slate-100">
                   {paginatedWorkers.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="py-10 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                      <td colSpan={12} className="py-10 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
                         {lang === 'ru'
                           ? 'По выбранному фильтру или поисковому запросу записей не найдено.'
                           : 'Seçili filtre veya arama kriterine uygun VKS kaydı bulunamadı.'}
@@ -6109,18 +6142,28 @@ export default function GosuslugiVksView() {
                                   .toUpperCase()
                                   .includes('_STATUS_A4') && (
                                 <a
-                                  href={`/api/gosuslugi/pdf?file=${encodeURIComponent(
-                                    sanitizePdfForAppNo(w.pdfFilename, w.applicationNo)
-                                  )}&appNo=${encodeURIComponent(
-                                    w.applicationNo || ''
-                                  )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-700 dark:text-teal-300 hover:underline"
+                                  href={
+                                    isAdmin
+                                      ? `/api/gosuslugi/pdf?file=${encodeURIComponent(
+                                          sanitizePdfForAppNo(w.pdfFilename, w.applicationNo)
+                                        )}&appNo=${encodeURIComponent(
+                                          w.applicationNo || ''
+                                        )}&sicil=${encodeURIComponent(w.sicil || w.code || '')}`
+                                      : '#'
+                                  }
+                                  target={isAdmin ? '_blank' : undefined}
+                                  rel={isAdmin ? 'noreferrer' : undefined}
+                                  onClick={(e) => {
+                                    if (!isAdmin) {
+                                      e.preventDefault();
+                                      showSalaryPdfPermissionDenied();
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-700 dark:text-teal-300 hover:underline cursor-pointer"
                                   title={
                                     lang === 'ru'
-                                      ? `Открыть квитанцию PDF: ${w.pdfFilename}`
-                                      : `Başvuru Makbuzu PDF Aç: ${w.pdfFilename}`
+                                      ? `Открыть квитанцию PDF (Admin): ${w.pdfFilename}`
+                                      : `Başvuru Makbuzu PDF Aç (Admin Yetkisi): ${w.pdfFilename}`
                                   }
                                 >
                                   <Download className="w-2.5 h-2.5 shrink-0" />
@@ -6727,105 +6770,12 @@ export default function GosuslugiVksView() {
                         )}
                       </td>
 
-                      {/* Salary Amount (Monthly 1-месяц, 2-месяц, 3-месяц + Total) */}
-                      <td className="py-2 px-2.5 font-normal text-emerald-800 dark:text-emerald-300 whitespace-nowrap min-w-[215px]">
-                        {isEditing ? (
-                          <div className="flex flex-col gap-1 min-w-[185px]">
-                            <div className="flex items-center gap-1">
-                              <span className="w-11 text-[9.5px] text-slate-500 dark:text-slate-400 font-normal">1-мес:</span>
-                              <input
-                                value={w.month1Salary || ''}
-                                onChange={(e) =>
-                                  handleUpdateWorkerField(w.id, 'month1Salary', e.target.value)
-                                }
-                                placeholder="0.00"
-                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px]"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="w-11 text-[9.5px] text-slate-500 dark:text-slate-400 font-normal">2-мес:</span>
-                              <input
-                                value={w.month2Salary || ''}
-                                onChange={(e) =>
-                                  handleUpdateWorkerField(w.id, 'month2Salary', e.target.value)
-                                }
-                                placeholder="0.00"
-                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px]"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="w-11 text-[9.5px] text-slate-500 dark:text-slate-400 font-normal">3-мес:</span>
-                              <input
-                                value={w.month3Salary || ''}
-                                onChange={(e) =>
-                                  handleUpdateWorkerField(w.id, 'month3Salary', e.target.value)
-                                }
-                                placeholder="0.00"
-                                className="flex-1 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-[10.5px]"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1 pt-0.5 border-t border-slate-200 dark:border-slate-700">
-                              <span className="w-11 text-[9.5px] text-emerald-700 dark:text-emerald-400 font-medium">Всего:</span>
-                              <input
-                                value={w.salaryAmount}
-                                onChange={(e) =>
-                                  handleUpdateWorkerField(w.id, 'salaryAmount', e.target.value)
-                                }
-                                className={`flex-1 px-1.5 py-0.5 rounded border text-[10.5px] ${
-                                  fErr.salary
-                                    ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700'
-                                    : 'border-emerald-500 bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 font-medium'
-                                }`}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-0.5 leading-tight">
-                            {buildWorkerMonthlyPeriods(w, periodStart, periodEnd).map((mp) => (
-                              <div
-                                key={mp.monthIdx}
-                                className="text-[10.5px] font-normal text-slate-700 dark:text-slate-300 flex items-center justify-between gap-2"
-                              >
-                                <span className="text-slate-500 dark:text-slate-400">
-                                  {mp.monthIdx}-мес ({mp.start.slice(0, 5)}–{mp.end.slice(0, 5)}):
-                                </span>
-                                <span className="font-normal text-slate-900 dark:text-slate-100">
-                                  {Number(mp.amount).toLocaleString('ru-RU', {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}{' '}
-                                  ₽
-                                </span>
-                              </div>
-                            ))}
-                            <div
-                              className={`text-[11.5px] pt-0.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 ${
-                                fErr.salary ? 'text-rose-600 dark:text-rose-400 font-medium' : ''
-                              }`}
-                            >
-                              <span className="text-[10px] uppercase tracking-wider text-slate-700 dark:text-slate-300 font-medium">
-                                {lang === 'ru' ? 'Итого:' : 'Toplam:'}
-                              </span>
-                              <span className="font-medium text-emerald-800 dark:text-emerald-300">
-                                {w.salaryAmount
-                                  ? `${Number(
-                                      String(w.salaryAmount).replace(',', '.')
-                                    ).toLocaleString('ru-RU', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })} ₽`
-                                  : '0,00 ₽'}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </td>
-
                       {/* Row Actions: Edit, Reset Error, or Send Single Row */}
                       <td className="p-3 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
                           <button
                             onClick={() => {
+                              if (!requireWritePermission('Satır Düzenleme', 'Редактирование строки')) return;
                               if (isEditing) {
                                 setEditingRowId(null);
                                 saveWorkerRowToMasterList(w);

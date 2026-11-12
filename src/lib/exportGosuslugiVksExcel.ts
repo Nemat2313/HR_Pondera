@@ -31,10 +31,11 @@ export interface GosuslugiVksWorkerRecord {
   postalCode: string; // Индекс (Month2End = 626150)
   periodStart: string; // НачалоПериода (di17_start)
   periodEnd: string; // КонецПериода (di17_end)
-  month1Salary?: string; // 1-месяц (выплата за 1-й месяц квартала)
-  month2Salary?: string; // 2-месяц (выплата за 2-й месяц квартала)
-  month3Salary?: string; // 3-месяц (выплата за 3-й месяц квартала)
-  salaryAmount: string; // РазмерВыплаты (общая сумма за период)
+  month1Salary?: string;
+  month2Salary?: string;
+  month3Salary?: string;
+  salaryAmount: string;
+  hasSalaryReady?: boolean;
   exitDate?: string; // ДатаУвольнения / Resmi Çıkış Tarihi (если уволен в течение квартала)
   position: string; // Должность
   applicationNo?: string; // № Заявления Госуслуги (напр. 8255536023)
@@ -68,10 +69,6 @@ export const GOSUSLUGI_VKS_EXCEL_COLUMNS = [
   'ДатаОканчанияДействия',
   'НачалоПериода',
   'КонецПериода',
-  '1-месяц',
-  '2-месяц',
-  '3-месяц',
-  'РазмерВыплаты',
   'Должность',
   'АдресРаботы',
   'Индекс',
@@ -105,10 +102,6 @@ export function exportGosuslugiVksExcel(records: GosuslugiVksWorkerRecord[], fil
     r.contractEndDate || '',
     r.periodStart || '',
     r.periodEnd || '',
-    r.month1Salary || '',
-    r.month2Salary || '',
-    r.month3Salary || '',
-    r.salaryAmount || '',
     r.position || 'СПЕЦИАЛИСТ',
     r.workAddress || '',
     r.postalCode || '626150',
@@ -143,10 +136,6 @@ export function exportGosuslugiVksExcel(records: GosuslugiVksWorkerRecord[], fil
     { wch: 18 }, // ДатаОканчанияДействия
     { wch: 15 }, // НачалоПериода
     { wch: 15 }, // КонецПериода
-    { wch: 14 }, // 1-месяц
-    { wch: 14 }, // 2-месяц
-    { wch: 14 }, // 3-месяц
-    { wch: 16 }, // РазмерВыплаты
     { wch: 18 }, // Должность
     { wch: 35 }, // АдресРаботы
     { wch: 10 }, // Индекс

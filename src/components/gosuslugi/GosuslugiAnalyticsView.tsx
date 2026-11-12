@@ -282,8 +282,24 @@ interface AnalyticsResponse {
 type MainTabType = 'analytics' | 'master3088' | 'refusals' | 'errors';
 
 export default function GosuslugiAnalyticsView() {
-  const { user } = useAuth();
+  const { user, isAdmin, showPermissionDenied, showSalaryPdfPermissionDenied } = useAuth();
   const [data, setData] = useState<AnalyticsResponse | null>(null);
+
+  const requireWritePermission = (actionLabelTr: string): boolean => {
+    if (user?.role === 'viewer') {
+      showPermissionDenied({ actionLabelTr });
+      return false;
+    }
+    return true;
+  };
+
+  const requireAdminPermission = (actionLabelTr: string): boolean => {
+    if (!isAdmin) {
+      showPermissionDenied({ actionLabelTr });
+      return false;
+    }
+    return true;
+  };
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -385,6 +401,7 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const handleToggle15MinNotifications = async () => {
+    if (!requireWritePermission('15 Dk VKS Bildirim Ayarı')) return;
     const currentlyEnabled = Boolean(data?.quarterOverview?.notifications15MinEnabled);
     setToggling15Min(true);
     setTelegramFeedback(null);
@@ -413,6 +430,7 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const handleArchiveCurrentQuarter = async () => {
+    if (!requireAdminPermission('Dönemi Arşivle & Yeni Çeyreğe Geç')) return;
     const qOv = data?.quarterOverview;
     if (!qOv) return;
     const confirmed = window.confirm(
@@ -445,6 +463,7 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const handleActivateSelectedQuarter = async (targetQuarterCode: string) => {
+    if (!requireAdminPermission('Bu Çeyreği Aktif Dönem Yap')) return;
     if (!targetQuarterCode) return;
     const activeCount = (data?.quarterOverview?.activeMasterCount || 0) + (data?.quarterOverview?.activeSentCount || 0);
     if (activeCount > 0) {
@@ -478,6 +497,7 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const handleTriggerTelegramNow = async () => {
+    if (!requireWritePermission('Telegram Raporu Gönder')) return;
     setSendingTelegram(true);
     setTelegramFeedback(null);
     try {
@@ -899,6 +919,7 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const handleReopenRefusedGroup = async (sicilList: string[], label: string) => {
+    if (!requireWritePermission('Red Kayıtlarını Tekrar Gönderime Aç')) return;
     if (!sicilList.length) return;
     if (
       !window.confirm(
@@ -937,6 +958,7 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const handleReopenErrorGroup = async (sicilList: string[], label: string) => {
+    if (!requireWritePermission('Hatalı Kayıtları Tekrar Gönderime Aç')) return;
     if (!sicilList.length) return;
     if (
       !window.confirm(
@@ -976,6 +998,7 @@ export default function GosuslugiAnalyticsView() {
   };
 
   const handleReopenRegisteredGroup = async (sicilList: string[], label: string) => {
+    if (!requireWritePermission('Yanıt Bekleyen Başvuruları Tekrar Gönderime Aç')) return;
     if (!sicilList.length) return;
     if (
       !window.confirm(
@@ -1107,6 +1130,10 @@ export default function GosuslugiAnalyticsView() {
     masterDateTo !== '';
 
   const handleDownloadPdfZip = async (onlyFiltered = false) => {
+    if (!isAdmin) {
+      showSalaryPdfPermissionDenied();
+      return;
+    }
     setDownloadingZip(true);
     try {
       const isScopedUser = Boolean(user?.scope_type && user.scope_type !== 'all' && user.scope_value);
@@ -1421,52 +1448,50 @@ export default function GosuslugiAnalyticsView() {
             </div>
 
             {/* Add New Quarter Button (e.g. 2027 Q1) */}
-            {(!user || (user.role !== 'viewer' && user.role !== 'idari_isler')) && (
-              <button
-                type="button"
-                onClick={() => setShowAddQuarterModal(true)}
-                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-indigo-300 dark:border-indigo-500/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer transition shadow-2xs"
-                title="Uygulamaya yeni çeyrek dönemi ekle (örn: 2027 1. Çeyrek)"
-              >
-                <Plus className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
-                <span>Yeni Çeyrek</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (!requireWritePermission('Yeni Çeyrek Dönemi Ekleme')) return;
+                setShowAddQuarterModal(true);
+              }}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-indigo-300 dark:border-indigo-500/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer transition shadow-2xs"
+              title="Uygulamaya yeni çeyrek dönemi ekle (örn: 2027 1. Çeyrek)"
+            >
+              <Plus className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300" />
+              <span>Yeni Çeyrek</span>
+            </button>
 
             {/* 15-Minute VKS Notification Stop / Enable Toggle Button */}
-            {user?.role !== 'viewer' && (
-              <button
-                type="button"
-                onClick={handleToggle15MinNotifications}
-                disabled={toggling15Min}
-                title={
-                  data?.quarterOverview?.notifications15MinEnabled
-                    ? '15 dakikalık VKS Telegram & E-posta bildirimlerini durdurmak için tıklayın'
-                    : 'VKS bildirim döneminde 15 dakikalık otomatik Telegram & E-posta özetini tekrar başlatmak için tıklayın'
-                }
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-                  data?.quarterOverview?.notifications15MinEnabled
-                    ? 'bg-emerald-100/90 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-200'
-                    : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/50 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
-                }`}
-              >
-                {data?.quarterOverview?.notifications15MinEnabled ? (
-                  <>
-                    <Bell className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 animate-pulse" />
-                    <span>{toggling15Min ? 'Güncelleniyor...' : '15 Dk Bildirimi: Aktif (Durdur)'}</span>
-                  </>
-                ) : (
-                  <>
-                    <BellOff className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
-                    <span>{toggling15Min ? 'Güncelleniyor...' : '15 Dk Bildirimi: Durduruldu (Aktif Et)'}</span>
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleToggle15MinNotifications}
+              disabled={toggling15Min}
+              title={
+                data?.quarterOverview?.notifications15MinEnabled
+                  ? '15 dakikalık VKS Telegram & E-posta bildirimlerini durdurmak için tıklayın'
+                  : 'VKS bildirim döneminde 15 dakikalık otomatik Telegram & E-posta özetini tekrar başlatmak için tıklayın'
+              }
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                data?.quarterOverview?.notifications15MinEnabled
+                  ? 'bg-emerald-100/90 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 border-emerald-300 dark:border-emerald-500/40 text-emerald-950 dark:text-emerald-200'
+                  : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/50 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+              }`}
+            >
+              {data?.quarterOverview?.notifications15MinEnabled ? (
+                <>
+                  <Bell className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 animate-pulse" />
+                  <span>{toggling15Min ? 'Güncelleniyor...' : '15 Dk Bildirimi: Aktif (Durdur)'}</span>
+                </>
+              ) : (
+                <>
+                  <BellOff className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                  <span>{toggling15Min ? 'Güncelleniyor...' : '15 Dk Bildirimi: Durduruldu (Aktif Et)'}</span>
+                </>
+              )}
+            </button>
 
             {/* Admin-Only Archive Active Quarter & Advance Button */}
-            {user?.role === 'admin' &&
-              !data?.isArchivedQuarter &&
+            {!data?.isArchivedQuarter &&
               ((data?.quarterOverview?.activeMasterCount || 0) > 0 ||
                 (data?.quarterOverview?.activeSentCount || 0) > 0) && (
                 <button
@@ -1506,16 +1531,14 @@ export default function GosuslugiAnalyticsView() {
               {refreshing ? 'Yenileniyor...' : 'Yenile'}
             </button>
 
-            {user?.role !== 'viewer' && (
-              <button
-                onClick={handleTriggerTelegramNow}
-                disabled={sendingTelegram}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-100/85 hover:bg-sky-200/80 dark:bg-sky-500/20 dark:hover:bg-sky-500/30 text-sky-950 dark:text-sky-100 border border-sky-300 dark:border-sky-500/40 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5 text-sky-700 dark:text-sky-300" />
-                {sendingTelegram ? 'Gönderiliyor...' : 'Telegram Raporu'}
-              </button>
-            )}
+            <button
+              onClick={handleTriggerTelegramNow}
+              disabled={sendingTelegram}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-100/85 hover:bg-sky-200/80 dark:bg-sky-500/20 dark:hover:bg-sky-500/30 text-sky-950 dark:text-sky-100 border border-sky-300 dark:border-sky-500/40 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5 text-sky-700 dark:text-sky-300" />
+              {sendingTelegram ? 'Gönderiliyor...' : 'Telegram Raporu'}
+            </button>
           </div>
         </div>
 
@@ -1541,7 +1564,7 @@ export default function GosuslugiAnalyticsView() {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {(!user || user.role === 'admin') && data.selectedQuarter && (
+              {data.selectedQuarter && (
                 <button
                   type="button"
                   disabled={activatingQuarter}
@@ -1959,17 +1982,15 @@ export default function GosuslugiAnalyticsView() {
 
                             {row.actionType === 'error_template' && (
                               <div className="flex items-center gap-1.5">
-                                {user?.role !== 'viewer' && (
-                                  <a
-                                    href={errorTemplateExportUrl}
-                                    download
-                                    className="px-2.5 py-1 rounded-lg text-[11px] font-normal bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 no-underline transition-colors"
-                                    title="Hatalı (Ошибка) kayıtları renkli VKS şablonu olarak indir"
-                                  >
-                                    <Download className="w-3 h-3 text-rose-600" />
-                                    Şablon İndir
-                                  </a>
-                                )}
+                                <a
+                                  href={errorTemplateExportUrl}
+                                  download
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-normal bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1 no-underline transition-colors"
+                                  title="Hatalı (Ошибка) kayıtları renkli VKS şablonu olarak indir"
+                                >
+                                  <Download className="w-3 h-3 text-rose-600" />
+                                  Şablon İndir
+                                </a>
                                 <button
                                   type="button"
                                   onClick={() => setActiveMainTab('errors')}
@@ -2470,7 +2491,7 @@ export default function GosuslugiAnalyticsView() {
                       🔍 3+ Gün Bekleyenleri Listele ({staleRegisteredGroups.byOct23.length})
                     </button>
 
-                    {user?.role !== 'viewer' && staleRegisteredGroups.byOct20.length > 0 && (
+                    {staleRegisteredGroups.byOct20.length > 0 && (
                       <button
                         onClick={() =>
                           handleReopenRegisteredGroup(
@@ -2486,7 +2507,7 @@ export default function GosuslugiAnalyticsView() {
                       </button>
                     )}
 
-                    {user?.role !== 'viewer' && staleRegisteredGroups.byOct23.length > 0 && (
+                    {staleRegisteredGroups.byOct23.length > 0 && (
                       <button
                         onClick={() =>
                           handleReopenRegisteredGroup(
@@ -2502,11 +2523,10 @@ export default function GosuslugiAnalyticsView() {
                       </button>
                     )}
 
-                    {user?.role !== 'viewer' &&
-                      (masterStatusFilter === 'registered_mvd' ||
-                        masterStatusFilter === 'sent_pending' ||
-                        masterRegionFilter !== 'all' ||
-                        masterSearch.trim() !== '') &&
+                    {(masterStatusFilter === 'registered_mvd' ||
+                      masterStatusFilter === 'sent_pending' ||
+                      masterRegionFilter !== 'all' ||
+                      masterSearch.trim() !== '') &&
                       filteredMaster3088.some(
                         (m) => m.status_key === 'registered_mvd' || m.status_key === 'sent_pending'
                       ) && (
@@ -2704,12 +2724,23 @@ export default function GosuslugiAnalyticsView() {
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {item.hasPdf && item.pdf_filename ? (
                                     <a
-                                      href={`/api/gosuslugi/pdf?filename=${encodeURIComponent(
-                                        item.pdf_filename
-                                      )}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center gap-1 text-[10.5px] text-teal-600 dark:text-teal-400 font-semibold hover:underline"
+                                      href={
+                                        isAdmin
+                                          ? `/api/gosuslugi/pdf?filename=${encodeURIComponent(
+                                              item.pdf_filename
+                                            )}`
+                                          : '#'
+                                      }
+                                      target={isAdmin ? '_blank' : undefined}
+                                      rel={isAdmin ? 'noreferrer' : undefined}
+                                      onClick={(e) => {
+                                        if (!isAdmin) {
+                                          e.preventDefault();
+                                          showSalaryPdfPermissionDenied();
+                                        }
+                                      }}
+                                      className="inline-flex items-center gap-1 text-[10.5px] text-teal-600 dark:text-teal-400 font-semibold hover:underline cursor-pointer"
+                                      title="Başvuru Makbuzu PDF Aç (Admin Yetkisi)"
                                     >
                                       <FileText className="w-3 h-3" />
                                       PDF Aç
@@ -2769,46 +2800,42 @@ export default function GosuslugiAnalyticsView() {
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-[11px] font-bold">
                                   🏛 {item.gosuslugi_status}
                                 </span>
-                                {user?.role !== 'viewer' && (
-                                  <div>
-                                    <button
-                                      onClick={() =>
-                                        handleReopenRegisteredGroup(
-                                          [item.sicil_no],
-                                          `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
-                                        )
-                                      }
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-semibold cursor-pointer"
-                                      title="Bu başvuruyu beklemeden tekrar gönderim kuyruğuna aç"
-                                    >
-                                      <RefreshCw className="w-2.5 h-2.5" />
-                                      Tekrar Gönderime Aç
-                                    </button>
-                                  </div>
-                                )}
+                                <div>
+                                  <button
+                                    onClick={() =>
+                                      handleReopenRegisteredGroup(
+                                        [item.sicil_no],
+                                        `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-semibold cursor-pointer"
+                                    title="Bu başvuruyu beklemeden tekrar gönderim kuyruğuna aç"
+                                  >
+                                    <RefreshCw className="w-2.5 h-2.5" />
+                                    Tekrar Gönderime Aç
+                                  </button>
+                                </div>
                               </div>
                             ) : item.status_key === 'sent_pending' ? (
                               <div className="space-y-1">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[11px] font-bold">
                                   📤 {item.gosuslugi_status}
                                 </span>
-                                {user?.role !== 'viewer' && (
-                                  <div>
-                                    <button
-                                      onClick={() =>
-                                        handleReopenRegisteredGroup(
-                                          [item.sicil_no],
-                                          `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
-                                        )
-                                      }
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-semibold cursor-pointer"
-                                      title="Bu başvuruyu («Отправлено в ведомство» / «Отправлено») arşivleyip tekrar gönderim kuyruğuna aç"
-                                    >
-                                      <RefreshCw className="w-2.5 h-2.5" />
-                                      Tekrar Gönderime Aç
-                                    </button>
-                                  </div>
-                                )}
+                                <div>
+                                  <button
+                                    onClick={() =>
+                                      handleReopenRegisteredGroup(
+                                        [item.sicil_no],
+                                        `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-semibold cursor-pointer"
+                                    title="Bu başvuruyu («Отправлено в ведомство» / «Отправлено») arşivleyip tekrar gönderim kuyruğuna aç"
+                                  >
+                                    <RefreshCw className="w-2.5 h-2.5" />
+                                    Tekrar Gönderime Aç
+                                  </button>
+                                </div>
                               </div>
                             ) : item.status_key === 'refused_mvd' ? (
                               <div className="space-y-1">
@@ -2820,23 +2847,21 @@ export default function GosuslugiAnalyticsView() {
                                     🔍 {item.refusalHint}
                                   </div>
                                 )}
-                                {user?.role !== 'viewer' && (
-                                  <div>
-                                    <button
-                                      onClick={() =>
-                                        handleReopenRegisteredGroup(
-                                          [item.sicil_no],
-                                          `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
-                                        )
-                                      }
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/70 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 text-[10px] font-semibold cursor-pointer"
-                                      title="Bu reddedilen başvuruyu arşivleyip tekrar gönderim kuyruğuna aç"
-                                    >
-                                      <RefreshCw className="w-2.5 h-2.5" />
-                                      Tekrar Gönderime Aç
-                                    </button>
-                                  </div>
-                                )}
+                                <div>
+                                  <button
+                                    onClick={() =>
+                                      handleReopenRegisteredGroup(
+                                        [item.sicil_no],
+                                        `${item.worker_name} (№ ${item.application_no || item.sicil_no})`
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/70 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 text-[10px] font-semibold cursor-pointer"
+                                    title="Bu reddedilen başvuruyu arşivleyip tekrar gönderim kuyruğuna aç"
+                                  >
+                                    <RefreshCw className="w-2.5 h-2.5" />
+                                    Tekrar Gönderime Aç
+                                  </button>
+                                </div>
                               </div>
                             ) : item.status_key === 'error' ? (
                               <div className="space-y-0.5">
@@ -3100,25 +3125,23 @@ export default function GosuslugiAnalyticsView() {
                               Şablon İndir
                             </a>
 
-                            {user?.role !== 'viewer' && (
-                              <button
-                                onClick={() =>
-                                  handleReopenRefusedGroup(
-                                    cat.items.map((it) => it.sicil_no),
-                                    cat.titleTr
-                                  )
-                                }
-                                disabled={reopeningRefused !== null}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
-                              >
-                                <RefreshCw
-                                  className={`w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 ${
-                                    reopeningRefused === cat.titleTr ? 'animate-spin' : ''
-                                  }`}
-                                />
-                                Tekrar Gönderime Aç
-                              </button>
-                            )}
+                            <button
+                              onClick={() =>
+                                handleReopenRefusedGroup(
+                                  cat.items.map((it) => it.sicil_no),
+                                  cat.titleTr
+                                )
+                              }
+                              disabled={reopeningRefused !== null}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
+                            >
+                              <RefreshCw
+                                className={`w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 ${
+                                  reopeningRefused === cat.titleTr ? 'animate-spin' : ''
+                                }`}
+                              />
+                              Tekrar Gönderime Aç
+                            </button>
 
                             <button
                               onClick={() => setExpandedRefusalCatId(isExpanded ? null : cat.id)}
@@ -3231,7 +3254,7 @@ export default function GosuslugiAnalyticsView() {
                     Tüm Ошибка Şablon İndir ({allErrorItems.length})
                   </a>
 
-                  {user?.role !== 'viewer' && allErrorItems.length > 0 && (
+                  {allErrorItems.length > 0 && (
                     <button
                       onClick={() =>
                         handleReopenErrorGroup(
@@ -3319,25 +3342,23 @@ export default function GosuslugiAnalyticsView() {
                               Şablon İndir
                             </a>
 
-                            {user?.role !== 'viewer' && (
-                              <button
-                                onClick={() =>
-                                  handleReopenErrorGroup(
-                                    cat.items.map((it) => it.sicil_no),
-                                    cat.titleTr
-                                  )
-                                }
-                                disabled={reopeningError !== null}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
-                              >
-                                <RefreshCw
-                                  className={`w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 ${
-                                    reopeningError === cat.titleTr ? 'animate-spin' : ''
-                                  }`}
-                                />
-                                Tekrar Gönderime Aç
-                              </button>
-                            )}
+                            <button
+                              onClick={() =>
+                                handleReopenErrorGroup(
+                                  cat.items.map((it) => it.sicil_no),
+                                  cat.titleTr
+                                )
+                              }
+                              disabled={reopeningError !== null}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-2xs"
+                            >
+                              <RefreshCw
+                                className={`w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 ${
+                                  reopeningError === cat.titleTr ? 'animate-spin' : ''
+                                }`}
+                              />
+                              Tekrar Gönderime Aç
+                            </button>
 
                             <button
                               onClick={() => setExpandedErrorCatId(isExpanded ? null : cat.id)}

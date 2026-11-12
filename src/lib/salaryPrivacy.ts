@@ -1,9 +1,8 @@
 /**
- * Shared salary privacy guard for eBA / HR personnel records.
- * Company policy forbids storing or displaying individual official salary amounts
- * ("Resmi Maaş", "Resmi Maaş Yazılı", etc.) inside the HR application.
- * Whether the eBA Excel is uploaded with salary columns deleted or intact,
- * these columns always appear empty ("-" / "").
+ * Shared salary privacy guard across the entire HR application.
+ * Company policy strictly forbids storing, exporting, or displaying ANY salary values
+ * OR even empty salary columns ("Resmi Maaş", "Resmi Maaş Yazılı", "Оклад", "РазмерВыплаты", etc.)
+ * anywhere in tables, detail drawers, column pickers, or Excel exports.
  */
 
 function normalizeColumnToken(input?: string | null): string {
@@ -27,23 +26,49 @@ const EXACT_SALARY_TOKENS = new Set([
   'resmi maas',
   'resmi maas yazili',
   'maas',
+  'maasi',
   'maas yazili',
   'maas ucret',
   'net maas',
   'brut maas',
   'gercek maas',
+  'eski resmi maas',
+  'ucret',
+  'aylik ucret',
+  'salary',
+  'salary amount',
+  'salaryamount',
+  'month1salary',
+  'month2salary',
+  'month3salary',
+  'month 1 salary',
+  'month 2 salary',
+  'month 3 salary',
   'оклад',
   'зарплата',
+  'заработная плата',
   'тарифная ставка',
   'оклад тарифная ставка',
+  'размервыплаты',
+  'размер выплаты',
+  'сумма выплаты',
+  'выплаты',
+  '1 месяц',
+  '2 месяц',
+  '3 месяц',
 ]);
 
 export function isOfficialSalaryColumn(colName?: string | null): boolean {
   const norm = normalizeColumnToken(colName);
   if (!norm) return false;
+  // Never match boolean ticket deduction flag
+  if (norm === 'deduct from salary') return false;
   if (EXACT_SALARY_TOKENS.has(norm)) return true;
-  if (norm.startsWith('resmi maas')) return true;
-  if (/\b(maas|maasi|оклад|зарплат)\b/i.test(norm)) return true;
+  if (norm.startsWith('resmi maas') || norm.startsWith('eski resmi maas')) return true;
+  if (/\b(maas|maasi|оклад|зарплат|размервыплат)\b/i.test(norm)) return true;
+  if (norm.includes('размер выплат') || norm.includes('сумма выплат') || norm.includes('тарифная ставка')) {
+    return true;
+  }
   return false;
 }
 
@@ -54,10 +79,9 @@ export function stripOfficialSalaryFromRaw(
   const cleaned: Record<string, any> = {};
   for (const [key, val] of Object.entries(raw)) {
     if (isOfficialSalaryColumn(key)) {
-      cleaned[key] = '';
-    } else {
-      cleaned[key] = val;
+      continue;
     }
+    cleaned[key] = val;
   }
   return cleaned;
 }

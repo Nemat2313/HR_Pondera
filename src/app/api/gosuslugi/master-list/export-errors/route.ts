@@ -140,14 +140,10 @@ const TEMPLATE_COLUMNS = [
   { key: 'contractEndDate', header: 'ДатаОканчанияДействия', width: 18 }, // 21
   { key: 'periodStart', header: 'НачалоПериода', width: 15 }, // 22
   { key: 'periodEnd', header: 'КонецПериода', width: 15 }, // 23
-  { key: 'month1Salary', header: '1-месяц', width: 14 }, // 24
-  { key: 'month2Salary', header: '2-месяц', width: 14 }, // 25
-  { key: 'month3Salary', header: '3-месяц', width: 14 }, // 26
-  { key: 'salaryAmount', header: 'РазмерВыплаты', width: 16 }, // 27
-  { key: 'position', header: 'Должность', width: 18 }, // 28
-  { key: 'workAddress', header: 'АдресРаботы', width: 38 }, // 29
-  { key: 'postalCode', header: 'Индекс', width: 11 }, // 30
-  { key: 'errorExplanation', header: 'ОписаниеОшибки (Düzeltilecek Alan Açıklaması — Yüklemeden Önce Silebilirsiniz)', width: 72 }, // 31
+  { key: 'position', header: 'Должность', width: 18 }, // 24
+  { key: 'workAddress', header: 'АдресРаботы', width: 38 }, // 25
+  { key: 'postalCode', header: 'Индекс', width: 11 }, // 26
+  { key: 'errorExplanation', header: 'ОписаниеОшибки (Düzeltilecek Alan Açıklaması — Yüklemeden Önce Silebilirsiniz)', width: 72 }, // 27
 ];
 
 function isValidDateRu(val: string): boolean {
@@ -338,7 +334,7 @@ function diagnoseWorkerErrors(
     );
   }
 
-  // 7. Period & Salary
+  // 7. Period
   if (!isValidDateRu(periodStart)) {
     redCols.add(22);
     explanations.push(`[НачалоПериода] Dönem başlangıç tarihi hatalı ("${periodStart || 'Boş'}").`);
@@ -347,19 +343,14 @@ function diagnoseWorkerErrors(
     redCols.add(23);
     explanations.push(`[КонецПериода] Dönem bitiş tarihi hatalı ("${periodEnd || 'Boş'}").`);
   }
-  const salNum = Number(salaryAmount.replace(/\s+/g, '').replace(',', '.'));
-  if (!salaryAmount || Number.isNaN(salNum) || salNum <= 0) {
-    redCols.add(27);
-    explanations.push(`[РазмерВыплаты] Maaş tutarı eksik veya 0 ("${salaryAmount || 'Boş'}").`);
-  }
 
   // 8. Work Address & Postal Code
   if (!workAddr) {
-    redCols.add(29);
+    redCols.add(25);
     explanations.push(`[АдресРаботы] Çalışma adresi eksik.`);
   }
   if (!/^\d{6}$/.test(postalCode)) {
-    redCols.add(30);
+    redCols.add(26);
     explanations.push(`[Индекс] Posta kodu 6 haneli rakam olmalı (Mevcut: "${postalCode || 'Boş'}").`);
   }
 
@@ -390,9 +381,9 @@ function diagnoseWorkerErrors(
       }
       explanations.push(`[Gosuslugi Шаг 9 — РНР ВКС] ${st}`);
     } else if (/Договор и Адрес работы|Шаг 10|Проверьте адрес/i.test(st)) {
-      if (!redCols.has(29)) {
-        amberCols.add(29);
-        amberCols.add(30);
+      if (!redCols.has(25)) {
+        amberCols.add(25);
+        amberCols.add(26);
       }
       explanations.push(
         `[Gosuslugi Шаг 10 — Адрес работы] Çalışma adresi seçimi (${st}). Adreste kat/ofis detayı varsa yeni robotta otomatik temizlenir.`
@@ -1150,14 +1141,10 @@ export async function GET(request: Request) {
         getField('contractEndDate', 'ДатаОканчанияДействия'), // 21: ДатаОканчанияДействия
         getField('periodStart', 'НачалоПериода', effectivePeriodStart), // 22: НачалоПериода
         getField('periodEnd', 'КонецПериода', effectivePeriodEnd), // 23: КонецПериода
-        getField('month1Salary', '1-месяц'), // 24: 1-месяц
-        getField('month2Salary', '2-месяц'), // 25: 2-месяц
-        getField('month3Salary', '3-месяц'), // 26: 3-месяц
-        getField('salaryAmount', 'РазмерВыплаты'), // 27: РазмерВыплаты
-        getField('position', 'Должность', 'СПЕЦИАЛИСТ'), // 28: Должность
-        getField('workAddress', 'АдресРаботы'), // 29: АдресРаботы
-        getField('postalCode', 'Индекс', '626150'), // 30: Индекс
-        explanationText, // 31: ОписаниеОшибки
+        getField('position', 'Должность', 'СПЕЦИАЛИСТ'), // 24: Должность
+        getField('workAddress', 'АдресРаботы'), // 25: АдресРаботы
+        getField('postalCode', 'Индекс', '626150'), // 26: Индекс
+        explanationText, // 27: ОписаниеОшибки
       ];
 
       // Put rows with red cell data errors first so the user sees all red cells at the very top of the Excel sheet!

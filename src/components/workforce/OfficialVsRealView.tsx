@@ -47,6 +47,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface ZupMetadata {
   ebaDate: string;
@@ -211,6 +212,7 @@ type FilterCategory =
 
 export default function OfficialVsRealView() {
   const { lang } = useLanguage();
+  const { user, showPermissionDenied } = useAuth();
   const [data, setData] = useState<ZupReconciliationResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [uploading, setUploading] = useState<boolean>(false);
@@ -305,6 +307,13 @@ export default function OfficialVsRealView() {
   };
 
   const handleSendTelegramSummary = async () => {
+    if (user?.role === 'viewer') {
+      showPermissionDenied({
+        actionLabelTr: 'Telegram Rapor Gönderimi',
+        actionLabelRu: 'Отправка отчёта в Telegram',
+      });
+      return;
+    }
     setSendingTelegram(true);
     setBannerMessage(null);
     try {
@@ -799,7 +808,16 @@ export default function OfficialVsRealView() {
             <button
               type="button"
               disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (user?.role === 'viewer') {
+                  showPermissionDenied({
+                    actionLabelTr: '1C ZUP Excel Listesi Yükleme',
+                    actionLabelRu: 'Загрузка списка 1С ЗУП',
+                  });
+                  return;
+                }
+                fileInputRef.current?.click();
+              }}
               className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 disabled:opacity-60 text-indigo-950 dark:text-indigo-100 font-semibold text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
             >
               {uploading ? (
@@ -969,6 +987,13 @@ export default function OfficialVsRealView() {
                 type="button"
                 onClick={() => {
                   setShowOutdatedModal(false);
+                  if (user?.role === 'viewer') {
+                    showPermissionDenied({
+                      actionLabelTr: '1C ZUP Excel Listesi Yükleme',
+                      actionLabelRu: 'Загрузка списка 1С ЗУП',
+                    });
+                    return;
+                  }
                   fileInputRef.current?.click();
                 }}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-indigo-300 dark:border-indigo-400/40 bg-indigo-100/85 hover:bg-indigo-200/80 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-950 dark:text-indigo-100 font-semibold text-xs cursor-pointer transition-all shadow-2xs"

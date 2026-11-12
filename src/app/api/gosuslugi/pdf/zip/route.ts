@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
+import { getSessionUserFromRequest } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -215,6 +216,20 @@ export async function GET(request: Request) {
       });
     }
 
+    if (!countOnly && pdfType !== 'status') {
+      const sessionUser = getSessionUserFromRequest(request);
+      if (sessionUser?.role !== 'admin') {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Yetkisiz İşlem: Maaş bilgisi içeren Başvuru (Заявка) PDF arşivleri yalnızca Sistem Yöneticisi (Admin) yetkisi ile indirilebilir. Yalnızca Statü A4 PDF arşivini indirebilirsiniz.',
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const files = collectPdfFiles(undefined, undefined, pdfType);
     if (files.length === 0) {
       return NextResponse.json(
@@ -259,6 +274,19 @@ export async function POST(request: Request) {
     const rawType = String(body?.type || 'receipt').toLowerCase();
     const pdfType: 'receipt' | 'status' | 'all' =
       rawType === 'status' ? 'status' : rawType === 'all' ? 'all' : 'receipt';
+    if (pdfType !== 'status') {
+      const sessionUser = getSessionUserFromRequest(request);
+      if (sessionUser?.role !== 'admin') {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Yetkisiz İşlem: Maaş bilgisi içeren Başvuru (Заявка) PDF arşivleri yalnızca Sistem Yöneticisi (Admin) yetkisi ile indirilebilir. Yalnızca Statü A4 PDF arşivini indirebilirsiniz.',
+          },
+          { status: 403 }
+        );
+      }
+    }
     const rawNames: string[] = Array.isArray(body?.filenames) ? body.filenames : [];
     const rawAppNos: string[] = Array.isArray(body?.appNos) ? body.appNos : [];
 

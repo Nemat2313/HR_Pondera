@@ -139,7 +139,7 @@ const ExcelUploadModal = dynamicWithRetry(
 );
 
 export default function Home() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, showPermissionDenied } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -345,8 +345,11 @@ export default function Home() {
             setActiveTab('travel_tickets');
             return;
           }
-          if (user?.role === 'viewer' && (tab === 'gosuslugi' || tab === 'database' || tab === 'admin')) {
-            setActiveTab('overview');
+          if (user?.role === 'viewer' && (tab === 'settings' || tab === 'database' || tab === 'admin')) {
+            showPermissionDenied({
+              actionLabelTr: 'Ayarlar & Yönetim',
+              actionLabelRu: 'Настройки системы',
+            });
             return;
           }
           if (tab === 'personnel') {
@@ -378,7 +381,15 @@ export default function Home() {
         zupFreshness={stats?.systemInfo?.zup_data_freshness}
         zupFreshnessTime={stats?.systemInfo?.zup_time_msk}
         onOpenUpload={() => {
-          if (user?.role !== 'viewer' && user?.role !== 'idari_isler') setIsUploadModalOpen(true);
+          if (user?.role === 'idari_isler') return;
+          if (user?.role === 'viewer') {
+            showPermissionDenied({
+              actionLabelTr: 'Personel Excel Yükleme',
+              actionLabelRu: 'Загрузка Excel сотрудников',
+            });
+            return;
+          }
+          setIsUploadModalOpen(true);
         }}
         onOpenLogin={() => setIsLoginModalOpen(true)}
         activeFilterCount={effectiveTab === 'overview' ? activeFilterCount : 0}
@@ -392,7 +403,7 @@ export default function Home() {
         }`}
       >
         {(effectiveTab === 'overview' ||
-          (user?.role === 'viewer' && (effectiveTab === 'gosuslugi' || effectiveTab === 'database'))) && (
+          (user?.role === 'viewer' && effectiveTab === 'database')) && (
           <OverviewView
             stats={stats}
             loading={loadingStats}
@@ -427,7 +438,7 @@ export default function Home() {
           />
         )}
 
-        {effectiveTab === 'gosuslugi' && user?.role !== 'viewer' && <GosuslugiVksView />}
+        {effectiveTab === 'gosuslugi' && <GosuslugiVksView />}
 
         {effectiveTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
 
@@ -442,10 +453,16 @@ export default function Home() {
         {effectiveTab === 'travel_tickets' && (
           <TravelTicketsAdminView
             onOpenAiSettings={() => {
-              if (user?.role !== 'viewer' && user?.role !== 'idari_isler') {
-                setSettingsInitialSubTab('ai_settings');
-                setActiveTab('settings');
+              if (user?.role === 'idari_isler') return;
+              if (user?.role === 'viewer') {
+                showPermissionDenied({
+                  actionLabelTr: 'AI Ayarları',
+                  actionLabelRu: 'Настройки AI',
+                });
+                return;
               }
+              setSettingsInitialSubTab('ai_settings');
+              setActiveTab('settings');
             }}
             onNavigateToPersonnel={isIdariOnly ? undefined : handleNavigateToPersonnel}
           />

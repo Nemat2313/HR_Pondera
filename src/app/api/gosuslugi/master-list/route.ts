@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getSessionUserFromRequest } from '@/lib/auth';
 import { createPreActionBackup } from '@/lib/backup';
 import { getStatusPdfMaps, invalidateGosuslugiAnalyticsCache } from '@/lib/gosuslugiPdfCache';
 import {
@@ -351,6 +352,8 @@ function normalizeIncomingWorker(
 
 export async function GET(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    const isAdminSession = sessionUser?.role === 'admin';
     const { searchParams } = new URL(request.url);
     const computerFilter = searchParams.get('computer') || 'all';
     const statusFilter = searchParams.get('status') || 'all';
@@ -571,6 +574,22 @@ export async function GET(request: Request) {
         continue;
       }
 
+      const rawSalStr = String(parsed.salaryAmount ?? parsed['РазмерВыплаты'] ?? '')
+        .replace(/\s+/g, '')
+        .replace(',', '.');
+      const hasSalaryReady = Number(rawSalStr) > 0;
+
+      if (!isAdminSession) {
+        delete parsed.month1Salary;
+        delete parsed.month2Salary;
+        delete parsed.month3Salary;
+        delete parsed.salaryAmount;
+        delete parsed['1-месяц'];
+        delete parsed['2-месяц'];
+        delete parsed['3-месяц'];
+        delete parsed['РазмерВыплаты'];
+      }
+
       const hasValidRnrAndBlank =
         /^\d{2,4}$/.test(String(parsed.rnrSeries || '').trim()) &&
         /^\d{6,12}$/.test(String(parsed.rnrNumber || '').trim()) &&
@@ -579,6 +598,7 @@ export async function GET(request: Request) {
 
       enrichedList.push({
         ...parsed,
+        hasSalaryReady,
         id: parsed.id || `master-vks-${m.row_key}`,
         sicil: m.sicil_no,
         sicil_no: m.sicil_no,

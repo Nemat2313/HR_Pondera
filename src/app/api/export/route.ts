@@ -448,9 +448,11 @@ export async function GET(request: Request) {
 
       if (requestedCols.length > 0) {
         for (const colKey of requestedCols) {
+          if (isOfficialSalaryColumn(colKey)) {
+            continue;
+          }
           const { val, header } = resolveCellValue(r, parsedJson, colKey);
-          if (isOfficialSalaryColumn(colKey) || isOfficialSalaryColumn(header)) {
-            rowObj[header] = '-';
+          if (isOfficialSalaryColumn(header)) {
             continue;
           }
           rowObj[header] = isDateField(colKey, header)
@@ -462,11 +464,10 @@ export async function GET(request: Request) {
       } else {
         // Standard full columns
         for (const [colKey, headerName] of Object.entries(COLUMN_HEADER_MAP)) {
-          const { val } = resolveCellValue(r, parsedJson, colKey);
           if (isOfficialSalaryColumn(colKey) || isOfficialSalaryColumn(headerName)) {
-            rowObj[headerName] = '-';
             continue;
           }
+          const { val } = resolveCellValue(r, parsedJson, colKey);
           rowObj[headerName] = isDateField(colKey, headerName)
             ? formatDateVal(val)
             : val !== undefined && val !== null && String(val).trim() !== ''

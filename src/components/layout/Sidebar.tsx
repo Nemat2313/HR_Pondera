@@ -146,18 +146,14 @@ export default function Sidebar({
           badge: lang === 'ru' ? 'ИРС • Live' : 'ИРС • Canlı',
           badgeColor: 'bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-700/50',
         },
-        ...(user?.role !== 'viewer'
-          ? [
-              {
-                id: 'gosuslugi',
-                label: t('nav_gosuslugi'),
-                icon: Bot,
-                badge: t('badge_rpa'),
-                badgeColor:
-                  'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
-              },
-            ]
-          : []),
+        {
+          id: 'gosuslugi',
+          label: t('nav_gosuslugi'),
+          icon: Bot,
+          badge: t('badge_rpa'),
+          badgeColor:
+            'bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200/50 dark:border-cyan-700/50',
+        },
         {
           id: 'gosuslugi_analytics',
           label: lang === 'ru' ? 'ВКС Статистика' : 'VKS İstatistik & Analiz',
@@ -172,17 +168,13 @@ export default function Sidebar({
           badge: user?.scope_type === 'region' ? (lang === 'ru' ? '1 Объект' : '1 Saha') : (lang === 'ru' ? '11 Объектов' : '11 Saha'),
           badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60',
         },
-        ...(user?.role !== 'viewer'
-          ? [
-              {
-                id: 'settings',
-                label: lang === 'ru' ? 'Настройки системы' : 'Ayarlar & Yönetim',
-                icon: Settings,
-                badge: 'RLS • DB • AI',
-                badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
-              },
-            ]
-          : []),
+        {
+          id: 'settings',
+          label: lang === 'ru' ? 'Настройки системы' : 'Ayarlar & Yönetim',
+          icon: Settings,
+          badge: 'RLS • DB • AI',
+          badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
+        },
       ],
     },
     {

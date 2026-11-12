@@ -332,8 +332,8 @@ export default function Topbar({
           </div>
         )}
 
-        {/* Excel Upload Button (hidden for viewer & idari_isler roles) */}
-        {user?.role !== 'viewer' && user?.role !== 'idari_isler' && (
+        {/* Excel Upload Button (hidden only for idari_isler role; viewer sees permission modal on click) */}
+        {user?.role !== 'idari_isler' && (
           <button
             onClick={onOpenUpload}
             className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/85 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0 cursor-pointer"
