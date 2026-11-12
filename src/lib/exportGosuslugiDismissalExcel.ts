@@ -36,6 +36,14 @@ export interface GosuslugiDismissalWorkerRecord {
   gosuslugiStatus?: string;
   exitReason?: string;
   projectName?: string;
+  zupDepartment?: string;
+  permitCategory?: string;
+  dismissalDateSource?: '1C_ZUP' | '1C_ZUP_TRANSITION' | 'EBA_FALLBACK' | 'EXCEL';
+  ebaMatched?: boolean;
+  inn?: string;
+  snils?: string;
+  contractNo?: string;
+  contractDate?: string;
 }
 
 export const GOSUSLUGI_DISMISSAL_EXCEL_COLUMNS = [

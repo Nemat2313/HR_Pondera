@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Bot,
   FileSpreadsheet,
@@ -274,11 +274,42 @@ export default function GosuslugiDismissalPanel({
   const [workers, setWorkers] = useState<GosuslugiDismissalWorkerRecord[]>([]);
   const [allDbPool, setAllDbPool] = useState<GosuslugiDismissalWorkerRecord[]>([]);
   const [dbReferenceDateTs, setDbReferenceDateTs] = useState<number>(0);
-  const [dbReferenceDateLabel, setDbReferenceDateLabel] = useState<string>('18.10.2026');
-  const [exitPeriod, setExitPeriod] = useState<DismissalPeriodFilter>('7d');
+  const [dbReferenceDateLabel, setDbReferenceDateLabel] = useState<string>('—');
+  const [zupMetaInfo, setZupMetaInfo] = useState<{
+    zupFullTimestamp: string;
+    ebaFullTimestamp: string;
+    hasZupDismissalDateColumn: boolean;
+    excludedTransfersCount: number;
+    ebaEnrichedCount: number;
+  } | null>(null);
+  const [exitPeriod, setExitPeriod] = useState<DismissalPeriodFilter>('3d');
   const [searchQuery, setSearchQuery] = useState('');
   const [queueFilter, setQueueFilter] = useState<QueueFilterMode>('all');
   const [isLoadingDb, setIsLoadingDb] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/gosuslugi/zup-candidates?mode=dismissal&metaOnly=true')
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j?.success || !j?.metadata) return;
+        const m = j.metadata;
+        if (m.zupDate) {
+          setDbReferenceDateLabel(m.zupFullTimestamp || m.zupDate);
+        }
+        setZupMetaInfo((prev) => ({
+          zupFullTimestamp: m.zupFullTimestamp || m.zupDate || '',
+          ebaFullTimestamp: m.ebaFullTimestamp || m.ebaDate || '',
+          hasZupDismissalDateColumn: Boolean(m.hasZupDismissalDateColumn),
+          excludedTransfersCount: prev?.excludedTransfersCount || 0,
+          ebaEnrichedCount: prev?.ebaEnrichedCount || 0,
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [isStartingRobot, setIsStartingRobot] = useState(false);
   const [isStoppingRobot, setIsStoppingRobot] = useState(false);
   const [isTogglingPause, setIsTogglingPause] = useState(false);
@@ -430,198 +461,60 @@ export default function GosuslugiDismissalPanel({
     }
   };
 
-  // Load dismissed employees from Pondera HR SQLite Database
+  // Load officially dismissed foreign employees from 1C ZUP + enrich missing permit/blank fields from eBA
   const handleLoadFromDatabase = async (overridePeriod?: DismissalPeriodFilter) => {
-    const targetPeriod = overridePeriod || exitPeriod;
+    let targetPeriod = overridePeriod || exitPeriod;
     if (overridePeriod) setExitPeriod(overridePeriod);
     setIsLoadingDb(true);
     try {
-      const params = new URLSearchParams({
-        dismissalCandidate: 'true',
-        includeDetails: 'true',
-        limit: '15000',
-      });
-      if (user) {
-        params.set('userScopeType', user.scope_type);
-        params.set('userScopeValue', user.scope_value);
-      }
-
-      const [res, subRes] = await Promise.all([
-        fetch(`/api/personnel?${params.toString()}`),
-        fetch(`/api/gosuslugi/submissions?type=dismissal`).catch(() => null),
-      ]);
+      const res = await fetch('/api/gosuslugi/zup-candidates?mode=dismissal');
       const json = await res.json();
-      const subJson = subRes ? await subRes.json().catch(() => null) : null;
 
-      const submissionMap = new Map<
-        string,
-        { appNo: string; status: string; submittedAt: string }
-      >();
-      if (subJson?.success && Array.isArray(subJson.data)) {
-        for (const item of subJson.data) {
-          const sNo = String(item.sicil_no || '').trim();
-          if (sNo) {
-            submissionMap.set(sNo, {
-              appNo: String(item.application_no || ''),
-              status: String(item.gosuslugi_status || 'Отправлено'),
-              submittedAt: String(item.submitted_at || ''),
-            });
-          }
-        }
-      }
-
-      if (!json.success || !json.data || json.data.length === 0) {
+      if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
         showNotice(
           'info',
           lang === 'ru'
-            ? 'В базе не найдено уволенных сотрудников. Попробуйте загрузить Excel.'
-            : 'Veritabanında işten ayrılan personel bulunamadı. Excel yüklemeyi deneyin.'
+            ? 'В списке 1С ЗУП не найдено уволенных иностранных сотрудников за 2026 г.'
+            : '1C ZUP resmi listesinde 2026 yılına ait işten ayrılan yabancı personel bulunamadı.'
         );
         return;
       }
 
-      let maxExitTs = 0;
-      const dfStr = formatDateRu(json.dataFreshness || '18.10.2026');
-      const parsedDf = parseStrictDateRu(dfStr);
-      if (parsedDf.valid) {
-        maxExitTs = parsedDf.ts;
-      }
+      const meta = json.metadata || {};
+      setZupMetaInfo({
+        zupFullTimestamp: meta.zupFullTimestamp || meta.zupDate || '',
+        ebaFullTimestamp: meta.ebaFullTimestamp || meta.ebaDate || '',
+        hasZupDismissalDateColumn: Boolean(meta.hasZupDismissalDateColumn),
+        excludedTransfersCount: Number(meta.excludedTransfersCount || 0),
+        ebaEnrichedCount: Number(meta.ebaEnrichedCount || 0),
+      });
 
-      const rawMapped: GosuslugiDismissalWorkerRecord[] = [];
+      const rawMapped: GosuslugiDismissalWorkerRecord[] = json.data.map((w: any) => ({
+        ...w,
+        voluntaryResignation: w.voluntaryResignation || defaultVoluntary,
+      }));
 
-      json.data.forEach((emp: any, idx: number) => {
-        const raw = emp.raw || {};
-        const sicil = String(emp.sicil_no || raw['Sicil No'] || '').trim();
-        const rawNat = String(emp.uyruk || raw['Uyruk'] || 'OZBEKISTAN').toUpperCase().trim();
-        const workCardType = String(raw['Çalışma Kart Türü'] || '').toUpperCase().trim();
+      const finalRefTs = Number(meta.referenceDateTs) || Date.now();
+      const finalRefLabel = String(
+        meta.zupFullTimestamp || meta.referenceDateLabel || meta.zupDate || ''
+      );
 
-        // Skip RF / Belarus citizens who do not require MVD foreign worker dismissal notification
-        if (rawNat === 'RUSYA' || rawNat === 'BELARUS' || workCardType === 'РФ') {
-          return;
-        }
-
-        const lastNameRu = String(raw['Soyadı (Kiril)'] || emp.soyadi || '').trim();
-        const firstNameRu = String(raw['Adı (Kiril)'] || emp.adi || '').trim();
-        const middleNameRu = String(raw['Baba Adı (Kiril)'] || emp.baba_adi || '').trim();
-        const citizenshipRu = CITIZENSHIP_MAP_RU[rawNat] || rawNat;
-        const genderRaw = String(emp.cinsiyet || raw['Cinsiyet'] || 'Erkek');
-        const genderRu =
-          genderRaw.toLowerCase().startsWith('k') || genderRaw.toLowerCase().startsWith('ж')
-            ? 'Женский'
-            : 'Мужской';
-
-        const hireDateStr = formatDateRu(
-          raw['İş Sözleşmesi Giriş Tarihi'] ||
-            raw['İş Sözleşmesi İmza Tarihi'] ||
-            emp.ise_giris_tarihi ||
-            raw['İşe Giriş Tarihi']
+      // If user clicked main button (no overridePeriod) and 3d slice happens to be empty, auto-expand to 7d or 30d
+      if (!overridePeriod && rawMapped.length > 0) {
+        const hasInTarget = rawMapped.some((w) =>
+          isWorkerWithinPeriod(w, targetPeriod, finalRefTs)
         );
-        let dismissalDateStr = formatDateRu(
-          raw['Resmi Çıkış Tarihi'] || emp.cikis_tarihi || raw['Çıkış Tarihi']
-        );
-        const fallbackExitStr = formatDateRu(emp.cikis_tarihi || raw['Çıkış Tarihi']);
-        const parsedPrimaryExit = parseStrictDateRu(dismissalDateStr);
-        if (parsedPrimaryExit.valid && parsedPrimaryExit.ts > Date.now()) {
-          const m = /^(\d{2})\.11\.(\d{4})$/.exec(dismissalDateStr);
-          if (m) {
-            const octCandidate = `${m[1]}.10.${m[2]}`;
-            const parsedOct = parseStrictDateRu(octCandidate);
-            if (parsedOct.valid && parsedOct.ts <= Date.now()) {
-              dismissalDateStr = octCandidate;
+        if (!hasInTarget) {
+          const fallbackOrder: DismissalPeriodFilter[] = ['7d', '30d', 'all'];
+          for (const fb of fallbackOrder) {
+            if (rawMapped.some((w) => isWorkerWithinPeriod(w, fb, finalRefTs))) {
+              targetPeriod = fb;
+              setExitPeriod(fb);
+              break;
             }
           }
-          const parsedFallback = parseStrictDateRu(fallbackExitStr);
-          if (
-            parseStrictDateRu(dismissalDateStr).ts > Date.now() &&
-            parsedFallback.valid &&
-            parsedFallback.ts <= Date.now()
-          ) {
-            dismissalDateStr = fallbackExitStr;
-          }
         }
-
-        const parsedExit = parseStrictDateRu(dismissalDateStr);
-        if (parsedExit.valid && parsedExit.ts <= Date.now() && parsedExit.ts > maxExitTs) {
-          maxExitTs = parsedExit.ts;
-        }
-
-        // Check if dismissal notification was already submitted (in Excel or in Gosuslugi Submissions DB)
-        const excelNotifDoc = formatDateRu(raw['Resmi Çıkış Bildirgesi']);
-        const excelNfsDate = formatDateRu(raw['NFS den Bildirimin Alındığı Tarih']);
-        const dbSub = sicil ? submissionMap.get(sicil) : undefined;
-
-        const isNotifiedInExcel =
-          Boolean(excelNotifDoc && excelNotifDoc !== '-' && excelNotifDoc !== '0') ||
-          Boolean(excelNfsDate && excelNfsDate !== '-' && excelNfsDate !== '0');
-
-        const alreadyNotified = isNotifiedInExcel || Boolean(dbSub);
-        let notificationInfo = '';
-        if (dbSub) {
-          notificationInfo = `Gosuslugi № ${dbSub.appNo} (${dbSub.status})`;
-        } else if (excelNotifDoc && excelNfsDate) {
-          notificationInfo = `Bildirge: ${excelNotifDoc} • NFS: ${excelNfsDate}`;
-        } else if (excelNotifDoc) {
-          notificationInfo = `Resmi Bildirge: ${excelNotifDoc}`;
-        } else if (excelNfsDate) {
-          notificationInfo = `NFS Alındı: ${excelNfsDate}`;
-        }
-
-        rawMapped.push({
-          id: `db-dis-${emp.id || idx}`,
-          selected: !alreadyNotified,
-          status: dbSub ? 'success' : 'pending',
-          sicil,
-          code: sicil,
-          lastName: lastNameRu,
-          firstName: firstNameRu,
-          middleName: middleNameRu,
-          birthDate: formatDateRu(emp.dogum_tarihi || raw['Doğum Tarihi']),
-          gender: genderRu,
-          hireDate: hireDateStr,
-          dismissalDate: dismissalDateStr,
-          citizenship: citizenshipRu,
-          passportSeries: String(raw['Pasaport Seri No'] || ''),
-          passportNumber: String(emp.pasaport_no || raw['Pasaport No'] || ''),
-          passportIssueDate: formatDateRu(raw['Pasaport Düzenleme Tarihi']),
-          passportIssuedBy: String(raw['Pasaportu Veren Makam (Kiril)'] || ''),
-          patentSeries: String(raw['Çalışma Kart Seri No'] || ''),
-          patentNumber: String(raw['Çalışma Kart No'] || ''),
-          patentIssueDate: formatDateRu(
-            raw['Çalışma Kart Alış Tarihi'] || raw['Çalışma Kart Başlangıç Tarihi']
-          ),
-          blankSeries: String(raw['Patent Form Seri No'] || ''),
-          blankNumber: String(raw['Patent Form No'] || ''),
-          position: String(
-            raw['Resmi Görevi'] || raw['Çalışma Kart Görevi'] || emp.gorevi || emp.rhi_gorevi || 'Монтажник'
-          ),
-          voluntaryResignation: defaultVoluntary,
-          patentRegion: String(raw['РегионПатента'] || raw['Patent Bölgesi (Kısa)'] || raw['Patent Bölgesi'] || '').trim(),
-          patentRegionFull: String(raw['РегионПатентаПолный'] || raw['Patent Bölgesi (Tam Adı)'] || '').trim(),
-          workAddress: String(raw['АдресРаботы'] || raw['Çalışma Adresi'] || '').trim(),
-          ufmsDepartment: String(raw['ПодразделениеМВД'] || raw['MVD Birimi'] || '').trim(),
-          alreadyNotified,
-          notificationInfo,
-          applicationNo: dbSub?.appNo,
-          gosuslugiStatus: dbSub?.status,
-          exitReason: String(emp.cikis_sebebi || raw['Çıkış Sebebi'] || ''),
-          projectName: String(emp.proje_adi || raw['Proje Adı'] || ''),
-        });
-      });
-
-      // Sort by dismissalDate DESC (newest exits first!)
-      rawMapped.sort((a, b) => {
-        const tsA = parseStrictDateRu(a.dismissalDate).ts || 0;
-        const tsB = parseStrictDateRu(b.dismissalDate).ts || 0;
-        return tsB - tsA;
-      });
-
-      const finalRefTs = maxExitTs || Date.UTC(2026, 9, 18);
-      const refDateObj = new Date(finalRefTs);
-      const finalRefLabel =
-        dfStr ||
-        `${String(refDateObj.getUTCDate()).padStart(2, '0')}.${String(
-          refDateObj.getUTCMonth() + 1
-        ).padStart(2, '0')}.${refDateObj.getUTCFullYear()}`;
+      }
 
       setAllDbPool(rawMapped);
       setDbReferenceDateTs(finalRefTs);
@@ -632,8 +525,8 @@ export default function GosuslugiDismissalPanel({
       showNotice(
         'error',
         lang === 'ru'
-          ? 'Ошибка при загрузке уволенных из базы данных.'
-          : 'Veritabanından işten çıkanlar yüklenirken hata oluştu.'
+          ? 'Ошибка при загрузке уволенных из 1С ЗУП + eBA.'
+          : '1C ZUP + eBA veritabanından işten çıkanlar yüklenirken hata oluştu.'
       );
     } finally {
       setIsLoadingDb(false);
@@ -1115,7 +1008,9 @@ export default function GosuslugiDismissalPanel({
                 <Database className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300" />
               )}
               <span>
-                {lang === 'ru' ? 'Загрузить уволенных из БД' : "DB'den İşten Çıkanları Yükle"}
+                {lang === 'ru'
+                  ? 'Загрузить уволенных (1С ЗУП)'
+                  : "DB'den İşten Çıkanları Yükle (1C ZUP)"}
               </span>
             </button>
 
@@ -1314,11 +1209,31 @@ export default function GosuslugiDismissalPanel({
               );
             })}
           </div>
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            {lang === 'ru'
-              ? `Актуальность БД: ${dbReferenceDateLabel} (сортировка: новые сверху)`
-              : `Veritabanı Baz Tarihi: ${dbReferenceDateLabel} (En son çıkanlar en üstte)`}
-          </span>
+          <div className="flex items-center gap-2 flex-wrap text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            {zupMetaInfo && zupMetaInfo.excludedTransfersCount > 0 && (
+              <span
+                className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-bold"
+                title={
+                  lang === 'ru'
+                    ? 'Межобъектные переводы / активные сотрудники в 1С ЗУП исключены из увольнений'
+                    : 'Şantiyeler arası transfer veya 1C ZUP aktif kaydı olanlar çıkış listesinden hariç tutuldu'
+                }
+              >
+                {lang === 'ru'
+                  ? `Переводы исключены: ${zupMetaInfo.excludedTransfersCount}`
+                  : `Transfer Hariç: ${zupMetaInfo.excludedTransfersCount}`}
+              </span>
+            )}
+            <span>
+              {zupMetaInfo?.zupFullTimestamp
+                ? lang === 'ru'
+                  ? `1С ЗУП: ${zupMetaInfo.zupFullTimestamp} • Док. eBA: ${zupMetaInfo.ebaFullTimestamp}`
+                  : `1C ZUP Baz: ${zupMetaInfo.zupFullTimestamp} • eBA Evrak: ${zupMetaInfo.ebaFullTimestamp}`
+                : lang === 'ru'
+                ? `Актуальность 1С ЗУП: ${dbReferenceDateLabel}`
+                : `1C ZUP Baz Tarihi: ${dbReferenceDateLabel}`}
+            </span>
+          </div>
         </div>
 
         {/* Collapsible Dismissal Form Settings (Powerise 600585/1 Parameters) */}
@@ -1705,7 +1620,15 @@ export default function GosuslugiDismissalPanel({
                           )}
                         </td>
                         <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-white">
-                          {w.sicil}
+                          <div>{w.sicil}</div>
+                          {w.zupDepartment && (
+                            <div
+                              className="text-[9.5px] font-sans font-semibold text-indigo-600 dark:text-indigo-400 truncate max-w-[115px]"
+                              title={w.zupDepartment}
+                            >
+                              {w.zupDepartment}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           <div className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
@@ -1742,8 +1665,33 @@ export default function GosuslugiDismissalPanel({
                           <div className="text-slate-600 dark:text-slate-400 text-[10.5px]">
                             Прием: {w.hireDate || '—'}
                           </div>
-                          <div className="font-bold text-rose-600 dark:text-rose-400">
-                            Увольн.: {w.dismissalDate || '—'}
+                          <div className="font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                            <span>Увольн.: {w.dismissalDate || '—'}</span>
+                            {w.dismissalDateSource === 'EBA_FALLBACK' && (
+                              <span
+                                className="px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 text-[9px] font-sans font-bold"
+                                title={
+                                  lang === 'ru'
+                                    ? 'Статус Увольнение из 1С ЗУП; дата увольнения дополнена из eBA (в отчете 1С пока нет колонки Дата увольнения)'
+                                    : "Çıkış durumu 1C ZUP'tan; çıkış tarihi ise 1C ZUP raporuna «Дата увольнения» sütunu eklenene kadar eBA'dan tamamlandı"
+                                }
+                              >
+                                eBA
+                              </span>
+                            )}
+                            {(w.dismissalDateSource === '1C_ZUP' ||
+                              w.dismissalDateSource === '1C_ZUP_TRANSITION') && (
+                              <span
+                                className="px-1 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-300 text-[9px] font-sans font-bold"
+                                title={
+                                  lang === 'ru'
+                                    ? 'Официальная дата из 1С ЗУП'
+                                    : 'Doğrudan 1C ZUP resmi çıkış tarihi'
+                                }
+                              >
+                                ZUP
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-2.5 px-3">

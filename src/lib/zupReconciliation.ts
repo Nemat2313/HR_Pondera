@@ -30,6 +30,10 @@ export interface ZupOfficialRecord {
   zup_department?: string;
   work_state?: string;
   insured_status?: string;
+  dismissal_date?: string;
+  dismissal_reason?: string;
+  contract_no?: string;
+  contract_date?: string;
 }
 
 export function extractZupReportDate(
@@ -244,10 +248,21 @@ function ensureZupSchemaColumns(db: any): void {
       schedule TEXT,
       zup_department TEXT DEFAULT '',
       work_state TEXT DEFAULT '',
-      insured_status TEXT DEFAULT ''
+      insured_status TEXT DEFAULT '',
+      dismissal_date TEXT DEFAULT '',
+      dismissal_reason TEXT DEFAULT '',
+      contract_no TEXT DEFAULT '',
+      contract_date TEXT DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_zup_tabel ON zup_official_personnel(tabel_no);
     CREATE INDEX IF NOT EXISTS idx_zup_norm_sicil ON zup_official_personnel(norm_sicil);
+    CREATE TABLE IF NOT EXISTS zup_dismissal_transitions (
+      norm_key TEXT PRIMARY KEY,
+      tabel_no TEXT DEFAULT '',
+      fio_kiril TEXT DEFAULT '',
+      detected_exit_date TEXT DEFAULT '',
+      updated_at TEXT DEFAULT ''
+    );
   `);
 
   const existingCols = new Set(
@@ -261,6 +276,18 @@ function ensureZupSchemaColumns(db: any): void {
   }
   if (!existingCols.has('insured_status')) {
     db.exec("ALTER TABLE zup_official_personnel ADD COLUMN insured_status TEXT DEFAULT '';");
+  }
+  if (!existingCols.has('dismissal_date')) {
+    db.exec("ALTER TABLE zup_official_personnel ADD COLUMN dismissal_date TEXT DEFAULT '';");
+  }
+  if (!existingCols.has('dismissal_reason')) {
+    db.exec("ALTER TABLE zup_official_personnel ADD COLUMN dismissal_reason TEXT DEFAULT '';");
+  }
+  if (!existingCols.has('contract_no')) {
+    db.exec("ALTER TABLE zup_official_personnel ADD COLUMN contract_no TEXT DEFAULT '';");
+  }
+  if (!existingCols.has('contract_date')) {
+    db.exec("ALTER TABLE zup_official_personnel ADD COLUMN contract_date TEXT DEFAULT '';");
   }
 }
 
@@ -337,6 +364,29 @@ export function saveZupRecordsToDb(
   sourceFile: string
 ): void {
   ensureZupSchemaColumns(db);
+
+  // Capture previously active employees before overwriting so daily 'Работа -> Увольнение' transitions
+  // are automatically dated even if the 1C ZUP report has not yet enabled the 'Дата увольнения' column
+  const prevActiveKeys = new Set<string>();
+  try {
+    const prevRows = db
+      .prepare(
+        "SELECT norm_sicil, tabel_no, fio_kiril, birth_date, work_state FROM zup_official_personnel WHERE TRIM(COALESCE(work_state, '')) != '' AND LOWER(work_state) NOT LIKE '%увол%'"
+      )
+      .all() as {
+      norm_sicil: string;
+      tabel_no: string;
+      fio_kiril: string;
+      birth_date: string;
+    }[];
+    for (const pr of prevRows) {
+      const kSicil = pr.norm_sicil || normalizeSicilDigits(pr.tabel_no);
+      const kFio = normalizeCyrillicName(pr.fio_kiril);
+      if (kSicil) prevActiveKeys.add(`S:${kSicil}`);
+      if (kFio && pr.birth_date) prevActiveKeys.add(`N:${kFio}|${pr.birth_date}`);
+    }
+  } catch {}
+
   db.exec('BEGIN TRANSACTION;');
   try {
     db.prepare('DELETE FROM zup_official_personnel').run();
@@ -346,9 +396,13 @@ export function saveZupRecordsToDb(
         position_ru, hire_date, tax_status, permit_category,
         citizenship_ru, citizenship_tr, inn, snils,
         doc_no, doc_series, doc_issued_by, doc_dept_code, doc_issue_date, schedule,
-        zup_department, work_state, insured_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        zup_department, work_state, insured_status,
+        dismissal_date, dismissal_reason, contract_no, contract_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+
+    const newActiveKeys = new Set<string>();
+    const newDismissedRows: ZupOfficialRecord[] = [];
 
     for (const r of records) {
       stmt.run(
@@ -374,8 +428,57 @@ export function saveZupRecordsToDb(
         r.schedule || '',
         r.zup_department || '',
         r.work_state || '',
-        r.insured_status || ''
+        r.insured_status || '',
+        r.dismissal_date || '',
+        r.dismissal_reason || '',
+        r.contract_no || '',
+        r.contract_date || ''
       );
+
+      const wsLow = String(r.work_state || '').trim().toLowerCase();
+      const kSicil = r.norm_sicil || normalizeSicilDigits(r.tabel_no);
+      const kFio = normalizeCyrillicName(r.fio_kiril);
+
+      if (wsLow && !wsLow.includes('увол')) {
+        if (kSicil) newActiveKeys.add(`S:${kSicil}`);
+        if (kFio && r.birth_date) newActiveKeys.add(`N:${kFio}|${r.birth_date}`);
+      } else if (wsLow.includes('увол') || (!wsLow && r.hire_date)) {
+        newDismissedRows.push(r);
+      }
+    }
+
+    // Update automatic transition tracking when we had a non-empty previous active roster
+    if (prevActiveKeys.size > 0) {
+      const detectedIso = normalizeDateValue(reportDate) || new Date().toISOString().slice(0, 10);
+      const nowIso = new Date().toISOString();
+      const upsertTrans = db.prepare(`
+        INSERT INTO zup_dismissal_transitions (norm_key, tabel_no, fio_kiril, detected_exit_date, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(norm_key) DO NOTHING
+      `);
+      const deleteTrans = db.prepare('DELETE FROM zup_dismissal_transitions WHERE norm_key = ?');
+
+      for (const ak of Array.from(newActiveKeys)) {
+        deleteTrans.run(ak);
+      }
+      for (const dr of newDismissedRows) {
+        const kSicil = dr.norm_sicil || normalizeSicilDigits(dr.tabel_no);
+        const kFio = normalizeCyrillicName(dr.fio_kiril);
+        const sKey = kSicil ? `S:${kSicil}` : '';
+        const nKey = kFio && dr.birth_date ? `N:${kFio}|${dr.birth_date}` : '';
+        const isStillActiveElsewhere =
+          (sKey && newActiveKeys.has(sKey)) || (nKey && newActiveKeys.has(nKey));
+        if (isStillActiveElsewhere) continue;
+
+        const wasPrevActive =
+          (sKey && prevActiveKeys.has(sKey)) || (nKey && prevActiveKeys.has(nKey));
+        if (wasPrevActive) {
+          const primaryKey = sKey || nKey;
+          if (primaryKey) {
+            upsertTrans.run(primaryKey, dr.tabel_no || '', dr.fio_kiril || '', detectedIso, nowIso);
+          }
+        }
+      }
     }
 
     db.exec(`CREATE TABLE IF NOT EXISTS system_info (key TEXT PRIMARY KEY, value TEXT);`);
@@ -563,6 +666,30 @@ export function parseZupWorksheetRows(rawRows: any[][]): ZupOfficialRecord[] {
   const idxTabel = findCol(['табельный номер', 'табельный', 'таб. №', 'таб. номер', 'sicil no']);
   const idxPos = findCol(['должность', 'позиция штатного', 'görevi']);
   const idxHire = findCol(['дата приема', 'дата приёма', 'işe giriş']);
+  const idxDismiss = findCol([
+    'дата увольнения',
+    'дата прекращения',
+    'дата расторжения',
+    'уволен с',
+    'işten çıkış tarihi',
+    'resmi çıkış tarihi',
+  ]);
+  const idxDismissReason = findCol([
+    'основание увольнения',
+    'причина увольнения',
+    'статья увольнения',
+    'статья тк',
+    'çıkış sebebi',
+  ]);
+  const idxContractNo = findCol(
+    ['номер трудового договора', 'номер договора', 'трудовой договор №', 'трудовой договор'],
+    ['дата']
+  );
+  const idxContractDate = findCol([
+    'дата трудового договора',
+    'дата договора',
+    'дата заключения договора',
+  ]);
   const idxTax = findCol(['статус налогоплательщика', 'çalışma kart türü']);
   const idxCit = findCol(['страна гражданства', 'гражданство', 'uyruk']);
   const idxInn = findCol(['инн', 'inn'], ['иностран']);
@@ -651,6 +778,13 @@ export function parseZupWorksheetRows(rawRows: any[][]): ZupOfficialRecord[] {
 
     const rowDept = cellStr(r, idxDept) || currentGroupDepartment;
     const workState = cellStr(r, idxState);
+    let dismissalDate = normalizeDateValue(cellRaw(r, idxDismiss));
+    if (!dismissalDate && workState && workState.toLowerCase().includes('увол')) {
+      const mStateDate = workState.match(/(\d{2}\.\d{2}\.\d{4}|\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})/);
+      if (mStateDate) {
+        dismissalDate = normalizeDateValue(mStateDate[1]);
+      }
+    }
 
     records.push({
       row_no: records.length + 1,
@@ -676,6 +810,10 @@ export function parseZupWorksheetRows(rawRows: any[][]): ZupOfficialRecord[] {
       zup_department: rowDept,
       work_state: workState,
       insured_status: insuredStatus,
+      dismissal_date: dismissalDate,
+      dismissal_reason: cellStr(r, idxDismissReason),
+      contract_no: cellStr(r, idxContractNo),
+      contract_date: normalizeDateValue(cellRaw(r, idxContractDate)),
     });
   }
 
