@@ -1998,9 +1998,17 @@ export default function GosuslugiVksView() {
         }
 
         const sicil = String(emp.sicil_no || raw['Sicil No'] || '');
-        const lastNameRu = String(raw['Soyadı (Kiril)'] || emp.soyadi || '').trim();
+        const rawLastRu = String(raw['Soyadı (Kiril)'] || emp.soyadi || '').trim();
+        const lastNameRu =
+          !rawLastRu || ['-', '—', '–', 'нет', 'yok', 'none'].includes(rawLastRu.toLowerCase())
+            ? 'Нет'
+            : rawLastRu;
         const firstNameRu = String(raw['Adı (Kiril)'] || emp.adi || '').trim();
-        const middleNameRu = String(raw['Baba Adı (Kiril)'] || emp.baba_adi || 'НЕТ').trim();
+        const rawMidRu = String(raw['Baba Adı (Kiril)'] || emp.baba_adi || '').trim();
+        const middleNameRu =
+          !rawMidRu || ['-', '—', '–', 'нет', 'yok', 'none'].includes(rawMidRu.toLowerCase())
+            ? 'Нет'
+            : rawMidRu;
         const rawNat = String(emp.uyruk || raw['Uyruk'] || 'TURKIYE').toUpperCase();
         const citizenshipRu = CITIZENSHIP_MAP_RU[rawNat] || rawNat;
         const genderRaw = String(emp.cinsiyet || raw['Cinsiyet'] || 'Erkek');

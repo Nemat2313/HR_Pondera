@@ -2471,12 +2471,17 @@ class GosuslugiDismissalBot:
         self.check_and_handle_error_modal()
         last_name_input.wait_for(state="visible", timeout=max_wait_sec * 1000)
 
-        fam_clean = self.sanitize_cyrillic_field(str(row.get("Фамилия", "")))
+        fam_raw = str(row.get("Фамилия") or "").strip()
+        fam_clean = (
+            "Нет"
+            if (not fam_raw or fam_raw.lower() in ("нет", "-", "—", "–", "не заполнено", "none"))
+            else self.sanitize_cyrillic_field(fam_raw, "Нет")
+        )
         imya_clean = self.sanitize_cyrillic_field(str(row.get("Имя", "")))
         otch_raw = str(row.get("Отчество") or "").strip()
         otch_clean = (
             "Нет"
-            if (not otch_raw or otch_raw.lower() in ("нет", "-", "не заполнено", "none"))
+            if (not otch_raw or otch_raw.lower() in ("нет", "-", "—", "–", "не заполнено", "none"))
             else self.sanitize_cyrillic_field(otch_raw, "Нет")
         )
 

@@ -136,6 +136,24 @@ function mapZupDepartmentToRegion(zupDept?: string | null): string {
   return '';
 }
 
+function normalizeEmptyToNet(val?: string | null): string {
+  const v = String(val || '').trim();
+  if (
+    !v ||
+    ['-', '—', '–', 'нет', 'не указано', 'не заполнено', 'yok', 'none', 'null'].includes(
+      v.toLowerCase()
+    )
+  ) {
+    return 'Нет';
+  }
+  return v;
+}
+
+function cleanOptionalPart(val?: string | null): string {
+  const n = normalizeEmptyToNet(val);
+  return n === 'Нет' ? '' : n;
+}
+
 function splitCyrillicFullName(
   zupFio: string,
   ebaLast?: string,
@@ -147,52 +165,68 @@ function splitCyrillicFullName(
     .replace(/\s+/g, ' ')
     .trim();
 
-  const eLast = String(ebaLast || '').trim();
-  const eFirst = String(ebaFirst || '').trim();
-  const eMid = String(ebaMiddle || '').trim();
+  const eLast = cleanOptionalPart(ebaLast);
+  const eFirst = cleanOptionalPart(ebaFirst);
+  const eMid = cleanOptionalPart(ebaMiddle);
 
   if (!cleanZup) {
     return {
-      lastName: eLast,
+      lastName: normalizeEmptyToNet(eLast),
       firstName: eFirst,
-      middleName: eMid,
+      middleName: normalizeEmptyToNet(eMid),
     };
   }
 
-  const parts = cleanZup.split(' ').filter(Boolean);
-  if (parts.length === 1) {
-    // Single-name passport holders (e.g. India): Gosuslugi expects 'Нет' or surname + given name if eBA split exists
-    if (eLast && eFirst) {
-      return { lastName: eLast, firstName: eFirst, middleName: eMid };
-    }
-    return { lastName: 'Нет', firstName: parts[0], middleName: 'Нет' };
-  }
-
-  if (parts.length === 2) {
-    return {
-      lastName: parts[0],
-      firstName: parts[1],
-      middleName: eMid || 'Нет',
-    };
-  }
-
-  // If eBA has explicit multi-word surname/first-name split matching the same Cyrillic tokens, respect that boundary
-  if (eLast && eFirst) {
+  // If eBA has explicit surname/given-name/patronymic fields whose Cyrillic tokens match 1C ZUP,
+  // respect eBA's passport field boundaries (e.g. Indian passports with empty Фамилия and 2-word Имя like 'ПРАДИП КУМАР')
+  if (eFirst) {
     const normFull = normalizeCyrillicName(cleanZup);
-    const normEbaCombined = normalizeCyrillicName(`${eLast} ${eFirst} ${eMid}`.trim());
+    const normEbaCombined = normalizeCyrillicName(
+      [eLast, eFirst, eMid].filter(Boolean).join(' ')
+    );
     if (normFull === normEbaCombined) {
       return {
-        lastName: eLast,
+        lastName: normalizeEmptyToNet(eLast),
         firstName: eFirst,
-        middleName: eMid || 'Нет',
+        middleName: normalizeEmptyToNet(eMid),
       };
     }
   }
 
+  const parts = cleanZup.split(' ').filter(Boolean);
+  if (parts.length === 1) {
+    if (eLast && eFirst) {
+      return {
+        lastName: normalizeEmptyToNet(eLast),
+        firstName: eFirst,
+        middleName: normalizeEmptyToNet(eMid),
+      };
+    }
+    return { lastName: 'Нет', firstName: parts[0], middleName: 'Нет' };
+  }
+
+  // If eBA explicitly recorded NO surname (eLast === '') while having a given name (eFirst !== ''),
+  // keep all 1C ZUP name words in firstName and set lastName = 'Нет'
+  if (!eLast && eFirst) {
+    return {
+      lastName: 'Нет',
+      firstName: cleanZup,
+      middleName: normalizeEmptyToNet(eMid),
+    };
+  }
+
+  if (parts.length === 2) {
+    return {
+      lastName: normalizeEmptyToNet(parts[0]),
+      firstName: parts[1],
+      middleName: normalizeEmptyToNet(eMid),
+    };
+  }
+
   return {
-    lastName: parts[0],
+    lastName: normalizeEmptyToNet(parts[0]),
     firstName: parts[1],
-    middleName: parts.slice(2).join(' ') || 'Нет',
+    middleName: normalizeEmptyToNet(parts.slice(2).join(' ')),
   };
 }
 

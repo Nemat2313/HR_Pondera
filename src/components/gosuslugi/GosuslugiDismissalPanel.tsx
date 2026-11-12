@@ -101,6 +101,19 @@ const CITIZENSHIP_MAP_RU: Record<string, string> = {
   RUSYA: 'Россия',
 };
 
+function normalizeEmptyToNet(val?: string | null): string {
+  const v = String(val ?? '').trim();
+  if (
+    !v ||
+    ['-', '—', '–', 'нет', 'не указано', 'не заполнено', 'yok', 'none', 'null'].includes(
+      v.toLowerCase()
+    )
+  ) {
+    return 'Нет';
+  }
+  return v;
+}
+
 function parseStrictDateRu(val: string | undefined | null): {
   valid: boolean;
   empty: boolean;
@@ -491,6 +504,8 @@ export default function GosuslugiDismissalPanel({
 
       const rawMapped: GosuslugiDismissalWorkerRecord[] = json.data.map((w: any) => ({
         ...w,
+        lastName: normalizeEmptyToNet(w.lastName),
+        middleName: normalizeEmptyToNet(w.middleName),
         voluntaryResignation: w.voluntaryResignation || defaultVoluntary,
       }));
 
@@ -622,9 +637,9 @@ export default function GosuslugiDismissalPanel({
             status: 'pending',
             sicil: sicilVal,
             code: codeVal,
-            lastName: lName,
+            lastName: normalizeEmptyToNet(lName),
             firstName: fName,
-            middleName: getVal(r, idxMiddleName),
+            middleName: normalizeEmptyToNet(getVal(r, idxMiddleName)),
             birthDate: formatDateRu(r[idxBirthDate]),
             gender: getVal(r, idxGender) || 'Мужской',
             hireDate: formatDateRu(r[idxHireDate]),
@@ -794,9 +809,9 @@ export default function GosuslugiDismissalPanel({
     list.map((w) => ({
       Sicil: w.sicil,
       Код: w.code || w.sicil,
-      Фамилия: w.lastName,
+      Фамилия: normalizeEmptyToNet(w.lastName),
       Имя: w.firstName,
-      Отчество: w.middleName,
+      Отчество: normalizeEmptyToNet(w.middleName),
       ДатаРождения: w.birthDate,
       Пол: w.gender,
       ДатаПриема: w.hireDate,

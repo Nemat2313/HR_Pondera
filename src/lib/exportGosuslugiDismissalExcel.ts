@@ -89,9 +89,9 @@ export function exportGosuslugiDismissalExcel(
   const rows = records.map((r) => [
     r.sicil || '',
     r.code || r.sicil || '',
-    r.lastName || '',
+    (r.lastName || '').trim() || 'Нет',
     r.firstName || '',
-    r.middleName || '',
+    (r.middleName || '').trim() || 'Нет',
     r.birthDate || '',
     r.gender || 'Мужской',
     r.hireDate || '',
