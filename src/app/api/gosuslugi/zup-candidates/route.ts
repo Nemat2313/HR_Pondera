@@ -238,7 +238,23 @@ function extractPatentAndBlank(raw: Record<string, any>): {
 }
 
 function inferVoluntaryResignation(zupReason?: string, ebaReason?: string): string {
-  const combined = `${zupReason || ''} ${ebaReason || ''}`.toLowerCase();
+  const zLow = String(zupReason || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (zLow) {
+    if (zLow.includes('п. 3 ч. 1 ст. 77') || zLow.includes('ст. 80') || zLow.includes('собственн') || zLow.includes('инициативе работника')) {
+      return 'Да';
+    }
+    if (
+      zLow.includes('ст. 81') ||
+      zLow.includes('ст. 83') ||
+      zLow.includes('п. 1 ч. 1 ст. 77') ||
+      zLow.includes('п. 2 ч. 1 ст. 77') ||
+      zLow.includes('соглашен') ||
+      zLow.includes('истечен')
+    ) {
+      return 'Нет';
+    }
+  }
+  const combined = `${zLow} ${ebaReason || ''}`.toLowerCase();
   if (!combined.trim()) return 'Да';
   if (
     combined.includes('дисциплин') ||

@@ -1698,8 +1698,9 @@ export default function GosuslugiDismissalPanel({
                           <div className="font-semibold text-slate-900 dark:text-white truncate max-w-[150px]" title={w.position}>
                             {w.position}
                           </div>
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400" title={w.exitReason || ''}>
                             Собств. жел.: <strong>{w.voluntaryResignation}</strong>
+                            {w.exitReason ? ` (${w.exitReason})` : ''}
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
