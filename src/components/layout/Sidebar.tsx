@@ -25,6 +25,7 @@ import {
   Plane,
   Building,
   Settings,
+  GitFork,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -131,6 +132,13 @@ export default function Sidebar({
           icon: Users,
           badge: totalActive ? `${totalActive.toLocaleString('tr-TR')}` : undefined,
           badgeColor: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50',
+        },
+        {
+          id: 'org_chart',
+          label: t('nav_org_chart', lang === 'ru' ? 'Оргструктура' : 'Organizasyon Şeması'),
+          icon: GitFork,
+          badge: lang === 'ru' ? 'Иерархия' : 'Şema',
+          badgeColor: 'bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200/50 dark:border-purple-800/50',
         },
         {
           id: 'invitations',

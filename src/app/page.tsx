@@ -85,6 +85,10 @@ const PersonnelListView = dynamicWithRetry(
   () => import('@/components/personnel/PersonnelListView'),
   'Personel Listesi yükleniyor...'
 );
+const OrganizationChartView = dynamicWithRetry(
+  () => import('@/components/org-chart/OrganizationChartView'),
+  'Organizasyon Şeması yükleniyor...'
+);
 const SitesView = dynamicWithRetry(
   () => import('@/components/sites/SitesView'),
   'Şantiye & Proje görünümü yükleniyor...'
@@ -482,6 +486,10 @@ export default function Home() {
             initialFilter={initialFilterForPersonnel}
             onClearInitialFilter={() => setInitialFilterForPersonnel(null)}
           />
+        )}
+
+        {effectiveTab === 'org_chart' && (
+          <OrganizationChartView onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
 
         {effectiveTab === 'sites' && (

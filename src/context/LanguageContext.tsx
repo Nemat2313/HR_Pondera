@@ -18,6 +18,7 @@ const translations: Record<string, { tr: string; ru: string }> = {
   nav_overview: { tr: 'Genel Dashboard', ru: 'Главная панель' },
   nav_compliance: { tr: 'Evrak & Süre Analitiği', ru: 'Аналитика документов и сроков' },
   nav_personnel: { tr: 'Personel Listesi', ru: 'Список персонала' },
+  nav_org_chart: { tr: 'Organizasyon Şeması', ru: 'Оргструктура' },
   nav_sites: { tr: 'Şantiye & Projeler', ru: 'Участки и Проекты' },
   nav_demographics: { tr: 'Demografi & İstatistik', ru: 'Демография и Статистика' },
   nav_turnover: { tr: 'Yönetim & Turnover', ru: 'Текучесть и Управление' },
