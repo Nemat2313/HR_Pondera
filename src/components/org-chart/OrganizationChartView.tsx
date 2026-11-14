@@ -85,19 +85,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Yönetim Kurulu & Başkan',
     rowTitleRu: 'Председатель правления',
     cardSurface:
-      'bg-gradient-to-br from-amber-50/90 via-white to-amber-50/40 dark:from-amber-950/35 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-amber-300 dark:border-amber-500/60',
-    leftAccent: 'border-l-4 border-l-amber-500',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#304266] dark:via-[#243350] dark:to-[#19253b]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-amber-400 dark:border-b-amber-400',
+    leftAccent: '',
     topRibbon: 'from-amber-500 via-yellow-400 to-amber-600',
     avatarBg: 'bg-gradient-to-br from-amber-500 to-amber-600 shadow-xs',
     avatarText: 'text-white',
-    badgeBg: 'bg-amber-100/90 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700',
+    badgeBg: 'bg-amber-100/90 dark:bg-amber-500/20 border border-amber-300/80 dark:border-amber-400/50',
     badgeText: 'text-amber-800 dark:text-amber-200',
     titleColor: 'text-slate-900 dark:text-white',
     subColor: 'text-amber-700 dark:text-amber-300',
-    swimlaneBg: 'bg-amber-50/35 dark:bg-amber-950/10',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700',
+      'bg-white/95 dark:bg-slate-800/95 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-500/70',
     icon: Crown,
   },
   2: {
@@ -108,19 +109,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'CEO / COO & Genel Müdür',
     rowTitleRu: 'CEO / COO и Ген. директор',
     cardSurface:
-      'bg-gradient-to-br from-purple-50/90 via-white to-fuchsia-50/40 dark:from-purple-950/35 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-purple-300 dark:border-purple-500/60',
-    leftAccent: 'border-l-4 border-l-purple-600',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2f3f63] dark:via-[#23314e] dark:to-[#182339]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-purple-400 dark:border-b-purple-400',
+    leftAccent: '',
     topRibbon: 'from-purple-600 via-fuchsia-500 to-indigo-500',
     avatarBg: 'bg-gradient-to-br from-purple-600 to-fuchsia-600 shadow-xs',
     avatarText: 'text-white',
-    badgeBg: 'bg-purple-100/90 dark:bg-purple-900/50 border border-purple-300 dark:border-purple-700',
+    badgeBg: 'bg-purple-100/90 dark:bg-purple-500/20 border border-purple-300/80 dark:border-purple-400/50',
     badgeText: 'text-purple-800 dark:text-purple-200',
     titleColor: 'text-slate-900 dark:text-white',
     subColor: 'text-purple-700 dark:text-purple-300',
-    swimlaneBg: 'bg-purple-50/30 dark:bg-purple-950/10',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-purple-50 dark:bg-purple-950/70 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700',
+      'bg-white/95 dark:bg-slate-800/95 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-500/70',
     icon: Crown,
   },
   3: {
@@ -131,19 +133,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Direktör & Koordinatör',
     rowTitleRu: 'Директора и координаторы',
     cardSurface:
-      'bg-gradient-to-br from-indigo-50/85 via-white to-white dark:from-indigo-950/30 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-indigo-300 dark:border-indigo-600/70',
-    leftAccent: 'border-l-4 border-l-indigo-600',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2d3d60] dark:via-[#22304c] dark:to-[#172237]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-indigo-400 dark:border-b-indigo-400',
+    leftAccent: '',
     topRibbon: 'from-indigo-600 via-violet-500 to-indigo-600',
     avatarBg: 'bg-gradient-to-br from-indigo-600 to-violet-600',
     avatarText: 'text-white',
-    badgeBg: 'bg-indigo-100/80 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800',
-    badgeText: 'text-indigo-700 dark:text-indigo-300',
+    badgeBg: 'bg-indigo-100/85 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-400/50',
+    badgeText: 'text-indigo-700 dark:text-indigo-200',
     titleColor: 'text-slate-900 dark:text-white',
     subColor: 'text-indigo-700 dark:text-indigo-300',
-    swimlaneBg: 'bg-indigo-50/25 dark:bg-indigo-950/10',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+      'bg-white/95 dark:bg-slate-800/95 text-indigo-700 dark:text-indigo-200 border-indigo-300 dark:border-indigo-500/70',
     icon: Building2,
   },
   4: {
@@ -154,19 +157,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Müdür & Şantiye Lideri',
     rowTitleRu: 'Руководители проектов и отделов',
     cardSurface:
-      'bg-gradient-to-br from-blue-50/85 via-white to-white dark:from-blue-950/30 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-blue-300 dark:border-blue-600/70',
-    leftAccent: 'border-l-4 border-l-blue-600',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2c3c5e] dark:via-[#212f4a] dark:to-[#172236]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-blue-400 dark:border-b-sky-400',
+    leftAccent: '',
     topRibbon: 'from-blue-600 via-sky-500 to-blue-600',
     avatarBg: 'bg-gradient-to-br from-blue-600 to-sky-600',
     avatarText: 'text-white',
-    badgeBg: 'bg-blue-100/80 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800',
-    badgeText: 'text-blue-700 dark:text-blue-300',
+    badgeBg: 'bg-blue-100/85 dark:bg-sky-500/20 border border-blue-200 dark:border-sky-400/50',
+    badgeText: 'text-blue-700 dark:text-sky-200',
     titleColor: 'text-slate-900 dark:text-white',
-    subColor: 'text-blue-700 dark:text-blue-300',
-    swimlaneBg: 'bg-blue-50/25 dark:bg-blue-950/10',
+    subColor: 'text-blue-700 dark:text-sky-300',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+      'bg-white/95 dark:bg-slate-800/95 text-blue-700 dark:text-sky-200 border-blue-300 dark:border-sky-500/70',
     icon: Building2,
   },
   5: {
@@ -177,19 +181,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Grup, Kısım & Birim Şefi',
     rowTitleRu: 'Начальники групп и участков',
     cardSurface:
-      'bg-gradient-to-br from-emerald-50/85 via-white to-white dark:from-emerald-950/30 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-emerald-300 dark:border-emerald-700/80',
-    leftAccent: 'border-l-4 border-l-emerald-500',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2a3b59] dark:via-[#202e47] dark:to-[#162135]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-emerald-400 dark:border-b-emerald-400',
+    leftAccent: '',
     topRibbon: 'from-emerald-500 via-teal-500 to-cyan-500',
     avatarBg: 'bg-gradient-to-br from-emerald-500 to-teal-600',
     avatarText: 'text-white',
-    badgeBg: 'bg-emerald-100/80 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800',
-    badgeText: 'text-emerald-700 dark:text-emerald-300',
+    badgeBg: 'bg-emerald-100/85 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-400/50',
+    badgeText: 'text-emerald-700 dark:text-emerald-200',
     titleColor: 'text-slate-900 dark:text-white',
     subColor: 'text-emerald-700 dark:text-emerald-300',
-    swimlaneBg: 'bg-emerald-50/25 dark:bg-emerald-950/10',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      'bg-white/95 dark:bg-slate-800/95 text-emerald-700 dark:text-emerald-200 border-emerald-300 dark:border-emerald-500/70',
     icon: Layers,
   },
   6: {
@@ -200,19 +205,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Mühendis, Uzman & Memur',
     rowTitleRu: 'Инженеры и специалисты',
     cardSurface:
-      'bg-gradient-to-br from-sky-50/85 via-white to-white dark:from-sky-950/30 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-sky-300 dark:border-sky-700/80',
-    leftAccent: 'border-l-4 border-l-sky-500',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#293957] dark:via-[#1f2d46] dark:to-[#162034]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-cyan-400 dark:border-b-cyan-400',
+    leftAccent: '',
     topRibbon: 'from-sky-500 to-cyan-500',
     avatarBg: 'bg-gradient-to-br from-sky-500 to-cyan-600',
     avatarText: 'text-white',
-    badgeBg: 'bg-sky-100/80 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800',
-    badgeText: 'text-sky-700 dark:text-sky-300',
+    badgeBg: 'bg-sky-100/85 dark:bg-cyan-500/20 border border-sky-200 dark:border-cyan-400/50',
+    badgeText: 'text-sky-700 dark:text-cyan-200',
     titleColor: 'text-slate-900 dark:text-white',
-    subColor: 'text-sky-700 dark:text-sky-300',
-    swimlaneBg: 'bg-sky-50/25 dark:bg-sky-950/10',
+    subColor: 'text-sky-700 dark:text-cyan-300',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-sky-50 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+      'bg-white/95 dark:bg-slate-800/95 text-sky-700 dark:text-cyan-200 border-sky-300 dark:border-cyan-500/70',
     icon: Compass,
   },
   7: {
@@ -223,19 +229,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Formen & Saha Sorumlusu',
     rowTitleRu: 'Формены и ответственные',
     cardSurface:
-      'bg-gradient-to-br from-orange-50/85 via-white to-white dark:from-orange-950/30 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-orange-300 dark:border-orange-700/80',
-    leftAccent: 'border-l-4 border-l-orange-500',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#293854] dark:via-[#1f2c44] dark:to-[#162033]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-orange-400 dark:border-b-orange-400',
+    leftAccent: '',
     topRibbon: 'from-amber-500 to-orange-500',
     avatarBg: 'bg-gradient-to-br from-amber-500 to-orange-600',
     avatarText: 'text-white',
-    badgeBg: 'bg-orange-100/80 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800',
-    badgeText: 'text-orange-800 dark:text-orange-300',
+    badgeBg: 'bg-orange-100/85 dark:bg-orange-500/20 border border-orange-300 dark:border-orange-400/50',
+    badgeText: 'text-orange-800 dark:text-orange-200',
     titleColor: 'text-slate-900 dark:text-white',
     subColor: 'text-orange-700 dark:text-orange-300',
-    swimlaneBg: 'bg-orange-50/25 dark:bg-orange-950/10',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-orange-50 dark:bg-orange-950/70 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-800',
+      'bg-white/95 dark:bg-slate-800/95 text-orange-800 dark:text-orange-200 border-orange-300 dark:border-orange-500/70',
     icon: HardHat,
   },
   8: {
@@ -246,19 +253,20 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Saha Ekip & İşçi Kadrosu',
     rowTitleRu: 'Рабочий персонал (Бригады)',
     cardSurface:
-      'bg-gradient-to-br from-slate-100/90 via-white to-white dark:from-slate-800/80 dark:via-slate-900 dark:to-slate-900',
-    cardBorder: 'border-slate-300 dark:border-slate-700',
-    leftAccent: 'border-l-4 border-l-slate-500',
+      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#283650] dark:via-[#1e2a40] dark:to-[#151e30]',
+    cardBorder:
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-slate-400 dark:border-b-slate-400',
+    leftAccent: '',
     topRibbon: 'from-slate-500 to-teal-600',
     avatarBg: 'bg-slate-600',
     avatarText: 'text-white',
-    badgeBg: 'bg-slate-200/80 dark:bg-slate-800 border border-slate-300 dark:border-slate-700',
-    badgeText: 'text-slate-700 dark:text-slate-300',
+    badgeBg: 'bg-slate-200/85 dark:bg-slate-700/80 border border-slate-300 dark:border-slate-500/60',
+    badgeText: 'text-slate-700 dark:text-slate-200',
     titleColor: 'text-slate-900 dark:text-slate-100',
-    subColor: 'text-slate-600 dark:text-slate-400',
-    swimlaneBg: 'bg-slate-100/45 dark:bg-slate-900/35',
+    subColor: 'text-slate-600 dark:text-slate-300',
+    swimlaneBg: 'bg-white/10 dark:bg-white/[0.015]',
     swimlanePill:
-      'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700',
+      'bg-white/95 dark:bg-slate-800/95 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600',
     icon: Users,
   },
 };
@@ -267,10 +275,10 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
 const DEFAULT_ZOOM = 0.94;
 const MIN_ZOOM = 0.42;
 const MAX_ZOOM = 1.45;
-const INITIAL_VISIBLE_SIBLINGS = 6;
-const SIBLING_LOAD_STEP = 12;
+const INITIAL_VISIBLE_SIBLINGS = 5;
+const SIBLING_LOAD_STEP = 10;
 
-const DETAIL_CARD_WIDTH = 234;
+const DETAIL_CARD_WIDTH = 236;
 const COMPACT_CARD_WIDTH = 200;
 const CREW_CARD_WIDTH = 264;
 const MORE_CARD_WIDTH = 166;
@@ -284,25 +292,25 @@ const SWIMLANE_LABEL_WIDTH = 0;
 type CardDensity = 'compact' | 'detailed';
 
 const LEVEL_COMPACT_DIMS: Record<OrgRoleLevel, { w: number; h: number }> = {
-  1: { w: 232, h: 80 },
-  2: { w: 216, h: 74 },
-  3: { w: 202, h: 70 },
-  4: { w: 190, h: 66 },
-  5: { w: 180, h: 62 },
-  6: { w: 170, h: 58 },
-  7: { w: 162, h: 56 },
-  8: { w: 156, h: 54 },
+  1: { w: 238, h: 80 },
+  2: { w: 224, h: 76 },
+  3: { w: 212, h: 72 },
+  4: { w: 200, h: 68 },
+  5: { w: 190, h: 66 },
+  6: { w: 182, h: 64 },
+  7: { w: 174, h: 62 },
+  8: { w: 168, h: 60 },
 };
 
 const LEVEL_DETAIL_DIMS: Record<OrgRoleLevel, { w: number; h: number }> = {
-  1: { w: 276, h: 146 },
-  2: { w: 260, h: 140 },
-  3: { w: 246, h: 134 },
-  4: { w: 232, h: 128 },
-  5: { w: 220, h: 124 },
-  6: { w: 210, h: 120 },
-  7: { w: 202, h: 116 },
-  8: { w: 194, h: 112 },
+  1: { w: 278, h: 146 },
+  2: { w: 262, h: 140 },
+  3: { w: 248, h: 136 },
+  4: { w: 236, h: 132 },
+  5: { w: 224, h: 128 },
+  6: { w: 214, h: 124 },
+  7: { w: 206, h: 120 },
+  8: { w: 198, h: 116 },
 };
 
 const LEVEL_DOT_COLORS: Record<OrgRoleLevel, string> = {
@@ -434,41 +442,44 @@ function ConsolidatedCrewCard({
   return (
     <div
       style={{ width: CREW_CARD_WIDTH }}
-      className={`rounded-2xl border shadow-sm transition-all overflow-hidden text-left ${
+      className={`rounded-2xl border-2 border-white dark:border-slate-500/80 border-b-[4px] transition-all overflow-hidden text-left bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#293854] dark:via-[#1f2c44] dark:to-[#162033] shadow-[0_14px_24px_-6px_rgba(15,23,42,0.26),0_6px_12px_-4px_rgba(15,23,42,0.16),inset_0_2px_0_#ffffff] dark:shadow-[0_16px_28px_-6px_rgba(0,0,0,0.85),0_6px_12px_-3px_rgba(0,0,0,0.6),inset_0_1.5px_0_rgba(255,255,255,0.24)] ${
         isWorker
-          ? 'bg-slate-50/95 dark:bg-slate-900/95 border-slate-300 dark:border-slate-700'
-          : 'bg-sky-50/85 dark:bg-slate-900/95 border-sky-200 dark:border-sky-800/80'
+          ? 'border-b-slate-400 dark:border-b-slate-400'
+          : 'border-b-cyan-400 dark:border-b-cyan-400'
       }`}
     >
-      <div
-        className={`h-1.5 w-full bg-gradient-to-r ${
-          isWorker ? 'from-slate-500 via-slate-600 to-teal-600' : 'from-sky-500 to-cyan-500'
-        }`}
-      />
-      <div className="p-3">
+      <div className="p-2.5">
         <div
           onClick={onToggleList}
           className="flex items-start justify-between gap-2 cursor-pointer select-none"
         >
           <div className="flex items-center gap-2 min-w-0">
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                isWorker ? 'bg-slate-700 text-white' : 'bg-sky-600 text-white'
-              }`}
-            >
-              <Users className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-gradient-to-b from-[#eef2f7] to-[#dde5ef] dark:from-[#162033] dark:to-[#0f1726] border border-white dark:border-slate-600/70 shadow-[inset_0_1.5px_3px_rgba(15,23,42,0.14)] dark:shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.65)]">
+              <Users
+                className={`w-4 h-4 ${
+                  isWorker
+                    ? 'text-slate-600 dark:text-slate-200'
+                    : 'text-sky-600 dark:text-cyan-300'
+                }`}
+              />
             </div>
             <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div
+                className={`text-[9.5px] font-bold uppercase tracking-wider ${
+                  isWorker
+                    ? 'text-slate-600 dark:text-slate-300'
+                    : 'text-sky-700 dark:text-cyan-300'
+                }`}
+              >
                 {isWorker ? 'L8 • Saha İşçileri (Liste)' : 'L6 • Uzman & İdari Kadro'}
               </div>
-              <div className="text-xs text-slate-900 dark:text-white truncate">
+              <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
                 {parentNode.ad_soyad} ({members.length})
               </div>
             </div>
           </div>
           <span
-            className={`px-2 py-0.5 rounded-lg text-[10px] shrink-0 flex items-center gap-1 ${
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-medium shrink-0 flex items-center gap-1 ${
               isWorker
                 ? 'bg-slate-800 text-white dark:bg-slate-700'
                 : 'bg-sky-600 text-white'
@@ -487,7 +498,7 @@ function ConsolidatedCrewCard({
           {tradeSummary.map(([trade, cnt]) => (
             <span
               key={trade}
-              className="px-1.5 py-0.5 rounded-md text-[10px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 truncate max-w-[120px]"
+              className="px-1.5 py-0.5 rounded-md text-[10px] bg-white/90 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-600/70 text-slate-700 dark:text-slate-200 truncate max-w-[120px]"
               title={`${trade}: ${cnt}`}
             >
               {trade}: {cnt}
@@ -496,7 +507,7 @@ function ConsolidatedCrewCard({
         </div>
 
         {isListOpen && (
-          <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2">
+          <div className="mt-2.5 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 space-y-2">
             {members.length > 5 && (
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -582,159 +593,201 @@ function OrgEnterpriseCard({
   const spanBorderOverride =
     colorBySpan && hasChildren
       ? node.directCount >= 20
-        ? 'border-rose-400 ring-1 ring-rose-400/30'
+        ? 'border-2 border-rose-400 border-b-[4px] border-b-rose-500 ring-1 ring-rose-400/30'
         : node.directCount >= 10
-          ? 'border-amber-400 ring-1 ring-amber-400/30'
-          : 'border-emerald-400 ring-1 ring-emerald-400/30'
-      : `${theme.cardBorder} ${theme.leftAccent}`;
+          ? 'border-2 border-amber-400 border-b-[4px] border-b-amber-500 ring-1 ring-amber-400/30'
+          : 'border-2 border-emerald-400 border-b-[4px] border-b-emerald-500 ring-1 ring-emerald-400/30'
+      : node.isVirtual
+        ? 'border-2 border-dashed border-slate-300 dark:border-slate-500 border-b-[4px] border-b-slate-400'
+        : theme.cardBorder;
+
+  const badgeTitle = node.isVirtual
+    ? node.virtualKind === 'subcon'
+      ? 'Taşeron'
+      : node.virtualKind === 'pending_pool'
+        ? 'Havuz'
+        : `${theme.code} • TBA`
+    : `${theme.code} • ${theme.shortTr}`;
 
   return (
     <div
       id={`org-card-${node.nodeId}`}
       onClick={() => onCardClick(node)}
-      style={{ width: cardDims.w, minHeight: cardDims.h }}
-      className={`relative rounded-2xl border transition-all duration-200 select-none text-left overflow-visible cursor-pointer ${
+      style={{ width: cardDims.w, height: cardDims.h }}
+      className={`relative rounded-2xl transition-all duration-200 select-none text-left overflow-visible cursor-pointer ${
         node.isVirtual
-          ? 'bg-gradient-to-b from-slate-50 to-slate-100/90 dark:from-slate-800/90 dark:to-slate-900 border-dashed border-slate-300 dark:border-slate-700'
+          ? 'bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] dark:from-[#26344d] dark:via-[#1e2a3f] dark:to-[#151e2e]'
           : theme.cardSurface
       } ${spanBorderOverride} ${
         isChainFocused
-          ? 'ring-3 ring-teal-500 shadow-[0_14px_30px_-6px_rgba(20,184,166,0.35),0_4px_10px_-2px_rgba(15,23,42,0.14)] -translate-y-0.5'
+          ? 'ring-3 ring-teal-500 shadow-[0_18px_32px_-6px_rgba(20,184,166,0.42),0_6px_12px_-2px_rgba(15,23,42,0.2),inset_0_2px_0_#ffffff] dark:shadow-[0_18px_32px_-6px_rgba(20,184,166,0.45),inset_0_1.5px_0_rgba(255,255,255,0.3)] -translate-y-0.5'
           : isHighlighted
             ? 'ring-3 ring-rose-500 shadow-xl'
             : isSelected
               ? 'ring-2 ring-indigo-500 shadow-lg'
-              : 'shadow-[0_10px_22px_-6px_rgba(15,23,42,0.16),0_3px_8px_-2px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.85)] dark:shadow-[0_12px_26px_-6px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.08)] hover:shadow-[0_14px_28px_-6px_rgba(15,23,42,0.22),0_4px_12px_-2px_rgba(15,23,42,0.12)] hover:-translate-y-0.5'
+              : 'shadow-[0_14px_24px_-6px_rgba(15,23,42,0.26),0_6px_12px_-4px_rgba(15,23,42,0.16),inset_0_2px_0_#ffffff] dark:shadow-[0_16px_28px_-6px_rgba(0,0,0,0.85),0_6px_12px_-3px_rgba(0,0,0,0.6),inset_0_1.5px_0_rgba(255,255,255,0.26)] hover:shadow-[0_18px_30px_-6px_rgba(15,23,42,0.32),0_8px_14px_-4px_rgba(15,23,42,0.2),inset_0_2px_0_#ffffff] dark:hover:shadow-[0_20px_34px_-6px_rgba(0,0,0,0.92),inset_0_1.5px_0_rgba(255,255,255,0.34)] hover:-translate-y-0.5'
       }`}
     >
-      <div className="rounded-t-2xl overflow-hidden">
-        <div className={`h-1.5 w-full bg-gradient-to-r ${theme.topRibbon}`} />
-      </div>
-
-      <div className={isCompact ? 'px-2.5 py-2' : 'p-2.5'}>
-        <div className="flex items-center justify-between gap-1 mb-1">
-          <span
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9.5px] tracking-wide uppercase ${theme.badgeBg} ${theme.badgeText}`}
-          >
-            <IconComp className="w-2.5 h-2.5 shrink-0" />
-            <span className="truncate max-w-[95px]">
-              {node.isVirtual
-                ? node.virtualKind === 'subcon'
-                  ? 'Taşeron'
-                  : node.virtualKind === 'pending_pool'
-                    ? 'Havuz'
-                    : 'Dış'
-                : `${theme.code} • ${theme.shortTr}`}
-            </span>
-          </span>
-
-          {/* Dedicated action icons so clicking card body never opens side panel */}
-          <div className="flex items-center gap-0.5 shrink-0">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenKunye(node);
-              }}
-              title="Sağda Raporlama Zinciri & Künyeyi Aç"
-              className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <Info className="w-3.5 h-3.5" />
-            </button>
-            {hasChildren && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFocusSubtree(node.nodeId);
-                }}
-                title="Sadece bu yöneticinin alt ağacına odaklan"
-                className="p-1 rounded-md text-slate-400 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <Crosshair className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {!node.isVirtual && node.personId && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onInspectDrawer(node);
-                }}
-                title="198 Kolonlu Personel Kartını Aç"
-                className="p-1 rounded-md text-slate-400 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <Eye className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-
+      <div className="h-full w-full overflow-hidden rounded-[13px] flex flex-col justify-between">
         {isCompact ? (
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className={`text-[12px] leading-tight truncate ${theme.titleColor}`} title={node.ad_soyad}>
+          <div className="h-full px-2 py-1.5 flex items-center gap-2 min-w-0">
+            {/* Recessed 3D Left Avatar Plaque (matching Resim 2 infographic card style) */}
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-[#eef2f7] to-[#dde5ef] dark:from-[#162033] dark:to-[#0f1726] border border-white dark:border-slate-600/70 shadow-[inset_0_1.5px_3px_rgba(15,23,42,0.15)] dark:shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.65)] flex items-center justify-center shrink-0">
+              <IconComp className={`w-4 h-4 ${theme.subColor}`} />
+            </div>
+
+            <div className="min-w-0 flex-1 flex flex-col justify-center">
+              <div className="flex items-center justify-between gap-1 min-w-0">
+                <span className={`text-[9px] font-bold uppercase tracking-wide truncate ${theme.subColor}`}>
+                  {badgeTitle}
+                </span>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenKunye(node);
+                    }}
+                    title="Sağda Raporlama Zinciri & Künyeyi Aç"
+                    className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
+                  >
+                    <Info className="w-3 h-3" />
+                  </button>
+                  {hasChildren && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFocusSubtree(node.nodeId);
+                      }}
+                      title="Sadece bu yöneticinin alt ağacına odaklan"
+                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
+                    >
+                      <Crosshair className="w-3 h-3" />
+                    </button>
+                  )}
+                  {!node.isVirtual && node.personId && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onInspectDrawer(node);
+                      }}
+                      title="198 Kolonlu Personel Kartını Aç"
+                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`text-[11.5px] font-semibold leading-tight truncate mt-0.5 ${theme.titleColor}`}
+                title={node.ad_soyad}
+              >
                 {node.ad_soyad}
               </div>
-              <div className={`text-[10px] mt-0.5 truncate ${theme.subColor}`} title={node.gorevi}>
+              <div
+                className="text-[9.5px] leading-tight truncate text-slate-500 dark:text-slate-300 mt-0.5"
+                title={node.gorevi}
+              >
                 {node.gorevi}
               </div>
             </div>
-            {hasChildren && (
-              <span
-                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg text-[10px] shrink-0 ${
-                  isExpanded
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <span>+{node.totalSubordinates}</span>
-                {isExpanded ? (
-                  <ChevronUp className="w-3 h-3" />
-                ) : (
-                  <ChevronDown className="w-3 h-3" />
-                )}
-              </span>
-            )}
           </div>
         ) : (
-          <>
-            <div className="flex items-center gap-2.5">
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${theme.avatarBg} ${theme.avatarText}`}
-              >
-                <span className="text-[11px] leading-none">{getInitials(node.ad_soyad)}</span>
+          <div className="p-2.5 flex-1 flex flex-col justify-between min-w-0">
+            <div>
+              <div className="flex items-center justify-between gap-1 mb-1.5 min-w-0">
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase min-w-0 ${theme.badgeBg} ${theme.badgeText}`}
+                >
+                  <IconComp className="w-2.5 h-2.5 shrink-0" />
+                  <span className="truncate">{badgeTitle}</span>
+                </span>
+
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenKunye(node);
+                    }}
+                    title="Sağda Raporlama Zinciri & Künyeyi Aç"
+                    className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
+                  >
+                    <Info className="w-3 h-3" />
+                  </button>
+                  {hasChildren && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFocusSubtree(node.nodeId);
+                      }}
+                      title="Sadece bu yöneticinin alt ağacına odaklan"
+                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
+                    >
+                      <Crosshair className="w-3 h-3" />
+                    </button>
+                  )}
+                  {!node.isVirtual && node.personId && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onInspectDrawer(node);
+                      }}
+                      title="198 Kolonlu Personel Kartını Aç"
+                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-[12px] leading-tight truncate ${theme.titleColor}`} title={node.ad_soyad}>
-                  {node.ad_soyad}
+
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-b from-[#eef2f7] to-[#dde5ef] dark:from-[#162033] dark:to-[#0f1726] border border-white dark:border-slate-600/70 shadow-[inset_0_1.5px_3px_rgba(15,23,42,0.15)] dark:shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.65)] flex items-center justify-center shrink-0">
+                  <span className={`text-[11px] font-bold leading-none ${theme.subColor}`}>
+                    {getInitials(node.ad_soyad)}
+                  </span>
                 </div>
-                <div className={`text-[10.5px] mt-0.5 truncate ${theme.subColor}`} title={node.gorevi}>
-                  {node.gorevi}
-                </div>
-                <div className="text-[9.5px] mt-0.5 truncate text-slate-500 dark:text-slate-400">
-                  {node.effective_site}
-                  {node.sicil_no && !node.isVirtual ? ` • #${node.sicil_no}` : ''}
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`text-[11.5px] font-semibold leading-tight truncate ${theme.titleColor}`}
+                    title={node.ad_soyad}
+                  >
+                    {node.ad_soyad}
+                  </div>
+                  <div className={`text-[10px] mt-0.5 truncate ${theme.subColor}`} title={node.gorevi}>
+                    {node.gorevi}
+                  </div>
+                  <div className="text-[9px] mt-0.5 truncate text-slate-500 dark:text-slate-300">
+                    {node.effective_site}
+                    {node.sicil_no && !node.isVirtual ? ` • #${node.sicil_no}` : ''}
+                  </div>
                 </div>
               </div>
             </div>
 
             {hasChildren && (
-              <div className="mt-2 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/70">
-                <div className="flex items-center justify-between text-[9.5px]">
-                  <span className="text-slate-600 dark:text-slate-300">
+              <div className="pt-1.5 border-t border-slate-200/80 dark:border-slate-600/60">
+                <div className="flex items-center justify-between text-[9px]">
+                  <span className="text-slate-600 dark:text-slate-200">
                     Doğrudan:{' '}
                     <span
                       className={
                         colorBySpan
                           ? `px-1 py-0.2 rounded ${getSpanBadgeColor(node.directCount)}`
-                          : ''
+                          : 'font-semibold'
                       }
                     >
                       {node.directCount}
                     </span>
                   </span>
-                  <span className="text-teal-700 dark:text-teal-300">
+                  <span className="font-semibold text-teal-700 dark:text-teal-300">
                     Toplam Alt: {node.totalSubordinates}
                   </span>
                 </div>
@@ -744,20 +797,9 @@ function OrgEnterpriseCard({
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
-
-      {!isCompact && hasChildren && (
-        <div className="w-full px-3 py-1 text-[10px] flex items-center justify-between border-t border-slate-200/70 dark:border-slate-700/70 bg-slate-50/70 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 rounded-b-2xl">
-          <span>
-            {isChainFocused ? 'Odak Zinciri Aktif (Tekrar tıkla: Çık)' : 'Tıkla: Zincire odaklan'}
-          </span>
-          <span className="font-semibold text-teal-700 dark:text-teal-300">
-            +{node.totalSubordinates}
-          </span>
-        </div>
-      )}
 
       {/* Bottom-centered + / - Expand/Collapse button */}
       {hasChildren && (
@@ -770,13 +812,13 @@ function OrgEnterpriseCard({
           title={isExpanded ? 'Alt ekibi kapat (−)' : `Alt ekibi aç (+${node.directCount})`}
           className={`absolute -bottom-3 left-1/2 -translate-x-1/2 z-20 inline-flex items-center justify-center gap-0.5 h-5 min-w-[22px] px-1.5 rounded-full border text-[11px] font-bold shadow-md transition-transform hover:scale-110 cursor-pointer ${
             isExpanded
-              ? 'bg-teal-600 text-white border-teal-500'
-              : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-600 hover:border-teal-500'
+              ? 'bg-teal-600 text-white border-teal-400'
+              : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white border-slate-300 dark:border-slate-500 hover:border-teal-500'
           }`}
         >
           <span>{isExpanded ? '−' : '+'}</span>
           {!isExpanded && (
-            <span className="text-[9px] font-semibold opacity-80">{node.directCount}</span>
+            <span className="text-[9px] font-semibold opacity-85">{node.directCount}</span>
           )}
         </button>
       )}
@@ -968,9 +1010,6 @@ export default function OrganizationChartView() {
       .call(zb.transform as any, zoomIdentity.translate(tx, ty).scale(k));
   }, [transform.k]);
 
-  const zoomAdaptiveLimit =
-    transform.k < 0.62 ? 18 : transform.k < 0.78 ? 12 : transform.k < 0.92 ? 8 : INITIAL_VISIBLE_SIBLINGS;
-
   // Build Visible Layout Tree with True Level-Row (Swimlane) Alignment + Right-Side "+N Daha" Sibling Card
   const layoutData = useMemo(() => {
     if (orgResult.roots.length === 0) {
@@ -1054,10 +1093,8 @@ export default function OrganizationChartView() {
         }
       }
 
-      const visibleLimit = Math.max(
-        visibleCountByParent[node.nodeId] ?? 0,
-        zoomAdaptiveLimit
-      );
+      // Strictly show first 5 children by default; remaining appear only when "+N Kişi Daha" is clicked
+      const visibleLimit = visibleCountByParent[node.nodeId] ?? INITIAL_VISIBLE_SIBLINGS;
       const hasMore = rawDescriptors.length > visibleLimit;
       const visibleSlice = hasMore
         ? rawDescriptors.slice(0, visibleLimit)
@@ -1211,11 +1248,11 @@ export default function OrganizationChartView() {
 
     const swimlanes: SwimlaneBand[] = [];
     const rowCardTopMap = new Map<string, number>();
-    let cursorY = 16;
+    let cursorY = 18;
 
     for (const b of bandSpecs) {
       if (b.isEmptyPassThrough) {
-        const h = 32;
+        const h = 34;
         swimlanes.push({
           rowKey: b.rowKey,
           levelNo: b.levelNo,
@@ -1223,13 +1260,13 @@ export default function OrganizationChartView() {
           isEmptyPassThrough: true,
           topY: cursorY,
           height: h,
-          cardTopY: cursorY + 16,
+          cardTopY: cursorY + 17,
         });
-        rowCardTopMap.set(b.rowKey, cursorY + 16);
+        rowCardTopMap.set(b.rowKey, cursorY + 17);
         cursorY += h;
       } else {
-        const topPad = 24;
-        const bottomPad = 22;
+        const topPad = 26;
+        const bottomPad = 44;
         const h = topPad + b.maxCardH + bottomPad;
         const cardTopY = cursorY + topPad;
         swimlanes.push({
@@ -1285,7 +1322,7 @@ export default function OrganizationChartView() {
       canvasWidth,
       canvasHeight,
     };
-  }, [orgResult.roots, orgResult.nodeById, expandedIds, expandedCrewKeys, visibleCountByParent, cardDensity, zoomAdaptiveLimit, chainFocusNodeId]);
+  }, [orgResult.roots, orgResult.nodeById, expandedIds, expandedCrewKeys, visibleCountByParent, cardDensity, chainFocusNodeId]);
 
   const itemById = useMemo(() => {
     const m = new Map<string, LayoutTreeItem>();
@@ -1317,19 +1354,25 @@ export default function OrganizationChartView() {
 
   const pendingCenterModeRef = useRef<'fit_top_left' | 'center' | null>(null);
 
+  // Expands root(s) + 1st level below so 3 total tiers are visible (e.g. L1-L2-L3 on Tüm Şirket, or Proje Müdürü + 2 levels below on Şantiye)
   const buildScreenFittedExpandedIds = useCallback((roots: OrgNode[]): Set<string> => {
     const next = new Set<string>();
-    const queue: OrgNode[] = [...roots.slice(0, 2)];
+    const queue: Array<{ node: OrgNode; relDepth: number }> = roots
+      .slice(0, 3)
+      .map((r) => ({ node: r, relDepth: 0 }));
     let opened = 0;
-    // Default initial view shows L1, L2, and L3 (expand L1 and L2 managers only)
-    while (queue.length > 0 && opened < 16) {
-      const cur = queue.shift()!;
-      if (cur.roleLevel > 2 || cur.directCount <= 0) continue;
+
+    while (queue.length > 0 && opened < 24) {
+      const { node: cur, relDepth } = queue.shift()!;
+      if (relDepth >= 2 || cur.directCount <= 0) continue;
       next.add(cur.nodeId);
       opened += 1;
-      for (const ch of cur.managerChildren) {
-        if (ch.roleLevel <= 2 && ch.directCount > 0) {
-          queue.push(ch);
+
+      if (relDepth + 1 < 2) {
+        for (const ch of cur.managerChildren.slice(0, INITIAL_VISIBLE_SIBLINGS)) {
+          if (ch.directCount > 0) {
+            queue.push({ node: ch, relDepth: relDepth + 1 });
+          }
         }
       }
     }
@@ -1371,19 +1414,11 @@ export default function OrganizationChartView() {
     [orgResult.nodeById, expandedIds]
   );
 
-  // Reset to initial L1-L5 screen-fitted view (NEVER on zoom!)
+  // Reset to initial screen-fitted view (root + 2 levels below)
   const resetToInitialView = useCallback(() => {
-    if (focusNodeId) {
-      const next = new Set<string>();
-      for (const r of orgResult.roots.slice(0, 2)) {
-        next.add(r.nodeId);
-      }
-      pendingCenterModeRef.current = 'center';
-      setExpandedIds(next);
-    } else {
-      pendingCenterModeRef.current = 'fit_top_left';
-      setExpandedIds(buildScreenFittedExpandedIds(orgResult.roots));
-    }
+    const initialOpen = buildScreenFittedExpandedIds(orgResult.roots);
+    pendingCenterModeRef.current = focusNodeId ? 'center' : 'fit_top_left';
+    setExpandedIds(initialOpen);
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
@@ -1391,18 +1426,10 @@ export default function OrganizationChartView() {
   }, [orgResult.roots, focusNodeId, buildScreenFittedExpandedIds]);
 
   useEffect(() => {
-    if (focusNodeId) {
-      const next = new Set<string>();
-      for (const r of orgResult.roots.slice(0, 2)) {
-        next.add(r.nodeId);
-      }
-      pendingCenterModeRef.current = 'center';
-      setExpandedIds(next);
-    } else {
-      pendingCenterModeRef.current = 'fit_top_left';
-      setExpandedIds(buildScreenFittedExpandedIds(orgResult.roots));
-    }
-    setDirExpandedIds(new Set(orgResult.roots.slice(0, 2).map((r) => r.nodeId)));
+    const initialOpen = buildScreenFittedExpandedIds(orgResult.roots);
+    pendingCenterModeRef.current = focusNodeId ? 'center' : 'fit_top_left';
+    setExpandedIds(initialOpen);
+    setDirExpandedIds(new Set(initialOpen));
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
@@ -1887,33 +1914,8 @@ export default function OrganizationChartView() {
           </div>
         </div>
 
-        {/* Row 2: Single-Line L1..L8 Role Level Formats Bar */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar whitespace-nowrap py-0.5 border-t border-slate-100 dark:border-slate-800/80 pt-1.5">
-          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 shrink-0">
-            Görev Seviyesi Satırları:
-          </span>
-          {([1, 2, 3, 4, 5, 6, 7, 8] as OrgRoleLevel[]).map((lvl) => {
-            const t = ROLE_LEVEL_THEMES[lvl];
-            const LvlIcon = t.icon;
-            return (
-              <div
-                key={lvl}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] shrink-0 ${t.badgeBg} ${t.badgeText}`}
-              >
-                <LvlIcon className="w-3 h-3 shrink-0" />
-                <span>
-                  {t.code} • {lang === 'ru' ? t.shortRu : t.shortTr}
-                </span>
-                <span className="px-1 py-0.2 rounded bg-black/5 dark:bg-white/10 text-[9.5px]">
-                  {orgResult.levelCounts[lvl].toLocaleString('tr-TR')}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Row 3: Search + Site Quick Pills + Department + Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+        {/* Row 2: Search + Site Quick Pills + Department + Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
           <div className="relative w-full sm:w-64 shrink-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
@@ -2103,7 +2105,7 @@ export default function OrganizationChartView() {
           <div
             className={`${
               selectedNode ? 'xl:col-span-9' : 'xl:col-span-12'
-            } relative bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200/75 dark:from-slate-950 dark:via-[#0b1220] dark:to-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden`}
+            } relative bg-gradient-to-br from-[#d3dce7] via-[#e3e9f1] to-[#c9d3e1] dark:from-[#060b14] dark:via-[#0a1222] dark:to-[#050911] rounded-2xl border border-slate-300/80 dark:border-slate-700/80 shadow-inner overflow-hidden`}
           >
             {/* Top-Right d3-zoom & Display Controls */}
             <div className="absolute top-2.5 right-3 z-20 flex items-center gap-1 p-1 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
@@ -2207,16 +2209,16 @@ export default function OrganizationChartView() {
             <div
               ref={viewportRef}
               className={`${
-                isFullscreen ? 'h-[calc(100vh-175px)]' : 'h-[calc(100vh-225px)] min-h-[540px]'
+                isFullscreen ? 'h-[calc(100vh-155px)]' : 'h-[calc(100vh-195px)] min-h-[560px]'
               } relative overflow-hidden cursor-grab active:cursor-grabbing select-none touch-none`}
               style={{
                 backgroundImage:
-                  'radial-gradient(circle, rgba(148,163,184,0.22) 1px, transparent 1px)',
-                backgroundSize: '20px 20px',
+                  'radial-gradient(circle, rgba(100,116,139,0.18) 1px, transparent 1px)',
+                backgroundSize: '22px 22px',
               }}
             >
               {layoutData.rootItems.length === 0 ? (
-                <div className="py-20 text-center text-sm text-slate-500">
+                <div className="py-20 text-center text-sm text-slate-500 dark:text-slate-400">
                   Seçili filtre kriterlerine uygun personel bulunamadı.
                 </div>
               ) : (
@@ -2236,14 +2238,14 @@ export default function OrganizationChartView() {
                       <div
                         key={band.rowKey}
                         style={{ top: band.topY, height: band.height }}
-                        className={`absolute left-0 right-0 z-[1] pointer-events-none border-b border-dashed border-slate-200/80 dark:border-slate-800/80 ${
-                          band.isEmptyPassThrough ? 'opacity-65' : theme.swimlaneBg
+                        className={`absolute left-0 right-0 z-[1] pointer-events-none border-b border-dashed border-slate-400/35 dark:border-slate-700/65 ${
+                          band.isEmptyPassThrough ? 'opacity-50' : theme.swimlaneBg
                         }`}
                       />
                     );
                   })}
 
-                  {/* 2. Crisp SVG Orthogonal Level-Aligned Connectors */}
+                  {/* 2. Crisp 3D Infographic Orthogonal Connectors (busY clearly below card bottom) */}
                   <svg
                     width={layoutData.canvasWidth}
                     height={layoutData.canvasHeight}
@@ -2253,11 +2255,10 @@ export default function OrganizationChartView() {
                       if (parentItem.children.length === 0) return null;
                       const pX = parentItem.centerX;
                       const pBottomY = parentItem.y + parentItem.height;
-                      const busY = pBottomY + 18;
+                      const busY = pBottomY + 28;
 
                       const firstChild = parentItem.children[0];
                       const lastChild = parentItem.children[parentItem.children.length - 1];
-                      const strokeColor = '#475569';
                       const parentDotColor = LEVEL_DOT_COLORS[parentItem.levelNo];
 
                       return (
@@ -2267,9 +2268,16 @@ export default function OrganizationChartView() {
                             y1={pBottomY}
                             x2={pX}
                             y2={busY}
-                            stroke={strokeColor}
-                            strokeOpacity={0.55}
-                            strokeWidth={2}
+                            className="stroke-[#2c6473] dark:stroke-[#5ec2eb]"
+                            strokeOpacity={0.85}
+                            strokeWidth={2.2}
+                          />
+                          <circle
+                            cx={pX}
+                            cy={pBottomY}
+                            r={8.5}
+                            fill={parentDotColor}
+                            fillOpacity={0.26}
                           />
                           <circle
                             cx={pX}
@@ -2277,7 +2285,7 @@ export default function OrganizationChartView() {
                             r={4}
                             fill={parentDotColor}
                             stroke="#ffffff"
-                            strokeWidth={1.5}
+                            strokeWidth={1.3}
                           />
                           {parentItem.children.length > 1 && (
                             <line
@@ -2285,16 +2293,16 @@ export default function OrganizationChartView() {
                               y1={busY}
                               x2={lastChild.centerX}
                               y2={busY}
-                              stroke={strokeColor}
-                              strokeOpacity={0.55}
-                              strokeWidth={2}
+                              className="stroke-[#2c6473] dark:stroke-[#5ec2eb]"
+                              strokeOpacity={0.85}
+                              strokeWidth={2.2}
                             />
                           )}
                           {parentItem.children.map((ch) => {
-                            const isDeepDrop = ch.y - busY > 55;
+                            const isDeepDrop = ch.y - busY > 65;
                             const isMoreCard = ch.kind === 'more_siblings';
                             const childDotColor = isMoreCard
-                              ? '#64748b'
+                              ? '#14b8a6'
                               : LEVEL_DOT_COLORS[ch.levelNo];
                             return (
                               <g key={`drop-${parentItem.id}-${ch.id}`}>
@@ -2303,12 +2311,23 @@ export default function OrganizationChartView() {
                                   y1={busY}
                                   x2={ch.centerX}
                                   y2={ch.y}
-                                  stroke={isMoreCard ? '#64748b' : strokeColor}
-                                  strokeOpacity={0.55}
-                                  strokeWidth={1.8}
-                                  strokeDasharray={
-                                    isMoreCard || isDeepDrop ? '5 3' : undefined
+                                  className={
+                                    isMoreCard
+                                      ? 'stroke-teal-600 dark:stroke-teal-400'
+                                      : 'stroke-[#2c6473] dark:stroke-[#5ec2eb]'
                                   }
+                                  strokeOpacity={0.85}
+                                  strokeWidth={2}
+                                  strokeDasharray={
+                                    isMoreCard || isDeepDrop ? '4 3' : undefined
+                                  }
+                                />
+                                <circle
+                                  cx={ch.centerX}
+                                  cy={ch.y}
+                                  r={8.5}
+                                  fill={childDotColor}
+                                  fillOpacity={0.28}
                                 />
                                 <circle
                                   cx={ch.centerX}
@@ -2316,7 +2335,7 @@ export default function OrganizationChartView() {
                                   r={4}
                                   fill={childDotColor}
                                   stroke="#ffffff"
-                                  strokeWidth={1.5}
+                                  strokeWidth={1.3}
                                 />
                               </g>
                             );
@@ -2354,17 +2373,19 @@ export default function OrganizationChartView() {
                           type="button"
                           onClick={() => handleLoadMoreSiblings(it.node.nodeId)}
                           style={{ width: it.width, height: it.height }}
-                          className="rounded-2xl border-2 border-dashed border-teal-400/80 dark:border-teal-600/80 bg-white/95 dark:bg-slate-900/95 hover:bg-teal-50 dark:hover:bg-teal-950/40 shadow-xs hover:shadow-md transition-all flex flex-col items-center justify-center gap-1.5 px-3 text-center cursor-pointer group"
+                          className="rounded-2xl border-2 border-dashed border-teal-500/80 dark:border-teal-400/80 border-b-[4px] border-b-teal-500 bg-gradient-to-b from-[#ffffff] via-[#f8fafc] to-[#e6eef6] dark:from-[#263854] dark:via-[#1e2d45] dark:to-[#162135] hover:from-teal-50 hover:to-white dark:hover:from-[#2c4466] dark:hover:to-[#1b2b44] shadow-[0_14px_24px_-6px_rgba(15,23,42,0.24),inset_0_2px_0_#ffffff] dark:shadow-[0_16px_28px_-6px_rgba(0,0,0,0.85),inset_0_1.5px_0_rgba(255,255,255,0.22)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 px-2.5 text-left cursor-pointer group"
                         >
-                          <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 flex items-center justify-center group-hover:scale-105 transition-transform">
-                            <Plus className="w-4 h-4" />
+                          <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-500/25 text-teal-700 dark:text-teal-300 border border-teal-300/70 dark:border-teal-400/50 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            <Plus className="w-3.5 h-3.5" />
                           </div>
-                          <div className="text-xs text-slate-900 dark:text-white">
-                            +{it.remainingCount} Kişi Daha
-                          </div>
-                          <div className="text-[10px] text-teal-700 dark:text-teal-300 flex items-center gap-0.5">
-                            <span>Devamını Aç</span>
-                            <ChevronRight className="w-3 h-3" />
+                          <div className="min-w-0">
+                            <div className="text-[11.5px] font-bold text-slate-900 dark:text-white leading-tight">
+                              +{it.remainingCount} Kişi Daha
+                            </div>
+                            <div className="text-[9.5px] font-medium text-teal-700 dark:text-teal-300 flex items-center gap-0.5 mt-0.5">
+                              <span>Devamını Aç</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </div>
                           </div>
                         </button>
                       ) : (
