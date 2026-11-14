@@ -270,18 +270,55 @@ const MAX_ZOOM = 1.45;
 const INITIAL_VISIBLE_SIBLINGS = 6;
 const SIBLING_LOAD_STEP = 12;
 
-const DETAIL_CARD_WIDTH = 228;
+const DETAIL_CARD_WIDTH = 234;
 const COMPACT_CARD_WIDTH = 200;
 const CREW_CARD_WIDTH = 264;
 const MORE_CARD_WIDTH = 166;
 
-const DETAIL_CARD_HEIGHT = 148;
-const COMPACT_CARD_HEIGHT = 86;
+const DETAIL_CARD_HEIGHT = 136;
+const COMPACT_CARD_HEIGHT = 72;
 const CREW_EXPANDED_HEIGHT = 326;
 const H_GAP = 18;
 const SWIMLANE_LABEL_WIDTH = 0;
 
 type CardDensity = 'compact' | 'detailed';
+
+const LEVEL_COMPACT_DIMS: Record<OrgRoleLevel, { w: number; h: number }> = {
+  1: { w: 232, h: 80 },
+  2: { w: 216, h: 74 },
+  3: { w: 202, h: 70 },
+  4: { w: 190, h: 66 },
+  5: { w: 180, h: 62 },
+  6: { w: 170, h: 58 },
+  7: { w: 162, h: 56 },
+  8: { w: 156, h: 54 },
+};
+
+const LEVEL_DETAIL_DIMS: Record<OrgRoleLevel, { w: number; h: number }> = {
+  1: { w: 276, h: 146 },
+  2: { w: 260, h: 140 },
+  3: { w: 246, h: 134 },
+  4: { w: 232, h: 128 },
+  5: { w: 220, h: 124 },
+  6: { w: 210, h: 120 },
+  7: { w: 202, h: 116 },
+  8: { w: 194, h: 112 },
+};
+
+const LEVEL_DOT_COLORS: Record<OrgRoleLevel, string> = {
+  1: '#d97706',
+  2: '#7c3aed',
+  3: '#4f46e5',
+  4: '#2563eb',
+  5: '#059669',
+  6: '#0284c7',
+  7: '#ea580c',
+  8: '#475569',
+};
+
+function getLevelCardSize(level: OrgRoleLevel, density: CardDensity): { w: number; h: number } {
+  return density === 'compact' ? LEVEL_COMPACT_DIMS[level] : LEVEL_DETAIL_DIMS[level];
+}
 
 function getInitials(fullName: string): string {
   const parts = String(fullName || '')
@@ -506,8 +543,10 @@ interface OrgEnterpriseCardProps {
   isExpanded: boolean;
   isSelected: boolean;
   isHighlighted: boolean;
+  isChainFocused: boolean;
   colorBySpan: boolean;
   onCardClick: (node: OrgNode) => void;
+  onToggleExpand: (node: OrgNode) => void;
   onOpenKunye: (node: OrgNode) => void;
   onInspectDrawer: (node: OrgNode) => void;
   onFocusSubtree: (nodeId: string) => void;
@@ -519,8 +558,10 @@ function OrgEnterpriseCard({
   isExpanded,
   isSelected,
   isHighlighted,
+  isChainFocused,
   colorBySpan,
   onCardClick,
+  onToggleExpand,
   onOpenKunye,
   onInspectDrawer,
   onFocusSubtree,
@@ -529,6 +570,7 @@ function OrgEnterpriseCard({
   const IconComp = theme.icon;
   const hasChildren = node.directCount > 0;
   const isCompact = density === 'compact';
+  const cardDims = getLevelCardSize(node.roleLevel, density);
 
   const whiteRatio =
     node.totalSubordinates > 0
@@ -550,24 +592,24 @@ function OrgEnterpriseCard({
     <div
       id={`org-card-${node.nodeId}`}
       onClick={() => onCardClick(node)}
-      style={{ width: isCompact ? COMPACT_CARD_WIDTH : DETAIL_CARD_WIDTH }}
-      className={`relative rounded-2xl border transition-all duration-200 select-none text-left overflow-hidden ${
-        hasChildren ? 'cursor-pointer' : 'cursor-default'
-      } ${
+      style={{ width: cardDims.w, minHeight: cardDims.h }}
+      className={`relative rounded-2xl border transition-all duration-200 select-none text-left overflow-visible cursor-pointer ${
         node.isVirtual
-          ? 'bg-slate-50 dark:bg-slate-900/90 border-dashed border-slate-300 dark:border-slate-700'
+          ? 'bg-gradient-to-b from-slate-50 to-slate-100/90 dark:from-slate-800/90 dark:to-slate-900 border-dashed border-slate-300 dark:border-slate-700'
           : theme.cardSurface
       } ${spanBorderOverride} ${
-        isHighlighted
-          ? 'ring-3 ring-rose-500 shadow-xl'
-          : isExpanded
-            ? 'ring-2 ring-teal-500 shadow-md'
+        isChainFocused
+          ? 'ring-3 ring-teal-500 shadow-[0_14px_30px_-6px_rgba(20,184,166,0.35),0_4px_10px_-2px_rgba(15,23,42,0.14)] -translate-y-0.5'
+          : isHighlighted
+            ? 'ring-3 ring-rose-500 shadow-xl'
             : isSelected
-              ? 'ring-2 ring-indigo-500 shadow-md'
-              : 'shadow-xs hover:shadow-md hover:-translate-y-0.5'
+              ? 'ring-2 ring-indigo-500 shadow-lg'
+              : 'shadow-[0_10px_22px_-6px_rgba(15,23,42,0.16),0_3px_8px_-2px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.85)] dark:shadow-[0_12px_26px_-6px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.08)] hover:shadow-[0_14px_28px_-6px_rgba(15,23,42,0.22),0_4px_12px_-2px_rgba(15,23,42,0.12)] hover:-translate-y-0.5'
       }`}
     >
-      <div className={`h-1.5 w-full bg-gradient-to-r ${theme.topRibbon}`} />
+      <div className="rounded-t-2xl overflow-hidden">
+        <div className={`h-1.5 w-full bg-gradient-to-r ${theme.topRibbon}`} />
+      </div>
 
       <div className={isCompact ? 'px-2.5 py-2' : 'p-2.5'}>
         <div className="flex items-center justify-between gap-1 mb-1">
@@ -707,24 +749,36 @@ function OrgEnterpriseCard({
       </div>
 
       {!isCompact && hasChildren && (
-        <div
-          className={`w-full px-3 py-1.5 text-[10.5px] flex items-center justify-between border-t transition-colors ${
+        <div className="w-full px-3 py-1 text-[10px] flex items-center justify-between border-t border-slate-200/70 dark:border-slate-700/70 bg-slate-50/70 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 rounded-b-2xl">
+          <span>
+            {isChainFocused ? 'Odak Zinciri Aktif (Tekrar tıkla: Çık)' : 'Tıkla: Zincire odaklan'}
+          </span>
+          <span className="font-semibold text-teal-700 dark:text-teal-300">
+            +{node.totalSubordinates}
+          </span>
+        </div>
+      )}
+
+      {/* Bottom-centered + / - Expand/Collapse button */}
+      {hasChildren && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand(node);
+          }}
+          title={isExpanded ? 'Alt ekibi kapat (−)' : `Alt ekibi aç (+${node.directCount})`}
+          className={`absolute -bottom-3 left-1/2 -translate-x-1/2 z-20 inline-flex items-center justify-center gap-0.5 h-5 min-w-[22px] px-1.5 rounded-full border text-[11px] font-bold shadow-md transition-transform hover:scale-110 cursor-pointer ${
             isExpanded
-              ? 'bg-teal-600 text-white border-teal-600'
-              : 'bg-slate-50/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80'
+              ? 'bg-teal-600 text-white border-teal-500'
+              : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-600 hover:border-teal-500'
           }`}
         >
-          <span>
-            {isExpanded
-              ? 'Açık • Kapatmak için dokun'
-              : `+${node.totalSubordinates} Kişi • Açmak için dokun`}
-          </span>
-          {isExpanded ? (
-            <ChevronUp className="w-3.5 h-3.5 shrink-0" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+          <span>{isExpanded ? '−' : '+'}</span>
+          {!isExpanded && (
+            <span className="text-[9px] font-semibold opacity-80">{node.directCount}</span>
           )}
-        </div>
+        </button>
       )}
     </div>
   );
@@ -781,6 +835,7 @@ export default function OrganizationChartView() {
   const [siteFilter, setSiteFilter] = useState<string>('all');
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  const [chainFocusNodeId, setChainFocusNodeId] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'chart' | 'directory'>('chart');
   const [cardDensity, setCardDensity] = useState<CardDensity>('compact');
   const [dirExpandedIds, setDirExpandedIds] = useState<Set<string>>(new Set());
@@ -928,8 +983,18 @@ export default function OrganizationChartView() {
       };
     }
 
-    const baseCardWidth = cardDensity === 'compact' ? COMPACT_CARD_WIDTH : DETAIL_CARD_WIDTH;
     const baseCardHeight = cardDensity === 'compact' ? COMPACT_CARD_HEIGHT : DETAIL_CARD_HEIGHT;
+
+    // If a card is clicked for chain focus, keep ONLY its ancestor chain (above) + its own subtree (below)
+    let chainAncestorSet: Set<string> | null = null;
+    if (chainFocusNodeId && orgResult.nodeById.has(chainFocusNodeId)) {
+      chainAncestorSet = new Set<string>();
+      let cur: OrgNode | undefined = orgResult.nodeById.get(chainFocusNodeId);
+      while (cur) {
+        chainAncestorSet.add(cur.nodeId);
+        cur = cur.parentId ? orgResult.nodeById.get(cur.parentId) : undefined;
+      }
+    }
 
     const buildVisibleItem = (
       node: OrgNode,
@@ -947,8 +1012,13 @@ export default function OrganizationChartView() {
           subTier = parentSubTier + 1;
         }
       }
+      const dims = getLevelCardSize(levelNo, cardDensity);
       const rowKey = `${levelNo}:${subTier}`;
       const isExp = expandedIds.has(node.nodeId);
+      const isStrictAncestorAboveFocus =
+        Boolean(chainAncestorSet) &&
+        chainAncestorSet!.has(node.nodeId) &&
+        node.nodeId !== chainFocusNodeId;
 
       const rawDescriptors: Array<
         | { kind: 'person'; childNode: OrgNode }
@@ -957,22 +1027,30 @@ export default function OrganizationChartView() {
       > = [];
 
       if (isExp && node.directCount > 0) {
-        for (const m of node.managerChildren) {
-          rawDescriptors.push({ kind: 'person', childNode: m });
-        }
-        if (node.specialistLeaves.length === 1) {
-          rawDescriptors.push({ kind: 'person', childNode: node.specialistLeaves[0] });
-        } else if (node.specialistLeaves.length > 1) {
-          rawDescriptors.push({
-            kind: 'crew_specialist',
-            members: node.specialistLeaves,
-          });
-        }
-        if (node.workerLeaves.length > 0) {
-          rawDescriptors.push({
-            kind: 'crew_worker',
-            members: node.workerLeaves,
-          });
+        if (isStrictAncestorAboveFocus && chainAncestorSet) {
+          for (const m of node.managerChildren) {
+            if (chainAncestorSet.has(m.nodeId)) {
+              rawDescriptors.push({ kind: 'person', childNode: m });
+            }
+          }
+        } else {
+          for (const m of node.managerChildren) {
+            rawDescriptors.push({ kind: 'person', childNode: m });
+          }
+          if (node.specialistLeaves.length === 1) {
+            rawDescriptors.push({ kind: 'person', childNode: node.specialistLeaves[0] });
+          } else if (node.specialistLeaves.length > 1) {
+            rawDescriptors.push({
+              kind: 'crew_specialist',
+              members: node.specialistLeaves,
+            });
+          }
+          if (node.workerLeaves.length > 0) {
+            rawDescriptors.push({
+              kind: 'crew_worker',
+              members: node.workerLeaves,
+            });
+          }
         }
       }
 
@@ -1039,12 +1117,12 @@ export default function OrganizationChartView() {
         });
       }
 
-      let subtreeWidth = baseCardWidth;
+      let subtreeWidth = dims.w;
       if (childItems.length > 0) {
         const childrenSpan =
           childItems.reduce((acc, c) => acc + c.subtreeWidth, 0) +
           (childItems.length - 1) * H_GAP;
-        subtreeWidth = Math.max(baseCardWidth, childrenSpan);
+        subtreeWidth = Math.max(dims.w, childrenSpan);
       }
 
       return {
@@ -1054,8 +1132,8 @@ export default function OrganizationChartView() {
         levelNo,
         subTier,
         rowKey,
-        width: baseCardWidth,
-        height: baseCardHeight,
+        width: dims.w,
+        height: dims.h,
         subtreeWidth,
         x: 0,
         y: 0,
@@ -1064,7 +1142,11 @@ export default function OrganizationChartView() {
       };
     };
 
-    const rootItems = orgResult.roots.map((r) => buildVisibleItem(r, null, 0));
+    const activeRoots =
+      chainAncestorSet !== null
+        ? orgResult.roots.filter((r) => chainAncestorSet!.has(r.nodeId))
+        : orgResult.roots;
+    const rootItems = activeRoots.map((r) => buildVisibleItem(r, null, 0));
 
     const allItems: LayoutTreeItem[] = [];
     const rowMaxHeight = new Map<string, { levelNo: OrgRoleLevel; subTier: number; maxH: number }>();
@@ -1203,7 +1285,7 @@ export default function OrganizationChartView() {
       canvasWidth,
       canvasHeight,
     };
-  }, [orgResult.roots, expandedIds, expandedCrewKeys, visibleCountByParent, cardDensity, zoomAdaptiveLimit]);
+  }, [orgResult.roots, orgResult.nodeById, expandedIds, expandedCrewKeys, visibleCountByParent, cardDensity, zoomAdaptiveLimit, chainFocusNodeId]);
 
   const itemById = useMemo(() => {
     const m = new Map<string, LayoutTreeItem>();
@@ -1305,6 +1387,7 @@ export default function OrganizationChartView() {
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
+    setChainFocusNodeId(null);
   }, [orgResult.roots, focusNodeId, buildScreenFittedExpandedIds]);
 
   useEffect(() => {
@@ -1323,6 +1406,7 @@ export default function OrganizationChartView() {
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
+    setChainFocusNodeId(null);
   }, [orgResult.roots, focusNodeId, buildScreenFittedExpandedIds]);
 
   useEffect(() => {
@@ -1372,8 +1456,31 @@ export default function OrganizationChartView() {
     }
   }, []);
 
-  // Card click ONLY toggles expand/collapse with strict sibling accordion (does NOT open right Künye panel!)
+  // Card body click toggles Ancestor + Subtree Chain Focus (click again to clear focus)
   const handleCardClick = useCallback(
+    (node: OrgNode) => {
+      setChainFocusNodeId((prevFocus) => {
+        if (prevFocus === node.nodeId) {
+          return null;
+        }
+        // Ensure all ancestors + the clicked node itself are expanded so its full chain & team show
+        setExpandedIds((prevExp) => {
+          const next = new Set(prevExp);
+          let cur: OrgNode | undefined = node;
+          while (cur) {
+            if (cur.directCount > 0) next.add(cur.nodeId);
+            cur = cur.parentId ? orgResult.nodeById.get(cur.parentId) : undefined;
+          }
+          return next;
+        });
+        return node.nodeId;
+      });
+    },
+    [orgResult.nodeById]
+  );
+
+  // Card bottom + / - button toggles expand/collapse of direct children
+  const handleToggleExpand = useCallback(
     (node: OrgNode) => {
       if (node.directCount === 0) return;
 
@@ -1996,15 +2103,10 @@ export default function OrganizationChartView() {
           <div
             className={`${
               selectedNode ? 'xl:col-span-9' : 'xl:col-span-12'
-            } relative bg-slate-50/80 dark:bg-slate-950/90 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden`}
+            } relative bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200/75 dark:from-slate-950 dark:via-[#0b1220] dark:to-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden`}
           >
-            {/* Top-right subtle tip */}
-            <div className="absolute top-2.5 right-3 z-20 hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs border border-slate-200/80 dark:border-slate-700 text-[10.5px] text-slate-600 dark:text-slate-300 shadow-xs pointer-events-none">
-              <span>Karta dokunarak alt ekibi aç/kapat • Künye için (i) ikonuna tıklayın</span>
-            </div>
-
-            {/* Bottom-Right d3-zoom Controls (NEVER collapses open nodes!) */}
-            <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 p-1 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
+            {/* Top-Right d3-zoom & Display Controls */}
+            <div className="absolute top-2.5 right-3 z-20 flex items-center gap-1 p-1 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
               <button
                 type="button"
                 onClick={() => applyD3ZoomScale(transform.k - 0.1)}
@@ -2084,6 +2186,23 @@ export default function OrganizationChartView() {
               </button>
             </div>
 
+            {/* Bottom-right subtle hint + active chain focus indicator */}
+            <div className="absolute bottom-2.5 right-3 z-20 flex items-center gap-2">
+              {chainFocusNodeId && (
+                <button
+                  type="button"
+                  onClick={() => setChainFocusNodeId(null)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-medium shadow-md cursor-pointer"
+                >
+                  <span>Zincir Odağı Aktif • Temizle</span>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs border border-slate-200/80 dark:border-slate-700 text-[10.5px] text-slate-600 dark:text-slate-300 shadow-xs pointer-events-none">
+                <span>Karta tıkla: Zincire odaklan • + / −: Alt ekibi aç/kapat • (i): Künye</span>
+              </div>
+            </div>
+
             {/* d3-zoom Interactive Stage */}
             <div
               ref={viewportRef}
@@ -2138,7 +2257,8 @@ export default function OrganizationChartView() {
 
                       const firstChild = parentItem.children[0];
                       const lastChild = parentItem.children[parentItem.children.length - 1];
-                      const strokeColor = '#14b8a6';
+                      const strokeColor = '#475569';
+                      const parentDotColor = LEVEL_DOT_COLORS[parentItem.levelNo];
 
                       return (
                         <g key={`edges-${parentItem.id}`}>
@@ -2148,7 +2268,16 @@ export default function OrganizationChartView() {
                             x2={pX}
                             y2={busY}
                             stroke={strokeColor}
+                            strokeOpacity={0.55}
                             strokeWidth={2}
+                          />
+                          <circle
+                            cx={pX}
+                            cy={pBottomY}
+                            r={4}
+                            fill={parentDotColor}
+                            stroke="#ffffff"
+                            strokeWidth={1.5}
                           />
                           {parentItem.children.length > 1 && (
                             <line
@@ -2157,12 +2286,16 @@ export default function OrganizationChartView() {
                               x2={lastChild.centerX}
                               y2={busY}
                               stroke={strokeColor}
+                              strokeOpacity={0.55}
                               strokeWidth={2}
                             />
                           )}
                           {parentItem.children.map((ch) => {
                             const isDeepDrop = ch.y - busY > 55;
                             const isMoreCard = ch.kind === 'more_siblings';
+                            const childDotColor = isMoreCard
+                              ? '#64748b'
+                              : LEVEL_DOT_COLORS[ch.levelNo];
                             return (
                               <g key={`drop-${parentItem.id}-${ch.id}`}>
                                 <line
@@ -2171,6 +2304,7 @@ export default function OrganizationChartView() {
                                   x2={ch.centerX}
                                   y2={ch.y}
                                   stroke={isMoreCard ? '#64748b' : strokeColor}
+                                  strokeOpacity={0.55}
                                   strokeWidth={1.8}
                                   strokeDasharray={
                                     isMoreCard || isDeepDrop ? '5 3' : undefined
@@ -2179,8 +2313,10 @@ export default function OrganizationChartView() {
                                 <circle
                                   cx={ch.centerX}
                                   cy={ch.y}
-                                  r={3}
-                                  fill={isMoreCard ? '#64748b' : strokeColor}
+                                  r={4}
+                                  fill={childDotColor}
+                                  stroke="#ffffff"
+                                  strokeWidth={1.5}
                                 />
                               </g>
                             );
@@ -2205,8 +2341,10 @@ export default function OrganizationChartView() {
                           isExpanded={expandedIds.has(it.node.nodeId)}
                           isSelected={selectedNodeId === it.node.nodeId}
                           isHighlighted={highlightedNodeId === it.node.nodeId}
+                          isChainFocused={chainFocusNodeId === it.node.nodeId}
                           colorBySpan={colorBySpan}
                           onCardClick={handleCardClick}
+                          onToggleExpand={handleToggleExpand}
                           onOpenKunye={(n) => setSelectedNodeId(n.nodeId)}
                           onInspectDrawer={handleInspectDrawer}
                           onFocusSubtree={(id) => setFocusNodeId(id)}
