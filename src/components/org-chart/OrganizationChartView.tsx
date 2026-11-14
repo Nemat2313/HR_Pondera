@@ -1239,19 +1239,55 @@ export default function OrganizationChartView() {
     const next = new Set<string>();
     const queue: OrgNode[] = [...roots.slice(0, 2)];
     let opened = 0;
-    while (queue.length > 0 && opened < 12) {
+    // Default initial view shows L1, L2, and L3 (expand L1 and L2 managers only)
+    while (queue.length > 0 && opened < 16) {
       const cur = queue.shift()!;
-      if (cur.roleLevel > 4 || cur.directCount <= 0) continue;
+      if (cur.roleLevel > 2 || cur.directCount <= 0) continue;
       next.add(cur.nodeId);
       opened += 1;
-      for (const ch of cur.managerChildren.slice(0, 6)) {
-        if (ch.roleLevel <= 4 && ch.directCount > 0) {
+      for (const ch of cur.managerChildren) {
+        if (ch.roleLevel <= 2 && ch.directCount > 0) {
           queue.push(ch);
         }
       }
     }
     return next;
   }, []);
+
+  // Click a left L1..L8 level pill to toggle expand/collapse ALL managers at that level
+  const toggleLevelExpand = useCallback(
+    (targetLevel: OrgRoleLevel) => {
+      const levelManagers = Array.from(orgResult.nodeById.values()).filter(
+        (n) => n.roleLevel === targetLevel && n.directCount > 0
+      );
+      if (levelManagers.length === 0) return;
+
+      const allOpen = levelManagers.every((n) => expandedIds.has(n.nodeId));
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        if (allOpen) {
+          // Collapse this level and any deeper levels
+          for (const n of Array.from(orgResult.nodeById.values())) {
+            if (n.roleLevel >= targetLevel) {
+              next.delete(n.nodeId);
+            }
+          }
+        } else {
+          // Open all ancestors + all managers up to targetLevel so the entire level is visible
+          for (const n of levelManagers) {
+            next.add(n.nodeId);
+            let curParentId = n.parentId;
+            while (curParentId) {
+              next.add(curParentId);
+              curParentId = orgResult.nodeById.get(curParentId)?.parentId || null;
+            }
+          }
+        }
+        return next;
+      });
+    },
+    [orgResult.nodeById, expandedIds]
+  );
 
   // Reset to initial L1-L5 screen-fitted view (NEVER on zoom!)
   const resetToInitialView = useCallback(() => {
@@ -2074,32 +2110,17 @@ export default function OrganizationChartView() {
                   }}
                   className="relative will-change-transform"
                 >
-                  {/* 1. Horizontal Corporate Level Swimlane Lines (L1 .. L8) — No Left Column, Hover for Description */}
+                  {/* 1. Horizontal Corporate Level Swimlane Lines (L1 .. L8) — Non-blocking background */}
                   {layoutData.swimlanes.map((band) => {
                     const theme = ROLE_LEVEL_THEMES[band.levelNo];
-                    const BandIcon = theme.icon;
-                    const levelCode = `${theme.code}${band.subTier > 0 ? `.${band.subTier + 1}` : ''}`;
-                    const levelDesc = `${levelCode} • ${lang === 'ru' ? theme.shortRu : theme.shortTr}`;
                     return (
                       <div
                         key={band.rowKey}
                         style={{ top: band.topY, height: band.height }}
-                        className={`absolute left-0 right-0 z-[1] hover:z-[30] border-b border-dashed border-slate-200/80 dark:border-slate-800/80 ${
+                        className={`absolute left-0 right-0 z-[1] pointer-events-none border-b border-dashed border-slate-200/80 dark:border-slate-800/80 ${
                           band.isEmptyPassThrough ? 'opacity-65' : theme.swimlaneBg
                         }`}
-                      >
-                        <div className="absolute left-1.5 top-1.5 pointer-events-auto group/lvl">
-                          <div
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold shadow-2xs cursor-help ${theme.swimlanePill}`}
-                          >
-                            <BandIcon className="w-2.5 h-2.5 shrink-0" />
-                            <span>{levelCode}</span>
-                          </div>
-                          <div className="pointer-events-none opacity-0 group-hover/lvl:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1 whitespace-nowrap px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-[11px] font-medium shadow-xl z-50 border border-slate-200 dark:border-slate-700">
-                            {levelDesc}
-                          </div>
-                        </div>
-                      </div>
+                      />
                     );
                   })}
 
@@ -2220,6 +2241,45 @@ export default function OrganizationChartView() {
                       )}
                     </div>
                   ))}
+
+                  {/* 4. Clickable Left L1..L8 Level Pills Overlay (never blocks card clicks) */}
+                  <div className="absolute inset-0 pointer-events-none z-[25]">
+                    {layoutData.swimlanes.map((band) => {
+                      const theme = ROLE_LEVEL_THEMES[band.levelNo];
+                      const BandIcon = theme.icon;
+                      const levelCode = `${theme.code}${band.subTier > 0 ? `.${band.subTier + 1}` : ''}`;
+                      const levelDesc = `${levelCode} • ${lang === 'ru' ? theme.shortRu : theme.shortTr}`;
+                      const lvlMgrs = Array.from(orgResult.nodeById.values()).filter(
+                        (n) => n.roleLevel === band.levelNo && n.directCount > 0
+                      );
+                      const isLvlOpen = lvlMgrs.length > 0 && lvlMgrs.every((n) => expandedIds.has(n.nodeId));
+                      return (
+                        <div
+                          key={`pill-${band.rowKey}`}
+                          style={{ top: band.topY + 6, left: 6 }}
+                          data-no-pan="true"
+                          className="absolute pointer-events-auto group/lvl"
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleLevelExpand(band.levelNo);
+                            }}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold shadow-xs cursor-pointer transition-all hover:scale-105 ${theme.swimlanePill} ${
+                              isLvlOpen ? 'ring-2 ring-teal-500/60' : ''
+                            }`}
+                          >
+                            <BandIcon className="w-2.5 h-2.5 shrink-0" />
+                            <span>{levelCode}</span>
+                          </button>
+                          <div className="pointer-events-none opacity-0 group-hover/lvl:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1 whitespace-nowrap px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-[11px] font-medium shadow-xl z-50 border border-slate-200 dark:border-slate-700">
+                            {levelDesc} {lvlMgrs.length > 0 ? (isLvlOpen ? '• (Tıkla: Kapat)' : '• (Tıkla: Tümünü Aç)') : ''}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

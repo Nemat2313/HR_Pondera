@@ -657,6 +657,83 @@ export function buildOrganizationHierarchy(
     }
   }
 
+  // Insert virtual "TBA" bridge nodes whenever a child skips one or more levels (e.g., L3 -> L5 gets L4 TBA)
+  const insertTbaBridgeNodes = (parent: OrgNode, visited: Set<string>) => {
+    if (visited.has(parent.nodeId)) return;
+    visited.add(parent.nodeId);
+
+    const children = tempChildrenMap.get(parent.nodeId);
+    if (!children || children.length === 0 || parent.roleLevel >= 8) return;
+
+    const nextLevel = (parent.roleLevel + 1) as OrgRoleLevel;
+    const directLevelKids: OrgNode[] = [];
+    const skippedKids: OrgNode[] = [];
+
+    for (const ch of children) {
+      if (ch.roleLevel > nextLevel) {
+        skippedKids.push(ch);
+      } else {
+        directLevelKids.push(ch);
+      }
+    }
+
+    if (skippedKids.length > 0) {
+      const tbaId = `tba-${parent.nodeId}-L${nextLevel}`;
+      let tbaNode = nodeById.get(tbaId);
+      if (!tbaNode) {
+        const createdTba: OrgNode = {
+          nodeId: tbaId,
+          personId: null,
+          isVirtual: true,
+          virtualKind: 'external_supervisor',
+          sicil_no: 'TBA',
+          ad_soyad: 'TBA',
+          gorevi: `L${nextLevel} • TBA (Boş Kademe)`,
+          ek_gorev: '',
+          departman: parent.departman || '-',
+          region: parent.region || '-',
+          effective_site: parent.effective_site || '-',
+          proje_adi: parent.proje_adi || '-',
+          sorumlu_kisi: parent.ad_soyad,
+          grup_sefi: '',
+          endirekt_direkt: 'Endirekt',
+          kategori: '',
+          uyruk: '',
+          firma: '',
+          ise_giris_tarihi: '-',
+          roleLevel: nextLevel,
+          parentId: parent.nodeId,
+          dottedGrupSefiName: null,
+          managerChildren: [],
+          specialistLeaves: [],
+          workerLeaves: [],
+          directCount: 0,
+          totalSubordinates: 0,
+          subordinateEndirekt: 0,
+          subordinateDirekt: 0,
+          depth: parent.depth + 1,
+        };
+        nodeById.set(tbaId, createdTba);
+        tbaNode = createdTba;
+      }
+      for (const sk of skippedKids) {
+        sk.parentId = tbaId;
+      }
+      tempChildrenMap.set(tbaId, skippedKids);
+      directLevelKids.push(tbaNode);
+      tempChildrenMap.set(parent.nodeId, directLevelKids);
+    }
+
+    for (const ch of tempChildrenMap.get(parent.nodeId) || []) {
+      insertTbaBridgeNodes(ch, visited);
+    }
+  };
+
+  const tbaVisited = new Set<string>();
+  for (const r of Array.from(nodeById.values()).filter((n) => !n.parentId)) {
+    insertTbaBridgeNodes(r, tbaVisited);
+  }
+
   let maxDepth = 0;
   const computeSubtree = (node: OrgNode, depth: number, visiting: Set<string>) => {
     if (visiting.has(node.nodeId)) return;
