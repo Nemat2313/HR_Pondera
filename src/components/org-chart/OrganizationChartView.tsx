@@ -15,6 +15,9 @@ import {
   Crown,
   Download,
   Eye,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
   Folder,
   FolderOpen,
   GitBranch,
@@ -39,6 +42,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PersonnelDetailDrawer from '@/components/personnel/PersonnelDetailDrawer';
@@ -550,9 +554,11 @@ function ConsolidatedCrewCard({
 
 interface OrgEnterpriseCardProps {
   node: OrgNode;
+  lang: 'tr' | 'ru';
   density: CardDensity;
   isExpanded: boolean;
   isSelected: boolean;
+  isCardSelected: boolean;
   isHighlighted: boolean;
   isChainFocused: boolean;
   hasHiddenParent: boolean;
@@ -568,9 +574,11 @@ interface OrgEnterpriseCardProps {
 
 function OrgEnterpriseCard({
   node,
+  lang,
   density,
   isExpanded,
   isSelected,
+  isCardSelected,
   isHighlighted,
   isChainFocused,
   hasHiddenParent,
@@ -583,6 +591,7 @@ function OrgEnterpriseCard({
   onInspectDrawer,
   onFocusSubtree,
 }: OrgEnterpriseCardProps) {
+  const isRu = lang === 'ru';
   const theme = ROLE_LEVEL_THEMES[node.roleLevel];
   const IconComp = theme.icon;
   const hasChildren = node.directCount > 0;
@@ -609,11 +618,15 @@ function OrgEnterpriseCard({
 
   const badgeTitle = node.isVirtual
     ? node.virtualKind === 'subcon'
-      ? 'Taşeron'
+      ? isRu
+        ? 'Субподрядчик'
+        : 'Taşeron'
       : node.virtualKind === 'pending_pool'
-        ? 'Havuz'
+        ? isRu
+          ? 'Резерв'
+          : 'Havuz'
         : `${theme.code} • TBA`
-    : `${theme.code} • ${theme.shortTr}`;
+    : `${theme.code} • ${isRu ? theme.shortRu : theme.shortTr}`;
 
   return (
     <div
@@ -627,11 +640,13 @@ function OrgEnterpriseCard({
       } ${spanBorderOverride} ${
         isChainFocused
           ? 'ring-3 ring-teal-500 shadow-[0_18px_32px_-6px_rgba(20,184,166,0.42),0_6px_12px_-2px_rgba(15,23,42,0.2),inset_0_2px_0_#ffffff] dark:shadow-[0_18px_32px_-6px_rgba(20,184,166,0.45),inset_0_1.5px_0_rgba(255,255,255,0.3)] -translate-y-0.5'
-          : isHighlighted
-            ? 'ring-3 ring-rose-500 shadow-xl'
-            : isSelected
-              ? 'ring-2 ring-indigo-500 shadow-lg'
-              : 'shadow-[0_14px_24px_-6px_rgba(15,23,42,0.26),0_6px_12px_-4px_rgba(15,23,42,0.16),inset_0_2px_0_#ffffff] dark:shadow-[0_16px_28px_-6px_rgba(0,0,0,0.85),0_6px_12px_-3px_rgba(0,0,0,0.6),inset_0_1.5px_0_rgba(255,255,255,0.26)] hover:shadow-[0_18px_30px_-6px_rgba(15,23,42,0.32),0_8px_14px_-4px_rgba(15,23,42,0.2),inset_0_2px_0_#ffffff] dark:hover:shadow-[0_20px_34px_-6px_rgba(0,0,0,0.92),inset_0_1.5px_0_rgba(255,255,255,0.34)] hover:-translate-y-0.5'
+          : isCardSelected
+            ? 'ring-3 ring-indigo-500 shadow-[0_0_0_4px_rgba(99,102,241,0.26),0_16px_28px_-6px_rgba(79,70,229,0.34),inset_0_2px_0_#ffffff] dark:shadow-[0_0_0_4px_rgba(129,140,248,0.32),0_18px_32px_-6px_rgba(0,0,0,0.85)] -translate-y-0.5'
+            : isHighlighted
+              ? 'ring-3 ring-rose-500 shadow-xl'
+              : isSelected
+                ? 'ring-2 ring-indigo-400 shadow-lg'
+                : 'shadow-[0_14px_24px_-6px_rgba(15,23,42,0.26),0_6px_12px_-4px_rgba(15,23,42,0.16),inset_0_2px_0_#ffffff] dark:shadow-[0_16px_28px_-6px_rgba(0,0,0,0.85),0_6px_12px_-3px_rgba(0,0,0,0.6),inset_0_1.5px_0_rgba(255,255,255,0.26)] hover:shadow-[0_18px_30px_-6px_rgba(15,23,42,0.32),0_8px_14px_-4px_rgba(15,23,42,0.2),inset_0_2px_0_#ffffff] dark:hover:shadow-[0_20px_34px_-6px_rgba(0,0,0,0.92),inset_0_1.5px_0_rgba(255,255,255,0.34)] hover:-translate-y-0.5'
       }`}
     >
       <div className="h-full w-full overflow-hidden rounded-[13px] flex flex-col justify-between">
@@ -883,7 +898,11 @@ export default function OrganizationChartView() {
   const [siteFilter, setSiteFilter] = useState<string>('all');
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [chainFocusNodeId, setChainFocusNodeId] = useState<string | null>(null);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const [viewTab, setViewTab] = useState<'chart' | 'directory'>('chart');
   const [cardDensity, setCardDensity] = useState<CardDensity>('compact');
   const [dirExpandedIds, setDirExpandedIds] = useState<Set<string>>(new Set());
@@ -1437,6 +1456,7 @@ export default function OrganizationChartView() {
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
+    setActiveCardId(null);
     setChainFocusNodeId(null);
   }, [orgResult.roots, buildScreenFittedExpandedIds]);
 
@@ -1448,8 +1468,20 @@ export default function OrganizationChartView() {
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
+    setActiveCardId(null);
     setChainFocusNodeId(null);
   }, [orgResult.roots, focusNodeId, buildScreenFittedExpandedIds]);
+
+  useEffect(() => {
+    if (!isExportMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [isExportMenuOpen]);
 
   useEffect(() => {
     const mode = pendingCenterModeRef.current;
@@ -1498,15 +1530,17 @@ export default function OrganizationChartView() {
     }
   }, []);
 
-  // Card body click toggles Ancestor + Subtree Chain Focus (click again to clear focus)
+  // 1st click selects card visibly; 2nd click on selected card focuses its chain; 3rd click clears
   const handleCardClick = useCallback(
     (node: OrgNode) => {
-      pendingCenterModeRef.current = 'fit_top_left';
-      setChainFocusNodeId((prevFocus) => {
-        if (prevFocus === node.nodeId) {
-          return null;
-        }
-        // Ensure all ancestors + the clicked node itself are expanded so its full chain & team show
+      if (chainFocusNodeId === node.nodeId) {
+        pendingCenterModeRef.current = 'fit_top_left';
+        setChainFocusNodeId(null);
+        setActiveCardId(null);
+        return;
+      }
+      if (activeCardId === node.nodeId) {
+        pendingCenterModeRef.current = 'fit_top_left';
         setExpandedIds((prevExp) => {
           const next = new Set(prevExp);
           let cur: OrgNode | undefined = node;
@@ -1516,10 +1550,12 @@ export default function OrganizationChartView() {
           }
           return next;
         });
-        return node.nodeId;
-      });
+        setChainFocusNodeId(node.nodeId);
+        return;
+      }
+      setActiveCardId(node.nodeId);
     },
-    [orgResult.nodeById]
+    [activeCardId, chainFocusNodeId, orgResult.nodeById]
   );
 
   // Card bottom + / - button toggles expand/collapse of direct children
@@ -1716,45 +1752,373 @@ export default function OrganizationChartView() {
   }, [focusNodeId, orgResult.nodeById]);
 
   // Excel Export (strictly zero salary data per corporate privacy rule)
-  const handleExportHierarchyExcel = useCallback(() => {
-    const rows: Array<Record<string, string | number>> = [];
-    const walk = (node: OrgNode, chainNames: string[]) => {
-      const currentChain = [...chainNames, node.ad_soyad];
-      if (!node.isVirtual) {
-        rows.push({
-          'Kademe Seviyesi': `L${node.roleLevel} - ${ROLE_LEVEL_THEMES[node.roleLevel].rowTitleTr}`,
-          'Sicil No': node.sicil_no,
-          'Ad Soyad': node.ad_soyad,
-          Görevi: node.gorevi,
-          'Şantiye / Lokasyon': node.effective_site,
-          Departman: node.departman,
-          'Yaka Türü': node.endirekt_direkt,
-          'Sorumlu Kişi (eBA)': node.sorumlu_kisi || '-',
-          'Grup Şefi (eBA)': node.grup_sefi || '-',
-          'Doğrudan Bağlı Sayısı': node.directCount,
-          'Toplam Alt Ekip': node.totalSubordinates,
-          'İşe Giriş Tarihi': node.ise_giris_tarihi,
-          'Üst Yönetim Zinciri': currentChain.join(' -> '),
-        });
-      }
-      for (const m of node.managerChildren) walk(m, currentChain);
-      for (const s of node.specialistLeaves) walk(s, currentChain);
-      for (const w of node.workerLeaves) walk(w, currentChain);
-    };
+  const handleExportHierarchyExcel = useCallback(
+    (scope: 'visible' | 'all') => {
+      setIsExportMenuOpen(false);
+      const rows: Array<Record<string, string | number>> = [];
+      const isRuLang = lang === 'ru';
 
-    for (const r of orgResult.roots) {
-      walk(r, []);
+      const getChainNames = (node: OrgNode): string[] => {
+        const names: string[] = [];
+        let cur: OrgNode | undefined = node;
+        const guard = new Set<string>();
+        while (cur && !guard.has(cur.nodeId)) {
+          guard.add(cur.nodeId);
+          names.unshift(cur.ad_soyad);
+          cur = cur.parentId ? orgResult.nodeById.get(cur.parentId) : undefined;
+        }
+        return names;
+      };
+
+      const pushNodeRow = (node: OrgNode, chainNames: string[]) => {
+        if (node.isVirtual) return;
+        const lvlTheme = ROLE_LEVEL_THEMES[node.roleLevel];
+        rows.push({
+          [isRuLang ? 'Уровень' : 'Kademe Seviyesi']: `L${node.roleLevel} - ${
+            isRuLang ? lvlTheme.rowTitleRu : lvlTheme.rowTitleTr
+          }`,
+          [isRuLang ? 'Таб. №' : 'Sicil No']: node.sicil_no,
+          [isRuLang ? 'ФИО' : 'Ad Soyad']: node.ad_soyad,
+          [isRuLang ? 'Должность' : 'Görevi']: node.gorevi,
+          [isRuLang ? 'Объект / Локация' : 'Şantiye / Lokasyon']: node.effective_site,
+          [isRuLang ? 'Отдел' : 'Departman']: node.departman,
+          [isRuLang ? 'Категория' : 'Yaka Türü']: node.endirekt_direkt,
+          [isRuLang ? 'Ответственный (eBA)' : 'Sorumlu Kişi (eBA)']: node.sorumlu_kisi || '-',
+          [isRuLang ? 'Бригадир (eBA)' : 'Grup Şefi (eBA)']: node.grup_sefi || '-',
+          [isRuLang ? 'Прямых подчинённых' : 'Doğrudan Bağlı Sayısı']: node.directCount,
+          [isRuLang ? 'Всего в команде' : 'Toplam Alt Ekip']: node.totalSubordinates,
+          [isRuLang ? 'Дата приёма' : 'İşe Giriş Tarihi']: node.ise_giris_tarihi,
+          [isRuLang ? 'Цепочка подчинения' : 'Üst Yönetim Zinciri']: chainNames.join(' -> '),
+        });
+      };
+
+      if (scope === 'visible') {
+        for (const it of layoutData.allItems) {
+          if (it.kind === 'person') {
+            pushNodeRow(it.node, getChainNames(it.node));
+          }
+        }
+      } else {
+        const walk = (node: OrgNode, chainNames: string[]) => {
+          const currentChain = [...chainNames, node.ad_soyad];
+          pushNodeRow(node, currentChain);
+          for (const m of node.managerChildren) walk(m, currentChain);
+          for (const s of node.specialistLeaves) walk(s, currentChain);
+          for (const w of node.workerLeaves) walk(w, currentChain);
+        };
+        for (const r of orgResult.roots) {
+          walk(r, []);
+        }
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(
+        wb,
+        ws,
+        isRuLang ? 'Оргструктура' : 'Organizasyon Hiyerarsisi'
+      );
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+      const suffix = scope === 'visible' ? 'Gorunenler' : 'Tumu';
+      XLSX.writeFile(wb, `Pondera_Organizasyon_${suffix}_${dd}.${mm}.${yyyy}.xlsx`);
+    },
+    [orgResult.roots, orgResult.nodeById, layoutData.allItems, lang]
+  );
+
+  // High-resolution 2x Canvas renderer for Landscape PNG & A4/A3 PDF export
+  const renderChartToPngDataUrl = useCallback((): {
+    dataUrl: string;
+    width: number;
+    height: number;
+  } | null => {
+    if (layoutData.allItems.length === 0) return null;
+    const isDark =
+      typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    const scale = 2;
+    const w = layoutData.canvasWidth;
+    const h = layoutData.canvasHeight;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w * scale;
+    canvas.height = h * scale;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.scale(scale, scale);
+
+    // Background gradient
+    const bgGrad = ctx.createLinearGradient(0, 0, w, h);
+    if (isDark) {
+      bgGrad.addColorStop(0, '#060b14');
+      bgGrad.addColorStop(0.5, '#0a1222');
+      bgGrad.addColorStop(1, '#050911');
+    } else {
+      bgGrad.addColorStop(0, '#d3dce7');
+      bgGrad.addColorStop(0.5, '#e3e9f1');
+      bgGrad.addColorStop(1, '#c9d3e1');
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle swimlane dividers & left L1..L8 pills
+    for (const band of layoutData.swimlanes) {
+      ctx.strokeStyle = isDark ? 'rgba(51,65,85,0.65)' : 'rgba(148,163,184,0.35)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, band.topY + band.height);
+      ctx.lineTo(w, band.topY + band.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const pillText = `${ROLE_LEVEL_THEMES[band.levelNo].code}${band.subTier > 0 ? `.${band.subTier + 1}` : ''}`;
+      ctx.fillStyle = isDark ? '#1e293b' : '#ffffff';
+      ctx.strokeStyle = LEVEL_DOT_COLORS[band.levelNo];
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(8, band.topY + 6, 34, 18, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = isDark ? '#e2e8f0' : '#0f172a';
+      ctx.font = 'bold 9.5px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pillText, 25, band.topY + 15);
     }
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Organizasyon Hiyerarsisi');
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2, '0');
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const yyyy = today.getFullYear();
-    XLSX.writeFile(wb, `Pondera_Organizasyon_Semasi_${dd}.${mm}.${yyyy}.xlsx`);
-  }, [orgResult.roots]);
+    // Connectors & halo pins
+    const lineColor = isDark ? '#5ec2eb' : '#2c6473';
+    for (const parentItem of layoutData.allItems) {
+      if (parentItem.children.length === 0) continue;
+      const pX = parentItem.centerX;
+      const pBottomY = parentItem.y + parentItem.height;
+      const busY = pBottomY + 28;
+      const firstChild = parentItem.children[0];
+      const lastChild = parentItem.children[parentItem.children.length - 1];
+
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pX, pBottomY);
+      ctx.lineTo(pX, busY);
+      if (parentItem.children.length > 1) {
+        ctx.moveTo(firstChild.centerX, busY);
+        ctx.lineTo(lastChild.centerX, busY);
+      }
+      ctx.stroke();
+
+      for (const ch of parentItem.children) {
+        const isMoreCard = ch.kind === 'more_siblings';
+        ctx.strokeStyle = isMoreCard ? '#14b8a6' : lineColor;
+        ctx.lineWidth = 2;
+        if (isMoreCard || ch.y - busY > 65) ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(ch.centerX, busY);
+        ctx.lineTo(ch.centerX, ch.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const dotColor = isMoreCard ? '#14b8a6' : LEVEL_DOT_COLORS[ch.levelNo];
+        ctx.fillStyle = dotColor;
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.arc(ch.centerX, ch.y, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.arc(ch.centerX, ch.y, 3.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    const LEVEL_TINT_BOTTOM_LIGHT: Record<OrgRoleLevel, string> = {
+      1: '#fef3c7',
+      2: '#f3e8ff',
+      3: '#e0e7ff',
+      4: '#dbeafe',
+      5: '#d1fae5',
+      6: '#e0f2fe',
+      7: '#ffedd5',
+      8: '#e2e8f0',
+    };
+    const LEVEL_TINT_BOTTOM_DARK: Record<OrgRoleLevel, string> = {
+      1: '#3b301c',
+      2: '#33214a',
+      3: '#242852',
+      4: '#193252',
+      5: '#163832',
+      6: '#16354a',
+      7: '#3d291b',
+      8: '#283448',
+    };
+
+    const drawTruncText = (text: string, x: number, y: number, maxW: number) => {
+      let s = String(text || '');
+      while (s.length > 1 && ctx.measureText(s).width > maxW) {
+        s = s.slice(0, -1);
+      }
+      if (s !== String(text || '') && s.length > 2) {
+        s = `${s.slice(0, -1)}…`;
+      }
+      ctx.fillText(s, x, y);
+    };
+
+    // Cards
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (const it of layoutData.allItems) {
+      const r = 12;
+      ctx.save();
+      ctx.shadowColor = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(15,23,42,0.22)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 5;
+
+      const cGrad = ctx.createLinearGradient(it.x, it.y, it.x, it.y + it.height);
+      if (isDark) {
+        cGrad.addColorStop(0, '#2c3a54');
+        cGrad.addColorStop(1, LEVEL_TINT_BOTTOM_DARK[it.levelNo]);
+      } else {
+        cGrad.addColorStop(0, '#ffffff');
+        cGrad.addColorStop(1, LEVEL_TINT_BOTTOM_LIGHT[it.levelNo]);
+      }
+      ctx.fillStyle = cGrad;
+      ctx.beginPath();
+      ctx.roundRect(it.x, it.y, it.width, it.height, r);
+      ctx.fill();
+      ctx.restore();
+
+      // Border + bottom accent lip
+      ctx.strokeStyle = isDark ? 'rgba(148,163,184,0.45)' : '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(it.x, it.y, it.width, it.height, r);
+      ctx.stroke();
+
+      ctx.fillStyle = LEVEL_DOT_COLORS[it.levelNo];
+      ctx.beginPath();
+      ctx.roundRect(it.x + 2, it.y + it.height - 4, it.width - 4, 4, [0, 0, r, r]);
+      ctx.fill();
+
+      const padX = 10;
+      const textMaxW = it.width - padX * 2;
+      if (it.kind === 'more_siblings') {
+        ctx.fillStyle = isDark ? '#ffffff' : '#0f172a';
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+        drawTruncText(`+${it.remainingCount} ${lang === 'ru' ? 'Ещё' : 'Kişi Daha'}`, it.x + padX, it.y + 18, textMaxW);
+      } else if (it.kind === 'crew_worker' || it.kind === 'crew_specialist') {
+        const count = it.members?.length || 0;
+        ctx.fillStyle = LEVEL_DOT_COLORS[it.levelNo];
+        ctx.font = 'bold 9px system-ui, -apple-system, sans-serif';
+        drawTruncText(
+          it.kind === 'crew_worker'
+            ? lang === 'ru'
+              ? 'L8 • Рабочие'
+              : 'L8 • Saha İşçileri'
+            : lang === 'ru'
+              ? 'L6 • Специалисты'
+              : 'L6 • Uzman Kadro',
+          it.x + padX,
+          it.y + 10,
+          textMaxW
+        );
+        ctx.fillStyle = isDark ? '#ffffff' : '#0f172a';
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+        drawTruncText(`${it.node.ad_soyad} (${count})`, it.x + padX, it.y + 24, textMaxW);
+      } else {
+        const theme = ROLE_LEVEL_THEMES[it.levelNo];
+        const badgeTxt = it.node.isVirtual
+          ? `${theme.code} • TBA`
+          : `${theme.code} • ${lang === 'ru' ? theme.shortRu : theme.shortTr}`;
+        ctx.fillStyle = LEVEL_DOT_COLORS[it.levelNo];
+        ctx.font = 'bold 8.5px system-ui, -apple-system, sans-serif';
+        drawTruncText(badgeTxt.toUpperCase(), it.x + padX, it.y + 10, textMaxW);
+
+        ctx.fillStyle = isDark ? '#ffffff' : '#0f172a';
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+        drawTruncText(it.node.ad_soyad, it.x + padX, it.y + 23, textMaxW);
+
+        ctx.fillStyle = isDark ? '#e2e8f0' : '#334155';
+        ctx.font = '500 9.5px system-ui, -apple-system, sans-serif';
+        drawTruncText(it.node.gorevi, it.x + padX, it.y + 39, textMaxW);
+      }
+    }
+
+    return {
+      dataUrl: canvas.toDataURL('image/png'),
+      width: w,
+      height: h,
+    };
+  }, [layoutData, lang]);
+
+  const handleExportPng = useCallback(() => {
+    setIsExportMenuOpen(false);
+    setExportingFormat('png');
+    try {
+      const rendered = renderChartToPngDataUrl();
+      if (!rendered) return;
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+      const a = document.createElement('a');
+      a.href = rendered.dataUrl;
+      a.download = `Pondera_Org_Sema_Yatay_${dd}.${mm}.${yyyy}.png`;
+      a.click();
+    } finally {
+      setExportingFormat(null);
+    }
+  }, [renderChartToPngDataUrl]);
+
+  const handleExportPdf = useCallback(
+    (pageSize: 'a4' | 'a3') => {
+      setIsExportMenuOpen(false);
+      setExportingFormat(pageSize);
+      try {
+        const rendered = renderChartToPngDataUrl();
+        if (!rendered) return;
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: pageSize,
+        });
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        const margin = 8;
+        const headerH = 10;
+
+        const today = new Date();
+        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const yyyy = today.getFullYear();
+
+        pdf.setFontSize(10);
+        pdf.setTextColor(30, 41, 59);
+        pdf.text(
+          `Pondera HR • ${lang === 'ru' ? 'Organizacionnaya struktura' : 'Organizasyon Semasi'} (${dd}.${mm}.${yyyy})`,
+          margin,
+          margin + 4
+        );
+
+        const availW = pageW - margin * 2;
+        const availH = pageH - margin * 2 - headerH;
+        const ratio = Math.min(availW / rendered.width, availH / rendered.height);
+        const drawW = rendered.width * ratio;
+        const drawH = rendered.height * ratio;
+        const offsetX = margin + (availW - drawW) / 2;
+        const offsetY = margin + headerH;
+
+        pdf.addImage(rendered.dataUrl, 'PNG', offsetX, offsetY, drawW, drawH);
+        pdf.save(`Pondera_Org_Sema_${pageSize.toUpperCase()}_Yatay_${dd}.${mm}.${yyyy}.pdf`);
+      } finally {
+        setExportingFormat(null);
+      }
+    },
+    [renderChartToPngDataUrl, lang]
+  );
 
   const openLevelModal = (tab: 'all' | 'unconfirmed' | 'active') => {
     setLevelModalInitialTab(tab);
@@ -1783,7 +2147,7 @@ export default function OrganizationChartView() {
           onClick={fetchOrgData}
           className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs cursor-pointer"
         >
-          Tekrar Dene
+          {lang === 'ru' ? 'Повторить' : 'Tekrar Dene'}
         </button>
       </div>
     );
@@ -1805,15 +2169,19 @@ export default function OrganizationChartView() {
             </div>
             <div className="min-w-0">
               <div className="text-xs text-amber-950 dark:text-amber-100">
-                Yeni Görev Seviyesi Tanımlaması Gerekiyor ({unconfirmedTitles.length} Yeni Görev)
+                {lang === 'ru'
+                  ? `Требуется назначение уровней должностей (${unconfirmedTitles.length} новых)`
+                  : `Yeni Görev Seviyesi Tanımlaması Gerekiyor (${unconfirmedTitles.length} Yeni Görev)`}
               </div>
               <div className="text-[11px] text-amber-800 dark:text-amber-300 truncate max-w-3xl">
-                Seviyesi onaylanmamış yeni görevler:{' '}
+                {lang === 'ru' ? 'Неподтверждённые должности: ' : 'Seviyesi onaylanmamış yeni görevler: '}
                 {unconfirmedTitles
                   .slice(0, 4)
-                  .map((t) => `${t.displayTitle} (${t.activeCount} kişi)`)
+                  .map((t) => `${t.displayTitle} (${t.activeCount} ${lang === 'ru' ? 'чел.' : 'kişi'})`)
                   .join(', ')}
-                {unconfirmedTitles.length > 4 ? ` +${unconfirmedTitles.length - 4} diğer` : ''}
+                {unconfirmedTitles.length > 4
+                  ? ` +${unconfirmedTitles.length - 4} ${lang === 'ru' ? 'др.' : 'diğer'}`
+                  : ''}
               </div>
             </div>
           </div>
@@ -1823,10 +2191,16 @@ export default function OrganizationChartView() {
             onClick={() => {
               if (!canEditJobLevels) {
                 showPermissionDenied({
-                  actionLabelTr: 'Yeni Görev Seviyesi Tanımlama',
-                  titleTr: 'Düzenleme Yetkisi Gerekli (Viewer Rolü Kısıtlı)',
+                  actionLabelTr:
+                    lang === 'ru' ? 'Назначение уровней должностей' : 'Yeni Görev Seviyesi Tanımlama',
+                  titleTr:
+                    lang === 'ru'
+                      ? 'Требуются права редактирования'
+                      : 'Düzenleme Yetkisi Gerekli (Viewer Rolü Kısıtlı)',
                   messageTr:
-                    'Yeni gelen görevlerin sınıf seviyesini tanımlama yetkisi yalnızca Gözlemci (Viewer) olmayan kullanıcılara aittir.',
+                    lang === 'ru'
+                      ? 'Назначение уровней должностей доступно только пользователям с правами редактирования.'
+                      : 'Yeni gelen görevlerin sınıf seviyesini tanımlama yetkisi yalnızca Gözlemci (Viewer) olmayan kullanıcılara aittir.',
                 });
                 return;
               }
@@ -1835,7 +2209,9 @@ export default function OrganizationChartView() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs shadow-xs cursor-pointer shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            Yeni Görev Seviyelerini Tanımla ({unconfirmedTitles.length})
+            {lang === 'ru'
+              ? `Назначить уровни (${unconfirmedTitles.length})`
+              : `Yeni Görev Seviyelerini Tanımla (${unconfirmedTitles.length})`}
           </button>
         </div>
       )}
@@ -1854,9 +2230,14 @@ export default function OrganizationChartView() {
                 : 'Organizasyon Şeması & Seviye Hiyerarşisi (L1–L8)'}
             </h1>
             <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-              <span>{orgResult.totalStaff.toLocaleString('tr-TR')} Aktif</span>
+              <span>
+                {orgResult.totalStaff.toLocaleString('tr-TR')}{' '}
+                {lang === 'ru' ? 'Актив.' : 'Aktif'}
+              </span>
               <span>•</span>
-              <span>{orgResult.totalManagers} Yönetici</span>
+              <span>
+                {orgResult.totalManagers} {lang === 'ru' ? 'Рук.' : 'Yönetici'}
+              </span>
             </span>
           </div>
 
@@ -1872,13 +2253,17 @@ export default function OrganizationChartView() {
                   ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
                   : 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100'
               }`}
-              title="Görev unvanlarının L1–L8 sınıf seviyelerini görüntüle ve düzenle"
+              title={
+                lang === 'ru'
+                  ? 'Просмотр и настройка уровней должностей L1–L8'
+                  : 'Görev unvanlarının L1–L8 sınıf seviyelerini görüntüle ve düzenle'
+              }
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Görev Seviyeleri (L1–L8)</span>
+              <span>{lang === 'ru' ? 'Уровни (L1–L8)' : 'Görev Seviyeleri (L1–L8)'}</span>
               {unconfirmedTitles.length > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full bg-amber-600 text-white text-[10px]">
-                  {unconfirmedTitles.length} Yeni
+                  {unconfirmedTitles.length} {lang === 'ru' ? 'Нов.' : 'Yeni'}
                 </span>
               )}
             </button>
@@ -1893,7 +2278,7 @@ export default function OrganizationChartView() {
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                 }`}
               >
-                Birleşik
+                {lang === 'ru' ? 'Объедин.' : 'Birleşik'}
               </button>
               <button
                 type="button"
@@ -1904,7 +2289,7 @@ export default function OrganizationChartView() {
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                 }`}
               >
-                Sorumlu Kişi
+                {lang === 'ru' ? 'Ответственный' : 'Sorumlu Kişi'}
               </button>
               <button
                 type="button"
@@ -1915,18 +2300,81 @@ export default function OrganizationChartView() {
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                 }`}
               >
-                Grup Şefi
+                {lang === 'ru' ? 'Бригадир' : 'Grup Şefi'}
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleExportHierarchyExcel}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-[11px] transition-colors cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>.xlsx</span>
-            </button>
+            {/* Export Menu: Excel (Visible / All), Landscape PNG, Landscape PDF (A4 / A3) */}
+            <div ref={exportMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsExportMenuOpen((v) => !v)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>
+                  {exportingFormat
+                    ? '...'
+                    : lang === 'ru'
+                      ? 'Скачать'
+                      : 'İndir'}
+                </span>
+                <ChevronDown className="w-3 h-3 opacity-80" />
+              </button>
+
+              {isExportMenuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-1.5 space-y-0.5 text-left">
+                  <div className="px-2 py-1 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
+                    Excel (.xlsx)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleExportHierarchyExcel('visible')}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>{lang === 'ru' ? 'Видимые блоки (.xlsx)' : 'Görünen Kutular (.xlsx)'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportHierarchyExcel('all')}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                    <span>{lang === 'ru' ? 'Вся схема (.xlsx)' : 'Tümünü İndir (.xlsx)'}</span>
+                  </button>
+
+                  <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                  <div className="px-2 py-1 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
+                    {lang === 'ru' ? 'Изображение и PDF (Альбом)' : 'Görsel & Yatay PDF'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleExportPng}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer"
+                  >
+                    <FileImage className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span>{lang === 'ru' ? 'PNG (Горизонтально)' : 'PNG (Yatay Görsel)'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportPdf('a4')}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] text-slate-700 dark:text-slate-200 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span>{lang === 'ru' ? 'PDF Альбом (A4)' : 'PDF Yatay (A4)'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportPdf('a3')}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] text-slate-700 dark:text-slate-200 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                    <span>{lang === 'ru' ? 'PDF Альбом (A3)' : 'PDF Yatay (A3)'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1938,7 +2386,11 @@ export default function OrganizationChartView() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Kişi, görev veya sicil ara → Dalı aç..."
+              placeholder={
+                lang === 'ru'
+                  ? 'Поиск по имени, должности, таб. №...'
+                  : 'Kişi, görev veya sicil ara → Dalı aç...'
+              }
               className="w-full pl-8 pr-7 py-1 text-[11.5px] rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
             />
             {searchQuery && (
@@ -1990,7 +2442,7 @@ export default function OrganizationChartView() {
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
               }`}
             >
-              Tüm Şirket ({rawPeople.length.toLocaleString('tr-TR')})
+              {lang === 'ru' ? 'Вся компания' : 'Tüm Şirket'} ({rawPeople.length.toLocaleString('tr-TR')})
             </button>
             {orgResult.sites.map((s) => (
               <button
@@ -2020,7 +2472,7 @@ export default function OrganizationChartView() {
               }}
               className="px-2 py-1 text-[11px] rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
             >
-              <option value="all">Tüm Departmanlar</option>
+              <option value="all">{lang === 'ru' ? 'Все отделы' : 'Tüm Departmanlar'}</option>
               {orgResult.departments.map((d) => (
                 <option key={d.name} value={d.name}>
                   {d.name} ({d.count})
@@ -2031,7 +2483,11 @@ export default function OrganizationChartView() {
             <button
               type="button"
               onClick={() => setColorBySpan((v) => !v)}
-              title="Yönetici kontrol yükü (Span of Control) renk göstergesi"
+              title={
+                lang === 'ru'
+                  ? 'Цветовая индикация нагрузки руководителя (Span of Control)'
+                  : 'Yönetici kontrol yükü (Span of Control) renk göstergesi'
+              }
               className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border cursor-pointer ${
                 colorBySpan
                   ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 text-amber-800 dark:text-amber-300'
@@ -2039,7 +2495,7 @@ export default function OrganizationChartView() {
               }`}
             >
               <Palette className="w-3 h-3" />
-              <span className="hidden md:inline">Yük Rengi</span>
+              <span className="hidden md:inline">{lang === 'ru' ? 'Нагрузка' : 'Yük Rengi'}</span>
             </button>
 
             <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -2053,7 +2509,7 @@ export default function OrganizationChartView() {
                 }`}
               >
                 <GitBranch className="w-3 h-3" />
-                Şema
+                {lang === 'ru' ? 'Схема' : 'Şema'}
               </button>
               <button
                 type="button"
@@ -2065,7 +2521,7 @@ export default function OrganizationChartView() {
                 }`}
               >
                 <ListTree className="w-3 h-3" />
-                Dizin
+                {lang === 'ru' ? 'Каталог' : 'Dizin'}
               </button>
             </div>
           </div>
@@ -2075,13 +2531,15 @@ export default function OrganizationChartView() {
         {focusNodeId && focusBreadcrumb.length > 0 && (
           <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-[11px]">
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-              <span className="text-teal-700 dark:text-teal-300 shrink-0">Odaklanan Dal:</span>
+              <span className="text-teal-700 dark:text-teal-300 shrink-0">
+                {lang === 'ru' ? 'Фокус ветви:' : 'Odaklanan Dal:'}
+              </span>
               <button
                 type="button"
                 onClick={() => setFocusNodeId(null)}
                 className="px-1.5 py-0.5 rounded hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-800 dark:text-teal-200 cursor-pointer shrink-0"
               >
-                Tüm Şirket
+                {lang === 'ru' ? 'Вся компания' : 'Tüm Şirket'}
               </button>
               {focusBreadcrumb.map((b) => (
                 <React.Fragment key={b.nodeId}>
@@ -2105,7 +2563,7 @@ export default function OrganizationChartView() {
               onClick={() => setFocusNodeId(null)}
               className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300 hover:bg-teal-100 cursor-pointer shrink-0"
             >
-              Tüm Ağaca Dön
+              {lang === 'ru' ? 'Ко всей схеме' : 'Tüm Ağaca Dön'}
             </button>
           </div>
         )}
@@ -2156,19 +2614,19 @@ export default function OrganizationChartView() {
                 type="button"
                 onClick={fitTreeToViewport}
                 className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] flex items-center gap-1 cursor-pointer"
-                title="Açık şemayı ekrana sığdır"
+                title={lang === 'ru' ? 'Вписать схему в экран' : 'Açık şemayı ekrana sığdır'}
               >
                 <Scan className="w-3 h-3" />
-                <span>Sığdır</span>
+                <span>{lang === 'ru' ? 'Вписать' : 'Sığdır'}</span>
               </button>
               <button
                 type="button"
                 onClick={resetToInitialView}
                 className="px-2 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] flex items-center gap-1 cursor-pointer"
-                title="İlk görünüme sıfırla"
+                title={lang === 'ru' ? 'Сбросить к исходному виду' : 'İlk görünüme sıfırla'}
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Sıfırla</span>
+                <span>{lang === 'ru' ? 'Сброс' : 'Sıfırla'}</span>
               </button>
               <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
               <button
@@ -2181,20 +2639,24 @@ export default function OrganizationChartView() {
                     ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
-                title="Detaylı Kart görünümünü aç/kapat"
+                title={
+                  lang === 'ru'
+                    ? 'Переключить подробный вид карточек'
+                    : 'Detaylı Kart görünümünü aç/kapat'
+                }
               >
                 <span
                   className={`w-2 h-2 rounded-full ${
                     cardDensity === 'detailed' ? 'bg-emerald-300' : 'bg-slate-400'
                   }`}
                 />
-                <span>Detay Kart</span>
+                <span>{lang === 'ru' ? 'Детали' : 'Detay Kart'}</span>
               </button>
               <button
                 type="button"
                 onClick={toggleFullscreen}
                 className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                title="Tam Ekran"
+                title={lang === 'ru' ? 'Полный экран' : 'Tam Ekran'}
               >
                 {isFullscreen ? (
                   <Minimize2 className="w-3.5 h-3.5" />
@@ -2209,15 +2671,24 @@ export default function OrganizationChartView() {
               {chainFocusNodeId && (
                 <button
                   type="button"
-                  onClick={() => setChainFocusNodeId(null)}
+                  onClick={() => {
+                    setChainFocusNodeId(null);
+                    setActiveCardId(null);
+                  }}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-medium shadow-md cursor-pointer"
                 >
-                  <span>Zincir Odağı Aktif • Temizle</span>
+                  <span>
+                    {lang === 'ru' ? 'Фокус цепи активен • Сбросить' : 'Zincir Odağı Aktif • Temizle'}
+                  </span>
                   <X className="w-3 h-3" />
                 </button>
               )}
               <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs border border-slate-200/80 dark:border-slate-700 text-[10.5px] text-slate-600 dark:text-slate-300 shadow-xs pointer-events-none">
-                <span>Karta tıkla: Zincire odaklan • + / −: Alt ekibi aç/kapat • (i): Künye</span>
+                <span>
+                  {lang === 'ru'
+                    ? '1-й клик: Выбрать • 2-й клик: Фокус цепи • + / −: Раскрыть'
+                    : '1. Tık: Seç • 2. Tık: Zincire odaklan • + / −: Alt ekibi aç/kapat'}
+                </span>
               </div>
             </div>
 
@@ -2235,7 +2706,9 @@ export default function OrganizationChartView() {
             >
               {layoutData.rootItems.length === 0 ? (
                 <div className="py-20 text-center text-sm text-slate-500 dark:text-slate-400">
-                  Seçili filtre kriterlerine uygun personel bulunamadı.
+                  {lang === 'ru'
+                    ? 'Персонал по выбранным фильтрам не найден.'
+                    : 'Seçili filtre kriterlerine uygun personel bulunamadı.'}
                 </div>
               ) : (
                 <div
@@ -2379,9 +2852,11 @@ export default function OrganizationChartView() {
                         {it.kind === 'person' ? (
                           <OrgEnterpriseCard
                             node={it.node}
+                            lang={lang}
                             density={cardDensity}
                             isExpanded={expandedIds.has(it.node.nodeId)}
                             isSelected={selectedNodeId === it.node.nodeId}
+                            isCardSelected={activeCardId === it.node.nodeId}
                             isHighlighted={highlightedNodeId === it.node.nodeId}
                             isChainFocused={chainFocusNodeId === it.node.nodeId}
                             hasHiddenParent={Boolean(hiddenParentNode)}
@@ -2414,10 +2889,10 @@ export default function OrganizationChartView() {
                           </div>
                           <div className="min-w-0">
                             <div className="text-[11.5px] font-bold text-slate-900 dark:text-white leading-tight">
-                              +{it.remainingCount} Kişi Daha
+                              +{it.remainingCount} {lang === 'ru' ? 'Ещё' : 'Kişi Daha'}
                             </div>
                             <div className="text-[9.5px] font-medium text-teal-700 dark:text-teal-300 flex items-center gap-0.5 mt-0.5">
-                              <span>Devamını Aç</span>
+                              <span>{lang === 'ru' ? 'Показать ещё' : 'Devamını Aç'}</span>
                               <ChevronRight className="w-3 h-3" />
                             </div>
                           </div>
@@ -2468,7 +2943,16 @@ export default function OrganizationChartView() {
                             <span>{levelCode}</span>
                           </button>
                           <div className="pointer-events-none opacity-0 group-hover/lvl:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1 whitespace-nowrap px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-[11px] font-medium shadow-xl z-50 border border-slate-200 dark:border-slate-700">
-                            {levelDesc} {lvlMgrs.length > 0 ? (isLvlOpen ? '• (Tıkla: Kapat)' : '• (Tıkla: Tümünü Aç)') : ''}
+                            {levelDesc}{' '}
+                            {lvlMgrs.length > 0
+                              ? isLvlOpen
+                                ? lang === 'ru'
+                                  ? '• (Клик: Свернуть)'
+                                  : '• (Tıkla: Kapat)'
+                                : lang === 'ru'
+                                  ? '• (Клик: Раскрыть всё)'
+                                  : '• (Tıkla: Tümünü Aç)'
+                              : ''}
                           </div>
                         </div>
                       );
@@ -2485,7 +2969,9 @@ export default function OrganizationChartView() {
               <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-teal-600 dark:text-teal-400">
-                    Hiyerarşi & Seviye Künyesi (L{selectedNode.roleLevel})
+                    {lang === 'ru'
+                      ? `Карточка иерархии и уровня (L${selectedNode.roleLevel})`
+                      : `Hiyerarşi & Seviye Künyesi (L${selectedNode.roleLevel})`}
                   </span>
                   <h3 className="text-sm text-slate-900 dark:text-white mt-0.5">
                     {selectedNode.ad_soyad}
@@ -2505,30 +2991,39 @@ export default function OrganizationChartView() {
 
               <div className="space-y-2 text-xs">
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-                  <div className="text-[10px] text-slate-400 uppercase">Görev Sınıf Seviyesi</div>
+                  <div className="text-[10px] text-slate-400 uppercase">
+                    {lang === 'ru' ? 'Класс уровня должности' : 'Görev Sınıf Seviyesi'}
+                  </div>
                   <div className="text-slate-800 dark:text-slate-100 mt-0.5 flex items-center justify-between">
                     <span>
-                      L{selectedNode.roleLevel} • {ROLE_LEVEL_THEMES[selectedNode.roleLevel].rowTitleTr}
+                      L{selectedNode.roleLevel} •{' '}
+                      {lang === 'ru'
+                        ? ROLE_LEVEL_THEMES[selectedNode.roleLevel].rowTitleRu
+                        : ROLE_LEVEL_THEMES[selectedNode.roleLevel].rowTitleTr}
                     </span>
                     <button
                       type="button"
                       onClick={() => openLevelModal('active')}
                       className="text-[10.5px] text-teal-600 hover:underline cursor-pointer"
                     >
-                      Seviye Düzenle
+                      {lang === 'ru' ? 'Изменить' : 'Seviye Düzenle'}
                     </button>
                   </div>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-                  <div className="text-[10px] text-slate-400 uppercase">Sorumlu Kişi (eBA)</div>
+                  <div className="text-[10px] text-slate-400 uppercase">
+                    {lang === 'ru' ? 'Ответственный (eBA)' : 'Sorumlu Kişi (eBA)'}
+                  </div>
                   <div className="text-slate-800 dark:text-slate-100 mt-0.5">
                     {selectedNode.sorumlu_kisi || '-'}
                   </div>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-                  <div className="text-[10px] text-slate-400 uppercase">Grup Şefi (eBA)</div>
+                  <div className="text-[10px] text-slate-400 uppercase">
+                    {lang === 'ru' ? 'Бригадир (eBA)' : 'Grup Şefi (eBA)'}
+                  </div>
                   <div className="text-slate-800 dark:text-slate-100 mt-0.5">
                     {selectedNode.grup_sefi || '-'}
                   </div>
@@ -2537,7 +3032,7 @@ export default function OrganizationChartView() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/50 dark:border-indigo-800/50">
                     <div className="text-[10px] text-indigo-600 dark:text-indigo-300">
-                      Doğrudan Bağlı
+                      {lang === 'ru' ? 'Прямых подч.' : 'Doğrudan Bağlı'}
                     </div>
                     <div className="text-base text-indigo-900 dark:text-indigo-100">
                       {selectedNode.directCount}
@@ -2545,7 +3040,7 @@ export default function OrganizationChartView() {
                   </div>
                   <div className="p-2.5 rounded-xl bg-teal-50/60 dark:bg-teal-950/30 border border-teal-200/50 dark:border-teal-800/50">
                     <div className="text-[10px] text-teal-600 dark:text-teal-300">
-                      Toplam Alt Ekip
+                      {lang === 'ru' ? 'Всего в команде' : 'Toplam Alt Ekip'}
                     </div>
                     <div className="text-base text-teal-900 dark:text-teal-100">
                       {selectedNode.totalSubordinates.toLocaleString('tr-TR')}
@@ -2556,7 +3051,7 @@ export default function OrganizationChartView() {
 
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-2">
-                  Üst Yönetim Zinciri (Kime Bağlı)
+                  {lang === 'ru' ? 'Цепочка руководителей' : 'Üst Yönetim Zinciri (Kime Bağlı)'}
                 </div>
                 <div className="space-y-1.5">
                   {selectedChain.map((step, idx) => (
@@ -2594,7 +3089,9 @@ export default function OrganizationChartView() {
                     className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
                     <Crosshair className="w-3.5 h-3.5" />
-                    Sadece Bu Yöneticinin Ağacına Odaklan
+                    {lang === 'ru'
+                      ? 'Сфокусироваться на ветке руководителя'
+                      : 'Sadece Bu Yöneticinin Ağacına Odaklan'}
                   </button>
                 )}
 
@@ -2606,7 +3103,13 @@ export default function OrganizationChartView() {
                     className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
                     <UserCheck className="w-4 h-4" />
-                    {drawerLoading ? 'Yükleniyor...' : '198 Kolonlu Personel Kartını Aç'}
+                    {drawerLoading
+                      ? lang === 'ru'
+                        ? 'Загрузка...'
+                        : 'Yükleniyor...'
+                      : lang === 'ru'
+                        ? 'Открыть карточку (198 полей)'
+                        : '198 Kolonlu Personel Kartını Aç'}
                   </button>
                 )}
               </div>
@@ -2620,10 +3123,16 @@ export default function OrganizationChartView() {
             <div>
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                 <FolderOpen className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                <span>Organizasyon Klasör Dizini ({orgResult.totalManagers} Yönetici • {orgResult.totalStaff.toLocaleString('tr-TR')} Personel)</span>
+                <span>
+                  {lang === 'ru'
+                    ? `Каталог оргструктуры (${orgResult.totalManagers} рук. • ${orgResult.totalStaff.toLocaleString('tr-TR')} сотр.)`
+                    : `Organizasyon Klasör Dizini (${orgResult.totalManagers} Yönetici • ${orgResult.totalStaff.toLocaleString('tr-TR')} Personel)`}
+                </span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Klasörlere tıklayarak alt ekipleri kademeli açabilir, şemada odaklanabilir veya künyeyi inceleyebilirsiniz.
+                {lang === 'ru'
+                  ? 'Нажимайте на папки для поэтапного раскрытия команд или перехода на схему.'
+                  : 'Klasörlere tıklayarak alt ekipleri kademeli açabilir, şemada odaklanabilir veya künyeyi inceleyebilirsiniz.'}
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -2638,14 +3147,14 @@ export default function OrganizationChartView() {
                 }}
                 className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] cursor-pointer"
               >
-                Tüm Klasörleri Aç
+                {lang === 'ru' ? 'Раскрыть все папки' : 'Tüm Klasörleri Aç'}
               </button>
               <button
                 type="button"
                 onClick={() => setDirExpandedIds(new Set())}
                 className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] cursor-pointer"
               >
-                Tümünü Daralt
+                {lang === 'ru' ? 'Свернуть всё' : 'Tümünü Daralt'}
               </button>
             </div>
           </div>
