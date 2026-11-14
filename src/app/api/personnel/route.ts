@@ -14,6 +14,8 @@ import {
   NON_TRANSFER_ENTRY_SQL,
   NON_TRANSFER_EXIT_SQL,
 } from '@/lib/interSiteTransfers';
+import { formatKnownDateToDdMmYyyy, normalizeRawRecordDates } from '@/lib/dateFormatter';
+import { getZupDatesIndex, matchZupDatesForPersonnelRow } from '@/lib/zupDatesLookup';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,6 +51,7 @@ export async function GET(request: Request) {
     const sortBy = searchParams.get('sortBy') || 'sira_no';
     const sortOrder = searchParams.get('sortOrder')?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
     const includeDetails = searchParams.get('includeDetails') === 'true';
+    const idParam = searchParams.get('id')?.trim() || '';
 
     // Strict RLS Overrides
     if (scopeType === 'region' && scopeVal !== 'all') {
@@ -148,7 +151,10 @@ export async function GET(request: Request) {
     const outDateExpr = buildNormalizedDateSql('cikis_tarihi');
 
     // Movement & Period filter (for Management & Turnover view — excludes inter-site transfers from both entries and exits, and exposes transfers separately)
-    if (movementType === 'entry' || movementType === 'exit' || movementType === 'transfer') {
+    if (idParam && /^\d+$/.test(idParam)) {
+      conditions.push('id = ?');
+      params.push(Number(idParam));
+    } else if (movementType === 'entry' || movementType === 'exit' || movementType === 'transfer') {
       const { inRefDate, outRefDate } = getDatasetReferenceDates(db);
       const daysMap: Record<string, number> = { '1d': 1, '3d': 3, '7d': 7, '30d': 30 };
       const days = daysMap[period];
@@ -368,22 +374,50 @@ export async function GET(request: Request) {
       }
     }
 
+    const zupIndex = getZupDatesIndex(db);
+    const topDateCols = [
+      'ise_giris_tarihi',
+      'santiye_giris_tarihi',
+      'cikis_tarihi',
+      'propusk_bitis_tarihi',
+      'dogum_tarihi',
+      'pasaport_gecerlilik',
+      'vize_bitis_tarihi',
+      'patent_alis_tarihi',
+      'patent_bitis_tarihi',
+    ] as const;
+
     // Parse all_data_json if requested (stripping any official salary fields per privacy policy)
     const formattedRows = rows.map((r) => {
       r.region = resolveEffectiveRegion(r.region, r.proje_adi, r.region);
+      const zupMatch = matchZupDatesForPersonnelRow(zupIndex, r);
+      r.zup_hire_date = zupMatch.zup_hire_date;
+      r.zup_dismissal_date = zupMatch.zup_dismissal_date;
+      r.zup_status = zupMatch.zup_status;
+      r.zup_tabel_no = zupMatch.zup_tabel_no;
+
       const trMeta = transferMetaById.get(Number(r.id));
       if (trMeta) {
         r.transfer_from_site = trMeta.from_site || '';
         r.transfer_to_site = trMeta.to_site || r.region || '';
-        r.original_hire_date = trMeta.original_hire_date || '';
+        r.original_hire_date = trMeta.original_hire_date
+          ? formatKnownDateToDdMmYyyy(trMeta.original_hire_date, '')
+          : '';
         r.transfer_direction = trMeta.transfer_direction || '';
         if (!r.ise_giris_tarihi && trMeta.transfer_date) {
           r.ise_giris_tarihi = trMeta.transfer_date;
         }
       }
+
+      for (const df of topDateCols) {
+        if (r[df]) {
+          r[df] = formatKnownDateToDdMmYyyy(r[df], String(r[df]));
+        }
+      }
+
       if (r.all_data_json && typeof r.all_data_json === 'string') {
         try {
-          r.raw = stripOfficialSalaryFromRaw(JSON.parse(r.all_data_json));
+          r.raw = normalizeRawRecordDates(stripOfficialSalaryFromRaw(JSON.parse(r.all_data_json)));
         } catch {
           r.raw = {};
         }

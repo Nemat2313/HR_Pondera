@@ -51,6 +51,10 @@ export interface PersonnelRecord {
   transfer_to_site?: string;
   original_hire_date?: string;
   transfer_direction?: string;
+  zup_hire_date?: string;
+  zup_dismissal_date?: string;
+  zup_status?: 'active' | 'dismissed' | 'unmatched';
+  zup_tabel_no?: string;
 }
 
 export interface TreeDepartment {

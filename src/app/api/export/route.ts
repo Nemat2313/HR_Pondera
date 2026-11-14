@@ -14,6 +14,8 @@ import {
   NON_TRANSFER_ENTRY_SQL,
   NON_TRANSFER_EXIT_SQL,
 } from '@/lib/interSiteTransfers';
+import { formatKnownDateToDdMmYyyy, isDateLikeColumnName } from '@/lib/dateFormatter';
+import { getZupDatesIndex, matchZupDatesForPersonnelRow } from '@/lib/zupDatesLookup';
 import * as XLSX from 'xlsx';
 
 export const runtime = 'nodejs';
@@ -36,21 +38,7 @@ function toSnakeCase(str: string): string {
 }
 
 function formatDateVal(val: any): string {
-  if (val === undefined || val === null || String(val).trim() === '' || val === '-') return '-';
-  const num = Number(val);
-  if (!isNaN(num) && num > 30000 && num < 60000) {
-    const date = new Date(Math.round((num - 25569) * 86400 * 1000));
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const year = date.getUTCFullYear();
-    return `${day}.${month}.${year}`;
-  }
-  const str = String(val).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    const parts = str.slice(0, 10).split('-');
-    return `${parts[2]}.${parts[1]}.${parts[0]}`;
-  }
-  return str;
+  return formatKnownDateToDdMmYyyy(val, '-');
 }
 
 const COLUMN_HEADER_MAP: Record<string, string> = {
@@ -151,13 +139,9 @@ const DATE_FIELDS = new Set([
 ]);
 
 function isDateField(key: string, header: string): boolean {
-  const k = key.toLowerCase();
-  const h = header.toLowerCase();
   const s = toSnakeCase(key);
   if (DATE_FIELDS.has(key) || DATE_FIELDS.has(s)) return true;
-  if (k.endsWith('tarihi') || k.endsWith('tarih') || k.endsWith('date')) return true;
-  if (h.endsWith('tarihi') || h.endsWith('tarih') || h.endsWith('date')) return true;
-  return false;
+  return isDateLikeColumnName(header, key);
 }
 
 function resolveCellValue(
@@ -420,6 +404,7 @@ export async function GET(request: Request) {
       }
     }
 
+    const zupIndex = getZupDatesIndex(db);
     // Parse requested custom columns if provided
     const requestedCols = customColsParam
       ? customColsParam.split(',').map((c) => c.trim()).filter(Boolean)
@@ -445,6 +430,8 @@ export async function GET(request: Request) {
         rowObj['Şantiye Transfer Tarihi'] = formatDateVal(trMeta.transfer_date || r.ise_giris_tarihi);
         rowObj['İlk Sözleşme Tarihi'] = formatDateVal(trMeta.original_hire_date);
       }
+
+      const zupMatch = matchZupDatesForPersonnelRow(zupIndex, r);
 
       if (requestedCols.length > 0) {
         for (const colKey of requestedCols) {
@@ -473,6 +460,11 @@ export async function GET(request: Request) {
             : val !== undefined && val !== null && String(val).trim() !== ''
             ? val
             : '-';
+
+          if (colKey === 'cikis_tarihi') {
+            rowObj['1C ZUP Giriş Tarihi'] = zupMatch.zup_hire_date;
+            rowObj['1C ZUP Çıkış Tarihi'] = zupMatch.zup_dismissal_date;
+          }
         }
       }
 

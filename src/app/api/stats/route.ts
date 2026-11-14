@@ -63,7 +63,7 @@ export async function GET(request: Request) {
       )
       .all() as { key: string; value: string }[];
     const sysStampSig = sysStampRows.map((r) => `${r.key}=${r.value}`).join('|');
-    const statsCacheKey = `v2:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const statsCacheKey = `v3:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
     const gStats = globalThis as unknown as {
       __ponderaStatsCache?: Map<string, any>;
     };
@@ -279,8 +279,8 @@ export async function GET(request: Request) {
     const nonTransferExitCond = NON_TRANSFER_EXIT_SQL;
 
     const monthlyWhere = nonStatusWhere.clause
-      ? `${nonStatusWhere.clause} AND (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31' AND ${nonTransferEntryCond}`
-      : `WHERE (${inDateExpr}) >= '2026-01-01' AND (${inDateExpr}) <= '2026-12-31' AND ${nonTransferEntryCond}`;
+      ? `${nonStatusWhere.clause} AND (${inDateExpr}) >= '2018-01-01' AND (${inDateExpr}) <= '2026-12-31' AND ${nonTransferEntryCond}`
+      : `WHERE (${inDateExpr}) >= '2018-01-01' AND (${inDateExpr}) <= '2026-12-31' AND ${nonTransferEntryCond}`;
 
     const monthlyEntries = db.prepare(`
       SELECT 
@@ -294,8 +294,8 @@ export async function GET(request: Request) {
     `).all(...nonStatusWhere.params);
 
     const monthlyExitWhere = nonStatusWhere.clause
-      ? `${nonStatusWhere.clause} AND (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`
-      : `WHERE (${outDateExpr}) >= '2026-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`;
+      ? `${nonStatusWhere.clause} AND (${outDateExpr}) >= '2018-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`
+      : `WHERE (${outDateExpr}) >= '2018-01-01' AND (${outDateExpr}) <= '2026-12-31' AND ${nonTransferExitCond}`;
 
     const monthlyExits = db.prepare(`
       SELECT 

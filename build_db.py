@@ -33,11 +33,36 @@ def clean_date_val(val):
     s = clean_val(val)
     if not s:
         return ""
-    if re.match(r"^\d{5}(\.0)?$", s):
+    if re.match(r"^\d{5}(\.0+)?$", s):
         num = int(float(s))
-        if 15000 < num < 65000:
+        if 10000 <= num <= 73050:
             from datetime import timedelta
             return (datetime(1899, 12, 30) + timedelta(days=num)).strftime("%Y-%m-%d")
+    return s
+
+def clean_raw_cell_val(val, header_name):
+    s = clean_val(val)
+    if not s:
+        return ""
+    h_low = (
+        str(header_name or "")
+        .strip()
+        .replace("İ", "i").replace("I", "i").replace("ı", "i")
+        .replace("Ş", "s").replace("ş", "s")
+        .replace("Ğ", "g").replace("ğ", "g")
+        .replace("Ü", "u").replace("ü", "u")
+        .replace("Ö", "o").replace("ö", "o")
+        .replace("Ç", "c").replace("ç", "c")
+        .lower()
+    )
+    if any(k in h_low for k in ("tarih", "date", "gecerlilik", "bildirgesi", "дата", "срок", "рожд")):
+        if re.match(r"^\d{5}(\.0+)?$", s):
+            num = int(float(s))
+            if 10000 <= num <= 73050:
+                return (datetime(1899, 12, 30) + timedelta(days=num)).strftime("%d.%m.%Y")
+        m_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$", s)
+        if m_iso:
+            return f"{m_iso.group(3)}.{m_iso.group(2)}.{m_iso.group(1)}"
     return s
 
 FIELD_ALIASES = {
@@ -559,6 +584,7 @@ def build_database():
             cleaned_v = clean_val(val)
             if cleaned_v:
                 h_name = headers[idx] if idx < len(headers) else f"Col_{idx+1}"
+                cleaned_v = clean_raw_cell_val(val, h_name)
                 h_norm = (
                     h_name.strip()
                     .lower()

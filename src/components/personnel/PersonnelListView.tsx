@@ -29,6 +29,7 @@ import PersonnelDetailDrawer from './PersonnelDetailDrawer';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { isOfficialSalaryColumn } from '@/lib/salaryPrivacy';
+import { formatCellByColumn, isDateLikeColumnName } from '@/lib/dateFormatter';
 
 interface PersonnelListViewProps {
   initialFilter?: { type: string; value: string } | null;
@@ -732,24 +733,7 @@ export default function PersonnelListView({
 
     if (rawVal === undefined || rawVal === null || String(rawVal).trim() === '') return '-';
 
-    // Format Excel serial dates (e.g. 46296 -> 01.10.2026, 46272 -> 07.09.2026)
-    const num = Number(rawVal);
-    if (!isNaN(num) && num > 30000 && num < 60000) {
-      const date = new Date(Math.round((num - 25569) * 86400 * 1000));
-      const day = String(date.getUTCDate()).padStart(2, '0');
-      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-      const year = date.getUTCFullYear();
-      return `${day}.${month}.${year}`;
-    }
-
-    const str = String(rawVal).trim();
-    // Format ISO date string YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-      const parts = str.slice(0, 10).split('-');
-      return `${parts[2]}.${parts[1]}.${parts[0]}`;
-    }
-
-    return str;
+    return formatCellByColumn(rawVal, n, k, '-');
   };
 
   // Export complete filtered dataset to real Excel (.xlsx) file
@@ -1261,10 +1245,7 @@ export default function PersonnelListView({
                   const sortField = toSnakeCase(col.name || col.key);
                   const isSorted = sortBy === sortField || sortBy === col.key;
 
-                  const isDate =
-                    col.name.toLowerCase().includes('tarih') ||
-                    col.key.toLowerCase().includes('tarih') ||
-                    col.name.toLowerCase().includes('gecerlilik');
+                  const isDate = isDateLikeColumnName(col.name, col.key);
                   const isAdSoyad = col.key === 'ad_soyad' || col.name === 'Ad Soyad';
                   const isDepartman = col.key === 'departman' || col.name === 'Departman';
                   const isGorev = col.key === 'gorevi' || col.name === 'Görevi';
@@ -1330,10 +1311,7 @@ export default function PersonnelListView({
                         col.key === 'rhi_id' ||
                         col.name === 'Sicil No' ||
                         col.name === 'Şirket ID';
-                      const isDateCol =
-                        col.name.toLowerCase().includes('tarih') ||
-                        col.key.toLowerCase().includes('tarih') ||
-                        col.name.toLowerCase().includes('gecerlilik');
+                      const isDateCol = isDateLikeColumnName(col.name, col.key);
 
                       if (isStatusCol) {
                         return (
@@ -1497,6 +1475,7 @@ export default function PersonnelListView({
       {/* PERSONNEL DETAIL DRAWER */}
       <PersonnelDetailDrawer
         personnel={selectedPersonnel}
+        columnGroups={columnGroups}
         onClose={() => setSelectedPersonnel(null)}
       />
     </div>

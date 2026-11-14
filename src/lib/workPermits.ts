@@ -88,7 +88,7 @@ export function normalizePermitFilterKey(permit: string): WorkPermitCategoryKey 
 
 export function buildNormalizedDateSql(col: string): string {
   const raw = `CASE
-    WHEN ${col} GLOB '[0-9][0-9][0-9][0-9][0-9]*' AND CAST(${col} AS INTEGER) BETWEEN 30000 AND 60000
+    WHEN ${col} GLOB '[0-9][0-9][0-9][0-9][0-9]*' AND CAST(${col} AS INTEGER) BETWEEN 10000 AND 73050
       THEN date('1899-12-30', '+' || CAST(${col} AS INTEGER) || ' days')
     WHEN ${col} LIKE '____-__-__%'
       THEN substr(${col}, 1, 10)

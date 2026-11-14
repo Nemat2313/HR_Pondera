@@ -11,7 +11,7 @@ const REFERENCE_DATE = new Date(REFERENCE_DATE_STR);
 function parseToDate(val: any): Date | null {
   if (val === null || val === undefined) return null;
   const num = Number(val);
-  if (!isNaN(num) && num > 30000 && num < 60000) {
+  if (!isNaN(num) && num >= 10000 && num <= 73050) {
     return new Date(Math.round((num - 25569) * 86400 * 1000));
   }
   const str = String(val).trim();

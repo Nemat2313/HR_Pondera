@@ -213,3 +213,48 @@ export function classifyPonderaColumnGroup(colName: string): PonderaColumnGroupN
   return '1. Temel & Kimlik Bilgileri';
 }
 
+export function isExplicitGroup1Column(colName: string): boolean {
+  const n = normalizeTr(colName);
+  return (
+    n === 'sira no' ||
+    n.includes('sicil') ||
+    n === 'rhi id' ||
+    n === 'sirket id' ||
+    n.includes('saren') ||
+    n.includes('genel durum') ||
+    n.includes('guncel durum') ||
+    n === 'uyruk' ||
+    n === 'adi' ||
+    n === 'soyadi' ||
+    n === 'baba adi' ||
+    n === 'ad soyad' ||
+    n.includes('adi (kiril)') ||
+    n.includes('soyadi (kiril)') ||
+    n.includes('tam adi') ||
+    n === 'cinsiyet' ||
+    n.includes('dogum') ||
+    n.includes('tc kimlik') ||
+    n === 'ise giris tarihi' ||
+    n === 'santiye giris tarihi'
+  );
+}
+
+/**
+ * Classifies a column into one of the 16 operational groups, or returns `'Diğer Kolonlar'`
+ * when the column is an auxiliary / miscellaneous field outside the core 16 groups.
+ */
+export function classifyPonderaColumnGroupOrOther(
+  colName: string
+): PonderaColumnGroupName | 'Diğer Kolonlar' {
+  const n = normalizeTr(colName);
+  if (n === 'sibur kpp' || n === 'personel puan') {
+    return 'Diğer Kolonlar';
+  }
+  const grp = classifyPonderaColumnGroup(colName);
+  if (grp === '1. Temel & Kimlik Bilgileri' && !isExplicitGroup1Column(colName)) {
+    return 'Diğer Kolonlar';
+  }
+  return grp;
+}
+
+

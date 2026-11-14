@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import { normalizeRawRecordDates, formatKnownDateToDdMmYyyy } from '@/lib/dateFormatter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,7 @@ const DEFAULT_REFERENCE_DATE_STR = '2026-10-18';
 function parseToDate(val: any): Date | null {
   if (val === null || val === undefined) return null;
   const num = Number(val);
-  if (!isNaN(num) && num > 30000 && num < 60000) {
+  if (!isNaN(num) && num >= 10000 && num <= 73050) {
     return new Date(Math.round((num - 25569) * 86400 * 1000));
   }
   const str = String(val).trim();
@@ -247,7 +248,7 @@ export async function GET(request: Request) {
       let rawJson: any = {};
       if (r.all_data_json) {
         try {
-          rawJson = JSON.parse(r.all_data_json);
+          rawJson = normalizeRawRecordDates(JSON.parse(r.all_data_json));
         } catch {}
       }
 
@@ -368,7 +369,11 @@ export async function GET(request: Request) {
           status = categorizeDays(days, d.id);
           expiryDateDisplay = formatDateDisplay(dateVal);
         } else if (d.id === 'patent') {
-          docNo = r.patent_alis_tarihi || rawJson['Çalışma Kart No'] || rawJson['Patent No'] || '-';
+          docNo =
+            rawJson['Çalışma Kart No'] ||
+            rawJson['Patent Form No'] ||
+            rawJson['Patent No'] ||
+            (r.patent_alis_tarihi ? formatKnownDateToDdMmYyyy(r.patent_alis_tarihi, '-') : '-');
           dateVal = r.patent_bitis_tarihi || rawJson['Çalışma Kart Bitiş Tarihi'] || rawJson['Çalışma Kartı Bitiş Tarihi'];
           days = getDaysDiff(dateVal, referenceDate);
           status = categorizeDays(days, d.id);

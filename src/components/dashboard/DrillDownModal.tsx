@@ -5,6 +5,7 @@ import { X, Download, ArrowRight, UserCheck, Building2, MapPin, Briefcase, FileS
 import { exportToExcel } from '@/lib/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
+import { formatKnownDateToDdMmYyyy } from '@/lib/dateFormatter';
 
 interface DrillDownModalProps {
   isOpen: boolean;
@@ -74,23 +75,7 @@ export default function DrillDownModal({
 
   if (!isOpen) return null;
 
-  const formatModalDate = (val: any) => {
-    if (!val) return '-';
-    const num = Number(val);
-    if (!isNaN(num) && num > 30000 && num < 60000) {
-      const date = new Date(Math.round((num - 25569) * 86400 * 1000));
-      const day = String(date.getUTCDate()).padStart(2, '0');
-      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-      const year = date.getUTCFullYear();
-      return `${day}.${month}.${year}`;
-    }
-    const str = String(val).trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-      const parts = str.slice(0, 10).split('-');
-      return `${parts[2]}.${parts[1]}.${parts[0]}`;
-    }
-    return str;
-  };
+  const formatModalDate = (val: any) => formatKnownDateToDdMmYyyy(val, '-');
 
   const handleExport = () => {
     try {

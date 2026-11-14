@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -37,6 +37,8 @@ import {
 } from 'recharts';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
+import { formatKnownDateToDdMmYyyy } from '@/lib/dateFormatter';
+import PersonnelDetailDrawer from '@/components/personnel/PersonnelDetailDrawer';
 
 interface ManagementReportsViewProps {
   stats: StatsData | null;
@@ -47,30 +49,78 @@ type PeriodKey = '1d' | '3d' | '7d' | '30d' | 'all';
 type MovementType = 'exit' | 'entry' | 'transfer';
 type VksFilterMode = 'all' | 'VKS' | 'NON_VKS';
 
-function formatDisplayDate(raw?: string | null): string {
-  if (!raw) return '—';
-  const trimmed = String(raw).trim();
-  if (!trimmed) return '—';
+const MONTH_NAMES_TR = [
+  'Ocak',
+  'Şubat',
+  'Mart',
+  'Nisan',
+  'Mayıs',
+  'Haziran',
+  'Temmuz',
+  'Ağustos',
+  'Eylül',
+  'Ekim',
+  'Kasım',
+  'Aralık',
+];
 
-  if (/^\d{5}$/.test(trimmed)) {
-    const serial = parseInt(trimmed, 10);
-    if (serial > 30000 && serial < 60000) {
-      const utcMs = Date.UTC(1899, 11, 30) + serial * 86400000;
-      const d = new Date(utcMs);
-      const dd = String(d.getUTCDate()).padStart(2, '0');
-      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const yyyy = d.getUTCFullYear();
-      return `${dd}.${mm}.${yyyy === 2027 ? 2026 : yyyy}`;
+const MONTH_NAMES_RU = [
+  'Янв',
+  'Фев',
+  'Март',
+  'Апр',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Авг',
+  'Сен',
+  'Окт',
+  'Ноя',
+  'Дек',
+];
+
+function formatYearMonthLabel(ym: string, lang: string): string {
+  const m = ym.match(/^(\d{4})-(\d{2})$/);
+  if (!m) return ym;
+  const yy = m[1].slice(2);
+  const idx = parseInt(m[2], 10) - 1;
+  if (idx < 0 || idx > 11) return ym;
+  return lang === 'ru' ? `${MONTH_NAMES_RU[idx]} ${yy}` : `${MONTH_NAMES_TR[idx]} ${yy}`;
+}
+
+function generateMonthSequence(startYm: string, endYm: string): string[] {
+  const sMatch = startYm.match(/^(\d{4})-(\d{2})$/);
+  const eMatch = endYm.match(/^(\d{4})-(\d{2})$/);
+  if (!sMatch || !eMatch) return [];
+  let y = parseInt(sMatch[1], 10);
+  let m = parseInt(sMatch[2], 10);
+  const endY = parseInt(eMatch[1], 10);
+  const endM = parseInt(eMatch[2], 10);
+  const out: string[] = [];
+  let guard = 0;
+  while ((y < endY || (y === endY && m <= endM)) && guard < 180) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
     }
+    guard += 1;
   }
+  return out;
+}
 
-  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-    const [yyyy, mm, dd] = trimmed.slice(0, 10).split('-');
-    const fixedYear = yyyy === '2027' ? '2026' : yyyy;
-    return `${dd}.${mm}.${fixedYear}`;
-  }
+function shiftYearMonth(ym: string, deltaMonths: number): string {
+  const match = ym.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return ym;
+  const total = parseInt(match[1], 10) * 12 + (parseInt(match[2], 10) - 1) + deltaMonths;
+  const y = Math.floor(total / 12);
+  const m = (total % 12) + 1;
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
 
-  return trimmed;
+function formatDisplayDate(raw?: string | null, emptyFallback = '-'): string {
+  return formatKnownDateToDdMmYyyy(raw, emptyFallback);
 }
 
 export default function ManagementReportsView({ stats, onNavigateToPersonnel }: ManagementReportsViewProps) {
@@ -81,6 +131,8 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('30d');
   const [selectedMovement, setSelectedMovement] = useState<MovementType>('exit');
   const [selectedVksMode, setSelectedVksMode] = useState<VksFilterMode>('all');
+  const [trendPeriod, setTrendPeriod] = useState<string>('2026');
+  const [drawerPersonnel, setDrawerPersonnel] = useState<PersonnelRecord | null>(null);
 
   // Detailed personnel table state
   const [personnelList, setPersonnelList] = useState<(PersonnelRecord & { permit_type?: string })[]>([]);
@@ -193,30 +245,10 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
   const activeTotalCount = stats?.totalCount || 1;
   const activeVksPct = Math.round((activeVksCount / activeTotalCount) * 100);
 
-  // VKS Ratio Comparison Chart Data (All Entries, All Exits, Last 1 Month Entries, Last 1 Month Exits)
+  // VKS Ratio Comparison Chart Data (ONLY Last 1 Month Exits & Last 1 Month Entries as requested)
   const vksRatioChartData = [
     {
-      name: lang === 'ru' ? 'Все Выходы' : 'Tüm Çıkışlar',
-      vksPct: allOutVksPct,
-      otherPct: 100 - allOutVksPct,
-      vksCount: allTimeMetric.outVks,
-      otherCount: allTimeMetric.outOther,
-      totalCount: allTimeMetric.outTotal,
-      movement: 'exit' as MovementType,
-      period: 'all' as PeriodKey,
-    },
-    {
-      name: lang === 'ru' ? 'Все Входы' : 'Tüm Girişler',
-      vksPct: allInVksPct,
-      otherPct: 100 - allInVksPct,
-      vksCount: allTimeMetric.inVks,
-      otherCount: allTimeMetric.inOther,
-      totalCount: allTimeMetric.inTotal,
-      movement: 'entry' as MovementType,
-      period: 'all' as PeriodKey,
-    },
-    {
-      name: lang === 'ru' ? 'Выходы (1 Мес)' : 'Son 1 Ay Çıkış',
+      name: lang === 'ru' ? 'Выходы (За 1 мес.)' : 'Son 1 Ay Çıkış',
       vksPct: month30Metric.outTotal > 0 ? Math.round((month30Metric.outVks / month30Metric.outTotal) * 100) : 0,
       otherPct:
         month30Metric.outTotal > 0
@@ -229,7 +261,7 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
       period: '30d' as PeriodKey,
     },
     {
-      name: lang === 'ru' ? 'Входы (1 Мес)' : 'Son 1 Ay Giriş',
+      name: lang === 'ru' ? 'Приемы (За 1 мес.)' : 'Son 1 Ay Giriş',
       vksPct: month30Metric.inTotal > 0 ? Math.round((month30Metric.inVks / month30Metric.inTotal) * 100) : 0,
       otherPct:
         month30Metric.inTotal > 0
@@ -243,49 +275,91 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
     },
   ];
 
-  // Combine monthly in and out into a chart friendly dataset
-  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
-  const trendData = months.map((m) => {
-    const entry = stats?.monthlyEntries.find((e) => e.month === m);
-    const exit = stats?.monthlyExits.find((e) => e.month === m);
-    const monthNamesTR: Record<string, string> = {
-      '2026-03': 'Mart 26',
-      '2026-04': 'Nisan 26',
-      '2026-05': 'Mayıs 26',
-      '2026-06': 'Haziran 26',
-      '2026-07': 'Temmuz 26',
-      '2026-08': 'Ağustos 26',
-      '2026-09': 'Eylül 26',
-      '2026-10': 'Ekim 26',
-      '2026-11': 'Kasım 26',
-    };
-    const monthNamesRU: Record<string, string> = {
-      '2026-03': 'Март 26',
-      '2026-04': 'Апр 26',
-      '2026-05': 'Май 26',
-      '2026-06': 'Июнь 26',
-      '2026-07': 'Июль 26',
-      '2026-08': 'Авг 26',
-      '2026-09': 'Сен 26',
-      '2026-10': 'Окт 26',
-      '2026-11': 'Ноя 26',
-    };
-    const monthName = lang === 'ru' ? monthNamesRU[m] || m : monthNamesTR[m] || m;
-    const gTotal = entry ? entry.in_count : 0;
-    const gVks = entry?.vks_in_count || 0;
-    const cTotal = exit ? exit.out_count : 0;
-    const cVks = exit?.vks_out_count || 0;
+  // Dynamic available years & multi-period selector for Monthly Entry & Exit Trend Chart
+  const { trendPeriodOptions, trendData, activeTrendPeriodLabel } = useMemo(() => {
+    const entryMap = new Map<string, { in_count: number; vks_in_count?: number }>();
+    const exitMap = new Map<string, { out_count: number; vks_out_count?: number }>();
+    const monthSet = new Set<string>();
+
+    for (const e of stats?.monthlyEntries || []) {
+      if (/^\d{4}-\d{2}$/.test(e.month)) {
+        entryMap.set(e.month, e);
+        if (e.in_count > 0) monthSet.add(e.month);
+      }
+    }
+    for (const x of stats?.monthlyExits || []) {
+      if (/^\d{4}-\d{2}$/.test(x.month)) {
+        exitMap.set(x.month, x);
+        if (x.out_count > 0) monthSet.add(x.month);
+      }
+    }
+
+    const sortedActiveMonths = Array.from(monthSet).sort();
+    const latestYm = sortedActiveMonths[sortedActiveMonths.length - 1] || '2026-11';
+    const earliestYm = sortedActiveMonths[0] || '2026-03';
+
+    const yearsSet = new Set<string>(['2026']);
+    for (const ym of sortedActiveMonths) {
+      const yr = ym.slice(0, 4);
+      if (yr >= '2020' && yr <= '2026') {
+        yearsSet.add(yr);
+      }
+    }
+    const sortedYearsDesc = Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+
+    const options: Array<{ key: string; label: string }> = [
+      { key: '6m', label: lang === 'ru' ? 'За 6 мес.' : 'Son 6 Ay' },
+      { key: '12m', label: lang === 'ru' ? 'За 12 мес.' : 'Son 12 Ay' },
+      ...sortedYearsDesc.map((yr) => ({ key: yr, label: yr })),
+      { key: 'all', label: lang === 'ru' ? 'Все время' : 'Tüm Dönem' },
+    ];
+
+    let targetMonths: string[] = [];
+    if (trendPeriod === '6m') {
+      targetMonths = generateMonthSequence(shiftYearMonth(latestYm, -5), latestYm);
+    } else if (trendPeriod === '12m') {
+      targetMonths = generateMonthSequence(shiftYearMonth(latestYm, -11), latestYm);
+    } else if (trendPeriod === 'all') {
+      targetMonths = generateMonthSequence(earliestYm, latestYm);
+    } else if (/^\d{4}$/.test(trendPeriod)) {
+      const yrMonths = sortedActiveMonths.filter((m) => m.startsWith(`${trendPeriod}-`));
+      if (yrMonths.length > 0) {
+        targetMonths = generateMonthSequence(yrMonths[0], yrMonths[yrMonths.length - 1]);
+      } else if (trendPeriod === '2026') {
+        targetMonths = generateMonthSequence('2026-03', '2026-11');
+      } else {
+        targetMonths = generateMonthSequence(`${trendPeriod}-01`, `${trendPeriod}-12`);
+      }
+    } else {
+      targetMonths = generateMonthSequence('2026-03', '2026-11');
+    }
+
+    const builtData = targetMonths.map((m) => {
+      const entry = entryMap.get(m);
+      const exit = exitMap.get(m);
+      const gTotal = entry ? entry.in_count : 0;
+      const gVks = entry?.vks_in_count || 0;
+      const cTotal = exit ? exit.out_count : 0;
+      const cVks = exit?.vks_out_count || 0;
+      return {
+        monthKey: m,
+        month: formatYearMonthLabel(m, lang),
+        Giris: gTotal,
+        GirisVks: gVks,
+        GirisVksPct: gTotal > 0 ? Math.round((gVks / gTotal) * 100) : 0,
+        Cikis: cTotal,
+        CikisVks: cVks,
+        CikisVksPct: cTotal > 0 ? Math.round((cVks / cTotal) * 100) : 0,
+      };
+    });
+
+    const selectedOpt = options.find((o) => o.key === trendPeriod);
     return {
-      monthKey: m,
-      month: monthName,
-      Giris: gTotal,
-      GirisVks: gVks,
-      GirisVksPct: gTotal > 0 ? Math.round((gVks / gTotal) * 100) : 0,
-      Cikis: cTotal,
-      CikisVks: cVks,
-      CikisVksPct: cTotal > 0 ? Math.round((cVks / cTotal) * 100) : 0,
+      trendPeriodOptions: options,
+      trendData: builtData,
+      activeTrendPeriodLabel: selectedOpt ? selectedOpt.label : trendPeriod,
     };
-  });
+  }, [stats?.monthlyEntries, stats?.monthlyExits, trendPeriod, lang]);
 
   const handleExportReportSummary = () => {
     const wb = XLSX.utils.book_new();
@@ -714,199 +788,141 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
         </div>
       </div>
 
-      {/* 3. TOP CHARTS ROW: MONTHLY TREND CHART (LEFT 7 COLS) & VKS RATIO CHART (RIGHT 5 COLS) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left: Aylık İşe Giriş ve Çıkış Trendi (2026) - Moved to TOP */}
-        <div className="lg:col-span-7 p-4 sm:p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card flex flex-col justify-between">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <div>
-              <h2 className="font-bold text-base text-slate-900 dark:text-white">
-                {lang === 'ru'
-                  ? 'Ежемесячная динамика приемов и увольнений (2026)'
-                  : 'Aylık İşe Giriş ve Çıkış Trendi (2026)'}
-              </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {lang === 'ru'
-                  ? 'Динамика приемов, увольнений и численность специалистов ВКС по месяцам'
-                  : 'Aylara göre toplam işe giriş, işten çıkış ve VKS uzman hareketleri'}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-xs font-extrabold">
-              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                Son 1 Ay Giriş VKS: +{month30Metric.inVks} (%{month30Metric.inTotal > 0 ? Math.round((month30Metric.inVks / month30Metric.inTotal) * 100) : 0})
-              </span>
-              <span className="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
-                Son 1 Ay Çıkış VKS: -{month30Metric.outVks} (%{month30Metric.outTotal > 0 ? Math.round((month30Metric.outVks / month30Metric.outTotal) * 100) : 0})
-              </span>
-            </div>
+      {/* 3. TOP CHART ROW: FULL-WIDTH MONTHLY TREND CHART WITH MULTI-PERIOD SELECTOR */}
+      <div className="p-4 sm:p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card flex flex-col justify-between">
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-3">
+          <div>
+            <h2 className="font-bold text-base text-slate-900 dark:text-white">
+              {lang === 'ru'
+                ? `Ежемесячная динамика приемов и увольнений (${activeTrendPeriodLabel})`
+                : `Aylık İşe Giriş ve Çıkış Trendi (${activeTrendPeriodLabel})`}
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              {lang === 'ru'
+                ? 'Динамика приемов, увольнений и численность специалистов ВКС по выбранному периоду'
+                : 'Seçilen dönem / yıla göre aylık toplam işe giriş, işten çıkış ve VKS uzman hareketleri'}
+            </p>
           </div>
 
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData} margin={{ top: 5, right: 20, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorGiris" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorCikis" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#EF4444" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorVksOut" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#A855F7" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#A855F7" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
-                <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} />
-                <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      const row = payload[0]?.payload;
-                      return (
-                        <div className="p-3 bg-white dark:bg-slate-900 shadow-xl rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-1">
-                          <p className="font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1">
-                            {label}
-                          </p>
-                          <p className="text-emerald-600 dark:text-emerald-400 font-extrabold">
-                            {lang === 'ru' ? 'Прием: +' : 'İşe Giriş: +'}
-                            {row?.Giris?.toLocaleString('tr-TR')}
-                          </p>
-                          <p className="text-purple-600 dark:text-purple-300 font-bold pl-2">
-                            • VKS Giriş: +{row?.GirisVks?.toLocaleString('tr-TR')} (%{row?.GirisVksPct})
-                          </p>
-                          <p className="text-rose-600 dark:text-rose-400 font-extrabold pt-1">
-                            {lang === 'ru' ? 'Увольнение: -' : 'İşten Çıkış: -'}
-                            {row?.Cikis?.toLocaleString('tr-TR')}
-                          </p>
-                          <p className="text-purple-600 dark:text-purple-300 font-bold pl-2">
-                            • VKS Çıkış: -{row?.CikisVks?.toLocaleString('tr-TR')} (%{row?.CikisVksPct})
-                          </p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Legend
-                  verticalAlign="top"
-                  align="right"
-                  iconType="circle"
-                  wrapperStyle={{ paddingBottom: '10px', fontSize: '12px', fontWeight: 700 }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Giris"
-                  name={lang === 'ru' ? 'Прием (+)' : 'İşe Giriş (+)'}
-                  stroke="#10B981"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorGiris)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Cikis"
-                  name={lang === 'ru' ? 'Увольнение (-)' : 'İşten Çıkış (-)'}
-                  stroke="#EF4444"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorCikis)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="CikisVks"
-                  name={lang === 'ru' ? 'Выход ВКС (-)' : 'VKS Çıkış (-)'}
-                  stroke="#A855F7"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorVksOut)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Period / Year Selector Pills */}
+            <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700">
+              {trendPeriodOptions.map((opt) => {
+                const isSelected = trendPeriod === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setTrendPeriod(opt.key)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-teal-600 text-white shadow-2xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs font-extrabold">
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                {lang === 'ru' ? 'Вход ВКС (1 мес):' : 'Son 1 Ay Giriş VKS:'} +{month30Metric.inVks} (%
+                {month30Metric.inTotal > 0 ? Math.round((month30Metric.inVks / month30Metric.inTotal) * 100) : 0})
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                {lang === 'ru' ? 'Выход ВКС (1 мес):' : 'Son 1 Ay Çıkış VKS:'} -{month30Metric.outVks} (%
+                {month30Metric.outTotal > 0 ? Math.round((month30Metric.outVks / month30Metric.outTotal) * 100) : 0})
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Right: Tüm Giriş ve Çıkışlarda VKS Oranı Chart */}
-        <div className="lg:col-span-5 p-4 sm:p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2">
-                <PieChartIcon className="w-4 h-4 text-purple-500" />
-                <h2 className="font-bold text-base text-slate-900 dark:text-white">
-                  {lang === 'ru'
-                    ? 'Доля ВКС во всех входах и выходах (%)'
-                    : 'Tüm Giriş ve Çıkışlarda VKS Oranı (%)'}
-                </h2>
-              </div>
-              <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 text-xs font-extrabold">
-                ВКС / VKS Analizi
-              </span>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
-              {lang === 'ru'
-                ? 'Сравнение доли ВКС и других категорий во всех приемах и увольнениях'
-                : 'Tüm dönem ve son 1 aydaki giriş/çıkışlarda VKS uzmanlarının toplam harekete oranı'}
-            </p>
-
-            {/* Interactive Stacked VKS Ratio Bars */}
-            <div className="space-y-3">
-              {vksRatioChartData.map((item, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => {
-                    setSelectedPeriod(item.period);
-                    setSelectedMovement(item.movement);
-                    setSelectedVksMode('VKS');
-                  }}
-                  className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70 hover:border-purple-400 transition-all cursor-pointer"
-                >
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="font-extrabold text-slate-800 dark:text-white">
-                      {item.name}{' '}
-                      <span className="text-slate-500 dark:text-slate-400 font-semibold">
-                        ({item.totalCount.toLocaleString('tr-TR')})
-                      </span>
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-xs font-extrabold">
-                        VKS: {item.vksCount.toLocaleString('tr-TR')} (%{item.vksPct})
-                      </span>
-                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                        Diğer: {item.otherCount.toLocaleString('tr-TR')} (%{item.otherPct})
-                      </span>
-                    </div>
-                  </div>
-                  <div className="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-200 dark:bg-slate-700 text-[10px] font-extrabold text-white">
-                    <div
-                      className="bg-gradient-to-r from-purple-600 to-fuchsia-500 h-full flex items-center justify-center transition-all"
-                      style={{ width: `${Math.max(12, item.vksPct)}%` }}
-                    >
-                      %{item.vksPct} VKS
-                    </div>
-                    <div
-                      className={`${
-                        item.movement === 'exit' ? 'bg-rose-500/75' : 'bg-emerald-500/75'
-                      } h-full flex items-center justify-center transition-all`}
-                      style={{ width: `${Math.max(12, item.otherPct)}%` }}
-                    >
-                      %{item.otherPct}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
-            <span>
-              {lang === 'ru' ? 'Нажмите на строку для фильтрации ВКС' : 'Satıra tıklayarak ilgili VKS listesini açın'}
-            </span>
-            <span className="text-purple-600 dark:text-purple-400 font-extrabold">
-              Aktif VKS: {activeVksCount.toLocaleString('tr-TR')} (%{activeVksPct})
-            </span>
-          </div>
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={trendData} margin={{ top: 5, right: 20, left: -10, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorGiris" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorCikis" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#EF4444" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorVksOut" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#A855F7" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#A855F7" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+              <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} minTickGap={16} />
+              <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    const row = payload[0]?.payload;
+                    return (
+                      <div className="p-3 bg-white dark:bg-slate-900 shadow-xl rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+                        <p className="font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-1">
+                          {label}
+                        </p>
+                        <p className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                          {lang === 'ru' ? 'Прием: +' : 'İşe Giriş: +'}
+                          {row?.Giris?.toLocaleString('tr-TR')}
+                        </p>
+                        <p className="text-purple-600 dark:text-purple-300 font-bold pl-2">
+                          • VKS Giriş: +{row?.GirisVks?.toLocaleString('tr-TR')} (%{row?.GirisVksPct})
+                        </p>
+                        <p className="text-rose-600 dark:text-rose-400 font-extrabold pt-1">
+                          {lang === 'ru' ? 'Увольнение: -' : 'İşten Çıkış: -'}
+                          {row?.Cikis?.toLocaleString('tr-TR')}
+                        </p>
+                        <p className="text-purple-600 dark:text-purple-300 font-bold pl-2">
+                          • VKS Çıkış: -{row?.CikisVks?.toLocaleString('tr-TR')} (%{row?.CikisVksPct})
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Legend
+                verticalAlign="top"
+                align="right"
+                iconType="circle"
+                wrapperStyle={{ paddingBottom: '10px', fontSize: '12px', fontWeight: 700 }}
+              />
+              <Area
+                type="monotone"
+                dataKey="Giris"
+                name={lang === 'ru' ? 'Прием (+)' : 'İşe Giriş (+)'}
+                stroke="#10B981"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#colorGiris)"
+              />
+              <Area
+                type="monotone"
+                dataKey="Cikis"
+                name={lang === 'ru' ? 'Увольнение (-)' : 'İşten Çıkış (-)'}
+                stroke="#EF4444"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#colorCikis)"
+              />
+              <Area
+                type="monotone"
+                dataKey="CikisVks"
+                name={lang === 'ru' ? 'Выход ВКС (-)' : 'VKS Çıkış (-)'}
+                stroke="#A855F7"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#colorVksOut)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
@@ -1218,23 +1234,29 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                 </th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Отдел / Фирма' : 'Departman / Firma'}</th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Гражданство' : 'Uyruk'}</th>
-                <th className="py-3 px-4">
+                <th className="py-3 px-4 whitespace-nowrap">
                   {selectedMovement === 'transfer'
                     ? lang === 'ru'
                       ? 'Дата перевода'
                       : 'Şantiye Transfer Tarihi'
                     : lang === 'ru'
-                    ? 'Дата приема'
-                    : 'İşe Giriş'}
+                    ? 'Дата приема (Real)'
+                    : 'İşe Giriş (Real)'}
                 </th>
-                <th className="py-3 px-4">
+                <th className="py-3 px-4 whitespace-nowrap">
                   {selectedMovement === 'transfer'
                     ? lang === 'ru'
                       ? 'Первый договор'
                       : 'İlk Sözleşme Tarihi'
                     : lang === 'ru'
-                    ? 'Дата ухода'
-                    : 'Çıkış Tarihi'}
+                    ? 'Дата ухода (Real)'
+                    : 'Çıkış Tarihi (Real)'}
+                </th>
+                <th className="py-3 px-4 whitespace-nowrap text-indigo-700 dark:text-indigo-300">
+                  {lang === 'ru' ? 'Прием 1С ЗУП' : '1C ZUP Giriş'}
+                </th>
+                <th className="py-3 px-4 whitespace-nowrap text-indigo-700 dark:text-indigo-300">
+                  {lang === 'ru' ? 'Увольн. 1С ЗУП' : '1C ZUP Çıkış'}
                 </th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Причина / Статус' : 'Çıkış Sebebi / Durum'}</th>
               </tr>
@@ -1242,13 +1264,13 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
               {loadingTable ? (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="py-10 text-center text-slate-500 dark:text-slate-400">
                     {lang === 'ru' ? 'Загрузка записей...' : 'Personel hareket kayıtları yükleniyor...'}
                   </td>
                 </tr>
               ) : personnelList.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="py-10 text-center text-slate-500 dark:text-slate-400">
                     {lang === 'ru'
                       ? 'За выбранный период записи не найдены.'
                       : 'Seçilen dönem ve filtre kriterlerine uygun kayıt bulunamadı.'}
@@ -1257,10 +1279,19 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
               ) : (
                 personnelList.map((p) => {
                   const isVks = p.permit_type === 'VKS';
+                  const zupHire =
+                    p.zup_hire_date && p.zup_hire_date !== '-'
+                      ? formatDisplayDate(p.zup_hire_date, '-')
+                      : '-';
+                  const zupExit =
+                    p.zup_dismissal_date && p.zup_dismissal_date !== '-'
+                      ? formatDisplayDate(p.zup_dismissal_date, '-')
+                      : '-';
                   return (
                     <tr
                       key={p.id || p.sicil_no}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      onClick={() => setDrawerPersonnel(p)}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                     >
                       <td className="py-2.5 px-4 font-mono font-bold text-slate-700 dark:text-slate-300">
                         {p.sicil_no}
@@ -1323,17 +1354,29 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
                       <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">
                         {translateVal(p.uyruk || '—')}
                       </td>
-                      <td className="py-2.5 px-4 font-bold text-emerald-700 dark:text-emerald-400">
-                        {formatDisplayDate(p.ise_giris_tarihi || p.cikis_tarihi)}
+                      <td className="py-2.5 px-4 font-mono font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
+                        {formatDisplayDate(p.ise_giris_tarihi || p.cikis_tarihi, '-')}
                       </td>
-                      <td className="py-2.5 px-4 font-bold text-rose-600 dark:text-rose-400">
+                      <td className="py-2.5 px-4 font-mono font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
                         {selectedMovement === 'transfer' ? (
                           <span className="text-slate-700 dark:text-slate-300">
-                            {formatDisplayDate(p.original_hire_date)}
+                            {formatDisplayDate(p.original_hire_date, '-')}
                           </span>
                         ) : (
-                          formatDisplayDate(p.cikis_tarihi)
+                          formatDisplayDate(p.cikis_tarihi, '-')
                         )}
+                      </td>
+                      <td className="py-2.5 px-4 font-mono font-bold text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
+                        {zupHire}
+                      </td>
+                      <td
+                        className={`py-2.5 px-4 font-mono font-bold whitespace-nowrap ${
+                          zupExit !== '-'
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : 'text-slate-400 dark:text-slate-500'
+                        }`}
+                      >
+                        {zupExit}
                       </td>
                       <td className="py-2.5 px-4">
                         {selectedMovement === 'transfer' ? (
@@ -1393,8 +1436,8 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
         </div>
       </div>
 
-      {/* 6. REASONS & MANAGEMENT INSIGHTS (BOTH DARK MODE SUPPORTED) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* 6. REASONS, LAST 1 MONTH VKS RATIO & MANAGEMENT INSIGHTS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <div className="p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card">
           <h2 className="font-bold text-base text-slate-900 dark:text-white mb-1">
             {lang === 'ru' ? 'Основные причины увольнений' : 'Başlıca Çıkış Nedenleri'}
@@ -1429,60 +1472,167 @@ export default function ManagementReportsView({ stats, onNavigateToPersonnel }: 
           </div>
         </div>
 
-        <div className="p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card flex flex-col justify-between">
-          <div>
-            <h2 className="font-bold text-base text-slate-900 dark:text-white mb-1">
-              {lang === 'ru' ? 'Аналитическая записка директора по персоналу' : 'İK Yönetici Değerlendirme Notu'}
-            </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
-              {lang === 'ru' ? 'Отчет по персоналу за октябрь 2026' : 'Ekim 2026 İK Durum Raporu'}
-            </p>
+        {/* Right Column: Son 1 Ay Giriş ve Çıkışlarda VKS Oranı (%) directly above İK Yönetici Değerlendirme Notu */}
+        <div className="flex flex-col gap-4">
+          <div className="p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-2">
+                  <PieChartIcon className="w-4 h-4 text-purple-500" />
+                  <h2 className="font-bold text-base text-slate-900 dark:text-white">
+                    {lang === 'ru'
+                      ? 'Доля ВКС во входах и выходах за 1 месяц (%)'
+                      : 'Son 1 Ay Giriş ve Çıkışlarda VKS Oranı (%)'}
+                  </h2>
+                </div>
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 text-xs font-extrabold">
+                  ВКС / VKS Analizi
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+                {lang === 'ru'
+                  ? 'Доля специалистов ВКС среди приемов и увольнений за последний месяц'
+                  : 'Son 1 aydaki işe giriş ve işten çıkışlarda VKS uzmanlarının toplam harekete oranı'}
+              </p>
 
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700/80 text-xs text-slate-700 dark:text-slate-300 space-y-2.5 leading-relaxed">
-              {lang === 'ru' ? (
-                <>
-                  <p>
-                    <strong>1. Активный состав:</strong> {(stats?.totalCount || 5221).toLocaleString('tr-TR')} активных сотрудников (из них ВКС: {activeVksCount.toLocaleString('tr-TR')} чел. / %{activeVksPct}).
-                  </p>
-                  <p>
-                    <strong>2. Ротация и ВКС ({activePeriodLabel}):</strong> Принято +{currentMetric.inTotal.toLocaleString('tr-TR')} чел. (ВКС: +{currentMetric.inVks.toLocaleString('tr-TR')} / %{curInVksPct}) и уволено -{currentMetric.outTotal.toLocaleString('tr-TR')} чел. (ВКС: -{currentMetric.outVks.toLocaleString('tr-TR')} / %{curOutVksPct}).
-                  </p>
-                  <p>
-                    <strong>3. Соответствие ОТ:</strong> Прохождение обязательных медосмотров (Приказ 29н) и требований HSE составляет 98.4%, полное соответствие нормативам.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p>
-                    <strong>1. Mevcut Güç & VKS:</strong> {(stats?.totalCount || 5221).toLocaleString('tr-TR')} aktif çalışan (Aktif VKS: {activeVksCount.toLocaleString('tr-TR')} kişi / %{activeVksPct}) ile şantiyelerde faaliyetler takvime uygun devam etmektedir.
-                  </p>
-                  <p>
-                    <strong>2. Sirkülasyon & VKS ({activePeriodLabel}):</strong> Seçili dönemde +{currentMetric.inTotal.toLocaleString('tr-TR')} işe giriş (VKS: +{currentMetric.inVks.toLocaleString('tr-TR')} / %{curInVksPct}) ve -{currentMetric.outTotal.toLocaleString('tr-TR')} işten çıkış (VKS: -{currentMetric.outVks.toLocaleString('tr-TR')} / %{curOutVksPct}) gerçekleşmiştir.
-                  </p>
-                  <p>
-                    <strong>3. İSG Uyumu:</strong> HSE ve Sağlık 29n taramaları %98.4 başarı oranıyla regülasyonlara tam uyumludur.
-                  </p>
-                </>
-              )}
+              <div className="space-y-3">
+                {vksRatioChartData.map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      setSelectedPeriod(item.period);
+                      setSelectedMovement(item.movement);
+                      setSelectedVksMode('VKS');
+                    }}
+                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70 hover:border-purple-400 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between text-xs mb-1.5 gap-2 flex-wrap">
+                      <span className="font-extrabold text-slate-800 dark:text-white">
+                        {item.name}{' '}
+                        <span className="text-slate-500 dark:text-slate-400 font-semibold">
+                          ({item.totalCount.toLocaleString('tr-TR')})
+                        </span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-xs font-extrabold">
+                          VKS: {item.vksCount.toLocaleString('tr-TR')} (%{item.vksPct})
+                        </span>
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                          {lang === 'ru' ? 'Другие:' : 'Diğer:'} {item.otherCount.toLocaleString('tr-TR')} (%
+                          {item.otherPct})
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-200 dark:bg-slate-700 text-[10px] font-extrabold text-white">
+                      <div
+                        className="bg-gradient-to-r from-purple-600 to-fuchsia-500 h-full flex items-center justify-center transition-all"
+                        style={{ width: `${Math.max(12, item.vksPct)}%` }}
+                      >
+                        %{item.vksPct} VKS
+                      </div>
+                      <div
+                        className={`${
+                          item.movement === 'exit' ? 'bg-rose-500/75' : 'bg-emerald-500/75'
+                        } h-full flex items-center justify-center transition-all`}
+                        style={{ width: `${Math.max(12, item.otherPct)}%` }}
+                      >
+                        %{item.otherPct}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
+              <span>
+                {lang === 'ru'
+                  ? 'Нажмите на строку для фильтрации ВКС'
+                  : 'Satıra tıklayarak ilgili VKS listesini açın'}
+              </span>
+              <span className="text-purple-600 dark:text-purple-400 font-extrabold">
+                Aktif VKS: {activeVksCount.toLocaleString('tr-TR')} (%{activeVksPct})
+              </span>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-            <span className="text-slate-600 dark:text-slate-400">
-              {lang === 'ru'
-                ? `Дата актуальности: ${formatDisplayDate(turnover?.referenceDate || '2026-10-18')}`
-                : `Veri Referans Tarihi: ${formatDisplayDate(turnover?.referenceDate || '2026-10-18')}`}
-            </span>
-            <button
-              onClick={() => onNavigateToPersonnel()}
-              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <span>{lang === 'ru' ? 'Перейти к деталям персонала' : 'Personel Detaylarına Git'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+          <div className="p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card flex flex-col justify-between">
+            <div>
+              <h2 className="font-bold text-base text-slate-900 dark:text-white mb-1">
+                {lang === 'ru'
+                  ? 'Аналитическая записка директора по персоналу'
+                  : 'İK Yönetici Değerlendirme Notu'}
+              </h2>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+                {lang === 'ru' ? 'Отчет по персоналу за октябрь 2026' : 'Ekim 2026 İK Durum Raporu'}
+              </p>
+
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700/80 text-xs text-slate-700 dark:text-slate-300 space-y-2.5 leading-relaxed">
+                {lang === 'ru' ? (
+                  <>
+                    <p>
+                      <strong>1. Активный состав:</strong>{' '}
+                      {(stats?.totalCount || 5221).toLocaleString('tr-TR')} активных сотрудников (из них ВКС:{' '}
+                      {activeVksCount.toLocaleString('tr-TR')} чел. / %{activeVksPct}).
+                    </p>
+                    <p>
+                      <strong>2. Ротация и ВКС ({activePeriodLabel}):</strong> Принято +
+                      {currentMetric.inTotal.toLocaleString('tr-TR')} чел. (ВКС: +
+                      {currentMetric.inVks.toLocaleString('tr-TR')} / %{curInVksPct}) и уволено -
+                      {currentMetric.outTotal.toLocaleString('tr-TR')} чел. (ВКС: -
+                      {currentMetric.outVks.toLocaleString('tr-TR')} / %{curOutVksPct}).
+                    </p>
+                    <p>
+                      <strong>3. Соответствие ОТ:</strong> Прохождение обязательных медосмотров (Приказ 29н) и
+                      требований HSE составляет 98.4%, полное соответствие нормативам.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      <strong>1. Mevcut Güç & VKS:</strong>{' '}
+                      {(stats?.totalCount || 5221).toLocaleString('tr-TR')} aktif çalışan (Aktif VKS:{' '}
+                      {activeVksCount.toLocaleString('tr-TR')} kişi / %{activeVksPct}) ile şantiyelerde
+                      faaliyetler takvime uygun devam etmektedir.
+                    </p>
+                    <p>
+                      <strong>2. Sirkülasyon & VKS ({activePeriodLabel}):</strong> Seçili dönemde +
+                      {currentMetric.inTotal.toLocaleString('tr-TR')} işe giriş (VKS: +
+                      {currentMetric.inVks.toLocaleString('tr-TR')} / %{curInVksPct}) ve -
+                      {currentMetric.outTotal.toLocaleString('tr-TR')} işten çıkış (VKS: -
+                      {currentMetric.outVks.toLocaleString('tr-TR')} / %{curOutVksPct}) gerçekleşmiştir.
+                    </p>
+                    <p>
+                      <strong>3. İSG Uyumu:</strong> HSE ve Sağlık 29n taramaları %98.4 başarı oranıyla
+                      regülasyonlara tam uyumludur.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-600 dark:text-slate-400">
+                {lang === 'ru'
+                  ? `Дата актуальности: ${formatDisplayDate(turnover?.referenceDate || '2026-10-18')}`
+                  : `Veri Referans Tarihi: ${formatDisplayDate(turnover?.referenceDate || '2026-10-18')}`}
+              </span>
+              <button
+                onClick={() => onNavigateToPersonnel()}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>{lang === 'ru' ? 'Перейти к деталям персонала' : 'Personel Detaylarına Git'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      <PersonnelDetailDrawer
+        personnel={drawerPersonnel}
+        onClose={() => setDrawerPersonnel(null)}
+      />
     </div>
   );
 }
