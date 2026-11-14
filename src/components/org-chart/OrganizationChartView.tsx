@@ -85,9 +85,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Yönetim Kurulu & Başkan',
     rowTitleRu: 'Председатель правления',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#304266] dark:via-[#243350] dark:to-[#19253b]',
+      'bg-gradient-to-b from-[#ffffff] via-amber-50/45 to-amber-100/80 dark:from-[#2c3a54] dark:via-[#263249] dark:to-[#3b301c]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-amber-400 dark:border-b-amber-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-amber-500 dark:border-b-amber-400',
     leftAccent: '',
     topRibbon: 'from-amber-500 via-yellow-400 to-amber-600',
     avatarBg: 'bg-gradient-to-br from-amber-500 to-amber-600 shadow-xs',
@@ -109,9 +109,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'CEO / COO & Genel Müdür',
     rowTitleRu: 'CEO / COO и Ген. директор',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2f3f63] dark:via-[#23314e] dark:to-[#182339]',
+      'bg-gradient-to-b from-[#ffffff] via-purple-50/45 to-purple-100/80 dark:from-[#2c3a54] dark:via-[#26314a] dark:to-[#33214a]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-purple-400 dark:border-b-purple-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-purple-500 dark:border-b-purple-400',
     leftAccent: '',
     topRibbon: 'from-purple-600 via-fuchsia-500 to-indigo-500',
     avatarBg: 'bg-gradient-to-br from-purple-600 to-fuchsia-600 shadow-xs',
@@ -133,9 +133,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Direktör & Koordinatör',
     rowTitleRu: 'Директора и координаторы',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2d3d60] dark:via-[#22304c] dark:to-[#172237]',
+      'bg-gradient-to-b from-[#ffffff] via-indigo-50/45 to-indigo-100/80 dark:from-[#2c3a54] dark:via-[#25314b] dark:to-[#242852]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-indigo-400 dark:border-b-indigo-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-indigo-500 dark:border-b-indigo-400',
     leftAccent: '',
     topRibbon: 'from-indigo-600 via-violet-500 to-indigo-600',
     avatarBg: 'bg-gradient-to-br from-indigo-600 to-violet-600',
@@ -157,9 +157,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Müdür & Şantiye Lideri',
     rowTitleRu: 'Руководители проектов и отделов',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2c3c5e] dark:via-[#212f4a] dark:to-[#172236]',
+      'bg-gradient-to-b from-[#ffffff] via-blue-50/45 to-blue-100/80 dark:from-[#2c3a54] dark:via-[#23314c] dark:to-[#193252]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-blue-400 dark:border-b-sky-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-blue-500 dark:border-b-sky-400',
     leftAccent: '',
     topRibbon: 'from-blue-600 via-sky-500 to-blue-600',
     avatarBg: 'bg-gradient-to-br from-blue-600 to-sky-600',
@@ -181,9 +181,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Grup, Kısım & Birim Şefi',
     rowTitleRu: 'Начальники групп и участков',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#2a3b59] dark:via-[#202e47] dark:to-[#162135]',
+      'bg-gradient-to-b from-[#ffffff] via-emerald-50/45 to-emerald-100/80 dark:from-[#2c3a54] dark:via-[#223349] dark:to-[#163832]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-emerald-400 dark:border-b-emerald-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-emerald-500 dark:border-b-emerald-400',
     leftAccent: '',
     topRibbon: 'from-emerald-500 via-teal-500 to-cyan-500',
     avatarBg: 'bg-gradient-to-br from-emerald-500 to-teal-600',
@@ -205,9 +205,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Mühendis, Uzman & Memur',
     rowTitleRu: 'Инженеры и специалисты',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#293957] dark:via-[#1f2d46] dark:to-[#162034]',
+      'bg-gradient-to-b from-[#ffffff] via-sky-50/45 to-sky-100/80 dark:from-[#2c3a54] dark:via-[#21324a] dark:to-[#16354a]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-cyan-400 dark:border-b-cyan-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-sky-500 dark:border-b-cyan-400',
     leftAccent: '',
     topRibbon: 'from-sky-500 to-cyan-500',
     avatarBg: 'bg-gradient-to-br from-sky-500 to-cyan-600',
@@ -229,9 +229,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Formen & Saha Sorumlusu',
     rowTitleRu: 'Формены и ответственные',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#293854] dark:via-[#1f2c44] dark:to-[#162033]',
+      'bg-gradient-to-b from-[#ffffff] via-orange-50/45 to-orange-100/80 dark:from-[#2c3a54] dark:via-[#283148] dark:to-[#3d291b]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-orange-400 dark:border-b-orange-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-orange-500 dark:border-b-orange-400',
     leftAccent: '',
     topRibbon: 'from-amber-500 to-orange-500',
     avatarBg: 'bg-gradient-to-br from-amber-500 to-orange-600',
@@ -253,9 +253,9 @@ const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
     rowTitleTr: 'Saha Ekip & İşçi Kadrosu',
     rowTitleRu: 'Рабочий персонал (Бригады)',
     cardSurface:
-      'bg-gradient-to-b from-[#ffffff] via-[#f9fbfd] to-[#e7eef6] dark:from-[#283650] dark:via-[#1e2a40] dark:to-[#151e30]',
+      'bg-gradient-to-b from-[#ffffff] via-slate-100/60 to-slate-200/85 dark:from-[#2a3750] dark:via-[#222d42] dark:to-[#283448]',
     cardBorder:
-      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-slate-400 dark:border-b-slate-400',
+      'border-2 border-white dark:border-slate-500/80 border-b-[4px] border-b-slate-500 dark:border-b-slate-400',
     leftAccent: '',
     topRibbon: 'from-slate-500 to-teal-600',
     avatarBg: 'bg-slate-600',
@@ -278,39 +278,39 @@ const MAX_ZOOM = 1.45;
 const INITIAL_VISIBLE_SIBLINGS = 5;
 const SIBLING_LOAD_STEP = 10;
 
-const DETAIL_CARD_WIDTH = 236;
-const COMPACT_CARD_WIDTH = 200;
-const CREW_CARD_WIDTH = 264;
-const MORE_CARD_WIDTH = 166;
+const DETAIL_CARD_WIDTH = 200;
+const COMPACT_CARD_WIDTH = 160;
+const CREW_CARD_WIDTH = 240;
+const MORE_CARD_WIDTH = 152;
 
-const DETAIL_CARD_HEIGHT = 136;
-const COMPACT_CARD_HEIGHT = 72;
+const DETAIL_CARD_HEIGHT = 132;
+const COMPACT_CARD_HEIGHT = 70;
 const CREW_EXPANDED_HEIGHT = 326;
-const H_GAP = 18;
+const H_GAP = 14;
 const SWIMLANE_LABEL_WIDTH = 0;
 
 type CardDensity = 'compact' | 'detailed';
 
 const LEVEL_COMPACT_DIMS: Record<OrgRoleLevel, { w: number; h: number }> = {
-  1: { w: 238, h: 80 },
-  2: { w: 224, h: 76 },
-  3: { w: 212, h: 72 },
-  4: { w: 200, h: 68 },
-  5: { w: 190, h: 66 },
-  6: { w: 182, h: 64 },
-  7: { w: 174, h: 62 },
-  8: { w: 168, h: 60 },
+  1: { w: 184, h: 78 },
+  2: { w: 174, h: 74 },
+  3: { w: 164, h: 72 },
+  4: { w: 156, h: 68 },
+  5: { w: 148, h: 66 },
+  6: { w: 142, h: 64 },
+  7: { w: 136, h: 62 },
+  8: { w: 132, h: 60 },
 };
 
 const LEVEL_DETAIL_DIMS: Record<OrgRoleLevel, { w: number; h: number }> = {
-  1: { w: 278, h: 146 },
-  2: { w: 262, h: 140 },
-  3: { w: 248, h: 136 },
-  4: { w: 236, h: 132 },
-  5: { w: 224, h: 128 },
-  6: { w: 214, h: 124 },
-  7: { w: 206, h: 120 },
-  8: { w: 198, h: 116 },
+  1: { w: 228, h: 140 },
+  2: { w: 216, h: 136 },
+  3: { w: 206, h: 132 },
+  4: { w: 196, h: 128 },
+  5: { w: 188, h: 124 },
+  6: { w: 180, h: 120 },
+  7: { w: 174, h: 118 },
+  8: { w: 168, h: 114 },
 };
 
 const LEVEL_DOT_COLORS: Record<OrgRoleLevel, string> = {
@@ -630,58 +630,11 @@ function OrgEnterpriseCard({
     >
       <div className="h-full w-full overflow-hidden rounded-[13px] flex flex-col justify-between">
         {isCompact ? (
-          <div className="h-full px-2 py-1.5 flex items-center gap-2 min-w-0">
-            {/* Recessed 3D Left Avatar Plaque (matching Resim 2 infographic card style) */}
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-[#eef2f7] to-[#dde5ef] dark:from-[#162033] dark:to-[#0f1726] border border-white dark:border-slate-600/70 shadow-[inset_0_1.5px_3px_rgba(15,23,42,0.15)] dark:shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.65)] flex items-center justify-center shrink-0">
-              <IconComp className={`w-4 h-4 ${theme.subColor}`} />
-            </div>
-
+          <div className="h-full px-2.5 py-1 flex items-center justify-between gap-1.5 min-w-0">
             <div className="min-w-0 flex-1 flex flex-col justify-center">
-              <div className="flex items-center justify-between gap-1 min-w-0">
-                <span className={`text-[9px] font-bold uppercase tracking-wide truncate ${theme.subColor}`}>
-                  {badgeTitle}
-                </span>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenKunye(node);
-                    }}
-                    title="Sağda Raporlama Zinciri & Künyeyi Aç"
-                    className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
-                  >
-                    <Info className="w-3 h-3" />
-                  </button>
-                  {hasChildren && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onFocusSubtree(node.nodeId);
-                      }}
-                      title="Sadece bu yöneticinin alt ağacına odaklan"
-                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
-                    >
-                      <Crosshair className="w-3 h-3" />
-                    </button>
-                  )}
-                  {!node.isVirtual && node.personId && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onInspectDrawer(node);
-                      }}
-                      title="198 Kolonlu Personel Kartını Aç"
-                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
-                    >
-                      <Eye className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
+              <span className={`text-[9px] font-bold uppercase tracking-wide truncate ${theme.subColor}`}>
+                {badgeTitle}
+              </span>
               <div
                 className={`text-[11.5px] font-semibold leading-tight truncate mt-0.5 ${theme.titleColor}`}
                 title={node.ad_soyad}
@@ -689,109 +642,141 @@ function OrgEnterpriseCard({
                 {node.ad_soyad}
               </div>
               <div
-                className="text-[9.5px] leading-tight truncate text-slate-500 dark:text-slate-300 mt-0.5"
+                className="text-[9.5px] font-medium leading-tight truncate text-slate-700 dark:text-slate-200 mt-0.5"
                 title={node.gorevi}
               >
                 {node.gorevi}
               </div>
             </div>
+
+            {/* Vertically stacked action icons (Detay, Odak, Kart Aç) */}
+            <div className="flex flex-col items-center justify-center gap-0.5 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenKunye(node);
+                }}
+                title="Sağda Raporlama Zinciri & Künyeyi Aç"
+                className="p-0.5 rounded text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <Info className="w-3 h-3" />
+              </button>
+              {hasChildren && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFocusSubtree(node.nodeId);
+                  }}
+                  title="Sadece bu yöneticinin alt ağacına odaklan"
+                  className="p-0.5 rounded text-slate-500 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <Crosshair className="w-3 h-3" />
+                </button>
+              )}
+              {!node.isVirtual && node.personId && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onInspectDrawer(node);
+                  }}
+                  title="198 Kolonlu Personel Kartını Aç"
+                  className="p-0.5 rounded text-slate-500 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <Eye className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <div className="p-2.5 flex-1 flex flex-col justify-between min-w-0">
-            <div>
-              <div className="flex items-center justify-between gap-1 mb-1.5 min-w-0">
+          <div className="p-2 flex-1 flex flex-col justify-between min-w-0">
+            <div className="flex items-start justify-between gap-1.5 min-w-0">
+              <div className="min-w-0 flex-1">
                 <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase min-w-0 ${theme.badgeBg} ${theme.badgeText}`}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-bold tracking-wide uppercase max-w-full ${theme.badgeBg} ${theme.badgeText}`}
                 >
                   <IconComp className="w-2.5 h-2.5 shrink-0" />
                   <span className="truncate">{badgeTitle}</span>
                 </span>
+                <div
+                  className={`text-[11.5px] font-semibold leading-tight truncate mt-1 ${theme.titleColor}`}
+                  title={node.ad_soyad}
+                >
+                  {node.ad_soyad}
+                </div>
+                <div className={`text-[10px] font-medium mt-0.5 truncate ${theme.subColor}`} title={node.gorevi}>
+                  {node.gorevi}
+                </div>
+                <div className="text-[9px] mt-0.5 truncate text-slate-600 dark:text-slate-300">
+                  {node.effective_site}
+                  {node.sicil_no && !node.isVirtual ? ` • #${node.sicil_no}` : ''}
+                </div>
+              </div>
 
-                <div className="flex items-center gap-0.5 shrink-0">
+              {/* Vertically stacked action icons (Detay, Odak, Kart Aç) */}
+              <div className="flex flex-col items-center justify-start gap-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenKunye(node);
+                  }}
+                  title="Sağda Raporlama Zinciri & Künyeyi Aç"
+                  className="p-0.5 rounded text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <Info className="w-3 h-3" />
+                </button>
+                {hasChildren && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onOpenKunye(node);
+                      onFocusSubtree(node.nodeId);
                     }}
-                    title="Sağda Raporlama Zinciri & Künyeyi Aç"
-                    className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
+                    title="Sadece bu yöneticinin alt ağacına odaklan"
+                    className="p-0.5 rounded text-slate-500 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                   >
-                    <Info className="w-3 h-3" />
+                    <Crosshair className="w-3 h-3" />
                   </button>
-                  {hasChildren && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onFocusSubtree(node.nodeId);
-                      }}
-                      title="Sadece bu yöneticinin alt ağacına odaklan"
-                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
-                    >
-                      <Crosshair className="w-3 h-3" />
-                    </button>
-                  )}
-                  {!node.isVirtual && node.personId && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onInspectDrawer(node);
-                      }}
-                      title="198 Kolonlu Personel Kartını Aç"
-                      className="p-0.5 rounded text-slate-400 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/70 transition-colors cursor-pointer"
-                    >
-                      <Eye className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-b from-[#eef2f7] to-[#dde5ef] dark:from-[#162033] dark:to-[#0f1726] border border-white dark:border-slate-600/70 shadow-[inset_0_1.5px_3px_rgba(15,23,42,0.15)] dark:shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.65)] flex items-center justify-center shrink-0">
-                  <span className={`text-[11px] font-bold leading-none ${theme.subColor}`}>
-                    {getInitials(node.ad_soyad)}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={`text-[11.5px] font-semibold leading-tight truncate ${theme.titleColor}`}
-                    title={node.ad_soyad}
+                )}
+                {!node.isVirtual && node.personId && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInspectDrawer(node);
+                    }}
+                    title="198 Kolonlu Personel Kartını Aç"
+                    className="p-0.5 rounded text-slate-500 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                   >
-                    {node.ad_soyad}
-                  </div>
-                  <div className={`text-[10px] mt-0.5 truncate ${theme.subColor}`} title={node.gorevi}>
-                    {node.gorevi}
-                  </div>
-                  <div className="text-[9px] mt-0.5 truncate text-slate-500 dark:text-slate-300">
-                    {node.effective_site}
-                    {node.sicil_no && !node.isVirtual ? ` • #${node.sicil_no}` : ''}
-                  </div>
-                </div>
+                    <Eye className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             </div>
 
             {hasChildren && (
-              <div className="pt-1.5 border-t border-slate-200/80 dark:border-slate-600/60">
+              <div className="pt-1 border-t border-slate-300/60 dark:border-white/15">
                 <div className="flex items-center justify-between text-[9px]">
-                  <span className="text-slate-600 dark:text-slate-200">
+                  <span className="text-slate-700 dark:text-slate-200 font-medium">
                     Doğrudan:{' '}
                     <span
                       className={
                         colorBySpan
                           ? `px-1 py-0.2 rounded ${getSpanBadgeColor(node.directCount)}`
-                          : 'font-semibold'
+                          : 'font-bold'
                       }
                     >
                       {node.directCount}
                     </span>
                   </span>
-                  <span className="font-semibold text-teal-700 dark:text-teal-300">
-                    Toplam Alt: {node.totalSubordinates}
+                  <span className="font-bold text-teal-800 dark:text-teal-300">
+                    Alt: {node.totalSubordinates}
                   </span>
                 </div>
-                <div className="mt-1 h-1 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex">
+                <div className="mt-1 h-1 w-full rounded-full bg-slate-300/70 dark:bg-slate-700 overflow-hidden flex">
                   <div className="h-full bg-indigo-500" style={{ width: `${whiteRatio}%` }} />
                   <div className="h-full bg-teal-500" style={{ width: `${100 - whiteRatio}%` }} />
                 </div>
@@ -1417,17 +1402,17 @@ export default function OrganizationChartView() {
   // Reset to initial screen-fitted view (root + 2 levels below)
   const resetToInitialView = useCallback(() => {
     const initialOpen = buildScreenFittedExpandedIds(orgResult.roots);
-    pendingCenterModeRef.current = focusNodeId ? 'center' : 'fit_top_left';
+    pendingCenterModeRef.current = 'fit_top_left';
     setExpandedIds(initialOpen);
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
     setChainFocusNodeId(null);
-  }, [orgResult.roots, focusNodeId, buildScreenFittedExpandedIds]);
+  }, [orgResult.roots, buildScreenFittedExpandedIds]);
 
   useEffect(() => {
     const initialOpen = buildScreenFittedExpandedIds(orgResult.roots);
-    pendingCenterModeRef.current = focusNodeId ? 'center' : 'fit_top_left';
+    pendingCenterModeRef.current = 'fit_top_left';
     setExpandedIds(initialOpen);
     setDirExpandedIds(new Set(initialOpen));
     setExpandedCrewKeys(new Set());
@@ -1459,7 +1444,7 @@ export default function OrganizationChartView() {
     } else {
       const scaleX = (rect.width - 24) / layoutData.canvasWidth;
       const scaleY = (rect.height - 24) / layoutData.canvasHeight;
-      const fitScale = Math.min(DEFAULT_ZOOM, Math.max(0.52, Math.min(scaleX, scaleY)));
+      const fitScale = Math.min(1.0, Math.max(0.45, Math.min(scaleX, scaleY)));
       select(vpEl)
         .transition()
         .duration(260)
@@ -1486,6 +1471,7 @@ export default function OrganizationChartView() {
   // Card body click toggles Ancestor + Subtree Chain Focus (click again to clear focus)
   const handleCardClick = useCallback(
     (node: OrgNode) => {
+      pendingCenterModeRef.current = 'fit_top_left';
       setChainFocusNodeId((prevFocus) => {
         if (prevFocus === node.nodeId) {
           return null;
