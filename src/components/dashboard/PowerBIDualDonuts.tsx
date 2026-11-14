@@ -357,7 +357,7 @@ export default function PowerBIDualDonuts({
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
       {/* 1. BEYAZ YAKA / MAVİ YAKA (Thick Donut Wheel with External Callout Lines) */}
       <div className="p-3.5 sm:p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+        <div className="-mx-3.5 -mt-3.5 sm:-mx-4 sm:-mt-4 px-3.5 py-2.5 sm:px-4 sm:py-3 mb-2 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between border-b border-emerald-200/70 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-emerald-50 dark:bg-teal-500/20 flex items-center justify-center border border-emerald-200/60 dark:border-teal-500/30">
               <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-teal-400" />
@@ -456,7 +456,7 @@ export default function PowerBIDualDonuts({
 
       {/* 2. EXPAT / SNG / YEREL STATÜSÜ (Donut with External Callout Lines, No Tooltip, No Bottom Legend) */}
       <div className="p-3.5 sm:p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+        <div className="-mx-3.5 -mt-3.5 sm:-mx-4 sm:-mt-4 px-3.5 py-2.5 sm:px-4 sm:py-3 mb-2 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between border-b border-emerald-200/70 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30">
               <Globe2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />

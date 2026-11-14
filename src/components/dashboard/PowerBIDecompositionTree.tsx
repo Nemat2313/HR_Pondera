@@ -82,7 +82,7 @@ export default function PowerBIDecompositionTree({
       <div className="hidden dark:block absolute bottom-0 left-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 border-b border-slate-200 dark:border-slate-800 pb-3 relative z-10">
+      <div className="-mx-4 -mt-4 sm:-mx-5 sm:-mt-5 lg:-mx-6 lg:-mt-6 px-4 py-3 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4 mb-4 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-emerald-200/70 dark:border-slate-800 relative z-10">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-emerald-50 dark:bg-teal-500/20 text-emerald-600 dark:text-teal-400 border border-emerald-200 dark:border-teal-500/30">

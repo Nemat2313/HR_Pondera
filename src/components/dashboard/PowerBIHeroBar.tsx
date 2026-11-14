@@ -36,12 +36,18 @@ interface PowerBIHeroBarProps {
   monthlyExits: { month: string; out_count: number }[];
   turnoverRate?: number;
   annualExits?: number;
+  last7dIn?: number;
+  last7dOut?: number;
+  last7dInVks?: number;
+  last7dOutVks?: number;
   last30dIn?: number;
   last30dOut?: number;
   last30dInVks?: number;
   last30dOutVks?: number;
   allInVks?: number;
   allOutVks?: number;
+  selectedGender?: string;
+  onSelectGender?: (gender: string) => void;
   firmFilter: 'all' | 'main' | 'subcon';
   setFirmFilter: (filter: 'all' | 'main' | 'subcon') => void;
   onRefresh: () => void;
@@ -65,12 +71,18 @@ export default function PowerBIHeroBar({
   monthlyExits,
   turnoverRate = 3.8,
   annualExits = 205,
+  last7dIn,
+  last7dOut,
+  last7dInVks,
+  last7dOutVks,
   last30dIn,
   last30dOut,
   last30dInVks,
   last30dOutVks,
   allInVks,
   allOutVks,
+  selectedGender = 'all',
+  onSelectGender,
   firmFilter,
   setFirmFilter,
   onRefresh,
@@ -91,22 +103,29 @@ export default function PowerBIHeroBar({
     ? `За последние ${selectedMonthRange} мес. (${startMonthName} 2026 - Ноябрь 2026)`
     : `Son ${selectedMonthRange} Ay (${startMonthName} 2026 - Kasım 2026)`;
 
-  // In / Out ratio bar (latest 30d or latest month flow)
+  // In / Out ratio bar (last 7 days / 1 week flow)
   const inLatest =
-    last30dIn !== undefined
+    last7dIn !== undefined
+      ? last7dIn
+      : last30dIn !== undefined
       ? last30dIn
-      : monthlyEntries[monthlyEntries.length - 1]?.in_count || 128;
+      : monthlyEntries[monthlyEntries.length - 1]?.in_count || 0;
   const outLatest =
-    last30dOut !== undefined
+    last7dOut !== undefined
+      ? last7dOut
+      : last30dOut !== undefined
       ? last30dOut
-      : monthlyExits[monthlyExits.length - 1]?.out_count || 703;
-  const inVksLatest = last30dInVks ?? 45;
-  const outVksLatest = last30dOutVks ?? 396;
+      : monthlyExits[monthlyExits.length - 1]?.out_count || 0;
+  const inVksLatest = last7dInVks ?? last30dInVks ?? 0;
+  const outVksLatest = last7dOutVks ?? last30dOutVks ?? 0;
   const inVksRate = inLatest > 0 ? Math.round((inVksLatest / inLatest) * 100) : 0;
   const outVksRate = outLatest > 0 ? Math.round((outVksLatest / outLatest) * 100) : 0;
   const totalFlow = inLatest + outLatest || 1;
   const inPct = Math.round((inLatest / totalFlow) * 100);
   const outPct = Math.round((outLatest / totalFlow) * 100);
+
+  const malePct = totalCount > 0 ? Math.round((maleCount / totalCount) * 100) : 97;
+  const femalePct = totalCount > 0 ? Math.max(femaleCount > 0 ? 1 : 0, Math.round((femaleCount / totalCount) * 100)) : 3;
 
   // Sparkline data for mini trend chart
   const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
@@ -129,7 +148,7 @@ export default function PowerBIHeroBar({
       <div className="hidden dark:block absolute top-0 right-1/4 w-96 h-24 bg-teal-500/15 rounded-full blur-3xl pointer-events-none" />
 
       {/* TOP HEADER: Power BI Inspired Brand & Filter Pills */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 border-b border-slate-200 dark:border-slate-700/80 pb-2.5 relative z-10">
+      <div className="-mx-3.5 -mt-2.5 sm:-mx-4 sm:-mt-3 px-3.5 py-2.5 sm:px-4 sm:py-3 mb-2.5 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#122A44] flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 border-b border-emerald-200/70 dark:border-slate-700/80 relative z-10">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 flex items-center justify-center text-slate-950 font-bold shadow-md shadow-teal-500/25 shrink-0">
             <Building2 className="w-4 h-4 text-slate-950" />
@@ -204,86 +223,53 @@ export default function PowerBIHeroBar({
         </div>
       </div>
 
-      {/* METRICS ROW (Compact height so bottom charts appear above the fold) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-2.5 relative z-10">
-        {/* Metric 1: Toplam Çalışan */}
-        <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[10.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('kpi_total_personnel')}</span>
-          <div className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-tight">
+      {/* METRICS ROW: 3 Compact KPIs + 7d Giriş/Çıkış + Gender Erkek/Kadın */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[0.82fr_0.92fr_0.98fr_1.95fr_2.35fr] gap-2.5 pt-0.5 relative z-10 items-stretch">
+        {/* Metric 1: Toplam Çalışan (Compact) */}
+        <div className="px-2.5 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
+          <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">{t('kpi_total_personnel')}</span>
+          <div className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-tight font-mono">
             {totalCount.toLocaleString('tr-TR')}
           </div>
-          <span className="text-[10.5px] text-emerald-700 dark:text-teal-400 font-medium mt-0.5">{t('status_active')}</span>
+          <span className="text-[10px] text-emerald-700 dark:text-teal-400 font-medium mt-0.5">{t('status_active')}</span>
         </div>
 
-        {/* Metric 2: Yaş Ortalaması */}
-        <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[10.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">{t('kpi_avg_age')}</span>
-          <div className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-tight">{avgAge} {t('unit_age')}</div>
-          <span className="text-[10.5px] text-slate-600 dark:text-slate-400 mt-0.5">{lang === 'ru' ? 'Молодой коллектив' : 'Genç & Dinamik Kadro'}</span>
+        {/* Metric 2: Yaş Ortalaması (Compact) */}
+        <div className="px-2.5 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
+          <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">{t('kpi_avg_age')}</span>
+          <div className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-tight whitespace-nowrap">{avgAge} {t('unit_age')}</div>
+          <span className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 truncate">{lang === 'ru' ? 'Молодой коллектив' : 'Genç & Dinamik'}</span>
         </div>
 
-        {/* Metric 3: Turnover (Sirkülasyon) Oranı - Clickable to open Yönetim & Turnover */}
+        {/* Metric 3: Turnover (Sirkülasyon) Oranı (Compact, no bottom text, no İzlenmeli badge) */}
         <div
           onClick={() => onNavigateToTurnover && onNavigateToTurnover()}
           title={lang === 'ru' ? 'Перейти к отчету по текучести и увольнениям' : 'Yönetim & Turnover Detay Sayfasına Git'}
-          className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 hover:bg-emerald-50/40 dark:hover:bg-slate-800 transition-all cursor-pointer"
+          className="px-2.5 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 hover:bg-emerald-50/40 dark:hover:bg-slate-800 transition-all cursor-pointer"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1">
-              {lang === 'ru' ? 'Ср. текучесть' : 'Aylık Ort. Turnover'}
-              <ArrowUpRight className="w-3 h-3 text-teal-500 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">
+              {lang === 'ru' ? 'Ср. текучесть' : 'Ort. Turnover'}
             </span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded-full font-semibold bg-emerald-100 dark:bg-teal-900/60 text-emerald-800 dark:text-teal-300 border border-emerald-200 dark:border-teal-600/40">
-              {turnoverRate <= 8.5 ? (lang === 'ru' ? 'Баланс' : 'Dengeli Devir') : (lang === 'ru' ? 'Контроль' : 'İzlenmeli')}
-            </span>
+            <ArrowUpRight className="w-3 h-3 text-teal-500 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
           </div>
-          <div className="flex items-baseline gap-1.5 mt-0.5">
-            <div className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
-              %{turnoverRate.toFixed(1)}
-            </div>
-            <span className="text-[10.5px] text-emerald-700 dark:text-teal-400 font-medium">{lang === 'ru' ? 'В месяц' : 'Aylık Devir'}</span>
+          <div className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight font-mono mt-0.5">
+            %{turnoverRate.toFixed(1)}
           </div>
-          <div className="flex items-center justify-between text-[10.5px] text-slate-600 dark:text-slate-400 mt-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-            <span>
-              {lang === 'ru' ? 'Уволено 2026:' : '2026 Çıkış:'}{' '}
-              <strong className="text-slate-800 dark:text-slate-200 font-bold">
-                {annualExits.toLocaleString('tr-TR')}
-              </strong>
-            </span>
-            <span className="px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-bold border border-purple-300/60 dark:border-purple-700/60">
-              VKS: -{outVksLatest} (%{outVksRate})
-            </span>
-          </div>
+          <span className="text-[10px] text-emerald-700 dark:text-teal-400 font-medium mt-0.5">
+            {lang === 'ru' ? 'В месяц' : 'Aylık Devir'}
+          </span>
         </div>
 
-        {/* Metric 5: Kadro / Taşeron Dağılımı */}
-        <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between">
-          <span className="text-[10.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">{lang === 'ru' ? 'Штат / Субподряд' : 'Kadro / Taşeron'}</span>
-          <div className="mt-0.5">
-            <div className="flex items-center justify-between text-[11.5px]">
-              <span className="text-slate-700 dark:text-slate-300 font-normal">Pondera:</span>
-              <span className="text-emerald-700 dark:text-teal-300 font-semibold">{mainFirmCount.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center justify-between text-[11.5px]">
-              <span className="text-slate-700 dark:text-slate-300 font-normal">{lang === 'ru' ? 'Субподряд:' : 'Taşeron:'}</span>
-              <span className="text-amber-700 dark:text-amber-300 font-semibold">{subconCount.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full mt-1 overflow-hidden flex">
-            <div className="bg-emerald-500 dark:bg-teal-400 h-full" style={{ width: `${Math.round((mainFirmCount / totalCount) * 100)}%` }} />
-            <div className="bg-amber-500 dark:bg-amber-400 h-full" style={{ width: `${Math.round((subconCount / totalCount) * 100)}%` }} />
-          </div>
-        </div>
-
-        {/* Metric 6: İşe Alım ve Çıkış Oranları Gauge Bar - Clickable to open Yönetim & Turnover */}
+        {/* Metric 4: Son 1 Hafta Giriş / Çıkış Akışı */}
         <div
           onClick={() => onNavigateToTurnover && onNavigateToTurnover()}
-          title={lang === 'ru' ? 'Перейти к деталям приемов и увольнений' : 'Giriş & Çıkış Detayları İçin Yönetim & Turnover Sayfasına Git'}
+          title={lang === 'ru' ? 'Перейти к деталям приемов и увольнений за последнюю неделю' : 'Son 1 Hafta Giriş & Çıkış Detayları İçin Tıklayın'}
           className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-rose-400 dark:hover:border-teal-400 hover:bg-rose-50/30 dark:hover:bg-slate-800 transition-all cursor-pointer"
         >
           <div className="flex items-center justify-between">
             <span className="text-[10.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-              {lang === 'ru' ? 'Динамика движения' : 'Giriş / Çıkış Akışı'}
+              {lang === 'ru' ? 'Движение (Посл. 1 нед.)' : 'Giriş / Çıkış (Son 1 Hafta)'}
             </span>
             <ArrowUpRight className="w-3.5 h-3.5 text-rose-500 dark:text-teal-400 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
           </div>
@@ -312,12 +298,81 @@ export default function PowerBIHeroBar({
               </div>
             </div>
             {/* VKS count & ratio row inside Giriş / Çıkış Akışı */}
-            <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-[10.5px] font-bold">
+            <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-[10px] font-bold">
               <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                 VKS: +{inVksLatest} (%{inVksRate})
               </span>
               <span className="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
                 VKS: -{outVksLatest} (%{outVksRate})
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Metric 5: Cinsiyet (Erkek & Kadın) Side-by-Side Boxes */}
+        <div className="grid grid-cols-2 gap-2 items-stretch">
+          {/* ERKEK */}
+          <div
+            onClick={() => onSelectGender && onSelectGender('Erkek')}
+            className={`px-2.5 py-1.5 rounded-xl bg-gradient-to-b from-teal-50/90 via-emerald-50/40 to-teal-100/50 dark:from-teal-950/50 dark:via-slate-900/70 dark:to-teal-950/40 border transition-all cursor-pointer flex items-center gap-2 group shadow-xs ${
+              selectedGender === 'Erkek'
+                ? 'border-teal-500 ring-2 ring-teal-500/40'
+                : selectedGender !== 'all'
+                ? 'border-teal-200/50 dark:border-teal-500/20 opacity-45'
+                : 'border-teal-200/90 dark:border-teal-500/30 hover:border-teal-400'
+            }`}
+            title={lang === 'ru' ? 'Фильтр: Мужчины' : 'Erkek Kadroyu Filtrele'}
+          >
+            <div className="px-1 py-1 rounded-lg bg-white/90 dark:bg-slate-900/80 border border-teal-200/70 dark:border-teal-800/60 shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center">
+              <WcMaleIcon className="w-5 h-11" />
+            </div>
+            <div className="min-w-0 flex flex-col justify-center">
+              <div className="flex items-center gap-1">
+                <span className="text-[10.5px] font-semibold text-slate-700 dark:text-slate-300 truncate">
+                  {lang === 'ru' ? 'Мужчины' : 'Erkek'}
+                </span>
+                <span className="text-[9.5px] px-1 rounded bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 font-bold">
+                  %{malePct}
+                </span>
+              </div>
+              <p className="text-lg font-bold text-slate-900 dark:text-white font-mono mt-0.5 tracking-tight leading-none">
+                {maleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
+              </p>
+              <span className="text-[9.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                {lang === 'ru' ? 'Активный' : 'Aktif Kadro'}
+              </span>
+            </div>
+          </div>
+
+          {/* KADIN */}
+          <div
+            onClick={() => onSelectGender && onSelectGender('Kadin')}
+            className={`px-2.5 py-1.5 rounded-xl bg-gradient-to-b from-violet-50/90 via-purple-50/40 to-violet-100/50 dark:from-violet-950/45 dark:via-slate-900/70 dark:to-violet-950/40 border transition-all cursor-pointer flex items-center gap-2 group shadow-xs ${
+              selectedGender === 'Kadin'
+                ? 'border-violet-500 ring-2 ring-violet-500/40'
+                : selectedGender !== 'all'
+                ? 'border-violet-200/50 dark:border-violet-500/20 opacity-45'
+                : 'border-violet-200/90 dark:border-violet-500/30 hover:border-violet-400'
+            }`}
+            title={lang === 'ru' ? 'Фильтр: Женщины' : 'Kadın Kadroyu Filtrele'}
+          >
+            <div className="px-1 py-1 rounded-lg bg-white/90 dark:bg-slate-900/80 border border-violet-200/70 dark:border-violet-800/60 shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center">
+              <WcFemaleIcon className="w-5 h-11" />
+            </div>
+            <div className="min-w-0 flex flex-col justify-center">
+              <div className="flex items-center gap-1">
+                <span className="text-[10.5px] font-semibold text-slate-700 dark:text-slate-300 truncate">
+                  {lang === 'ru' ? 'Женщины' : 'Kadın'}
+                </span>
+                <span className="text-[9.5px] px-1 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 font-bold">
+                  %{femalePct}
+                </span>
+              </div>
+              <p className="text-lg font-bold text-slate-900 dark:text-white font-mono mt-0.5 tracking-tight leading-none">
+                {femaleCount.toLocaleString(lang === 'ru' ? 'ru-RU' : 'tr-TR')}
+              </p>
+              <span className="text-[9.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                {lang === 'ru' ? 'Активный' : 'Aktif Kadro'}
               </span>
             </div>
           </div>

@@ -1,8 +1,19 @@
 'use client';
 
-import React from 'react';
-import { Award, ChevronRight, FileSpreadsheet, Crown, ChevronDown } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Award, ChevronRight, FileSpreadsheet, Crown, ChevronDown, Network, ArrowUpRight, Loader2, Users } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+
+interface PreviewPerson {
+  id?: number;
+  sicil_no?: string;
+  full_name?: string;
+  ad_soyad?: string;
+  job_title?: string;
+  pozisyon?: string;
+  project_name?: string;
+  proje?: string;
+}
 
 interface PowerBITitlePyramidProps {
   pyramidData: { title: string; count: number }[];
@@ -10,6 +21,8 @@ interface PowerBITitlePyramidProps {
   selectedTitle?: string;
   onSelectTitle?: (title: string) => void;
   onOpenDetail?: (title: string) => void;
+  onNavigateToPersonnel?: (filterType?: string, filterValue?: string) => void;
+  onNavigateToOrgChart?: () => void;
 }
 
 const RU_LEVEL_TITLES: Record<number, string> = {
@@ -29,6 +42,8 @@ export default function PowerBITitlePyramid({
   selectedTitle,
   onSelectTitle,
   onOpenDetail,
+  onNavigateToPersonnel,
+  onNavigateToOrgChart,
 }: PowerBITitlePyramidProps) {
   // 8-tier progressive funnel geometry from Apex (L1) to Base (L8)
   const tierWidths = [
@@ -94,6 +109,42 @@ export default function PowerBITitlePyramid({
   ];
 
   const { lang, t } = useLanguage();
+  const [hoveredLevel, setHoveredLevel] = useState<string | null>(null);
+  const [previewCache, setPreviewCache] = useState<
+    Record<string, { loading: boolean; items: PreviewPerson[] }>
+  >({});
+  const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openLevelHover = (levelKey: string) => {
+    if (hoverCloseTimer.current) {
+      clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+    setHoveredLevel(levelKey);
+    if (!previewCache[levelKey]) {
+      setPreviewCache((prev) => ({ ...prev, [levelKey]: { loading: true, items: [] } }));
+      fetch(`/api/personnel?title=${encodeURIComponent(levelKey)}&limit=8&includeExits=false`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          const rows: PreviewPerson[] = Array.isArray(json?.data)
+            ? json.data.slice(0, 8)
+            : Array.isArray(json?.personnel)
+            ? json.personnel.slice(0, 8)
+            : [];
+          setPreviewCache((prev) => ({ ...prev, [levelKey]: { loading: false, items: rows } }));
+        })
+        .catch(() => {
+          setPreviewCache((prev) => ({ ...prev, [levelKey]: { loading: false, items: [] } }));
+        });
+    }
+  };
+
+  const scheduleCloseHover = () => {
+    if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
+    hoverCloseTimer.current = setTimeout(() => {
+      setHoveredLevel(null);
+    }, 180);
+  };
 
   const formatDisplayTitle = (rawTitle: string, idx: number) => {
     const clean = rawTitle.replace(/^\d+\.\s*/, '');
@@ -105,11 +156,11 @@ export default function PowerBITitlePyramid({
   };
 
   return (
-    <div className="p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden flex flex-col justify-between transition-colors">
+    <div className="p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative flex flex-col justify-between transition-colors">
       <div className="hidden dark:block absolute top-0 left-1/2 -translate-x-1/2 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-3 border-b border-slate-200 dark:border-slate-800 pb-3 relative z-10">
+      <div className="-mx-5 -mt-5 lg:-mx-6 lg:-mt-6 px-5 py-3.5 lg:px-6 lg:py-4 mb-3 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/70 dark:border-slate-800 relative z-10">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-emerald-50 dark:bg-teal-500/20 text-emerald-600 dark:text-teal-400 border border-emerald-200 dark:border-teal-500/30">
@@ -124,7 +175,18 @@ export default function PowerBITitlePyramid({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          {onNavigateToOrgChart && (
+            <button
+              type="button"
+              onClick={onNavigateToOrgChart}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 text-indigo-800 dark:text-indigo-200 text-[11px] font-bold border border-indigo-200 dark:border-indigo-500/35 transition-all cursor-pointer"
+              title={lang === 'ru' ? 'Открыть организационную структуру' : 'Organizasyon Şeması Sayfasını Aç'}
+            >
+              <Network className="w-3 h-3 text-indigo-600 dark:text-indigo-300" />
+              <span>{lang === 'ru' ? 'Орг. схема' : 'Org. Şeması Aç'}</span>
+            </button>
+          )}
           {onOpenDetail && (
             <button
               onClick={() => onOpenDetail(selectedTitle || 'all')}
@@ -158,14 +220,19 @@ export default function PowerBITitlePyramid({
           const tierStyle = tierAccents[idx % tierAccents.length];
           const tierWidth = tierWidths[idx] || 'w-full';
           const displayLabel = formatDisplayTitle(item.title, idx).replace(/^L\d+\s*•\s*/i, '');
+          const levelKey = `L${idx + 1}`;
+          const isHovered = hoveredLevel === levelKey;
+          const hoverData = previewCache[levelKey];
 
           return (
             <div
               key={idx}
+              onMouseEnter={() => openLevelHover(levelKey)}
+              onMouseLeave={scheduleCloseHover}
               onClick={() => onSelectTitle && onSelectTitle(item.title)}
-              className={`transition-all duration-300 cursor-pointer ${tierWidth} ${
+              className={`relative transition-all duration-300 cursor-pointer ${tierWidth} ${
                 isDimmed ? 'opacity-35 hover:opacity-75' : 'opacity-100'
-              }`}
+              } ${isHovered ? 'z-30' : 'z-10'}`}
             >
               <div
                 className={`px-2.5 py-2 rounded-xl border bg-gradient-to-r ${tierStyle.bg} ${tierStyle.border} ${
@@ -196,6 +263,88 @@ export default function PowerBITitlePyramid({
                   </span>
                 </div>
               </div>
+
+              {/* Hover Preview Popover: First 8 Employees + Detay Gör -> Personnel List */}
+              {isHovered && (
+                <div
+                  onMouseEnter={() => openLevelHover(levelKey)}
+                  onMouseLeave={scheduleCloseHover}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`absolute left-1/2 -translate-x-1/2 ${
+                    idx >= 5 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+                  } w-80 sm:w-96 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-teal-500/40 shadow-2xl p-3 z-50 text-left`}
+                >
+                  <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 ${tierStyle.text}`}>
+                        {levelKey}
+                      </span>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {displayLabel}
+                      </span>
+                    </div>
+                    <span className="text-[10.5px] font-mono font-bold text-emerald-700 dark:text-teal-300 shrink-0">
+                      {item.count.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'kişi'}
+                    </span>
+                  </div>
+
+                  {hoverData?.loading ? (
+                    <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                      <span>{lang === 'ru' ? 'Загрузка...' : 'Yükleniyor...'}</span>
+                    </div>
+                  ) : hoverData?.items && hoverData.items.length > 0 ? (
+                    <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
+                      {hoverData.items.map((p, pIdx) => (
+                        <div
+                          key={p.id || p.sicil_no || pIdx}
+                          className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-slate-50/80 dark:bg-slate-800/60 text-[11px]"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                              {pIdx + 1}. {p.full_name || p.ad_soyad || '-'}
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                              {p.job_title || p.pozisyon || '-'}
+                            </div>
+                          </div>
+                          {(p.project_name || p.proje) && (
+                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-teal-950/60 text-emerald-700 dark:text-teal-300 border border-emerald-200/70 dark:border-teal-700/40 shrink-0 max-w-[110px] truncate">
+                              {p.project_name || p.proje}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-3 text-center text-xs text-slate-500 dark:text-slate-400">
+                      {lang === 'ru' ? 'Нет записей' : 'Kayıt bulunamadı'}
+                    </div>
+                  )}
+
+                  <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <Users className="w-3 h-3" />
+                      {lang === 'ru' ? 'Первые 8 записей' : 'İlk 8 kişi önizleme'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHoveredLevel(null);
+                        if (onNavigateToPersonnel) {
+                          onNavigateToPersonnel('title', levelKey);
+                        } else if (onOpenDetail) {
+                          onOpenDetail(levelKey);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <span>{lang === 'ru' ? 'Детали (Все)' : 'Detay (Tümünü Listele)'}</span>
+                      <ArrowUpRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

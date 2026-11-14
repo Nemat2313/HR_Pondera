@@ -27,7 +27,7 @@ import PowerBIHeroBar from './PowerBIHeroBar';
 import PowerBIDecompositionTree from './PowerBIDecompositionTree';
 import PowerBITitlePyramid from './PowerBITitlePyramid';
 import PowerBIAgeDemographics from './PowerBIAgeDemographics';
-import PowerBIDualDonuts, { PowerBIGenderCard } from './PowerBIDualDonuts';
+import PowerBIDualDonuts from './PowerBIDualDonuts';
 import PowerBIRankedRegionBars from './PowerBIRankedRegionBars';
 import PowerBIHubCompanionCard, { ZupHubSummary } from './PowerBIHubCompanionCard';
 import PowerBIComplianceSummaryHub, { HubSummaryPayload } from './PowerBIComplianceSummaryHub';
@@ -59,6 +59,7 @@ interface OverviewViewProps {
   onNavigateToTurnover: () => void;
   onNavigateToCompliance?: (subTab: 'expiry' | 'standby' | 'scans') => void;
   onNavigateToOfficialReal?: () => void;
+  onNavigateToOrgChart?: () => void;
   onResetFilters: () => void;
 }
 
@@ -89,6 +90,7 @@ export default function OverviewView({
   onNavigateToTurnover,
   onNavigateToCompliance,
   onNavigateToOfficialReal,
+  onNavigateToOrgChart,
   onResetFilters,
 }: OverviewViewProps) {
   const { user } = useAuth();
@@ -389,12 +391,18 @@ export default function OverviewView({
         monthlyExits={stats?.monthlyExits || []}
         turnoverRate={pbi?.turnoverRate || 3.8}
         annualExits={pbi?.annualExits || 205}
+        last7dIn={stats?.turnoverAnalytics?.periods?.['7d']?.inTotal}
+        last7dOut={stats?.turnoverAnalytics?.periods?.['7d']?.outTotal}
+        last7dInVks={stats?.turnoverAnalytics?.periods?.['7d']?.inVks}
+        last7dOutVks={stats?.turnoverAnalytics?.periods?.['7d']?.outVks}
         last30dIn={stats?.turnoverAnalytics?.periods?.['30d']?.inTotal}
         last30dOut={stats?.turnoverAnalytics?.periods?.['30d']?.outTotal}
         last30dInVks={stats?.turnoverAnalytics?.periods?.['30d']?.inVks}
         last30dOutVks={stats?.turnoverAnalytics?.periods?.['30d']?.outVks}
         allInVks={stats?.turnoverAnalytics?.periods?.all?.inVks}
         allOutVks={stats?.turnoverAnalytics?.periods?.all?.outVks}
+        selectedGender={selectedGender}
+        onSelectGender={(g) => setSelectedGender(selectedGender === g ? 'all' : g)}
         firmFilter={firmFilter}
         setFirmFilter={setFirmFilter}
         onRefresh={() => onResetFilters()}
@@ -530,22 +538,7 @@ export default function OverviewView({
             }}
           />
         </div>
-        <div className="lg:col-span-1 flex flex-col gap-3.5">
-          <PowerBIGenderCard
-            totalCount={total}
-            maleCount={maleCount}
-            femaleCount={femaleCount}
-            selectedGender={selectedGender}
-            onSelectGender={(g) => setSelectedGender(selectedGender === g ? 'all' : g)}
-            onOpenDetail={() => {
-              setDrillModal({
-                isOpen: true,
-                title: lang === 'ru' ? 'Детализация по полу персонала' : 'Cinsiyet Dağılımı Detayı',
-                filterType: 'gender',
-                filterValue: selectedGender !== 'all' ? selectedGender : 'all',
-              });
-            }}
-          />
+        <div className="lg:col-span-1 flex flex-col">
           <PowerBIHubCompanionCard
             zup={hubData?.zup || null}
             tenureBrackets={pbi?.tenureBrackets || []}
@@ -582,6 +575,8 @@ export default function OverviewView({
               filterValue: selectedRegion !== 'all' ? selectedRegion : 'all',
             });
           }}
+          onNavigateToPersonnel={onNavigateToPersonnel}
+          onNavigateToOrgChart={onNavigateToOrgChart}
         />
 
         <PowerBIAgeDemographics

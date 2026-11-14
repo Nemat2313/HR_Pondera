@@ -52,7 +52,7 @@ export default function PowerBIRankedRegionBars({
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* 1. BÖLGELERE GÖRE SIRALI ÇALIŞAN SAYILARI (Değerler ve Oranlar Barların Üzerinde) */}
       <div className="p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5 mb-3">
+        <div className="-mx-5 -mt-5 px-5 py-3 mb-3 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between border-b border-emerald-200/70 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <MapPin className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             <h3 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white">
@@ -252,7 +252,7 @@ export default function PowerBIRankedRegionBars({
 
       {/* 2. UYRUK DAĞILIMI (Değerler ve Oranlar Barların Sağında) */}
       <div className="p-5 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5 mb-3">
+        <div className="-mx-5 -mt-5 px-5 py-3 mb-3 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between border-b border-emerald-200/70 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <Globe2 className="w-4 h-4 text-teal-600 dark:text-cyan-400" />
             <h3 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white">

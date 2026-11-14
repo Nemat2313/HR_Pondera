@@ -183,7 +183,7 @@ export default function PowerBIComplianceSummaryHub({
           onClick={() => onNavigateToCompliance('expiry')}
           className="p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-emerald-500/30 hover:border-emerald-400 dark:hover:border-emerald-400/70 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-all cursor-pointer group"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+          <div className="-mx-4 -mt-4 px-4 py-2.5 mb-2 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between gap-2 border-b border-emerald-200/70 dark:border-slate-800">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/20 flex items-center justify-center border border-emerald-200/70 dark:border-emerald-500/30 shrink-0">
                 <FileCheck2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -316,7 +316,7 @@ export default function PowerBIComplianceSummaryHub({
           onClick={() => onNavigateToCompliance('standby')}
           className="p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-amber-500/30 hover:border-amber-400 dark:hover:border-amber-400/70 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-all cursor-pointer group"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+          <div className="-mx-4 -mt-4 px-4 py-2.5 mb-2 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between gap-2 border-b border-emerald-200/70 dark:border-slate-800">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/20 flex items-center justify-center border border-amber-200/70 dark:border-amber-500/30 shrink-0">
                 <Hourglass className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -444,7 +444,7 @@ export default function PowerBIComplianceSummaryHub({
           onClick={() => onNavigateToCompliance('scans')}
           className="p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-indigo-500/30 hover:border-indigo-400 dark:hover:border-indigo-400/70 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-all cursor-pointer group"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+          <div className="-mx-4 -mt-4 px-4 py-2.5 mb-2 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between gap-2 border-b border-emerald-200/70 dark:border-slate-800">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/20 flex items-center justify-center border border-indigo-200/70 dark:border-indigo-500/30 shrink-0">
                 <FolderCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />

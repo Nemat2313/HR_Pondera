@@ -62,7 +62,7 @@ export default function PowerBIAgeDemographics({
   return (
     <div className="p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden flex flex-col justify-between transition-colors">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 border-b border-slate-200 dark:border-slate-800 pb-3 relative z-10">
+      <div className="-mx-5 -mt-5 lg:-mx-6 lg:-mt-6 px-5 py-3.5 lg:px-6 lg:py-4 mb-4 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between border-b border-emerald-200/70 dark:border-slate-800 relative z-10">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-500/30">

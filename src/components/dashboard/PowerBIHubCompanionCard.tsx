@@ -47,21 +47,50 @@ export default function PowerBIHubCompanionCard({
     officialMatchPct: 84.3,
   };
 
-  const zupBars = [
+  const zupOnlyNoEba = Math.max(0, z.zupTotal - z.matchedActiveBoth - z.zupActiveButRealExited);
+  const unionTotal = Math.max(1, z.matchedActiveBoth + z.realOnlyNotInZup + zupOnlyNoEba + z.zupActiveButRealExited);
+
+  const verticalRows = [
     {
-      name: lang === 'ru' ? 'В обоих (Штат)' : 'Resmi + Saha Aktif',
-      count: z.matchedActiveBoth,
-      color: '#10b981',
+      id: 'both',
+      label: lang === 'ru' ? '1. В обоих (Актив)' : '1. Her İkisinde Mevcut',
+      zupCount: z.matchedActiveBoth,
+      ebaCount: z.matchedActiveBoth,
+      zupColor: 'bg-emerald-500',
+      ebaColor: 'bg-emerald-500',
+      badgeClass: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700/50',
+      minH: 88,
     },
     {
-      name: lang === 'ru' ? 'Только на площадке' : 'Sadece Saha / Hazırlık',
-      count: z.realOnlyNotInZup,
-      color: '#06b6d4',
+      id: 'eba_only',
+      label: lang === 'ru' ? '2. Только в eBA' : "2. Sadece eBA'da Var",
+      zupCount: 0,
+      ebaCount: z.realOnlyNotInZup,
+      zupColor: 'bg-slate-200/70 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700',
+      ebaColor: 'bg-cyan-500',
+      badgeClass: 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700/50',
+      minH: 46,
     },
     {
-      name: lang === 'ru' ? 'В 1С (Уволен с объекта)' : 'ZUP Aktif • Sahadan Çıktı',
-      count: z.zupActiveButRealExited,
-      color: '#f43f5e',
+      id: 'zup_only',
+      label: lang === 'ru' ? '3. Только в 1С ЗУП' : "3. Sadece ZUP'ta Var",
+      zupCount: zupOnlyNoEba,
+      ebaCount: 0,
+      zupColor: 'bg-purple-500',
+      ebaColor: 'bg-slate-200/70 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700',
+      ebaColorText: '',
+      badgeClass: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700/50',
+      minH: 38,
+    },
+    {
+      id: 'zup_exit',
+      label: lang === 'ru' ? '4. В ЗУП / Уволен' : '4. ZUP Aktif • Çıkışlı',
+      zupCount: z.zupActiveButRealExited,
+      ebaCount: 0,
+      zupColor: 'bg-rose-500',
+      ebaColor: 'bg-rose-100/70 dark:bg-rose-950/40 border border-dashed border-rose-300 dark:border-rose-700/60',
+      badgeClass: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-700/50',
+      minH: 34,
     },
   ];
 
@@ -77,9 +106,9 @@ export default function PowerBIHubCompanionCard({
   }));
 
   return (
-    <div className="p-3.5 sm:p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-indigo-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors flex-1">
-      {/* Header with Mode Switcher */}
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
+    <div className="p-3.5 sm:p-4 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-indigo-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors flex-1 h-full">
+      {/* Header with Mode Switcher (Green-to-white gradient) */}
+      <div className="-mx-3.5 -mt-3.5 sm:-mx-4 sm:-mt-4 px-3.5 py-2.5 sm:px-4 sm:py-3 mb-2.5 rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between gap-2 border-b border-emerald-200/70 dark:border-slate-800">
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-500/20 flex items-center justify-center border border-indigo-200/60 dark:border-indigo-500/30 shrink-0">
             {mode === 'zup' ? (
@@ -164,30 +193,97 @@ export default function PowerBIHubCompanionCard({
             </div>
           </div>
 
-          {/* Animated Horizontal Comparison Bars */}
-          <div className="space-y-1.5 py-2">
-            {zupBars.map((b, i) => {
-              const denom = Math.max(1, z.realActive);
-              const pct = Math.min(100, Math.max(2, Math.round((b.count / denom) * 100)));
-              return (
-                <div key={i} className="space-y-0.5">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-medium text-slate-700 dark:text-slate-300 truncate">
-                      {b.name}
-                    </span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white">
-                      {b.count.toLocaleString('tr-TR')}
-                    </span>
+          {/* Vertical 2-Track Axis: 1C ZUP (Left) ↔ eBA Real (Right) */}
+          <div className="flex-1 flex flex-col justify-between py-2.5 gap-2">
+            {/* Column Track Headers */}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-1 text-[10.5px] font-bold">
+              <div className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
+                <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
+                <span>{lang === 'ru' ? '1С ЗУП' : '1C ZUP'}</span>
+                <span className="ml-auto font-mono text-slate-900 dark:text-white">{z.zupTotal.toLocaleString('tr-TR')}</span>
+              </div>
+              <span className="text-[9.5px] text-slate-400 font-semibold px-1">↔</span>
+              <div className="flex items-center gap-1.5 text-teal-700 dark:text-teal-300">
+                <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0" />
+                <span>{lang === 'ru' ? 'eBA Real' : 'eBA Real'}</span>
+                <span className="ml-auto font-mono text-slate-900 dark:text-white">{z.realActive.toLocaleString('tr-TR')}</span>
+              </div>
+            </div>
+
+            {/* 4 Vertical Proportional Rows */}
+            <div className="flex-1 flex flex-col justify-between gap-2">
+              {verticalRows.map((row) => {
+                const segMax = Math.max(row.zupCount, row.ebaCount);
+                const sharePct = Math.round((segMax / unionTotal) * 100);
+                const barH = Math.max(row.minH, Math.min(115, Math.round((segMax / unionTotal) * 155)));
+                return (
+                  <div
+                    key={row.id}
+                    className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 p-2 flex flex-col gap-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${row.badgeClass}`}>
+                        {row.label}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">
+                        %{sharePct}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_10px_1fr] items-end gap-1.5" style={{ minHeight: `${barH}px` }}>
+                      {/* Left: 1C ZUP Vertical Block */}
+                      <div className="h-full flex flex-col justify-end">
+                        <div
+                          className={`w-full rounded-lg ${row.zupColor} flex items-center justify-center px-2 transition-all duration-700 shadow-2xs`}
+                          style={{ height: `${row.zupCount > 0 ? barH : Math.max(26, Math.round(barH * 0.65))}px` }}
+                        >
+                          <span
+                            className={`font-mono text-xs font-black ${
+                              row.zupCount > 0 ? 'text-white' : 'text-slate-400 dark:text-slate-500'
+                            }`}
+                          >
+                            {row.zupCount > 0 ? row.zupCount.toLocaleString('tr-TR') : '0'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Center Vertical Axis Divider */}
+                      <div className="h-full flex flex-col items-center justify-center">
+                        <div className="w-0.5 h-full bg-slate-300/80 dark:bg-slate-700 rounded-full relative">
+                          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white dark:bg-slate-900 border-2 border-indigo-400" />
+                        </div>
+                      </div>
+
+                      {/* Right: eBA Real Vertical Block */}
+                      <div className="h-full flex flex-col justify-end">
+                        <div
+                          className={`w-full rounded-lg ${row.ebaColor} flex items-center justify-center px-2 transition-all duration-700 shadow-2xs`}
+                          style={{ height: `${row.ebaCount > 0 ? barH : Math.max(26, Math.round(barH * 0.65))}px` }}
+                        >
+                          <span
+                            className={`font-mono text-xs font-black ${
+                              row.ebaCount > 0
+                                ? 'text-white'
+                                : row.id === 'zup_exit'
+                                ? 'text-rose-600 dark:text-rose-300 text-[10px]'
+                                : 'text-slate-400 dark:text-slate-500'
+                            }`}
+                          >
+                            {row.ebaCount > 0
+                              ? row.ebaCount.toLocaleString('tr-TR')
+                              : row.id === 'zup_exit'
+                              ? lang === 'ru'
+                                ? 'Уволен'
+                                : 'Çıkışlı'
+                              : '0'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${pct}%`, backgroundColor: b.color }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
           {/* Bottom Actionable Alert Chips */}

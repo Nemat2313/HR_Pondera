@@ -474,6 +474,7 @@ export default function Home() {
               setActiveTab('compliance');
             }}
             onNavigateToOfficialReal={() => setActiveTab('official_real')}
+            onNavigateToOrgChart={() => setActiveTab('org_chart')}
             onResetFilters={handleResetFilters}
           />
         )}

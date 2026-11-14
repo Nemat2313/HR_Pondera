@@ -79,12 +79,12 @@ export default function Topbar({
           setAlertsCount(data.count || 0);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     const checkTelegramCron = async () => {
       try {
         await fetch('/api/telegram/cron', { cache: 'no-store' });
-      } catch {}
+      } catch { }
     };
 
     checkTelegramCron();
@@ -114,9 +114,8 @@ export default function Topbar({
 
   return (
     <header
-      className={`fixed top-0 right-0 z-30 h-14 bg-white/95 dark:bg-[#0F172A]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-all duration-300 flex items-center justify-between px-3 sm:px-5 left-0 ${
-        collapsed ? 'lg:left-20' : 'lg:left-60'
-      }`}
+      className={`fixed top-0 right-0 z-30 h-14 bg-white/95 dark:bg-[#0F172A]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-all duration-300 flex items-center justify-between px-3 sm:px-5 left-0 ${collapsed ? 'lg:left-20' : 'lg:left-60'
+        }`}
     >
       {/* Left: Hamburger (Mobile) + Global Search */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-xl">
@@ -192,11 +191,10 @@ export default function Topbar({
           <button
             type="button"
             onClick={() => setLang('tr')}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              lang === 'tr'
-                ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 border border-emerald-300/90 dark:border-emerald-500/40 shadow-2xs'
-                : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
-            }`}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${lang === 'tr'
+              ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 border border-emerald-300/90 dark:border-emerald-500/40 shadow-2xs'
+              : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+              }`}
             title="Türkçe"
           >
             TR
@@ -204,11 +202,10 @@ export default function Topbar({
           <button
             type="button"
             onClick={() => setLang('ru')}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              lang === 'ru'
-                ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 border border-emerald-300/90 dark:border-emerald-500/40 shadow-2xs'
-                : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
-            }`}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${lang === 'ru'
+              ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 border border-emerald-300/90 dark:border-emerald-500/40 shadow-2xs'
+              : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+              }`}
             title="Русский"
           >
             RU
@@ -235,55 +232,27 @@ export default function Topbar({
           )}
         </button>
 
-        {/* RLS Scope Indicator Pill */}
-        {user && (
-          <div
-            onClick={onOpenLogin}
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity"
-            title="Kullanıcı / Şantiye RLS Değiştirmek İçin Tıklayın"
-          >
-            {user.scope_type === 'region' ? (
-              <span className="flex items-center gap-1 text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                <MapPin className="w-3 h-3" />
-                RLS: {user.scope_value}
-              </span>
-            ) : user.scope_type === 'project' ? (
-              <span className="flex items-center gap-1 text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-lg border border-amber-200 dark:border-amber-800">
-                <Briefcase className="w-3 h-3" />
-                RLS: {user.scope_value}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-emerald-900 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                {t('rls_all_sites')}
-              </span>
-            )}
-          </div>
-        )}
-
         {/* Turn Over / Include Exits Toggle */}
         {user?.role !== 'idari_isler' && (
-        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-normal">
-          <span className={`font-medium ${!includeExits ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-400'}`}>
-            {t('status_active')}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIncludeExits(!includeExits)}
-            className={`w-8 h-4 flex items-center rounded-full p-0.5 transition-colors ${
-              includeExits ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
-            }`}
-          >
-            <div
-              className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${
-                includeExits ? 'translate-x-4' : 'translate-x-0'
-              }`}
-            />
-          </button>
-          <span className={`font-medium ${includeExits ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-400'}`}>
-            {t('status_exited')}
-          </span>
-        </div>
+          <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 rounded-xl text-xs font-normal">
+            <span className={`font-medium ${!includeExits ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-400'}`}>
+              {t('status_active')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIncludeExits(!includeExits)}
+              className={`w-8 h-4 flex items-center rounded-full p-0.5 transition-colors ${includeExits ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
+                }`}
+            >
+              <div
+                className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${includeExits ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+              />
+            </button>
+            <span className={`font-medium ${includeExits ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-400'}`}>
+              {t('status_exited')}
+            </span>
+          </div>
         )}
 
         {/* Data Freshness Badges (eBA + 1C ZUP Date & Time) */}
@@ -346,61 +315,60 @@ export default function Topbar({
 
         {/* Notifications Popover */}
         {user?.role !== 'idari_isler' && (
-        <div className="relative" ref={notificationRef}>
-          <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            aria-label="Bildirimler"
-            className="relative p-1.5 sm:p-2 rounded-xl border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
-          >
-            <Bell className="w-4 h-4" />
-            {alertsCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                {alertsCount}
-              </span>
-            )}
-          </button>
-
-          {showNotifications && (
-            <div className="absolute right-0 mt-2 w-72 sm:w-96 bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden z-50">
-              <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200">{t('notifications_critical')}</span>
-                </div>
-                <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 font-semibold border border-rose-200/50 dark:border-rose-800/50">
-                  {alertsCount} {lang === 'ru' ? 'сигнал.' : 'Uyarı'}
+          <div className="relative" ref={notificationRef}>
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              aria-label="Bildirimler"
+              className="relative p-1.5 sm:p-2 rounded-xl border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
+            >
+              <Bell className="w-4 h-4" />
+              {alertsCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                  {alertsCount}
                 </span>
-              </div>
+              )}
+            </button>
 
-              <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                {alerts.length > 0 ? (
-                  alerts.map((alert, idx) => (
-                    <div key={idx} className="p-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">{alert.name}</span>
-                        <span
-                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                            alert.badge === 'Acil'
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-72 sm:w-96 bg-white dark:bg-[#1E293B] rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden z-50">
+                <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200">{t('notifications_critical')}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 font-semibold border border-rose-200/50 dark:border-rose-800/50">
+                    {alertsCount} {lang === 'ru' ? 'сигнал.' : 'Uyarı'}
+                  </span>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                  {alerts.length > 0 ? (
+                    alerts.map((alert, idx) => (
+                      <div key={idx} className="p-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">{alert.name}</span>
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${alert.badge === 'Acil'
                               ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
                               : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                          }`}
-                        >
-                          {alert.title}
-                        </span>
+                              }`}
+                          >
+                            {alert.title}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{alert.detail}</p>
                       </div>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{alert.detail}</p>
+                    ))
+                  ) : (
+                    <div className="p-6 text-center text-xs text-slate-600 dark:text-slate-400">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                      {lang === 'ru' ? 'Все визы и документы действительны.' : 'Tüm personellerin vize ve propusk belgeleri geçerli.'}
                     </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center text-xs text-slate-600 dark:text-slate-400">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                    {lang === 'ru' ? 'Все визы и документы действительны.' : 'Tüm personellerin vize ve propusk belgeleri geçerli.'}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
         )}
 
         {/* User Profile Menu */}
@@ -422,16 +390,16 @@ export default function Topbar({
                     ? '🛡️ Администратор'
                     : '🛡️ Yönetici'
                   : user?.role === 'idari_isler'
-                  ? lang === 'ru'
-                    ? '✈️ АХО и Билеты'
-                    : '✈️ İdari İşler'
-                  : user?.role === 'viewer'
-                  ? lang === 'ru'
-                    ? '👁️ Наблюдатель'
-                    : '👁️ Gözlemci (Viewer)'
-                  : lang === 'ru'
-                  ? '📍 Начальник объекта'
-                  : '📍 Şantiye Sorumlusu'}
+                    ? lang === 'ru'
+                      ? '✈️ АХО и Билеты'
+                      : '✈️ İdari İşler'
+                    : user?.role === 'viewer'
+                      ? lang === 'ru'
+                        ? '👁️ Наблюдатель'
+                        : '👁️ Gözlemci (Viewer)'
+                      : lang === 'ru'
+                        ? '📍 Начальник объекта'
+                        : '📍 Şantiye Sorumlusu'}
               </p>
             </div>
             <ChevronDown className="w-3 h-3 text-slate-400 hidden lg:block" />

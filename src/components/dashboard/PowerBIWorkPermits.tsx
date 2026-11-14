@@ -252,7 +252,7 @@ export default function PowerBIWorkPermits({
       <div className="hidden dark:block absolute bottom-0 left-0 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header - Clean single line, matching top row cards */}
-      <div className={`flex items-center justify-between border-b border-slate-100 dark:border-slate-800 ${compact ? 'pb-2' : 'pb-3'} relative z-10`}>
+      <div className={`${compact ? '-mx-3.5 -mt-3.5 sm:-mx-4 sm:-mt-4 px-3.5 py-2.5 sm:px-4 sm:py-3 mb-2' : '-mx-4 -mt-4 sm:-mx-5 sm:-mt-5 px-4 py-3 sm:px-5 sm:py-3.5 mb-3'} rounded-t-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-emerald-950/55 dark:via-[#14233E] dark:to-[#131F38] flex items-center justify-between border-b border-emerald-200/70 dark:border-slate-800 relative z-10`}>
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-6 h-6 rounded-lg bg-cyan-50 dark:bg-cyan-500/20 flex items-center justify-center border border-cyan-200/60 dark:border-cyan-500/30 shrink-0">
             <ShieldCheck className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
