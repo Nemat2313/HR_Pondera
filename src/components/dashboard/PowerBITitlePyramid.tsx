@@ -156,7 +156,7 @@ export default function PowerBITitlePyramid({
   };
 
   return (
-    <div className="p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative flex flex-col justify-between transition-colors">
+    <div className={`p-5 lg:p-6 bg-white dark:bg-[#131F38]/95 backdrop-blur-md rounded-2xl border border-slate-200/90 dark:border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative flex flex-col justify-between transition-colors ${hoveredLevel ? 'z-50' : 'z-10'}`}>
       <div className="hidden dark:block absolute top-0 left-1/2 -translate-x-1/2 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header */}
