@@ -273,12 +273,19 @@ export async function GET(request: Request) {
     if (title !== 'all') {
       const lvlMatch = title.trim().match(/^L([1-8])\b/i);
       if (lvlMatch) {
-        syncAndGetJobTitleLevels(db);
-        const targetLvl = `L${lvlMatch[1]}`;
-        conditions.push(
-          `LOWER(TRIM(COALESCE(gorevi, ''))) IN (SELECT normalized_title FROM org_job_title_levels WHERE level = ?)`
-        );
-        params.push(targetLvl);
+        const targetLvl = Number(lvlMatch[1]);
+        const jobSync = syncAndGetJobTitleLevels(db);
+        const matchingTitles = jobSync.items
+          .filter((it) => it.levelNo === targetLvl)
+          .map((it) => it.displayTitle)
+          .filter(Boolean);
+        if (matchingTitles.length > 0) {
+          const placeholders = matchingTitles.map(() => '?').join(', ');
+          conditions.push(`TRIM(COALESCE(gorevi, '')) IN (${placeholders})`);
+          params.push(...matchingTitles);
+        } else {
+          conditions.push('1 = 0');
+        }
       } else {
         conditions.push(`TRIM(COALESCE(gorevi, '')) = ?`);
         params.push(title.trim());

@@ -15,6 +15,8 @@ import {
   Crown,
   Download,
   Eye,
+  Folder,
+  FolderOpen,
   GitBranch,
   HardHat,
   Info,
@@ -780,7 +782,8 @@ export default function OrganizationChartView() {
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'chart' | 'directory'>('chart');
-  const [cardDensity, setCardDensity] = useState<CardDensity>('detailed');
+  const [cardDensity, setCardDensity] = useState<CardDensity>('compact');
+  const [dirExpandedIds, setDirExpandedIds] = useState<Set<string>>(new Set());
   const [colorBySpan, setColorBySpan] = useState<boolean>(false);
 
   // d3-zoom transform state (k = zoom scale, x/y = pan)
@@ -910,6 +913,9 @@ export default function OrganizationChartView() {
       .call(zb.transform as any, zoomIdentity.translate(tx, ty).scale(k));
   }, [transform.k]);
 
+  const zoomAdaptiveLimit =
+    transform.k < 0.62 ? 18 : transform.k < 0.78 ? 12 : transform.k < 0.92 ? 8 : INITIAL_VISIBLE_SIBLINGS;
+
   // Build Visible Layout Tree with True Level-Row (Swimlane) Alignment + Right-Side "+N Daha" Sibling Card
   const layoutData = useMemo(() => {
     if (orgResult.roots.length === 0) {
@@ -970,7 +976,10 @@ export default function OrganizationChartView() {
         }
       }
 
-      const visibleLimit = visibleCountByParent[node.nodeId] ?? INITIAL_VISIBLE_SIBLINGS;
+      const visibleLimit = Math.max(
+        visibleCountByParent[node.nodeId] ?? 0,
+        zoomAdaptiveLimit
+      );
       const hasMore = rawDescriptors.length > visibleLimit;
       const visibleSlice = hasMore
         ? rawDescriptors.slice(0, visibleLimit)
@@ -1194,7 +1203,7 @@ export default function OrganizationChartView() {
       canvasWidth,
       canvasHeight,
     };
-  }, [orgResult.roots, expandedIds, expandedCrewKeys, visibleCountByParent, cardDensity]);
+  }, [orgResult.roots, expandedIds, expandedCrewKeys, visibleCountByParent, cardDensity, zoomAdaptiveLimit]);
 
   const itemById = useMemo(() => {
     const m = new Map<string, LayoutTreeItem>();
@@ -1224,53 +1233,92 @@ export default function OrganizationChartView() {
       .call(zb.transform as any, zoomIdentity.translate(tx, ty).scale(fitScale));
   }, [layoutData.canvasWidth, layoutData.canvasHeight]);
 
-  const pendingCenterRootRef = useRef(false);
+  const pendingCenterModeRef = useRef<'fit_top_left' | 'center' | null>(null);
 
-  // Reset to initial root-only open view ONLY when root structure changes (NEVER on zoom!)
+  const buildScreenFittedExpandedIds = useCallback((roots: OrgNode[]): Set<string> => {
+    const next = new Set<string>();
+    const queue: OrgNode[] = [...roots.slice(0, 2)];
+    let opened = 0;
+    while (queue.length > 0 && opened < 12) {
+      const cur = queue.shift()!;
+      if (cur.roleLevel > 4 || cur.directCount <= 0) continue;
+      next.add(cur.nodeId);
+      opened += 1;
+      for (const ch of cur.managerChildren.slice(0, 6)) {
+        if (ch.roleLevel <= 4 && ch.directCount > 0) {
+          queue.push(ch);
+        }
+      }
+    }
+    return next;
+  }, []);
+
+  // Reset to initial L1-L5 screen-fitted view (NEVER on zoom!)
   const resetToInitialView = useCallback(() => {
-    const next = new Set<string>();
-    for (const r of orgResult.roots.slice(0, 2)) {
-      next.add(r.nodeId);
+    if (focusNodeId) {
+      const next = new Set<string>();
+      for (const r of orgResult.roots.slice(0, 2)) {
+        next.add(r.nodeId);
+      }
+      pendingCenterModeRef.current = 'center';
+      setExpandedIds(next);
+    } else {
+      pendingCenterModeRef.current = 'fit_top_left';
+      setExpandedIds(buildScreenFittedExpandedIds(orgResult.roots));
     }
-    pendingCenterRootRef.current = true;
-    setExpandedIds(next);
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
-  }, [orgResult.roots]);
+  }, [orgResult.roots, focusNodeId, buildScreenFittedExpandedIds]);
 
   useEffect(() => {
-    const next = new Set<string>();
-    for (const r of orgResult.roots.slice(0, 2)) {
-      next.add(r.nodeId);
+    if (focusNodeId) {
+      const next = new Set<string>();
+      for (const r of orgResult.roots.slice(0, 2)) {
+        next.add(r.nodeId);
+      }
+      pendingCenterModeRef.current = 'center';
+      setExpandedIds(next);
+    } else {
+      pendingCenterModeRef.current = 'fit_top_left';
+      setExpandedIds(buildScreenFittedExpandedIds(orgResult.roots));
     }
-    pendingCenterRootRef.current = true;
-    setExpandedIds(next);
+    setDirExpandedIds(new Set(orgResult.roots.slice(0, 2).map((r) => r.nodeId)));
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
-  }, [orgResult.roots]);
+  }, [orgResult.roots, focusNodeId, buildScreenFittedExpandedIds]);
 
   useEffect(() => {
-    if (!pendingCenterRootRef.current) return;
+    const mode = pendingCenterModeRef.current;
+    if (!mode) return;
     if (layoutData.rootItems.length === 0) return;
     const vpEl = viewportRef.current;
     const zb = zoomBehaviorRef.current;
     if (!vpEl || !zb) return;
     const rect = vpEl.getBoundingClientRect();
-    if (rect.width <= 0) return;
+    if (rect.width <= 0 || rect.height <= 0) return;
 
-    pendingCenterRootRef.current = false;
-    const firstRoot = layoutData.rootItems[0];
-    const k = DEFAULT_ZOOM;
-    const tx = Math.round(rect.width / 2 - firstRoot.centerX * k);
-    const ty = 16;
-
-    select(vpEl)
-      .transition()
-      .duration(280)
-      .call(zb.transform as any, zoomIdentity.translate(tx, ty).scale(k));
-  }, [layoutData.rootItems, viewTab, loading]);
+    pendingCenterModeRef.current = null;
+    if (mode === 'center') {
+      const firstRoot = layoutData.rootItems[0];
+      const k = DEFAULT_ZOOM;
+      const tx = Math.round(rect.width / 2 - firstRoot.centerX * k);
+      const ty = 16;
+      select(vpEl)
+        .transition()
+        .duration(280)
+        .call(zb.transform as any, zoomIdentity.translate(tx, ty).scale(k));
+    } else {
+      const scaleX = (rect.width - 24) / layoutData.canvasWidth;
+      const scaleY = (rect.height - 24) / layoutData.canvasHeight;
+      const fitScale = Math.min(DEFAULT_ZOOM, Math.max(0.52, Math.min(scaleX, scaleY)));
+      select(vpEl)
+        .transition()
+        .duration(260)
+        .call(zb.transform as any, zoomIdentity.translate(12, 12).scale(fitScale));
+    }
+  }, [layoutData.rootItems, layoutData.canvasWidth, layoutData.canvasHeight, viewTab, loading]);
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -1627,32 +1675,6 @@ export default function OrganizationChartView() {
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            {/* Compact ("Ad Soyad") vs Detailed Card Toggle */}
-            <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
-              <button
-                type="button"
-                onClick={() => setCardDensity('compact')}
-                className={`px-2 py-1 rounded-md text-[11px] transition-all cursor-pointer ${
-                  cardDensity === 'compact'
-                    ? 'bg-slate-900 dark:bg-teal-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                }`}
-              >
-                Ad Soyad
-              </button>
-              <button
-                type="button"
-                onClick={() => setCardDensity('detailed')}
-                className={`px-2 py-1 rounded-md text-[11px] transition-all cursor-pointer ${
-                  cardDensity === 'detailed'
-                    ? 'bg-slate-900 dark:bg-teal-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                }`}
-              >
-                Detaylı Kart
-              </button>
-            </div>
-
             {/* Job Title Levels Management Button */}
             <button
               type="button"
@@ -1992,6 +2014,26 @@ export default function OrganizationChartView() {
                 <RotateCcw className="w-3 h-3" />
                 <span>Sıfırla</span>
               </button>
+              <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+              <button
+                type="button"
+                onClick={() =>
+                  setCardDensity((prev) => (prev === 'detailed' ? 'compact' : 'detailed'))
+                }
+                className={`px-2 py-1 rounded-lg text-[11px] flex items-center gap-1.5 border transition-all cursor-pointer ${
+                  cardDensity === 'detailed'
+                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+                title="Detaylı Kart görünümünü aç/kapat"
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    cardDensity === 'detailed' ? 'bg-emerald-300' : 'bg-slate-400'
+                  }`}
+                />
+                <span>Detay Kart</span>
+              </button>
               <button
                 type="button"
                 onClick={toggleFullscreen}
@@ -2042,19 +2084,18 @@ export default function OrganizationChartView() {
                       <div
                         key={band.rowKey}
                         style={{ top: band.topY, height: band.height }}
-                        className={`absolute left-0 right-0 border-b border-dashed border-slate-200/80 dark:border-slate-800/80 ${
+                        className={`absolute left-0 right-0 z-[1] hover:z-[30] border-b border-dashed border-slate-200/80 dark:border-slate-800/80 ${
                           band.isEmptyPassThrough ? 'opacity-65' : theme.swimlaneBg
                         }`}
                       >
-                        <div className="absolute left-1.5 top-1.5 z-[4] pointer-events-auto group/lvl">
+                        <div className="absolute left-1.5 top-1.5 pointer-events-auto group/lvl">
                           <div
-                            title={levelDesc}
                             className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold shadow-2xs cursor-help ${theme.swimlanePill}`}
                           >
                             <BandIcon className="w-2.5 h-2.5 shrink-0" />
                             <span>{levelCode}</span>
                           </div>
-                          <div className="pointer-events-none opacity-0 group-hover/lvl:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1 whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-slate-800 text-white text-[11px] font-medium shadow-lg z-30 border border-slate-700">
+                          <div className="pointer-events-none opacity-0 group-hover/lvl:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1 whitespace-nowrap px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-[11px] font-medium shadow-xl z-50 border border-slate-200 dark:border-slate-700">
                             {levelDesc}
                           </div>
                         </div>
@@ -2319,86 +2360,159 @@ export default function OrganizationChartView() {
           )}
         </div>
       ) : (
-        /* Directory Table View */
+        /* Interactive Folder Tree View (Dizin Modu) */
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="text-sm text-slate-900 dark:text-white">
-                Yönetici & Ekip Sorumluları Dizini ({orgResult.totalManagers} Lider)
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span>Organizasyon Klasör Dizini ({orgResult.totalManagers} Yönetici • {orgResult.totalStaff.toLocaleString('tr-TR')} Personel)</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Herhangi bir yöneticiye tıklayarak şemada kendi L1–L8 seviye satırında açabilirsiniz.
+                Klasörlere tıklayarak alt ekipleri kademeli açabilir, şemada odaklanabilir veya künyeyi inceleyebilirsiniz.
               </p>
             </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const allMgrs = new Set<string>();
+                  orgResult.nodeById.forEach((n) => {
+                    if (n.directCount > 0) allMgrs.add(n.nodeId);
+                  });
+                  setDirExpandedIds(allMgrs);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] cursor-pointer"
+              >
+                Tüm Klasörleri Aç
+              </button>
+              <button
+                type="button"
+                onClick={() => setDirExpandedIds(new Set())}
+                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] cursor-pointer"
+              >
+                Tümünü Daralt
+              </button>
+            </div>
           </div>
-          <div className="overflow-x-auto max-h-[620px]">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-500">
-                <tr>
-                  <th className="py-2.5 px-4">Seviye</th>
-                  <th className="py-2.5 px-4">Yönetici / Sorumlu</th>
-                  <th className="py-2.5 px-4">Görevi</th>
-                  <th className="py-2.5 px-4">Şantiye</th>
-                  <th className="py-2.5 px-4">Üst Yöneticisi</th>
-                  <th className="py-2.5 px-4 text-right">Doğrudan Bağlı</th>
-                  <th className="py-2.5 px-4 text-right">Toplam Alt Ekip</th>
-                  <th className="py-2.5 px-4 text-right">İşlem</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
-                {Array.from(orgResult.nodeById.values())
-                  .filter((n) => !n.isVirtual && (n.directCount > 0 || n.roleLevel <= 3))
-                  .sort(
-                    (a, b) =>
-                      a.roleLevel - b.roleLevel || b.totalSubordinates - a.totalSubordinates
-                  )
-                  .map((mgr) => {
-                    const t = ROLE_LEVEL_THEMES[mgr.roleLevel];
-                    return (
-                      <tr
-                        key={mgr.nodeId}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                      >
-                        <td className="py-2.5 px-4">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] ${t.badgeBg} ${t.badgeText}`}>
-                            {t.code} • {t.shortTr}
+
+          <div className="p-3 max-h-[660px] overflow-y-auto space-y-1">
+            {(() => {
+              const renderFolderNode = (node: OrgNode, depth: number): React.ReactNode => {
+                const isFolder = node.directCount > 0;
+                const isOpen = dirExpandedIds.has(node.nodeId);
+                const t = ROLE_LEVEL_THEMES[node.roleLevel];
+                const allChildren = [
+                  ...node.managerChildren,
+                  ...node.specialistLeaves,
+                  ...node.workerLeaves,
+                ];
+
+                return (
+                  <div key={`${depth}-${node.nodeId}`} className="select-none">
+                    <div
+                      style={{ paddingLeft: `${depth * 20 + 8}px` }}
+                      onClick={() => {
+                        if (!isFolder) {
+                          setSelectedNodeId(node.nodeId);
+                          return;
+                        }
+                        setDirExpandedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(node.nodeId)) next.delete(node.nodeId);
+                          else next.add(node.nodeId);
+                          return next;
+                        });
+                      }}
+                      className="flex items-center justify-between gap-2 py-1.5 pr-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isFolder ? (
+                          isOpen ? (
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          )
+                        ) : (
+                          <span className="w-3.5 shrink-0" />
+                        )}
+
+                        {isFolder ? (
+                          isOpen ? (
+                            <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
+                          ) : (
+                            <Folder className="w-4 h-4 text-amber-500/85 shrink-0" />
+                          )
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 mx-1 shrink-0" />
+                        )}
+
+                        <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-semibold shrink-0 ${t.badgeBg} ${t.badgeText}`}>
+                          {t.code}
+                        </span>
+
+                        <span className="text-xs font-medium text-slate-900 dark:text-white truncate">
+                          {node.ad_soyad}
+                        </span>
+                        {node.sicil_no && (
+                          <span className="text-[10.5px] text-slate-400 shrink-0">#{node.sicil_no}</span>
+                        )}
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate hidden sm:inline">
+                          • {node.gorevi} ({node.effective_site})
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isFolder && (
+                          <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            {node.directCount} doğrudan • {node.totalSubordinates.toLocaleString('tr-TR')} alt
                           </span>
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-900 dark:text-white">
-                          {mgr.ad_soyad}{' '}
-                          {mgr.sicil_no ? (
-                            <span className="text-slate-400">#{mgr.sicil_no}</span>
-                          ) : null}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-600 dark:text-slate-300">
-                          {mgr.gorevi}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-600 dark:text-slate-300">
-                          {mgr.effective_site}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-500">
-                          {mgr.sorumlu_kisi || mgr.grup_sefi || '-'}
-                        </td>
-                        <td className="py-2.5 px-4 text-right text-slate-800 dark:text-slate-200">
-                          {mgr.directCount}
-                        </td>
-                        <td className="py-2.5 px-4 text-right text-teal-700 dark:text-teal-400">
-                          {mgr.totalSubordinates.toLocaleString('tr-TR')}
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedNodeId(node.nodeId);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 transition-opacity cursor-pointer"
+                          title="Künye"
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                        </button>
+                        {isFolder && (
                           <button
                             type="button"
-                            onClick={() => handleLocatePersonInChart(mgr)}
-                            className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLocatePersonInChart(node);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 text-[10.5px] transition-opacity cursor-pointer"
                           >
                             Şemada Göster
                           </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
+                        )}
+                      </div>
+                    </div>
+
+                    {isFolder && isOpen && allChildren.length > 0 && (
+                      <div className="border-l border-slate-200 dark:border-slate-800 ml-3">
+                        {allChildren.slice(0, 120).map((ch) => renderFolderNode(ch, depth + 1))}
+                        {allChildren.length > 120 && (
+                          <div
+                            style={{ paddingLeft: `${(depth + 1) * 20 + 28}px` }}
+                            className="py-1 text-[11px] text-slate-400 italic"
+                          >
+                            +{allChildren.length - 120} kişi daha (tam liste için şemada odaklanın)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+
+              return orgResult.roots.map((root) => renderFolderNode(root, 0));
+            })()}
           </div>
         </div>
       )}
