@@ -264,68 +264,66 @@ export default function PowerBITitlePyramid({
                 </div>
               </div>
 
-              {/* Hover Preview Popover: First 8 Employees + Detay Gör -> Personnel List */}
+              {/* Hover Preview Popover: Opens to the right of the pyramid, compact, no '-' line */}
               {isHovered && (
                 <div
                   onMouseEnter={() => openLevelHover(levelKey)}
                   onMouseLeave={scheduleCloseHover}
                   onClick={(e) => e.stopPropagation()}
-                  className={`absolute left-1/2 -translate-x-1/2 ${
-                    idx >= 5 ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                  } w-80 sm:w-96 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-teal-500/40 shadow-2xl p-3 z-50 text-left`}
+                  className={`absolute left-1/2 -translate-x-1/2 lg:left-full lg:translate-x-0 lg:ml-3 lg:top-1/2 lg:-translate-y-1/2 ${
+                    idx >= 5 ? 'bottom-full mb-1 lg:bottom-auto lg:mb-0' : 'top-full mt-1 lg:mt-0'
+                  } w-64 sm:w-72 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-teal-500/40 shadow-2xl p-2 z-50 text-left`}
                 >
-                  <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 ${tierStyle.text}`}>
+                  <div className="flex items-center justify-between gap-1.5 pb-1.5 mb-1.5 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className={`px-1 py-0.2 rounded text-[9px] font-bold bg-slate-100 dark:bg-slate-800 ${tierStyle.text}`}>
                         {levelKey}
                       </span>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                      <span className="text-[10.5px] font-bold text-slate-900 dark:text-white truncate">
                         {displayLabel}
                       </span>
                     </div>
-                    <span className="text-[10.5px] font-mono font-bold text-emerald-700 dark:text-teal-300 shrink-0">
+                    <span className="text-[9.5px] font-mono font-bold text-emerald-700 dark:text-teal-300 shrink-0">
                       {item.count.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'kişi'}
                     </span>
                   </div>
 
                   {hoverData?.loading ? (
-                    <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                    <div className="py-3 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+                      <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
                       <span>{lang === 'ru' ? 'Загрузка...' : 'Yükleniyor...'}</span>
                     </div>
                   ) : hoverData?.items && hoverData.items.length > 0 ? (
-                    <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
-                      {hoverData.items.map((p, pIdx) => (
-                        <div
-                          key={p.id || p.sicil_no || pIdx}
-                          className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-slate-50/80 dark:bg-slate-800/60 text-[11px]"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
-                              {pIdx + 1}. {p.full_name || p.ad_soyad || '-'}
-                            </div>
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                              {p.job_title || p.pozisyon || '-'}
-                            </div>
-                          </div>
-                          {(p.project_name || p.proje) && (
-                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-teal-950/60 text-emerald-700 dark:text-teal-300 border border-emerald-200/70 dark:border-teal-700/40 shrink-0 max-w-[110px] truncate">
-                              {p.project_name || p.proje}
+                    <div className="space-y-0.5">
+                      {hoverData.items.map((p, pIdx) => {
+                        const proj = p.project_name || p.proje;
+                        return (
+                          <div
+                            key={p.id || p.sicil_no || pIdx}
+                            className="flex items-center justify-between gap-1.5 px-1.5 py-0.5 rounded bg-slate-50/80 dark:bg-slate-800/60 text-[10px] leading-tight"
+                          >
+                            <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                              {pIdx + 1}. {p.full_name || p.ad_soyad || ''}
                             </span>
-                          )}
-                        </div>
-                      ))}
+                            {proj && proj !== '-' && (
+                              <span className="text-[8.5px] px-1 py-0.2 rounded bg-emerald-50 dark:bg-teal-950/60 text-emerald-700 dark:text-teal-300 border border-emerald-200/70 dark:border-teal-700/40 shrink-0 max-w-[90px] truncate">
+                                {proj}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
-                    <div className="py-3 text-center text-xs text-slate-500 dark:text-slate-400">
+                    <div className="py-2 text-center text-[10px] text-slate-500 dark:text-slate-400">
                       {lang === 'ru' ? 'Нет записей' : 'Kayıt bulunamadı'}
                     </div>
                   )}
 
-                  <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                      <Users className="w-3 h-3" />
-                      {lang === 'ru' ? 'Первые 8 записей' : 'İlk 8 kişi önizleme'}
+                  <div className="pt-1.5 mt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5">
+                    <span className="text-[9px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <Users className="w-2.5 h-2.5" />
+                      {lang === 'ru' ? 'Первые 8' : 'İlk 8 kişi'}
                     </span>
                     <button
                       type="button"
@@ -337,10 +335,10 @@ export default function PowerBITitlePyramid({
                           onOpenDetail(levelKey);
                         }
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[9.5px] font-bold shadow-xs transition-colors cursor-pointer"
                     >
-                      <span>{lang === 'ru' ? 'Детали (Все)' : 'Detay (Tümünü Listele)'}</span>
-                      <ArrowUpRight className="w-3 h-3" />
+                      <span>{lang === 'ru' ? 'Детали (Все)' : 'Detay (Tümü)'}</span>
+                      <ArrowUpRight className="w-2.5 h-2.5" />
                     </button>
                   </div>
                 </div>

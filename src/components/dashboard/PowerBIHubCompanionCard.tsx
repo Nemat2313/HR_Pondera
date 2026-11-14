@@ -48,51 +48,6 @@ export default function PowerBIHubCompanionCard({
   };
 
   const zupOnlyNoEba = Math.max(0, z.zupTotal - z.matchedActiveBoth - z.zupActiveButRealExited);
-  const unionTotal = Math.max(1, z.matchedActiveBoth + z.realOnlyNotInZup + zupOnlyNoEba + z.zupActiveButRealExited);
-
-  const verticalRows = [
-    {
-      id: 'both',
-      label: lang === 'ru' ? '1. В обоих (Актив)' : '1. Her İkisinde Mevcut',
-      zupCount: z.matchedActiveBoth,
-      ebaCount: z.matchedActiveBoth,
-      zupColor: 'bg-emerald-500',
-      ebaColor: 'bg-emerald-500',
-      badgeClass: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700/50',
-      minH: 88,
-    },
-    {
-      id: 'eba_only',
-      label: lang === 'ru' ? '2. Только в eBA' : "2. Sadece eBA'da Var",
-      zupCount: 0,
-      ebaCount: z.realOnlyNotInZup,
-      zupColor: 'bg-slate-200/70 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700',
-      ebaColor: 'bg-cyan-500',
-      badgeClass: 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700/50',
-      minH: 46,
-    },
-    {
-      id: 'zup_only',
-      label: lang === 'ru' ? '3. Только в 1С ЗУП' : "3. Sadece ZUP'ta Var",
-      zupCount: zupOnlyNoEba,
-      ebaCount: 0,
-      zupColor: 'bg-purple-500',
-      ebaColor: 'bg-slate-200/70 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700',
-      ebaColorText: '',
-      badgeClass: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700/50',
-      minH: 38,
-    },
-    {
-      id: 'zup_exit',
-      label: lang === 'ru' ? '4. В ЗУП / Уволен' : '4. ZUP Aktif • Çıkışlı',
-      zupCount: z.zupActiveButRealExited,
-      ebaCount: 0,
-      zupColor: 'bg-rose-500',
-      ebaColor: 'bg-rose-100/70 dark:bg-rose-950/40 border border-dashed border-rose-300 dark:border-rose-700/60',
-      badgeClass: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-700/50',
-      minH: 34,
-    },
-  ];
 
   const tenureData = (tenureBrackets || []).map((t, i) => ({
     label:
@@ -193,97 +148,139 @@ export default function PowerBIHubCompanionCard({
             </div>
           </div>
 
-          {/* Vertical 2-Track Axis: 1C ZUP (Left) ↔ eBA Real (Right) */}
-          <div className="flex-1 flex flex-col justify-between py-2.5 gap-2">
-            {/* Column Track Headers */}
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-1 text-[10.5px] font-bold">
-              <div className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
-                <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
-                <span>{lang === 'ru' ? '1С ЗУП' : '1C ZUP'}</span>
-                <span className="ml-auto font-mono text-slate-900 dark:text-white">{z.zupTotal.toLocaleString('tr-TR')}</span>
+          {/* 3D Glassmorphic Venn / Overlap Diagram: 1C ZUP (Resmi) ↔ eBA Real (Saha) */}
+          <div className="flex-1 flex flex-col justify-between py-2 gap-2.5">
+            <div className="relative rounded-2xl bg-gradient-to-b from-slate-50/90 via-white to-slate-50/70 dark:from-slate-900/70 dark:via-slate-900/40 dark:to-slate-950/70 border border-slate-200/80 dark:border-slate-800 p-3 flex flex-col items-center justify-center overflow-hidden">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                <Scale className="w-3 h-3 text-indigo-500" />
+                <span>
+                  {lang === 'ru' ? 'Сверка: Официальный (1С) ↔ Фактический (eBA)' : 'Resmi (1C ZUP) ↔ Real (eBA) Kesişim Özeti'}
+                </span>
               </div>
-              <span className="text-[9.5px] text-slate-400 font-semibold px-1">↔</span>
-              <div className="flex items-center gap-1.5 text-teal-700 dark:text-teal-300">
-                <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0" />
-                <span>{lang === 'ru' ? 'eBA Real' : 'eBA Real'}</span>
-                <span className="ml-auto font-mono text-slate-900 dark:text-white">{z.realActive.toLocaleString('tr-TR')}</span>
+
+              <svg viewBox="0 0 340 165" className="w-full max-w-[330px] h-auto drop-shadow-sm select-none">
+                <defs>
+                  <radialGradient id="zupSphere3D" cx="35%" cy="30%" r="70%">
+                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.92" />
+                    <stop offset="55%" stopColor="#6366f1" stopOpacity="0.82" />
+                    <stop offset="100%" stopColor="#312e81" stopOpacity="0.9" />
+                  </radialGradient>
+                  <radialGradient id="ebaSphere3D" cx="65%" cy="30%" r="70%">
+                    <stop offset="0%" stopColor="#5eead4" stopOpacity="0.92" />
+                    <stop offset="55%" stopColor="#0d9488" stopOpacity="0.82" />
+                    <stop offset="100%" stopColor="#134e4a" stopOpacity="0.9" />
+                  </radialGradient>
+                  <linearGradient id="overlapLens3D" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#34d399" stopOpacity="0.96" />
+                    <stop offset="100%" stopColor="#059669" stopOpacity="0.96" />
+                  </linearGradient>
+                  <filter id="soft3dShadow" x="-15%" y="-15%" width="130%" height="135%">
+                    <feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#0f172a" floodOpacity="0.22" />
+                  </filter>
+                  <clipPath id="leftCircleClip">
+                    <circle cx="118" cy="82" r="66" />
+                  </clipPath>
+                </defs>
+
+                {/* Left 3D Sphere: 1C ZUP Resmi */}
+                <g filter="url(#soft3dShadow)">
+                  <circle cx="118" cy="82" r="66" fill="url(#zupSphere3D)" />
+                  <ellipse cx="98" cy="50" rx="28" ry="14" fill="white" fillOpacity="0.22" transform="rotate(-20 98 50)" />
+                </g>
+
+                {/* Right 3D Sphere: eBA Real Saha */}
+                <g filter="url(#soft3dShadow)">
+                  <circle cx="222" cy="82" r="66" fill="url(#ebaSphere3D)" />
+                  <ellipse cx="240" cy="50" rx="28" ry="14" fill="white" fillOpacity="0.22" transform="rotate(20 240 50)" />
+                </g>
+
+                {/* Center Overlap Lens */}
+                <g clipPath="url(#leftCircleClip)">
+                  <circle cx="222" cy="82" r="66" fill="url(#overlapLens3D)" />
+                </g>
+                <circle cx="118" cy="82" r="66" fill="none" stroke="white" strokeOpacity="0.35" strokeWidth="1.2" />
+                <circle cx="222" cy="82" r="66" fill="none" stroke="white" strokeOpacity="0.35" strokeWidth="1.2" />
+
+                {/* Left Only Text (Sadece ZUP + Çıkışlı) */}
+                <text x="78" y="68" textAnchor="middle" fill="white" fontSize="9.5" fontWeight="700" opacity="0.92">
+                  {lang === 'ru' ? 'Только 1С' : 'Sadece ZUP'}
+                </text>
+                <text x="78" y="88" textAnchor="middle" fill="white" fontSize="15" fontWeight="900" fontFamily="monospace">
+                  {(zupOnlyNoEba + z.zupActiveButRealExited).toLocaleString('tr-TR')}
+                </text>
+                <text x="78" y="103" textAnchor="middle" fill="#e0e7ff" fontSize="8.5" fontWeight="600">
+                  1C ZUP
+                </text>
+
+                {/* Center Match Text (Her İkisinde) */}
+                <text x="170" y="65" textAnchor="middle" fill="white" fontSize="9" fontWeight="800">
+                  {lang === 'ru' ? 'Совпадение' : 'Tam Eşleşme'}
+                </text>
+                <text x="170" y="86" textAnchor="middle" fill="white" fontSize="17" fontWeight="900" fontFamily="monospace">
+                  {z.matchedActiveBoth.toLocaleString('tr-TR')}
+                </text>
+                <rect x="145" y="94" width="50" height="16" rx="8" fill="white" fillOpacity="0.22" />
+                <text x="170" y="105" textAnchor="middle" fill="white" fontSize="9.5" fontWeight="800" fontFamily="monospace">
+                  %{z.officialMatchPct}
+                </text>
+
+                {/* Right Only Text (Sadece eBA) */}
+                <text x="262" y="68" textAnchor="middle" fill="white" fontSize="9.5" fontWeight="700" opacity="0.92">
+                  {lang === 'ru' ? 'Только eBA' : 'Sadece eBA'}
+                </text>
+                <text x="262" y="88" textAnchor="middle" fill="white" fontSize="15" fontWeight="900" fontFamily="monospace">
+                  {z.realOnlyNotInZup.toLocaleString('tr-TR')}
+                </text>
+                <text x="262" y="103" textAnchor="middle" fill="#ccfbf1" fontSize="8.5" fontWeight="600">
+                  eBA Real
+                </text>
+              </svg>
+            </div>
+
+            {/* 3 Compact Summary Breakdown Pills */}
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="px-2 py-1.5 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-700/50">
+                <div className="text-[9.5px] font-semibold text-emerald-700 dark:text-emerald-300 truncate">
+                  {lang === 'ru' ? 'В обоих' : 'Ortak Aktif'}
+                </div>
+                <div className="text-xs font-black font-mono text-emerald-900 dark:text-white">
+                  {z.matchedActiveBoth.toLocaleString('tr-TR')}
+                </div>
+              </div>
+              <div className="px-2 py-1.5 rounded-xl bg-cyan-50/90 dark:bg-cyan-950/50 border border-cyan-200/80 dark:border-cyan-700/50">
+                <div className="text-[9.5px] font-semibold text-cyan-700 dark:text-cyan-300 truncate">
+                  {lang === 'ru' ? 'Только eBA' : "Sadece eBA"}
+                </div>
+                <div className="text-xs font-black font-mono text-cyan-900 dark:text-white">
+                  {z.realOnlyNotInZup.toLocaleString('tr-TR')}
+                </div>
+              </div>
+              <div className="px-2 py-1.5 rounded-xl bg-purple-50/90 dark:bg-purple-950/50 border border-purple-200/80 dark:border-purple-700/50">
+                <div className="text-[9.5px] font-semibold text-purple-700 dark:text-purple-300 truncate">
+                  {lang === 'ru' ? 'Только 1С' : "Sadece ZUP"}
+                </div>
+                <div className="text-xs font-black font-mono text-purple-900 dark:text-white">
+                  {zupOnlyNoEba.toLocaleString('tr-TR')}
+                </div>
               </div>
             </div>
 
-            {/* 4 Vertical Proportional Rows */}
-            <div className="flex-1 flex flex-col justify-between gap-2">
-              {verticalRows.map((row) => {
-                const segMax = Math.max(row.zupCount, row.ebaCount);
-                const sharePct = Math.round((segMax / unionTotal) * 100);
-                const barH = Math.max(row.minH, Math.min(115, Math.round((segMax / unionTotal) * 155)));
-                return (
-                  <div
-                    key={row.id}
-                    className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 p-2 flex flex-col gap-1.5"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${row.badgeClass}`}>
-                        {row.label}
-                      </span>
-                      <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400">
-                        %{sharePct}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-[1fr_10px_1fr] items-end gap-1.5" style={{ minHeight: `${barH}px` }}>
-                      {/* Left: 1C ZUP Vertical Block */}
-                      <div className="h-full flex flex-col justify-end">
-                        <div
-                          className={`w-full rounded-lg ${row.zupColor} flex items-center justify-center px-2 transition-all duration-700 shadow-2xs`}
-                          style={{ height: `${row.zupCount > 0 ? barH : Math.max(26, Math.round(barH * 0.65))}px` }}
-                        >
-                          <span
-                            className={`font-mono text-xs font-black ${
-                              row.zupCount > 0 ? 'text-white' : 'text-slate-400 dark:text-slate-500'
-                            }`}
-                          >
-                            {row.zupCount > 0 ? row.zupCount.toLocaleString('tr-TR') : '0'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Center Vertical Axis Divider */}
-                      <div className="h-full flex flex-col items-center justify-center">
-                        <div className="w-0.5 h-full bg-slate-300/80 dark:bg-slate-700 rounded-full relative">
-                          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white dark:bg-slate-900 border-2 border-indigo-400" />
-                        </div>
-                      </div>
-
-                      {/* Right: eBA Real Vertical Block */}
-                      <div className="h-full flex flex-col justify-end">
-                        <div
-                          className={`w-full rounded-lg ${row.ebaColor} flex items-center justify-center px-2 transition-all duration-700 shadow-2xs`}
-                          style={{ height: `${row.ebaCount > 0 ? barH : Math.max(26, Math.round(barH * 0.65))}px` }}
-                        >
-                          <span
-                            className={`font-mono text-xs font-black ${
-                              row.ebaCount > 0
-                                ? 'text-white'
-                                : row.id === 'zup_exit'
-                                ? 'text-rose-600 dark:text-rose-300 text-[10px]'
-                                : 'text-slate-400 dark:text-slate-500'
-                            }`}
-                          >
-                            {row.ebaCount > 0
-                              ? row.ebaCount.toLocaleString('tr-TR')
-                              : row.id === 'zup_exit'
-                              ? lang === 'ru'
-                                ? 'Уволен'
-                                : 'Çıkışlı'
-                              : '0'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {/* Prominent CTA to Official vs Real Comparison Page */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onNavigateToOfficialReal) onNavigateToOfficialReal();
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-500 hover:to-teal-500 text-white text-xs font-bold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <span>
+                {lang === 'ru'
+                  ? 'Открыть детальную сверку (1С ЗУП ↔ eBA)'
+                  : 'Detaylı Resmi ↔ Real Karşılaştırma Sayfasına Git'}
+              </span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {/* Bottom Actionable Alert Chips */}

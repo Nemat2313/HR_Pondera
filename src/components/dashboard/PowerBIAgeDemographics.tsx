@@ -97,58 +97,98 @@ export default function PowerBIAgeDemographics({
         </div>
       </div>
 
-      {/* Brackets List with Visual Progress Bars */}
-      <div className="space-y-3 relative z-10 my-auto">
-        {brackets.map((item, idx) => {
-          const pct = Number(((item.count / total) * 100).toFixed(1));
-          const color = item.color || '#06B6D4';
-
+      {/* Vertical Bar Chart (X-Axis = Age Groups, Y-Axis = Personnel Count) */}
+      <div className="relative z-10 my-auto pt-2">
+        {(() => {
+          const maxCount = Math.max(1, ...brackets.map((b) => b.count || 0));
           return (
-            <div
-              key={idx}
-              onClick={() => onSelectAgeBracket && onSelectAgeBracket(item.label)}
-              className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-teal-400/50 dark:hover:border-teal-400/40 bg-slate-50/60 dark:bg-slate-800/40 transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between mb-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="font-bold text-slate-800 dark:text-white">
-                    {translateAgeLabel(item.label)}
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                    ({translateGroup(item.group)})
-                  </span>
+            <div className="flex flex-col">
+              {/* Chart Plot Area */}
+              <div className="relative h-56 sm:h-60 flex items-end justify-around gap-2 sm:gap-3 px-2 pt-8 pb-1 border-b border-slate-200 dark:border-slate-700/80">
+                {/* Subtle horizontal gridlines */}
+                <div className="absolute inset-x-0 top-8 bottom-1 flex flex-col justify-between pointer-events-none">
+                  {[0, 1, 2, 3].map((line) => (
+                    <div
+                      key={line}
+                      className="w-full border-t border-dashed border-slate-200/70 dark:border-slate-800/80"
+                    />
+                  ))}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-extrabold text-slate-900 dark:text-white text-xs">
-                    {item.count.toLocaleString('tr-TR')} {t('unit_person')}
-                  </span>
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                    style={{ backgroundColor: `${color}18`, color }}
-                  >
-                    %{pct}
-                  </span>
-                </div>
+                {brackets.map((item, idx) => {
+                  const pct = Number(((item.count / total) * 100).toFixed(1));
+                  const barHeightPct = Math.max(8, Math.round((item.count / maxCount) * 100));
+                  const color = item.color || '#06B6D4';
+                  const shortAge = item.label.replace(/\s*Yaş/i, '').trim();
+
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => onSelectAgeBracket && onSelectAgeBracket(item.label)}
+                      title={`${translateAgeLabel(item.label)} (${translateGroup(item.group)}): ${item.count.toLocaleString('tr-TR')} (%${pct})`}
+                      className="flex-1 h-full flex flex-col items-center justify-end group cursor-pointer relative z-10 max-w-[72px]"
+                    >
+                      {/* Top Value & Pct Label */}
+                      <div className="mb-1.5 text-center transition-transform group-hover:-translate-y-0.5">
+                        <div className="text-[11px] font-mono font-extrabold text-slate-900 dark:text-white leading-none">
+                          {item.count.toLocaleString('tr-TR')}
+                        </div>
+                        <div
+                          className="text-[9.5px] font-bold mt-0.5 px-1.5 py-0.2 rounded-full inline-block"
+                          style={{ backgroundColor: `${color}20`, color }}
+                        >
+                          %{pct}
+                        </div>
+                      </div>
+
+                      {/* Vertical Column */}
+                      <div
+                        className="w-full max-w-[44px] rounded-t-xl transition-all duration-500 group-hover:brightness-110 group-hover:shadow-md relative overflow-hidden"
+                        style={{
+                          height: `${barHeightPct}%`,
+                          background: `linear-gradient(180deg, ${color} 0%, ${color}cc 100%)`,
+                          boxShadow: `0 4px 14px -4px ${color}55`,
+                        }}
+                      >
+                        <div className="absolute inset-x-0 top-0 h-1.5 bg-white/30" />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Progress Bar */}
-              <div className="w-full bg-slate-200/80 dark:bg-slate-700/60 h-2 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500 group-hover:brightness-110"
-                  style={{
-                    width: `${Math.min(100, Math.max(3, pct))}%`,
-                    backgroundColor: color,
-                  }}
-                />
+              {/* X-Axis Labels (Age Groups) */}
+              <div className="flex items-start justify-around gap-2 sm:gap-3 px-2 pt-2">
+                {brackets.map((item, idx) => {
+                  const color = item.color || '#06B6D4';
+                  const shortAge = translateAgeLabel(item.label)
+                    .replace(/\s*(Yaş|лет)/gi, '')
+                    .trim();
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => onSelectAgeBracket && onSelectAgeBracket(item.label)}
+                      className="flex-1 text-center cursor-pointer max-w-[72px]"
+                    >
+                      <div className="inline-flex items-center gap-1 justify-center">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                          {shortAge}
+                        </span>
+                      </div>
+                      <div className="text-[9.5px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {translateGroup(item.group)}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
-        })}
+        })()}
       </div>
 
       {/* Footer Insight Note */}
