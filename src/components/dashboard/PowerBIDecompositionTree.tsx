@@ -52,9 +52,11 @@ export default function PowerBIDecompositionTree({
   const activeDepartments = activeProjectObj?.departments || [];
 
   // Geometry calculations for horizontal tree alignment (yana yatmış ağaç)
-  const TREE_STAGE_HEIGHT = 380; // px (height of 5 cards with gap)
-  const rootOffset = (TREE_STAGE_HEIGHT - CARD_HEIGHT) / 2; // (380 - 68) / 2 = 156px
-  const rootCenterY = rootOffset + CARD_HEIGHT / 2; // 190px
+  const maxColItems = Math.max(1, treeData.length, activeProjects.length, activeDepartments.length);
+  const TREE_STAGE_HEIGHT = Math.max(380, maxColItems * CARD_TOTAL);
+  const ROOT_CARD_HEIGHT = 140;
+  const rootOffset = (TREE_STAGE_HEIGHT - ROOT_CARD_HEIGHT) / 2;
+  const rootCenterY = rootOffset + ROOT_CARD_HEIGHT / 2;
 
   const regionsCount = Math.max(1, treeData.length);
   const regionsHeight = regionsCount * CARD_HEIGHT + Math.max(0, regionsCount - 1) * CARD_GAP;
@@ -120,35 +122,32 @@ export default function PowerBIDecompositionTree({
 
       {/* HORIZONTAL DECOMPOSITION TREE CONTAINER (CENTER-ALIGNED) */}
       <div className="overflow-x-auto pb-2 relative z-10 flex-1 flex flex-col justify-center">
-        <div className="min-w-[900px] flex items-center gap-0">
-          {/* LEVEL 0: ROOT (TOPLAM ÇALIŞAN - VERTICALLY CENTERED) */}
-          <div className="w-[195px] shrink-0 flex flex-col">
-            <div className="h-7 flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
-              <Users className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Корень: Всего' : 'Kök: Toplam'}</span>
+        <div className="min-w-[820px] flex items-center gap-0">
+          {/* LEVEL 0: ROOT (TOPLAM ÇALIŞAN - HALF WIDTH, TALLER CARD) */}
+          <div className="w-[104px] shrink-0 flex flex-col">
+            <div className="h-7 flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-teal-300 uppercase tracking-wider mb-2">
+              <Users className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{lang === 'ru' ? 'Всего' : 'Kök'}</span>
             </div>
 
-            <div className="h-[380px] flex flex-col justify-center">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center">
               <div
                 onClick={() => onSelectNode('region', 'all')}
-                className="h-[68px] p-3 rounded-xl bg-gradient-to-br from-emerald-50 to-slate-100 dark:from-teal-900/60 dark:to-slate-800 border-2 border-emerald-500/80 dark:border-teal-400/80 shadow-xs dark:shadow-lg dark:shadow-teal-950/50 cursor-pointer hover:border-emerald-600 dark:hover:border-teal-300 transition-all flex flex-col justify-between group relative"
+                style={{ height: ROOT_CARD_HEIGHT }}
+                className="p-2.5 rounded-xl bg-gradient-to-b from-emerald-50 to-slate-100 dark:from-teal-900/60 dark:to-slate-800 border-2 border-emerald-500/80 dark:border-teal-400/80 shadow-xs dark:shadow-lg dark:shadow-teal-950/50 cursor-pointer hover:border-emerald-600 dark:hover:border-teal-300 transition-all flex flex-col justify-between items-center text-center group relative"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-900 dark:text-teal-200">
-                    {lang === 'ru' ? 'Штат Pondera' : 'Pondera Kadrosu'}
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-200/80 dark:bg-teal-500/30 text-emerald-900 dark:text-teal-200 font-black">
-                    100%
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
-                    {totalCount.toLocaleString('tr-TR')}
-                  </span>
-                  <span className="text-[10px] text-emerald-700 dark:text-teal-300 font-semibold flex items-center gap-0.5">
-                    {lang === 'ru' ? 'Все →' : 'Tümü →'}
-                  </span>
-                </div>
+                <span className="text-[11px] leading-tight text-emerald-900 dark:text-teal-200">
+                  {lang === 'ru' ? 'Штат Pondera' : 'Pondera Kadrosu'}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200/80 dark:bg-teal-500/30 text-emerald-900 dark:text-teal-200">
+                  100%
+                </span>
+                <span className="text-base sm:text-lg text-slate-900 dark:text-white font-mono leading-none">
+                  {totalCount.toLocaleString('tr-TR')}
+                </span>
+                <span className="text-[10px] text-emerald-700 dark:text-teal-300 flex items-center gap-0.5">
+                  {lang === 'ru' ? 'Все →' : 'Tümü →'}
+                </span>
 
                 {/* Branch Output Port */}
                 <div className="hidden md:block absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald-500 dark:bg-teal-400 border-2 border-white dark:border-slate-900 z-10 shadow-xs" />
@@ -159,7 +158,7 @@ export default function PowerBIDecompositionTree({
           {/* CONNECTOR 0 -> 1 (ROOT TO REGIONS) */}
           <div className="hidden md:block w-8 shrink-0 flex flex-col">
             <div className="h-7 mb-2" />
-            <div className="h-[380px] w-full relative">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="w-full relative">
               <svg className="w-full h-full overflow-visible pointer-events-none">
                 {treeData.map((_, rIdx) => {
                   const isSel = rIdx === activeRegionIndex;
@@ -204,7 +203,7 @@ export default function PowerBIDecompositionTree({
               <span className="text-[10px] text-slate-500 font-normal">({treeData.length})</span>
             </div>
 
-            <div className="h-[380px] flex flex-col justify-center space-y-2.5">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-2.5">
               {treeData.map((reg) => {
                 const isSelected = selectedRegion === reg.name;
                 const pct = totalCount > 0 ? Math.round((reg.count / totalCount) * 100) : 0;
@@ -259,7 +258,7 @@ export default function PowerBIDecompositionTree({
           {/* CONNECTOR 1 -> 2 (SELECTED REGION TO CHILD PROJECTS) */}
           <div className="hidden md:block w-8 shrink-0 flex flex-col">
             <div className="h-7 mb-2" />
-            <div className="h-[380px] w-full relative">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="w-full relative">
               <svg className="w-full h-full overflow-visible pointer-events-none">
                 {activeProjects.map((_, pIdx) => {
                   const isSel = pIdx === activeProjectIndex;
@@ -306,7 +305,7 @@ export default function PowerBIDecompositionTree({
               </span>
             </div>
 
-            <div className="h-[380px] flex flex-col justify-center space-y-2.5">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-2.5">
               {activeProjects.map((prj) => {
                 const isSelected = selectedProject === prj.name;
                 const regTotal = activeRegionObj?.count || 1;
@@ -360,7 +359,7 @@ export default function PowerBIDecompositionTree({
           {/* CONNECTOR 2 -> 3 (SELECTED PROJECT TO CHILD DEPARTMENTS) */}
           <div className="hidden md:block w-8 shrink-0 flex flex-col">
             <div className="h-7 mb-2" />
-            <div className="h-[380px] w-full relative">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="w-full relative">
               <svg className="w-full h-full overflow-visible pointer-events-none">
                 {activeDepartments.map((_, dIdx) => {
                   const dY = getDeptY(dIdx);
@@ -398,7 +397,7 @@ export default function PowerBIDecompositionTree({
               </span>
             </div>
 
-            <div className="h-[380px] flex flex-col justify-center space-y-2.5">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-2.5">
               {activeDepartments.map((dpt, idx) => {
                 const prjTotal = activeProjectObj?.count || 1;
                 const pctOfPrj = Math.round((dpt.count / prjTotal) * 100);

@@ -9,7 +9,6 @@ import {
 import {
   EFFECTIVE_REGION_SQL,
   buildEffectiveRegionSqlCondition,
-  resolveEffectiveRegion,
 } from '@/lib/regionSiteHelper';
 import {
   ensureInterSiteTransfersSynced,
@@ -17,6 +16,14 @@ import {
   NON_TRANSFER_ENTRY_SQL,
   NON_TRANSFER_EXIT_SQL,
 } from '@/lib/interSiteTransfers';
+import {
+  ORG_JOB_LEVEL_META,
+  getOrgJobLevelsRevision,
+  normalizeOrgJobTitle,
+  suggestJobClassLevel,
+  syncAndGetJobTitleLevels,
+  type OrgJobClassLevel,
+} from '@/lib/orgJobLevelManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,7 +70,8 @@ export async function GET(request: Request) {
       )
       .all() as { key: string; value: string }[];
     const sysStampSig = sysStampRows.map((r) => `${r.key}=${r.value}`).join('|');
-    const statsCacheKey = `v3:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const jobLevelsRev = getOrgJobLevelsRevision(db);
+    const statsCacheKey = `v4:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
     const gStats = globalThis as unknown as {
       __ponderaStatsCache?: Map<string, any>;
     };
@@ -131,7 +139,29 @@ export async function GET(request: Request) {
     }
 
     if (title && title !== 'all') {
-      filterMap['title'] = { col: 'gorevi', op: 'LIKE', val: `%${title}%` };
+      const lvlMatch = title.match(/^L([1-8])\b/i);
+      if (lvlMatch) {
+        const targetLvl = Number(lvlMatch[1]);
+        const jobSync = syncAndGetJobTitleLevels(db);
+        const matchingTitles = jobSync.items
+          .filter((it) => it.levelNo === targetLvl)
+          .map((it) => it.displayTitle)
+          .filter(Boolean);
+        if (matchingTitles.length > 0) {
+          const placeholders = matchingTitles.map(() => '?').join(', ');
+          filterMap['title'] = {
+            col: 'gorevi',
+            op: '=',
+            val: null,
+            rawSql: `TRIM(COALESCE(gorevi, '')) IN (${placeholders})`,
+            rawParams: matchingTitles,
+          };
+        } else {
+          filterMap['title'] = { col: '1', op: '=', val: 0 };
+        }
+      } else {
+        filterMap['title'] = { col: 'gorevi', op: 'LIKE', val: `%${title}%` };
+      }
     }
 
     if (firmType === 'main') {
@@ -424,26 +454,46 @@ export async function GET(request: Request) {
     `);
     const tenureBrackets = tenureBracketsQuery.all(...overallWhere.params);
 
-    // D. Title Hierarchy Pyramid (ignores title filter so full pyramid shows)
+    // D. Title Hierarchy Pyramid based on L1-L8 corporate job levels table (ignores title filter so full pyramid shows)
     const titleWhere = buildWhere('title');
-    const titlePyramidQuery = db.prepare(`
-      SELECT 
-        CASE 
-          WHEN gorevi LIKE '%Müdür%' OR gorevi LIKE '%Direktör%' OR gorevi LIKE '%Yönetim%' THEN '01. Üst Yönetim / Müdür'
-          WHEN gorevi LIKE '%Şef%' OR gorevi LIKE '%Grup Şefi%' OR gorevi LIKE '%Kısım Şefi%' THEN '02. Şef / Kısım Şefi'
-          WHEN gorevi LIKE '%Mühendis%' OR gorevi LIKE '%Mimar%' OR gorevi LIKE '%PTO%' THEN '03. Mühendis / Teknik Ofis'
-          WHEN gorevi LIKE '%Uzman%' OR gorevi LIKE '%Inspektor%' OR gorevi LIKE '%Denetmen%' THEN '04. Uzman / Müfettiş'
-          WHEN gorevi LIKE '%Formen%' OR gorevi LIKE '%Ekipbaşı%' OR gorevi LIKE '%Usta%' THEN '05. Formen / Ekipbaşı'
-          WHEN gorevi LIKE '%Kaynakçı%' OR gorevi LIKE '%Montaj%' OR gorevi LIKE '%Boru%' OR gorevi LIKE '%İskele%' OR gorevi LIKE '%Elektrik%' OR gorevi LIKE '%Boya%' OR gorevi LIKE '%İzole%' THEN '06. Nitelikli Usta / Montajcı'
-          ELSE '07. Saha Personeli / Düz İşçi'
-        END as title,
-        COUNT(*) as count
-      FROM personnel
-      ${titleWhere.clause}
-      GROUP BY title
-      ORDER BY title ASC
-    `);
-    const titlePyramid = titlePyramidQuery.all(...titleWhere.params);
+    const jobLevelSync = syncAndGetJobTitleLevels(db);
+    const titleGroupedRows = db
+      .prepare(
+        `
+        SELECT
+          TRIM(COALESCE(gorevi, '')) as gorevi,
+          TRIM(COALESCE(endirekt_direkt, '')) as yaka,
+          COUNT(*) as cnt
+        FROM personnel
+        ${titleWhere.clause}
+        GROUP BY TRIM(COALESCE(gorevi, '')), TRIM(COALESCE(endirekt_direkt, ''))
+      `
+      )
+      .all(...titleWhere.params) as Array<{ gorevi: string; yaka: string; cnt: number }>;
+
+    const levelCounts: Record<OrgJobClassLevel, number> = {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+      6: 0,
+      7: 0,
+      8: 0,
+    };
+
+    for (const row of titleGroupedRows) {
+      const nk = normalizeOrgJobTitle(row.gorevi);
+      const lvl: OrgJobClassLevel =
+        (nk && jobLevelSync.levelMap[nk]) ||
+        suggestJobClassLevel(row.gorevi, row.yaka);
+      levelCounts[lvl] += Number(row.cnt || 0);
+    }
+
+    const titlePyramid = ORG_JOB_LEVEL_META.map((meta) => ({
+      title: `0${meta.level}. ${meta.code} • ${meta.titleTr}`,
+      count: levelCounts[meta.level] || 0,
+    }));
 
     // E. Turnover Calculation (Aylık Ortalama Sirkülasyon Oranı — şirket içi şantiye transferleri hariç)
     // Megaproje sahasında aylık ortalama çıkan personel / aktif mevcut kadro
@@ -466,12 +516,12 @@ export async function GET(request: Request) {
     `);
     const treeFlatRows = treeDataQuery.all(...overallWhere.params) as any[];
 
-    // Structure tree hierarchy (Kazan split into individual sites)
+    // Structure tree hierarchy: 2nd tier is Region (e.g. Kazan, Tobolsk, Amur), 3rd tier is Project/Site, 4th tier is Department
     const treeHierarchy: Record<string, { total: number; projects: Record<string, { total: number; depts: { name: string; count: number }[] }> }> = {};
     for (const row of treeFlatRows) {
-      const reg = resolveEffectiveRegion(row.region, row.proje_adi, 'Diğer');
-      const prj = row.proje_adi || reg;
-      const dpt = row.departman || 'Genel';
+      const reg = String(row.region ?? '').trim() || 'Diğer';
+      const prj = String(row.proje_adi ?? '').trim() || reg;
+      const dpt = String(row.departman ?? '').trim() || 'Genel';
       const c = row.count;
 
       if (!treeHierarchy[reg]) {
