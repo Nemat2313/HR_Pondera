@@ -144,6 +144,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (data.success && data.user) {
+        try {
+          sessionStorage.removeItem('pondera_active_tab');
+          sessionStorage.removeItem('pondera_settings_subtab');
+        } catch {
+          // ignore
+        }
         setUser(data.user);
         localStorage.setItem('pondera_hr_user', JSON.stringify(data.user));
         return { success: true };
@@ -158,10 +164,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('pondera_hr_user');
+    try {
+      sessionStorage.removeItem('pondera_active_tab');
+      sessionStorage.removeItem('pondera_settings_subtab');
+    } catch {
+      // ignore
+    }
     fetch('/api/auth/login', { method: 'DELETE' }).catch(() => { });
   };
 
   const switchUser = (targetUser: User) => {
+    try {
+      sessionStorage.removeItem('pondera_active_tab');
+      sessionStorage.removeItem('pondera_settings_subtab');
+    } catch {
+      // ignore
+    }
     setUser(targetUser);
     localStorage.setItem('pondera_hr_user', JSON.stringify(targetUser));
   };

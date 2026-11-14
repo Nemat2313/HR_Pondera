@@ -555,9 +555,12 @@ interface OrgEnterpriseCardProps {
   isSelected: boolean;
   isHighlighted: boolean;
   isChainFocused: boolean;
+  hasHiddenParent: boolean;
+  hiddenParentName?: string;
   colorBySpan: boolean;
   onCardClick: (node: OrgNode) => void;
   onToggleExpand: (node: OrgNode) => void;
+  onRevealParent: (node: OrgNode) => void;
   onOpenKunye: (node: OrgNode) => void;
   onInspectDrawer: (node: OrgNode) => void;
   onFocusSubtree: (nodeId: string) => void;
@@ -570,9 +573,12 @@ function OrgEnterpriseCard({
   isSelected,
   isHighlighted,
   isChainFocused,
+  hasHiddenParent,
+  hiddenParentName,
   colorBySpan,
   onCardClick,
   onToggleExpand,
+  onRevealParent,
   onOpenKunye,
   onInspectDrawer,
   onFocusSubtree,
@@ -785,6 +791,21 @@ function OrgEnterpriseCard({
           </div>
         )}
       </div>
+
+      {/* Top-centered + button when upper parent box is hidden/closed */}
+      {hasHiddenParent && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRevealParent(node);
+          }}
+          title={hiddenParentName ? `Üst kutuyu aç: ${hiddenParentName}` : 'Üst kutuyu aç (+)'}
+          className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 inline-flex items-center justify-center h-5 w-5 rounded-full border bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 border-teal-400 dark:border-teal-500 text-[12px] font-bold shadow-md transition-transform hover:scale-110 hover:bg-teal-600 hover:text-white cursor-pointer"
+        >
+          +
+        </button>
+      )}
 
       {/* Bottom-centered + / - Expand/Collapse button */}
       {hasChildren && (
@@ -1002,6 +1023,7 @@ export default function OrganizationChartView() {
         rootItems: [] as LayoutTreeItem[],
         allItems: [] as LayoutTreeItem[],
         swimlanes: [] as SwimlaneBand[],
+        visiblePersonIds: new Set<string>(),
         canvasWidth: 960,
         canvasHeight: 420,
       };
@@ -1300,10 +1322,18 @@ export default function OrganizationChartView() {
     const canvasWidth = Math.max(960, startLeftX + totalRootsSpan + 48);
     const canvasHeight = Math.max(420, cursorY + 28);
 
+    const visiblePersonIds = new Set<string>();
+    for (const it of allItems) {
+      if (it.kind === 'person') {
+        visiblePersonIds.add(it.node.nodeId);
+      }
+    }
+
     return {
       rootItems,
       allItems,
       swimlanes,
+      visiblePersonIds,
       canvasWidth,
       canvasHeight,
     };
@@ -2332,29 +2362,47 @@ export default function OrganizationChartView() {
                   </svg>
 
                   {/* 3. Positioned Enterprise Cards, Crew Cards & Right-Side "+N Kişi Daha" Cards */}
-                  {layoutData.allItems.map((it) => (
-                    <div
-                      key={it.id}
-                      data-no-pan="true"
-                      style={{ left: it.x, top: it.y }}
-                      className="absolute z-[5]"
-                    >
-                      {it.kind === 'person' ? (
-                        <OrgEnterpriseCard
-                          node={it.node}
-                          density={cardDensity}
-                          isExpanded={expandedIds.has(it.node.nodeId)}
-                          isSelected={selectedNodeId === it.node.nodeId}
-                          isHighlighted={highlightedNodeId === it.node.nodeId}
-                          isChainFocused={chainFocusNodeId === it.node.nodeId}
-                          colorBySpan={colorBySpan}
-                          onCardClick={handleCardClick}
-                          onToggleExpand={handleToggleExpand}
-                          onOpenKunye={(n) => setSelectedNodeId(n.nodeId)}
-                          onInspectDrawer={handleInspectDrawer}
-                          onFocusSubtree={(id) => setFocusNodeId(id)}
-                        />
-                      ) : it.kind === 'more_siblings' ? (
+                  {layoutData.allItems.map((it) => {
+                    const hiddenParentNode =
+                      it.kind === 'person' &&
+                      it.node.parentId &&
+                      !layoutData.visiblePersonIds?.has(it.node.parentId)
+                        ? orgResult.nodeById.get(it.node.parentId)
+                        : undefined;
+                    return (
+                      <div
+                        key={it.id}
+                        data-no-pan="true"
+                        style={{ left: it.x, top: it.y }}
+                        className="absolute z-[5]"
+                      >
+                        {it.kind === 'person' ? (
+                          <OrgEnterpriseCard
+                            node={it.node}
+                            density={cardDensity}
+                            isExpanded={expandedIds.has(it.node.nodeId)}
+                            isSelected={selectedNodeId === it.node.nodeId}
+                            isHighlighted={highlightedNodeId === it.node.nodeId}
+                            isChainFocused={chainFocusNodeId === it.node.nodeId}
+                            hasHiddenParent={Boolean(hiddenParentNode)}
+                            hiddenParentName={hiddenParentNode?.ad_soyad}
+                            colorBySpan={colorBySpan}
+                            onCardClick={handleCardClick}
+                            onToggleExpand={handleToggleExpand}
+                            onRevealParent={(n) => {
+                              if (!n.parentId) return;
+                              const pNode = orgResult.nodeById.get(n.parentId);
+                              if (!pNode || !pNode.parentId) {
+                                setFocusNodeId(null);
+                              } else {
+                                setFocusNodeId(pNode.nodeId);
+                              }
+                            }}
+                            onOpenKunye={(n) => setSelectedNodeId(n.nodeId)}
+                            onInspectDrawer={handleInspectDrawer}
+                            onFocusSubtree={(id) => setFocusNodeId(id)}
+                          />
+                        ) : it.kind === 'more_siblings' ? (
                         <button
                           type="button"
                           onClick={() => handleLoadMoreSiblings(it.node.nodeId)}
@@ -2384,8 +2432,9 @@ export default function OrganizationChartView() {
                           onInspectPerson={handleInspectDrawer}
                         />
                       )}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
 
                   {/* 4. Clickable Left L1..L8 Level Pills Overlay (never blocks card clicks) */}
                   <div className="absolute inset-0 pointer-events-none z-[25]">

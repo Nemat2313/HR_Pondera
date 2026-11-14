@@ -233,11 +233,37 @@ export default function Home() {
     fetchStats();
   }, [fetchStats]);
 
+  const prevUserIdRef = useRef<number | string | null>(null);
+  const wasLoggedOutRef = useRef<boolean>(false);
+
   useEffect(() => {
+    if (authLoading) return;
     if (user) {
       setIsLoginModalOpen(false);
+      const isFreshLogin =
+        wasLoggedOutRef.current ||
+        (prevUserIdRef.current !== null && prevUserIdRef.current !== user.id);
+      if (isFreshLogin) {
+        setActiveTab('overview');
+        try {
+          sessionStorage.removeItem('pondera_active_tab');
+        } catch {
+          // ignore
+        }
+      }
+      wasLoggedOutRef.current = false;
+      prevUserIdRef.current = user.id;
+    } else {
+      wasLoggedOutRef.current = true;
+      prevUserIdRef.current = null;
+      setActiveTab('overview');
+      try {
+        sessionStorage.removeItem('pondera_active_tab');
+      } catch {
+        // ignore
+      }
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   // Preload heavy VKS, Personnel & Ticket AI bundles on idle so sidebar tab switches feel instantaneous
   useEffect(() => {
