@@ -389,23 +389,48 @@ export default function Sidebar({
           onScroll={() => {
             if (hoveredFlyout) setHoveredFlyout(null);
           }}
-          className="flex-1 overflow-y-auto px-2 py-2 space-y-4 min-h-0"
+          className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-4 min-h-0"
         >
-          {visibleNavGroups.map((group) => (
-            <div key={group.id} className="space-y-0.5">
+          {visibleNavGroups.map((group) => {
+            const isPoweriseGroup = group.id === 'powerise';
+            return (
+            <div
+              key={group.id}
+              className={`space-y-0.5 ${
+                isPoweriseGroup
+                  ? 'mt-auto pt-4 border-t border-indigo-200/80 dark:border-indigo-800/50 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 px-1.5 pb-2'
+                  : ''
+              }`}
+            >
               {/* Group Header */}
               {(!collapsed || mobileOpen) ? (
-                <div className="flex items-center justify-between px-2 py-1 text-[10px] uppercase tracking-wider text-slate-600 dark:text-slate-400 font-normal">
+                <div
+                  className={`flex items-center justify-between px-2 py-1 text-[10px] uppercase tracking-wider font-normal ${
+                    isPoweriseGroup
+                      ? 'text-indigo-700 dark:text-indigo-300 font-semibold'
+                      : 'text-slate-600 dark:text-slate-400'
+                  }`}
+                >
                   <span className="truncate">{group.title}</span>
                   {group.tag && (
-                    <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-normal">
+                    <span
+                      className={`text-[8.5px] px-1.5 py-0.2 rounded font-normal ${
+                        isPoweriseGroup
+                          ? 'bg-indigo-100 dark:bg-indigo-900/70 text-indigo-700 dark:text-indigo-200 border border-indigo-200/80 dark:border-indigo-700/60'
+                          : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
                       {group.tag}
                     </span>
                   )}
                 </div>
               ) : (
                 <div className="w-full flex justify-center py-1">
-                  <div className="w-4 h-0.5 bg-slate-300 dark:bg-slate-700 rounded-full" />
+                  <div
+                    className={`w-4 h-0.5 rounded-full ${
+                      isPoweriseGroup ? 'bg-indigo-300 dark:bg-indigo-700' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  />
                 </div>
               )}
 
@@ -434,14 +459,24 @@ export default function Sidebar({
                       setHoveredFlyout((prev) => (prev?.id === item.id ? null : prev))
                     }
                     className={`group w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] transition-all duration-150 cursor-pointer ${
-                      isActive
+                      isPoweriseGroup
+                        ? isActive
+                          ? 'bg-indigo-100/95 dark:bg-indigo-950/90 text-indigo-950 dark:text-indigo-100 border border-indigo-300/80 dark:border-indigo-700/70 shadow-2xs font-normal'
+                          : 'text-indigo-950 dark:text-indigo-100 hover:text-indigo-950 dark:hover:text-white hover:bg-indigo-100/60 dark:hover:bg-indigo-900/40 font-normal'
+                        : isActive
                         ? 'bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 border border-emerald-300/70 dark:border-emerald-700/60 shadow-2xs font-normal'
                         : 'text-slate-900 dark:text-slate-100 hover:text-black dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800/60 font-normal'
                     } ${collapsed && !mobileOpen ? 'justify-center px-0 py-2' : ''}`}
                   >
                     <Icon
                       className={`w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                        isActive ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-300'
+                        isPoweriseGroup
+                          ? isActive
+                            ? 'text-indigo-700 dark:text-indigo-300'
+                            : 'text-indigo-600/85 dark:text-indigo-300/85'
+                          : isActive
+                          ? 'text-emerald-800 dark:text-emerald-300'
+                          : 'text-slate-700 dark:text-slate-300'
                       }`}
                     />
                     {(!collapsed || mobileOpen) && (
@@ -462,7 +497,8 @@ export default function Sidebar({
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Bottom Footer Info */}

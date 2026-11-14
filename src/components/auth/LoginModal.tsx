@@ -488,6 +488,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const { lang, setLang, t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -510,6 +511,24 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
   useEffect(() => {
     if (!isOpen) return;
+    try {
+      const savedPref = localStorage.getItem('pondera_remember_me');
+      const shouldRemember = savedPref !== 'false';
+      setRememberMe(shouldRemember);
+      if (shouldRemember) {
+        const raw = localStorage.getItem('pondera_remember_creds');
+        if (raw) {
+          const parsed = JSON.parse(decodeURIComponent(escape(atob(raw)))) as {
+            u?: string;
+            p?: string;
+          };
+          if (parsed?.u) setEmail((prev) => prev || parsed.u || '');
+          if (parsed?.p) setPassword((prev) => prev || parsed.p || '');
+        }
+      }
+    } catch {
+      // Ignore malformed stored credentials
+    }
     syncFromDomInputs();
     const delays = [60, 200, 500, 1000];
     const timers = delays.map((ms) => setTimeout(syncFromDomInputs, ms));
@@ -557,10 +576,23 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     }
 
     setLoading(true);
-    const res = await login(resolvedUser, resolvedPass);
+    const res = await login(resolvedUser, resolvedPass, rememberMe);
     setLoading(false);
 
     if (res.success) {
+      try {
+        localStorage.setItem('pondera_remember_me', rememberMe ? 'true' : 'false');
+        if (rememberMe) {
+          const encoded = btoa(
+            unescape(encodeURIComponent(JSON.stringify({ u: resolvedUser, p: resolvedPass })))
+          );
+          localStorage.setItem('pondera_remember_creds', encoded);
+        } else {
+          localStorage.removeItem('pondera_remember_creds');
+        }
+      } catch {
+        // Ignore storage errors
+      }
       try {
         const win = window as unknown as {
           PasswordCredential?: new (data: { id: string; password: string }) => Credential;
@@ -714,6 +746,24 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            {/* Remember Me */}
+            <div className="flex items-center justify-between pt-0.5">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500/30 cursor-pointer accent-emerald-600"
+                />
+                <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900">
+                  {lang === 'ru' ? 'Запомнить меня (90 дней)' : 'Beni Hatırla (90 gün)'}
+                </span>
+              </label>
+              <span className="text-[11px] text-slate-400">
+                {lang === 'ru' ? 'Безопасный вход' : 'Güvenli Oturum'}
+              </span>
             </div>
 
             {/* Error Message */}

@@ -116,7 +116,7 @@ export default function OverviewView({
   const [drillModal, setDrillModal] = useState<{
     isOpen: boolean;
     title: string;
-    filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender';
+    filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender' | 'title' | 'firm';
     filterValue: string;
   }>({
     isOpen: false,
@@ -159,10 +159,13 @@ export default function OverviewView({
     firmFilter !== 'all';
 
   const openActiveFiltersDetail = () => {
-    let fType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender' = 'region';
+    let fType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender' | 'title' | 'firm' = 'region';
     let fVal = 'all';
 
-    if (selectedPermit !== 'all') {
+    if (selectedTitle !== 'all') {
+      fType = 'title';
+      fVal = selectedTitle;
+    } else if (selectedPermit !== 'all') {
       fType = 'permit';
       fVal = selectedPermit;
     } else if (selectedRegion !== 'all') {
@@ -186,6 +189,9 @@ export default function OverviewView({
     } else if (selectedGender !== 'all') {
       fType = 'gender';
       fVal = selectedGender;
+    } else if (firmFilter !== 'all') {
+      fType = 'firm';
+      fVal = firmFilter;
     }
 
     setDrillModal({

@@ -11,7 +11,7 @@ interface DrillDownModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender';
+  filterType: 'region' | 'project' | 'department' | 'category' | 'nationality' | 'collar' | 'permit' | 'gender' | 'title' | 'firm';
   filterValue: string;
   onNavigateToPersonnel: (filterType: string, filterValue: string) => void;
 }
@@ -51,6 +51,8 @@ export default function DrillDownModal({
     else if (filterType === 'nationality') params.set('nationality', filterValue);
     else if (filterType === 'permit') params.set('permit', filterValue);
     else if (filterType === 'gender' && filterValue !== 'all') params.set('gender', filterValue);
+    else if (filterType === 'title' && filterValue !== 'all') params.set('title', filterValue);
+    else if (filterType === 'firm' && filterValue !== 'all') params.set('firm', filterValue);
     else if (filterType === 'collar') {
       const collarVal =
         filterValue.includes('Endirekt') || filterValue.includes('Beyaz')
@@ -93,6 +95,8 @@ export default function DrillDownModal({
       else if (filterType === 'nationality') params.set('nationality', filterValue);
       else if (filterType === 'permit') params.set('permit', filterValue);
       else if (filterType === 'gender' && filterValue !== 'all') params.set('gender', filterValue);
+      else if (filterType === 'title' && filterValue !== 'all') params.set('title', filterValue);
+      else if (filterType === 'firm' && filterValue !== 'all') params.set('firm', filterValue);
       else if (filterType === 'collar') {
         const collarVal =
           filterValue.includes('Endirekt') || filterValue.includes('Beyaz')

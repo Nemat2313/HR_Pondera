@@ -90,7 +90,10 @@ function getHmacSecret(): string {
   }
 }
 
-export function createSessionToken(user: Omit<SessionUser, 'exp'>): string {
+export function createSessionToken(
+  user: Omit<SessionUser, 'exp'>,
+  maxAgeSeconds: number = SESSION_MAX_AGE_SECONDS
+): string {
   const payloadObj: SessionUser = {
     id: Number(user.id),
     name: String(user.name),
@@ -98,7 +101,7 @@ export function createSessionToken(user: Omit<SessionUser, 'exp'>): string {
     role: user.role,
     scope_type: user.scope_type,
     scope_value: String(user.scope_value),
-    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+    exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
   };
   const payloadB64 = Buffer.from(JSON.stringify(payloadObj), 'utf-8').toString('base64url');
   const sig = crypto
@@ -153,14 +156,17 @@ export function getSessionUserFromRequest(request: Request): SessionUser | null 
   return verifySessionToken(token);
 }
 
-export function buildSessionCookieHeader(token: string): string {
+export function buildSessionCookieHeader(
+  token: string,
+  maxAgeSeconds: number = SESSION_MAX_AGE_SECONDS
+): string {
   const isProd = process.env.NODE_ENV === 'production';
   const parts = [
     `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
-    `Max-Age=${SESSION_MAX_AGE_SECONDS}`,
+    `Max-Age=${maxAgeSeconds}`,
   ];
   if (isProd) {
     parts.push('Secure');

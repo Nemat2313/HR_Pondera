@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2, RefreshCw } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
@@ -146,6 +146,7 @@ export default function Home() {
   const { user, loading: authLoading, showPermissionDenied } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [collapsed, setCollapsed] = useState(false);
+  const wasOrgChartRef = useRef(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [includeExits, setIncludeExits] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -271,7 +272,11 @@ export default function Home() {
       // ignore
     }
     if (activeTab === 'org_chart') {
+      wasOrgChartRef.current = true;
       setCollapsed(true);
+    } else if (wasOrgChartRef.current) {
+      wasOrgChartRef.current = false;
+      setCollapsed(false);
     }
   }, [activeTab, settingsInitialSubTab]);
 

@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { email, password, rememberMe } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -122,12 +122,13 @@ export async function POST(request: Request) {
       scope_value: String(user.scope_value || 'all'),
     };
 
-    const token = createSessionToken(safeUser);
+    const maxAgeSeconds = rememberMe === false ? 60 * 60 * 24 : 60 * 60 * 24 * 90;
+    const token = createSessionToken(safeUser, maxAgeSeconds);
     const response = NextResponse.json({
       success: true,
       user: safeUser,
     });
-    response.headers.set('Set-Cookie', buildSessionCookieHeader(token));
+    response.headers.set('Set-Cookie', buildSessionCookieHeader(token, maxAgeSeconds));
     return response;
   } catch {
     return NextResponse.json(

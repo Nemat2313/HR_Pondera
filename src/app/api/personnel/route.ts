@@ -16,6 +16,7 @@ import {
 } from '@/lib/interSiteTransfers';
 import { formatKnownDateToDdMmYyyy, normalizeRawRecordDates } from '@/lib/dateFormatter';
 import { getZupDatesIndex, matchZupDatesForPersonnelRow } from '@/lib/zupDatesLookup';
+import { syncAndGetJobTitleLevels } from '@/lib/orgJobLevelManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,6 +47,8 @@ export async function GET(request: Request) {
     const collar = searchParams.get('collar') || 'all';
     const gender = searchParams.get('gender') || 'all';
     const permit = searchParams.get('permit') || 'all';
+    const title = searchParams.get('title') || 'all';
+    const firm = searchParams.get('firm') || 'all';
     const movementType = searchParams.get('movementType') || ''; // 'entry' | 'exit'
     const period = searchParams.get('period') || ''; // '1d' | '3d' | '7d' | '30d' | 'all'
     const sortBy = searchParams.get('sortBy') || 'sira_no';
@@ -266,6 +269,24 @@ export async function GET(request: Request) {
           params.push(canonicalPermit);
         }
       }
+    }
+    if (title !== 'all') {
+      const lvlMatch = title.trim().match(/^L([1-8])\b/i);
+      if (lvlMatch) {
+        syncAndGetJobTitleLevels(db);
+        const targetLvl = `L${lvlMatch[1]}`;
+        conditions.push(
+          `LOWER(TRIM(COALESCE(gorevi, ''))) IN (SELECT normalized_title FROM org_job_title_levels WHERE level = ?)`
+        );
+        params.push(targetLvl);
+      } else {
+        conditions.push(`TRIM(COALESCE(gorevi, '')) = ?`);
+        params.push(title.trim());
+      }
+    }
+    if (firm !== 'all') {
+      conditions.push(`TRIM(COALESCE(resmi_firma, '')) = ?`);
+      params.push(firm.trim());
     }
 
     // Global Search

@@ -277,7 +277,7 @@ const DETAIL_CARD_HEIGHT = 148;
 const COMPACT_CARD_HEIGHT = 86;
 const CREW_EXPANDED_HEIGHT = 326;
 const H_GAP = 18;
-const SWIMLANE_LABEL_WIDTH = 158;
+const SWIMLANE_LABEL_WIDTH = 0;
 
 type CardDensity = 'compact' | 'detailed';
 
@@ -893,7 +893,7 @@ export default function OrganizationChartView() {
     select(vpEl)
       .transition()
       .duration(220)
-      .call(zb.scaleTo as any, clamped);
+      .call(zb.scaleTo as any, clamped, [0, 0]);
   }, []);
 
   const centerOnCoords = useCallback((worldX: number, worldY: number, targetScale?: number) => {
@@ -1159,7 +1159,7 @@ export default function OrganizationChartView() {
       rootItems.reduce((acc, r) => acc + r.subtreeWidth, 0) +
       Math.max(0, rootItems.length - 1) * (H_GAP * 2);
 
-    const startLeftX = SWIMLANE_LABEL_WIDTH + 28;
+    const startLeftX = 52;
 
     const assignCoords = (it: LayoutTreeItem, leftX: number) => {
       it.centerX = leftX + it.subtreeWidth / 2;
@@ -1215,7 +1215,7 @@ export default function OrganizationChartView() {
     const scaleX = (rect.width - 24) / layoutData.canvasWidth;
     const scaleY = (rect.height - 24) / layoutData.canvasHeight;
     const fitScale = Math.min(1.0, Math.max(0.45, Math.min(scaleX, scaleY)));
-    const tx = Math.max(8, (rect.width - layoutData.canvasWidth * fitScale) / 2);
+    const tx = 12;
     const ty = 12;
 
     select(vpEl)
@@ -1224,25 +1224,19 @@ export default function OrganizationChartView() {
       .call(zb.transform as any, zoomIdentity.translate(tx, ty).scale(fitScale));
   }, [layoutData.canvasWidth, layoutData.canvasHeight]);
 
+  const pendingCenterRootRef = useRef(false);
+
   // Reset to initial root-only open view ONLY when root structure changes (NEVER on zoom!)
   const resetToInitialView = useCallback(() => {
     const next = new Set<string>();
     for (const r of orgResult.roots.slice(0, 2)) {
       next.add(r.nodeId);
     }
+    pendingCenterRootRef.current = true;
     setExpandedIds(next);
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
-
-    const vpEl = viewportRef.current;
-    const zb = zoomBehaviorRef.current;
-    if (vpEl && zb) {
-      select(vpEl)
-        .transition()
-        .duration(260)
-        .call(zb.transform as any, zoomIdentity.translate(16, 12).scale(DEFAULT_ZOOM));
-    }
   }, [orgResult.roots]);
 
   useEffect(() => {
@@ -1250,11 +1244,33 @@ export default function OrganizationChartView() {
     for (const r of orgResult.roots.slice(0, 2)) {
       next.add(r.nodeId);
     }
+    pendingCenterRootRef.current = true;
     setExpandedIds(next);
     setExpandedCrewKeys(new Set());
     setVisibleCountByParent({});
     setHighlightedNodeId(null);
   }, [orgResult.roots]);
+
+  useEffect(() => {
+    if (!pendingCenterRootRef.current) return;
+    if (layoutData.rootItems.length === 0) return;
+    const vpEl = viewportRef.current;
+    const zb = zoomBehaviorRef.current;
+    if (!vpEl || !zb) return;
+    const rect = vpEl.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    pendingCenterRootRef.current = false;
+    const firstRoot = layoutData.rootItems[0];
+    const k = DEFAULT_ZOOM;
+    const tx = Math.round(rect.width / 2 - firstRoot.centerX * k);
+    const ty = 16;
+
+    select(vpEl)
+      .transition()
+      .duration(280)
+      .call(zb.transform as any, zoomIdentity.translate(tx, ty).scale(k));
+  }, [layoutData.rootItems, viewTab, loading]);
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -2016,10 +2032,12 @@ export default function OrganizationChartView() {
                   }}
                   className="relative will-change-transform"
                 >
-                  {/* 1. Horizontal Corporate Level Swimlane Bands (L1 .. L8) */}
+                  {/* 1. Horizontal Corporate Level Swimlane Lines (L1 .. L8) — No Left Column, Hover for Description */}
                   {layoutData.swimlanes.map((band) => {
                     const theme = ROLE_LEVEL_THEMES[band.levelNo];
                     const BandIcon = theme.icon;
+                    const levelCode = `${theme.code}${band.subTier > 0 ? `.${band.subTier + 1}` : ''}`;
+                    const levelDesc = `${levelCode} • ${lang === 'ru' ? theme.shortRu : theme.shortTr}`;
                     return (
                       <div
                         key={band.rowKey}
@@ -2028,19 +2046,16 @@ export default function OrganizationChartView() {
                           band.isEmptyPassThrough ? 'opacity-65' : theme.swimlaneBg
                         }`}
                       >
-                        <div
-                          style={{ width: SWIMLANE_LABEL_WIDTH - 10 }}
-                          className="pl-2.5 pt-2 pointer-events-none"
-                        >
+                        <div className="absolute left-1.5 top-1.5 z-[4] pointer-events-auto group/lvl">
                           <div
-                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10.5px] shadow-2xs ${theme.swimlanePill}`}
+                            title={levelDesc}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold shadow-2xs cursor-help ${theme.swimlanePill}`}
                           >
-                            <BandIcon className="w-3 h-3 shrink-0" />
-                            <span className="truncate">
-                              {theme.code}
-                              {band.subTier > 0 ? `.${band.subTier + 1}` : ''} •{' '}
-                              {lang === 'ru' ? theme.shortRu : theme.shortTr}
-                            </span>
+                            <BandIcon className="w-2.5 h-2.5 shrink-0" />
+                            <span>{levelCode}</span>
+                          </div>
+                          <div className="pointer-events-none opacity-0 group-hover/lvl:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1 whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-slate-800 text-white text-[11px] font-medium shadow-lg z-30 border border-slate-700">
+                            {levelDesc}
                           </div>
                         </div>
                       </div>

@@ -325,6 +325,9 @@ export default function PersonnelListView({
   );
   const [filterCollar, setFilterCollar] = useState('all');
   const [filterPermit, setFilterPermit] = useState('all');
+  const [filterTitle, setFilterTitle] = useState('all');
+  const [filterGender, setFilterGender] = useState('all');
+  const [filterFirm, setFilterFirm] = useState('all');
 
   // Sorting - default to Sicil No
   const [sortBy, setSortBy] = useState('sicil_no');
@@ -488,6 +491,12 @@ export default function PersonnelListView({
         setFilterCollar(val);
       } else if (initialFilter.type === 'permit') {
         setFilterPermit(initialFilter.value);
+      } else if (initialFilter.type === 'title') {
+        setFilterTitle(initialFilter.value);
+      } else if (initialFilter.type === 'gender') {
+        setFilterGender(initialFilter.value);
+      } else if (initialFilter.type === 'firm') {
+        setFilterFirm(initialFilter.value);
       } else if (initialFilter.type === 'search') {
         setSearch(initialFilter.value);
         setFilterStatus('all');
@@ -549,6 +558,9 @@ export default function PersonnelListView({
     if (filterNationality !== 'all') params.set('nationality', filterNationality);
     if (filterCollar !== 'all') params.set('collar', filterCollar);
     if (filterPermit !== 'all') params.set('permit', filterPermit);
+    if (filterTitle !== 'all') params.set('title', filterTitle);
+    if (filterGender !== 'all') params.set('gender', filterGender);
+    if (filterFirm !== 'all') params.set('firm', filterFirm);
 
     fetch(`/api/personnel?${params.toString()}`, { signal: controller.signal })
       .then((res) => res.json())
@@ -583,6 +595,9 @@ export default function PersonnelListView({
     filterStatus,
     filterCollar,
     filterPermit,
+    filterTitle,
+    filterGender,
+    filterFirm,
     sortBy,
     sortOrder,
     user,
@@ -814,6 +829,9 @@ export default function PersonnelListView({
     setFilterStatus('Mevcut');
     setFilterCollar('all');
     setFilterPermit('all');
+    setFilterTitle('all');
+    setFilterGender('all');
+    setFilterFirm('all');
     setPage(1);
     if (onClearInitialFilter) onClearInitialFilter();
   };
@@ -1208,6 +1226,40 @@ export default function PersonnelListView({
                   onClick={() => setFilterPermit('all')}
                   className="hover:text-cyan-950 dark:hover:text-cyan-100 cursor-pointer ml-0.5"
                   title={lang === 'ru' ? 'Сбросить фильтр разрешения' : 'İzin filtresini kaldır'}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterTitle !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold">
+                <span>{lang === 'ru' ? 'Должность' : 'Unvan / Seviye'}: {filterTitle}</span>
+                <button
+                  onClick={() => setFilterTitle('all')}
+                  className="hover:text-indigo-950 dark:hover:text-indigo-100 cursor-pointer ml-0.5"
+                  title={lang === 'ru' ? 'Сбросить фильтр должности' : 'Unvan filtresini kaldır'}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterGender !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[11px] font-semibold">
+                <span>{lang === 'ru' ? 'Пол' : 'Cinsiyet'}: {filterGender}</span>
+                <button
+                  onClick={() => setFilterGender('all')}
+                  className="hover:text-purple-950 dark:hover:text-purple-100 cursor-pointer ml-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterFirm !== 'all' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold">
+                <span>{lang === 'ru' ? 'Компания' : 'Firma'}: {filterFirm}</span>
+                <button
+                  onClick={() => setFilterFirm('all')}
+                  className="hover:text-amber-950 dark:hover:text-amber-100 cursor-pointer ml-0.5"
                 >
                   <X className="w-3 h-3" />
                 </button>
