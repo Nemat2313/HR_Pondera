@@ -1,181 +1,266 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Crown,
+  AlertTriangle,
   Building2,
-  Layers,
-  Compass,
-  HardHat,
-  Users,
-  Search,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  Minimize2,
-  RotateCcw,
   ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
-  Download,
+  ChevronUp,
+  Compass,
   Crosshair,
+  Crown,
+  Download,
   Eye,
+  GitBranch,
+  HardHat,
   Info,
-  GitFork,
+  Layers,
   ListTree,
-  LayoutGrid,
-  MapPin,
-  ShieldAlert,
-  Handshake,
-  Clock,
+  Maximize2,
+  Minimize2,
+  Palette,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  UserCheck,
+  Users,
   X,
-  ArrowUpRight,
-  Flame,
-  ArrowRightLeft,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import type { OrgRawPerson } from '@/app/api/org-chart/route';
-import {
-  buildOrganizationHierarchy,
-  OrgHierarchyMode,
-  OrgNode,
-  OrgRoleLevel,
-} from '@/lib/orgChartBuilder';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import PersonnelDetailDrawer from '@/components/personnel/PersonnelDetailDrawer';
+import JobTitleLevelModal, {
+  type JobLevelItemDto,
+} from '@/components/org-chart/JobTitleLevelModal';
+import type { OrgRawPerson } from '@/app/api/org-chart/route';
+import {
+  buildOrganizationHierarchy,
+  type OrgHierarchyMode,
+  type OrgNode,
+  type OrgRoleLevel,
+} from '@/lib/orgChartBuilder';
 import type { PersonnelRecord } from '@/types';
 
-interface OrganizationChartViewProps {
-  onNavigateToPersonnel?: (filterType?: string, filterValue?: string) => void;
-}
-
-type ChartOrientation = 'vertical' | 'horizontal';
-
-const SIBLING_PAGE_SIZE = 5;
-const MIN_READABLE_ZOOM = 0.75;
-const MAX_READABLE_ZOOM = 1.3;
-const DEFAULT_READABLE_ZOOM = 0.96;
-
-interface RoleTierMeta {
+interface RoleLevelVisualTheme {
   level: OrgRoleLevel;
-  badgeTr: string;
-  badgeRu: string;
+  code: string;
   shortTr: string;
   shortRu: string;
+  rowTitleTr: string;
+  rowTitleRu: string;
+  cardBg: string;
+  cardBorder: string;
+  topRibbon: string;
+  avatarBg: string;
+  avatarText: string;
+  badgeBg: string;
+  badgeText: string;
+  titleColor: string;
+  subColor: string;
+  swimlaneBg: string;
+  swimlanePill: string;
   icon: React.ComponentType<{ className?: string }>;
-  cardClass: string;
-  accentBarClass: string;
-  avatarClass: string;
-  pillClass: string;
 }
 
-const ROLE_TIER_CONFIG: Record<OrgRoleLevel, RoleTierMeta> = {
+const ROLE_LEVEL_THEMES: Record<OrgRoleLevel, RoleLevelVisualTheme> = {
   1: {
     level: 1,
-    badgeTr: 'L1 • ÜST YÖNETİM',
-    badgeRu: 'У1 • РУКОВОДСТВО',
-    shortTr: 'Başkan & Direktör',
-    shortRu: 'Президент и Директора',
+    code: 'L1',
+    shortTr: 'Başkan',
+    shortRu: 'Председатель',
+    rowTitleTr: 'Yönetim Kurulu & Başkan',
+    rowTitleRu: 'Председатель правления',
+    cardBg: 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900',
+    cardBorder: 'border-amber-400/80 ring-1 ring-amber-400/30',
+    topRibbon: 'from-amber-400 via-yellow-300 to-amber-500',
+    avatarBg: 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm',
+    avatarText: 'text-slate-950',
+    badgeBg: 'bg-amber-400/20 border border-amber-400/40',
+    badgeText: 'text-amber-300',
+    titleColor: 'text-white',
+    subColor: 'text-amber-200/90',
+    swimlaneBg: 'bg-amber-50/35 dark:bg-amber-950/10',
+    swimlanePill:
+      'bg-slate-900 text-amber-300 border-amber-500/50 dark:bg-slate-900 dark:text-amber-300',
     icon: Crown,
-    cardClass:
-      'bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/90 dark:from-[#0F172A] dark:via-[#151F38] dark:to-amber-950/70 text-white border-2 border-amber-400/80 shadow-lg shadow-amber-500/10',
-    accentBarClass: 'bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500',
-    avatarClass:
-      'bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 ring-2 ring-amber-300/60 shadow-sm',
-    pillClass: 'bg-amber-400/20 text-amber-200 border border-amber-400/40',
   },
   2: {
     level: 2,
-    badgeTr: 'L2 • MÜDÜR / LİDER',
-    badgeRu: 'У2 • ДИРЕКТОР ПРОЕКТА',
-    shortTr: 'Müdür & Şantiye Şefi',
-    shortRu: 'Директора и Нач. объектов',
-    icon: Building2,
-    cardClass:
-      'bg-gradient-to-br from-white via-indigo-50/45 to-blue-50/50 dark:from-[#131C31] dark:via-indigo-950/35 dark:to-slate-900 text-slate-900 dark:text-white border-2 border-indigo-300 dark:border-indigo-500/70 shadow-md',
-    accentBarClass: 'bg-gradient-to-r from-indigo-600 via-blue-500 to-indigo-500',
-    avatarClass: 'bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-xs',
-    pillClass:
-      'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700',
+    code: 'L2',
+    shortTr: 'CEO & Genel Müdür',
+    shortRu: 'CEO и Ген. директор',
+    rowTitleTr: 'CEO / COO & Genel Müdür',
+    rowTitleRu: 'CEO / COO и Ген. директор',
+    cardBg: 'bg-gradient-to-br from-purple-950 via-slate-900 to-indigo-950',
+    cardBorder: 'border-purple-400/80 ring-1 ring-purple-400/25',
+    topRibbon: 'from-purple-400 via-fuchsia-400 to-indigo-400',
+    avatarBg: 'bg-gradient-to-br from-purple-500 to-fuchsia-600 shadow-sm',
+    avatarText: 'text-white',
+    badgeBg: 'bg-purple-400/20 border border-purple-400/40',
+    badgeText: 'text-purple-200',
+    titleColor: 'text-white',
+    subColor: 'text-purple-200/90',
+    swimlaneBg: 'bg-purple-50/35 dark:bg-purple-950/15',
+    swimlanePill:
+      'bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700',
+    icon: Crown,
   },
   3: {
     level: 3,
-    badgeTr: 'L3 • GRUP / KISIM ŞEFİ',
-    badgeRu: 'У3 • НАЧАЛЬНИК ГРУППЫ',
-    shortTr: 'Grup & Kısım Şefi',
-    shortRu: 'Начальники групп',
-    icon: Layers,
-    cardClass:
-      'bg-gradient-to-br from-white via-emerald-50/35 to-teal-50/40 dark:from-[#131C31] dark:via-emerald-950/30 dark:to-slate-900 text-slate-900 dark:text-white border border-emerald-300 dark:border-emerald-600/60 shadow-sm',
-    accentBarClass: 'bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500',
-    avatarClass: 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-xs',
-    pillClass:
-      'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700',
+    code: 'L3',
+    shortTr: 'Direktör',
+    shortRu: 'Директора',
+    rowTitleTr: 'Direktör & Koordinatör',
+    rowTitleRu: 'Директора и координаторы',
+    cardBg: 'bg-white dark:bg-slate-900',
+    cardBorder: 'border-indigo-300 dark:border-indigo-700',
+    topRibbon: 'from-indigo-600 via-violet-500 to-indigo-600',
+    avatarBg: 'bg-gradient-to-br from-indigo-600 to-violet-600',
+    avatarText: 'text-white',
+    badgeBg: 'bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800',
+    badgeText: 'text-indigo-700 dark:text-indigo-300',
+    titleColor: 'text-slate-900 dark:text-white',
+    subColor: 'text-indigo-600 dark:text-indigo-300',
+    swimlaneBg: 'bg-indigo-50/25 dark:bg-indigo-950/10',
+    swimlanePill:
+      'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+    icon: Building2,
   },
   4: {
     level: 4,
-    badgeTr: 'L4 • MÜHENDİS / UZMAN',
-    badgeRu: 'У4 • ИНЖЕНЕР / СПЕЦИАЛИСТ',
-    shortTr: 'Mühendis & Uzman',
-    shortRu: 'Инженеры и ИТР',
-    icon: Compass,
-    cardClass:
-      'bg-white dark:bg-[#131C31] text-slate-900 dark:text-white border border-sky-200 dark:border-sky-700/60 shadow-xs',
-    accentBarClass: 'bg-gradient-to-r from-sky-500 to-cyan-500',
-    avatarClass: 'bg-gradient-to-br from-sky-500 to-cyan-600 text-white',
-    pillClass:
-      'bg-sky-50 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800',
+    code: 'L4',
+    shortTr: 'Müdür & Şantiye Şefi',
+    shortRu: 'Руководители',
+    rowTitleTr: 'Müdür & Şantiye Lideri',
+    rowTitleRu: 'Руководители проектов и отделов',
+    cardBg: 'bg-white dark:bg-slate-900',
+    cardBorder: 'border-blue-300 dark:border-blue-700/80',
+    topRibbon: 'from-blue-600 via-sky-500 to-blue-600',
+    avatarBg: 'bg-gradient-to-br from-blue-600 to-sky-600',
+    avatarText: 'text-white',
+    badgeBg: 'bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800',
+    badgeText: 'text-blue-700 dark:text-blue-300',
+    titleColor: 'text-slate-900 dark:text-white',
+    subColor: 'text-blue-600 dark:text-blue-300',
+    swimlaneBg: 'bg-blue-50/25 dark:bg-blue-950/10',
+    swimlanePill:
+      'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+    icon: Building2,
   },
   5: {
     level: 5,
-    badgeTr: 'L5 • FORMEN / SORUMLU',
-    badgeRu: 'У5 • ФОРМЕН / МАСТЕР',
-    shortTr: 'Formen & Sorumlu',
-    shortRu: 'Формены и мастера',
-    icon: HardHat,
-    cardClass:
-      'bg-gradient-to-br from-white to-amber-50/40 dark:from-[#131C31] dark:to-amber-950/20 text-slate-900 dark:text-white border border-amber-300 dark:border-amber-600/60 shadow-xs',
-    accentBarClass: 'bg-gradient-to-r from-amber-500 to-orange-500',
-    avatarClass: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white',
-    pillClass:
-      'bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
+    code: 'L5',
+    shortTr: 'Grup & Kısım Şefi',
+    shortRu: 'Начальники групп',
+    rowTitleTr: 'Grup, Kısım & Birim Şefi',
+    rowTitleRu: 'Начальники групп и участков',
+    cardBg: 'bg-white dark:bg-slate-900',
+    cardBorder: 'border-emerald-300 dark:border-emerald-800/80',
+    topRibbon: 'from-emerald-500 via-teal-500 to-cyan-500',
+    avatarBg: 'bg-gradient-to-br from-emerald-500 to-teal-600',
+    avatarText: 'text-white',
+    badgeBg: 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800',
+    badgeText: 'text-emerald-700 dark:text-emerald-300',
+    titleColor: 'text-slate-900 dark:text-white',
+    subColor: 'text-emerald-700 dark:text-emerald-300',
+    swimlaneBg: 'bg-emerald-50/25 dark:bg-emerald-950/10',
+    swimlanePill:
+      'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+    icon: Layers,
   },
   6: {
     level: 6,
-    badgeTr: 'L6 • SAHA EKİBİ',
-    badgeRu: 'У6 • БРИГАДЫ',
-    shortTr: 'Saha İşçileri (Tek Kutu)',
+    code: 'L6',
+    shortTr: 'Mühendis & Uzman',
+    shortRu: 'Инженеры и спец.',
+    rowTitleTr: 'Mühendis, Uzman & Memur',
+    rowTitleRu: 'Инженеры и специалисты',
+    cardBg: 'bg-white dark:bg-slate-900',
+    cardBorder: 'border-sky-200 dark:border-sky-800/70',
+    topRibbon: 'from-sky-500 to-cyan-500',
+    avatarBg: 'bg-gradient-to-br from-sky-500 to-cyan-600',
+    avatarText: 'text-white',
+    badgeBg: 'bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800',
+    badgeText: 'text-sky-700 dark:text-sky-300',
+    titleColor: 'text-slate-800 dark:text-slate-100',
+    subColor: 'text-sky-700 dark:text-sky-300',
+    swimlaneBg: 'bg-sky-50/25 dark:bg-sky-950/10',
+    swimlanePill:
+      'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+    icon: Compass,
+  },
+  7: {
+    level: 7,
+    code: 'L7',
+    shortTr: 'Formen & Sorumlu',
+    shortRu: 'Формены',
+    rowTitleTr: 'Formen & Saha Sorumlusu',
+    rowTitleRu: 'Формены и ответственные',
+    cardBg: 'bg-amber-50/40 dark:bg-slate-900',
+    cardBorder: 'border-amber-300 dark:border-amber-800/70',
+    topRibbon: 'from-amber-500 to-orange-500',
+    avatarBg: 'bg-gradient-to-br from-amber-500 to-orange-600',
+    avatarText: 'text-white',
+    badgeBg: 'bg-amber-100/80 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800',
+    badgeText: 'text-amber-800 dark:text-amber-300',
+    titleColor: 'text-slate-900 dark:text-white',
+    subColor: 'text-amber-700 dark:text-amber-300',
+    swimlaneBg: 'bg-orange-50/25 dark:bg-orange-950/10',
+    swimlanePill:
+      'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+    icon: HardHat,
+  },
+  8: {
+    level: 8,
+    code: 'L8',
+    shortTr: 'Saha İşçileri (Liste)',
     shortRu: 'Рабочие (Список)',
+    rowTitleTr: 'Saha Ekip & İşçi Kadrosu',
+    rowTitleRu: 'Рабочий персонал (Бригады)',
+    cardBg: 'bg-slate-50 dark:bg-slate-900/80',
+    cardBorder: 'border-slate-300 dark:border-slate-700',
+    topRibbon: 'from-slate-500 to-slate-700',
+    avatarBg: 'bg-slate-700',
+    avatarText: 'text-white',
+    badgeBg: 'bg-slate-200/70 dark:bg-slate-800 border border-slate-300 dark:border-slate-700',
+    badgeText: 'text-slate-700 dark:text-slate-300',
+    titleColor: 'text-slate-800 dark:text-slate-200',
+    subColor: 'text-slate-500 dark:text-slate-400',
+    swimlaneBg: 'bg-slate-100/45 dark:bg-slate-900/35',
+    swimlanePill:
+      'bg-slate-800 text-slate-100 border-slate-700 dark:bg-slate-800 dark:text-slate-200',
     icon: Users,
-    cardClass:
-      'bg-slate-50 dark:bg-slate-900/90 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700',
-    accentBarClass: 'bg-gradient-to-r from-slate-500 to-slate-600',
-    avatarClass: 'bg-slate-600 text-white',
-    pillClass:
-      'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700',
   },
 };
 
-function getInitials(name: string): string {
-  const parts = String(name || '')
+/** Readable zoom bounds — never shrinks to unreadable tiny dots */
+const DEFAULT_READABLE_ZOOM = 0.96;
+const MIN_READABLE_ZOOM = 0.75;
+const MAX_READABLE_ZOOM = 1.3;
+const SIBLING_PAGE_SIZE = 6;
+
+const CARD_WIDTH = 226;
+const CREW_CARD_WIDTH = 268;
+const CARD_COLLAPSED_HEIGHT = 148;
+const CREW_EXPANDED_HEIGHT = 330;
+const H_GAP = 20;
+const SWIMLANE_LABEL_WIDTH = 162;
+
+function getInitials(fullName: string): string {
+  const parts = String(fullName || '')
     .trim()
     .split(/\s+/)
     .filter(Boolean);
   if (parts.length === 0) return 'P';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
-
-function getHeatmapCardRing(directCount: number): string {
-  if (directCount >= 21) {
-    return 'border-2 border-rose-500 dark:border-rose-500 bg-rose-50/90 dark:bg-rose-950/45 text-slate-900 dark:text-white shadow-md';
-  }
-  if (directCount >= 9) {
-    return 'border-2 border-amber-400 dark:border-amber-500 bg-amber-50/85 dark:bg-amber-950/40 text-slate-900 dark:text-white shadow-sm';
-  }
-  return 'border-2 border-emerald-400 dark:border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/35 text-slate-900 dark:text-white shadow-xs';
 }
 
 function toMinimalPersonnelRecord(node: OrgNode): PersonnelRecord {
@@ -187,369 +272,310 @@ function toMinimalPersonnelRecord(node: OrgNode): PersonnelRecord {
     saren_no: '',
     genel_durum: 'Mevcut',
     guncel_durum: 'Mevcut',
+    region: node.region,
+    proje_adi: node.proje_adi,
+    calisma_lokasyon: node.effective_site,
+    kategori: node.kategori,
+    firma: node.firma,
+    departman: node.departman,
     uyruk: node.uyruk,
     adi: '',
     soyadi: '',
     baba_adi: '',
     ad_soyad: node.ad_soyad,
     tam_adi_kiril: '',
-    cinsiyet: '',
-    dogum_tarihi: '',
-    dogum_yeri: '',
-    tc_kimlik_no: '',
-    pasaport_no: '',
-    pasaport_gecerlilik: '',
-    region: node.region,
-    proje_adi: node.proje_adi,
-    calisma_lokasyon: '',
-    kategori: node.kategori,
-    firma: node.firma,
-    departman: node.departman,
     gorevi: node.gorevi,
     rhi_gorevi: node.ek_gorev,
     sorumlu_kisi: node.sorumlu_kisi,
     grup_sefi: node.grup_sefi,
     endirekt_direkt: node.endirekt_direkt,
-    gunduz_gece: '',
     ise_giris_tarihi: node.ise_giris_tarihi,
     santiye_giris_tarihi: '',
     cikis_tarihi: '',
     cikis_sebebi: '',
+    gunduz_gece: '',
     propusk_no: '',
     propusk_bitis_tarihi: '',
-    vize_no: '',
-    vize_bitis_tarihi: '',
+    cinsiyet: '',
+    dogum_tarihi: '',
+    pasaport_no: '',
+    pasaport_gecerlilik: '',
+    tc_kimlik_no: '',
+    dogum_yeri: '',
     migrasyon_no: '',
     inn_no: '',
+    vize_no: '',
+    vize_bitis_tarihi: '',
     patent_alis_tarihi: '',
     patent_bitis_tarihi: '',
-    kamp_no: '',
-    oda_no: '',
     telefon_no: '',
     email: '',
+    kamp_no: '',
+    oda_no: '',
   };
 }
 
-/**
- * Consolidated Single Roster Card for Bottom-Level Workers (L6) or Large Specialist Teams (L4).
- * Always crisp and readable — shows trade summary pills, inline search, and clean person rows.
- */
+function getSpanBadgeColor(directCount: number): string {
+  if (directCount >= 20) return 'bg-rose-500 text-white';
+  if (directCount >= 10) return 'bg-amber-500 text-white';
+  return 'bg-emerald-500 text-white';
+}
+
+interface ConsolidatedCrewCardProps {
+  parentNode: OrgNode;
+  members: OrgNode[];
+  variant: 'worker' | 'specialist';
+  isListOpen: boolean;
+  onToggleList: () => void;
+  onInspectPerson: (node: OrgNode) => void;
+}
+
 function ConsolidatedCrewCard({
-  title,
-  subtitle,
+  parentNode,
   members,
   variant,
-  highlightedNodeId,
-  lang,
-  translateVal,
-  onSelectPerson,
-  onOpenFullProfile,
-}: {
-  title: string;
-  subtitle: string;
-  members: OrgNode[];
-  variant: 'workers' | 'specialists';
-  highlightedNodeId: string | null;
-  lang: string;
-  translateVal: (v: string) => string;
-  onSelectPerson: (node: OrgNode) => void;
-  onOpenFullProfile: (node: OrgNode) => void;
-}) {
-  const [filterText, setFilterText] = useState('');
-  const [selectedTrade, setSelectedTrade] = useState<string>('all');
-  const [showAll, setShowAll] = useState(false);
+  isListOpen,
+  onToggleList,
+  onInspectPerson,
+}: ConsolidatedCrewCardProps) {
+  const [crewQuery, setCrewQuery] = useState('');
 
-  const tradeBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
+  const tradeSummary = useMemo(() => {
+    const counts = new Map<string, number>();
     for (const m of members) {
-      const role = m.gorevi || 'Personel';
-      map.set(role, (map.get(role) || 0) + 1);
+      const g = m.gorevi || 'Diğer';
+      counts.set(g, (counts.get(g) || 0) + 1);
     }
-    return Array.from(map.entries())
-      .map(([role, count]) => ({ role, count }))
-      .sort((a, b) => b.count - a.count);
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
   }, [members]);
 
   const filteredMembers = useMemo(() => {
-    const q = filterText.trim().toLowerCase();
-    return members.filter((m) => {
-      if (selectedTrade !== 'all' && m.gorevi !== selectedTrade) return false;
-      if (!q) return true;
-      return (
+    const q = crewQuery.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter(
+      (m) =>
         m.ad_soyad.toLowerCase().includes(q) ||
-        m.sicil_no.toLowerCase().includes(q) ||
-        m.gorevi.toLowerCase().includes(q)
-      );
-    });
-  }, [members, filterText, selectedTrade]);
+        m.gorevi.toLowerCase().includes(q) ||
+        m.sicil_no.toLowerCase().includes(q)
+    );
+  }, [members, crewQuery]);
 
-  const visibleMembers = showAll ? filteredMembers : filteredMembers.slice(0, 10);
-  const isWorkers = variant === 'workers';
+  const isWorker = variant === 'worker';
 
   return (
     <div
-      onClick={(e) => e.stopPropagation()}
-      className={`shrink-0 w-[268px] rounded-2xl border shadow-md overflow-hidden select-text ${
-        isWorkers
-          ? 'bg-white dark:bg-[#11192C] border-slate-300 dark:border-slate-700'
-          : 'bg-white dark:bg-[#11192C] border-sky-300 dark:border-sky-700/70'
+      style={{ width: CREW_CARD_WIDTH }}
+      className={`rounded-2xl border shadow-sm transition-all overflow-hidden text-left ${
+        isWorker
+          ? 'bg-slate-50/95 dark:bg-slate-900/95 border-slate-300 dark:border-slate-700'
+          : 'bg-sky-50/75 dark:bg-slate-900/95 border-sky-200 dark:border-sky-800/80'
       }`}
     >
       <div
-        className={`px-3 py-2 flex items-center justify-between gap-2 ${
-          isWorkers
-            ? 'bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 text-white'
-            : 'bg-gradient-to-r from-sky-600 to-cyan-600 text-white'
+        className={`h-1.5 w-full bg-gradient-to-r ${
+          isWorker ? 'from-slate-600 via-slate-500 to-teal-600' : 'from-sky-500 to-cyan-500'
         }`}
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            {isWorkers ? (
-              <HardHat className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            ) : (
-              <Compass className="w-3.5 h-3.5 text-white shrink-0" />
-            )}
-            <span className="text-xs truncate">{title}</span>
+      />
+      <div className="p-3">
+        <div
+          onClick={onToggleList}
+          className="flex items-start justify-between gap-2 cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                isWorker ? 'bg-slate-800 text-white' : 'bg-sky-600 text-white'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                {isWorker ? 'L8 • Saha İşçileri (Tek Kutu)' : 'L6 • Uzman & İdari Kadro'}
+              </div>
+              <div className="text-xs text-slate-900 dark:text-white truncate">
+                {parentNode.ad_soyad} Ekibi ({members.length})
+              </div>
+            </div>
           </div>
-          <p className="text-[10px] text-white/75 truncate">{subtitle}</p>
-        </div>
-        <span className="px-2 py-0.5 rounded-lg bg-white/20 text-xs font-mono shrink-0">
-          {members.length}
-        </span>
-      </div>
-
-      {tradeBreakdown.length > 1 && (
-        <div className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200/70 dark:border-slate-800 flex items-center gap-1 overflow-x-auto no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setSelectedTrade('all')}
-            className={`px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap cursor-pointer ${
-              selectedTrade === 'all'
-                ? 'bg-slate-800 dark:bg-teal-600 text-white'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          <span
+            className={`px-2 py-0.5 rounded-lg text-[10.5px] shrink-0 flex items-center gap-1 ${
+              isWorker
+                ? 'bg-slate-800 text-white dark:bg-slate-700'
+                : 'bg-sky-600 text-white'
             }`}
           >
-            {lang === 'ru' ? 'Все' : 'Tümü'} ({members.length})
-          </button>
-          {tradeBreakdown.slice(0, 6).map((tb) => (
-            <button
-              key={tb.role}
-              type="button"
-              onClick={() => setSelectedTrade(selectedTrade === tb.role ? 'all' : tb.role)}
-              className={`px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap cursor-pointer ${
-                selectedTrade === tb.role
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-              }`}
+            {isListOpen ? 'Gizle' : 'Listeyi Aç'}
+            {isListOpen ? (
+              <ChevronUp className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+          </span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1">
+          {tradeSummary.map(([trade, cnt]) => (
+            <span
+              key={trade}
+              className="px-1.5 py-0.5 rounded-md text-[10px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 truncate max-w-[122px]"
+              title={`${trade}: ${cnt}`}
             >
-              {translateVal(tb.role)} ({tb.count})
-            </button>
+              {trade}: {cnt}
+            </span>
           ))}
         </div>
-      )}
 
-      {members.length > 5 && (
-        <div className="px-2.5 py-1.5 border-b border-slate-100 dark:border-slate-800/80">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              placeholder={lang === 'ru' ? 'Поиск ФИО / табеля...' : 'Listede ad / sicil ara...'}
-              className="org-roster-scroll w-full pl-7 pr-6 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
-            />
-            {filterText && (
-              <button
-                type="button"
-                onClick={() => setFilterText('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="org-roster-scroll max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/70">
-        {visibleMembers.map((m) => {
-          const isTarget = highlightedNodeId === m.nodeId;
-          return (
-            <div
-              key={m.nodeId}
-              id={`org-node-${m.nodeId}`}
-              onClick={() => onSelectPerson(m)}
-              className={`px-3 py-1.5 flex items-center justify-between gap-2 cursor-pointer transition-colors ${
-                isTarget
-                  ? 'bg-emerald-50 dark:bg-emerald-950/60 ring-2 ring-inset ring-emerald-500'
-                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-xs text-slate-900 dark:text-slate-100 truncate">
-                  {m.ad_soyad}
-                </div>
-                <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
-                  {translateVal(m.gorevi)} • #{m.sicil_no}
-                </div>
+        {isListOpen && (
+          <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2">
+            {members.length > 5 && (
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={crewQuery}
+                  onChange={(e) => setCrewQuery(e.target.value)}
+                  placeholder="İsim, görev veya sicil ara..."
+                  className="w-full pl-7 pr-2 py-1 text-[11px] rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-teal-500"
+                />
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenFullProfile(m);
-                }}
-                className="p-1 rounded-lg text-slate-400 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0"
-                title={lang === 'ru' ? 'Полная карточка' : 'Tam Personel Kartı'}
-              >
-                <Eye className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
+            )}
 
-      {filteredMembers.length > 10 && (
-        <button
-          type="button"
-          onClick={() => setShowAll((v) => !v)}
-          className="w-full py-1.5 px-3 text-[11px] text-teal-700 dark:text-teal-300 bg-slate-50 dark:bg-slate-900/80 hover:bg-teal-50 dark:hover:bg-slate-800 border-t border-slate-200/70 dark:border-slate-800 flex items-center justify-center gap-1 cursor-pointer"
-        >
-          <span>
-            {showAll
-              ? lang === 'ru'
-                ? 'Свернуть список'
-                : 'Listeyi Daralt'
-              : lang === 'ru'
-              ? `Показать всех (${filteredMembers.length})`
-              : `Tümünü Göster (${filteredMembers.length})`}
-          </span>
-          {showAll ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        </button>
-      )}
+            <div className="max-h-36 overflow-y-auto pr-1 space-y-1">
+              {filteredMembers.map((m, idx) => (
+                <button
+                  key={m.nodeId}
+                  type="button"
+                  onClick={() => onInspectPerson(m)}
+                  className="w-full flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-white dark:bg-slate-800/90 hover:bg-teal-50 dark:hover:bg-teal-950/40 border border-slate-200/70 dark:border-slate-700/70 text-left transition-colors cursor-pointer group"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-slate-800 dark:text-slate-100 truncate group-hover:text-teal-700 dark:group-hover:text-teal-300">
+                      {idx + 1}. {m.ad_soyad}
+                    </div>
+                    <div className="text-[9.5px] text-slate-500 dark:text-slate-400 truncate">
+                      {m.gorevi} {m.sicil_no ? `• #${m.sicil_no}` : ''}
+                    </div>
+                  </div>
+                  <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-teal-600 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/**
- * Enterprise Org-Chart Card (d3-org-chart v3 / Workday style):
- * - Always full-sized and crisp to read (Name, Role Title, Site, Subordinate Badge).
- * - Touching/clicking ANYWHERE on a manager card toggles their subordinates open/closed
- *   and automatically closes sibling branches (strict accordion UX!).
- * - Quick icon actions on top-right let you inspect Reporting Chain (Info), Subtree Focus (Crosshair),
- *   or Full 198-Column Profile (Eye) without toggling the tree.
- */
+interface OrgEnterpriseCardProps {
+  node: OrgNode;
+  isExpanded: boolean;
+  isSelected: boolean;
+  isHighlighted: boolean;
+  colorBySpan: boolean;
+  onCardClick: (node: OrgNode) => void;
+  onOpenKunye: (node: OrgNode) => void;
+  onInspectDrawer: (node: OrgNode) => void;
+  onFocusSubtree: (nodeId: string) => void;
+}
+
 function OrgEnterpriseCard({
   node,
-  heatmapMode,
   isExpanded,
-  hasExpandableChildren,
   isSelected,
-  isInHighlightChain,
-  isHighlightedTarget,
-  dimmedByLevelFilter,
-  lang,
-  translateVal,
+  isHighlighted,
+  colorBySpan,
   onCardClick,
-  onInspectChain,
+  onOpenKunye,
+  onInspectDrawer,
   onFocusSubtree,
-  onOpenFullProfile,
-}: {
-  node: OrgNode;
-  heatmapMode: boolean;
-  isExpanded: boolean;
-  hasExpandableChildren: boolean;
-  isSelected: boolean;
-  isInHighlightChain: boolean;
-  isHighlightedTarget: boolean;
-  dimmedByLevelFilter: boolean;
-  lang: string;
-  translateVal: (v: string) => string;
-  onCardClick: (node: OrgNode) => void;
-  onInspectChain: (node: OrgNode) => void;
-  onFocusSubtree: (node: OrgNode) => void;
-  onOpenFullProfile: (node: OrgNode) => void;
-}) {
-  const tier = ROLE_TIER_CONFIG[node.roleLevel];
-  const TierIcon =
-    node.virtualKind === 'subcon'
-      ? Handshake
-      : node.virtualKind === 'pending_pool'
-      ? Clock
-      : node.virtualKind === 'external_supervisor'
-      ? ShieldAlert
-      : tier.icon;
+}: OrgEnterpriseCardProps) {
+  const theme = ROLE_LEVEL_THEMES[node.roleLevel];
+  const IconComp = theme.icon;
+  const hasChildren = node.directCount > 0;
+  const isDarkExec = node.roleLevel <= 2 && !node.isVirtual;
 
-  const isL1 = node.roleLevel === 1 && !node.isVirtual && !heatmapMode;
-  const endirektPct =
+  const whiteRatio =
     node.totalSubordinates > 0
       ? Math.round((node.subordinateEndirekt / node.totalSubordinates) * 100)
-      : 0;
+      : node.endirekt_direkt === 'Endirekt'
+        ? 100
+        : 0;
+
+  const spanBorderOverride =
+    colorBySpan && hasChildren
+      ? node.directCount >= 20
+        ? 'border-rose-400 ring-1 ring-rose-400/30'
+        : node.directCount >= 10
+          ? 'border-amber-400 ring-1 ring-amber-400/30'
+          : 'border-emerald-400 ring-1 ring-emerald-400/30'
+      : theme.cardBorder;
 
   return (
     <div
-      id={`org-node-${node.nodeId}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        onCardClick(node);
-      }}
-      className={`shrink-0 relative w-[228px] rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer select-none ${
-        heatmapMode && node.directCount > 0 ? getHeatmapCardRing(node.directCount) : tier.cardClass
-      } ${
-        isHighlightedTarget
-          ? 'ring-4 ring-emerald-500 shadow-xl scale-[1.02]'
+      id={`org-card-${node.nodeId}`}
+      onClick={() => onCardClick(node)}
+      style={{ width: CARD_WIDTH }}
+      className={`relative rounded-2xl border transition-all duration-200 select-none text-left overflow-hidden cursor-pointer ${
+        node.isVirtual ? 'bg-slate-50 dark:bg-slate-900/90 border-dashed' : theme.cardBg
+      } ${spanBorderOverride} ${
+        isHighlighted
+          ? 'ring-3 ring-rose-500 shadow-xl'
           : isExpanded
-          ? 'ring-2 ring-teal-500 shadow-lg'
-          : isInHighlightChain
-          ? 'ring-2 ring-teal-400 shadow-md'
-          : isSelected
-          ? 'ring-2 ring-indigo-500 shadow-md'
-          : 'hover:-translate-y-0.5 hover:shadow-lg'
-      } ${dimmedByLevelFilter ? 'opacity-30 grayscale' : ''}`}
+            ? 'ring-2 ring-teal-500 shadow-lg'
+            : isSelected
+              ? 'ring-2 ring-indigo-500 shadow-md'
+              : 'shadow-sm hover:shadow-md hover:-translate-y-0.5'
+      }`}
     >
-      {/* Top Role-Level Accent Ribbon */}
-      <div className={`h-1.5 w-full ${tier.accentBarClass}`} />
+      <div className={`h-1.5 w-full bg-gradient-to-r ${theme.topRibbon}`} />
 
       <div className="p-3">
-        {/* Top Row: Role Badge + Quick Utility Icons */}
-        <div className="flex items-center justify-between gap-1 mb-2">
-          <span className={`px-1.5 py-0.5 rounded text-[9px] tracking-wide truncate ${tier.pillClass}`}>
-            {node.virtualKind === 'subcon'
-              ? lang === 'ru'
-                ? 'СУБПОДРЯД'
-                : 'TAŞERON BİRİMİ'
-              : node.virtualKind === 'pending_pool'
-              ? lang === 'ru'
-                ? 'РЕЗЕРВ'
-                : 'ATAMA HAVUZU'
-              : lang === 'ru'
-              ? tier.badgeRu
-              : tier.badgeTr}
+        <div className="flex items-center justify-between gap-1 mb-1.5">
+          <span
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9.5px] tracking-wide uppercase ${theme.badgeBg} ${theme.badgeText}`}
+          >
+            <IconComp className="w-2.5 h-2.5" />
+            {node.isVirtual
+              ? node.virtualKind === 'subcon'
+                ? 'Taşeron'
+                : node.virtualKind === 'pending_pool'
+                  ? 'Havuz'
+                  : 'Dış'
+              : `${theme.code} • ${theme.shortTr}`}
           </span>
 
-          <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-0.5">
             <button
               type="button"
-              onClick={() => onInspectChain(node)}
-              title={lang === 'ru' ? 'Цепочка подчинения' : 'Üst Yönetim Zinciri & Künye'}
-              className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                isL1
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenKunye(node);
+              }}
+              title="Raporlama Zinciri & Künye"
+              className={`p-1 rounded-md transition-colors cursor-pointer ${
+                isDarkExec
                   ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                  : 'text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <Info className="w-3.5 h-3.5" />
             </button>
-            {node.totalSubordinates > 0 && (
+            {hasChildren && (
               <button
                 type="button"
-                onClick={() => onFocusSubtree(node)}
-                title={lang === 'ru' ? 'Фокус ветки' : 'Sadece Bu Yöneticinin Alt Şemasını Odakla'}
-                className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                  isL1
-                    ? 'text-slate-300 hover:text-amber-300 hover:bg-white/10'
-                    : 'text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFocusSubtree(node.nodeId);
+                }}
+                title="Sadece bu yöneticinin alt ağacına odaklan"
+                className={`p-1 rounded-md transition-colors cursor-pointer ${
+                  isDarkExec
+                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                    : 'text-slate-400 hover:text-teal-600 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 <Crosshair className="w-3.5 h-3.5" />
@@ -558,12 +584,15 @@ function OrgEnterpriseCard({
             {!node.isVirtual && node.personId && (
               <button
                 type="button"
-                onClick={() => onOpenFullProfile(node)}
-                title={lang === 'ru' ? 'Полная карточка (198 полей)' : 'Tam Personel Kartını Aç'}
-                className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                  isL1
-                    ? 'text-slate-300 hover:text-emerald-300 hover:bg-white/10'
-                    : 'text-slate-400 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInspectDrawer(node);
+                }}
+                title="198 Kolonlu Personel Kartını Aç"
+                className={`p-1 rounded-md transition-colors cursor-pointer ${
+                  isDarkExec
+                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                    : 'text-slate-400 hover:text-teal-600 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 <Eye className="w-3.5 h-3.5" />
@@ -572,948 +601,1060 @@ function OrgEnterpriseCard({
           </div>
         </div>
 
-        {/* Identity Row: Role Crest + Full Name + Title + Site */}
-        <div className="flex items-start gap-2.5">
+        <div className="flex items-center gap-2.5">
           <div
-            className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center shrink-0 text-[10px] ${tier.avatarClass}`}
+            className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center shrink-0 ${theme.avatarBg} ${theme.avatarText}`}
           >
-            <TierIcon className="w-3 h-3 mb-0.5 opacity-95" />
-            <span className="leading-none">{getInitials(node.ad_soyad)}</span>
+            <span className="text-[11px] leading-none">{getInitials(node.ad_soyad)}</span>
           </div>
-
           <div className="min-w-0 flex-1">
-            <h3
-              title={node.ad_soyad}
-              className={`text-xs leading-snug truncate ${
-                isL1 ? 'text-white' : 'text-slate-900 dark:text-white'
-              }`}
-            >
+            <div className={`text-[12px] leading-tight truncate ${theme.titleColor}`} title={node.ad_soyad}>
               {node.ad_soyad}
-            </h3>
-            <p
-              title={translateVal(node.gorevi)}
-              className={`text-[11px] leading-tight mt-0.5 truncate ${
-                isL1
-                  ? 'text-amber-300'
-                  : node.roleLevel === 2
-                  ? 'text-indigo-700 dark:text-indigo-300'
-                  : node.roleLevel === 3
-                  ? 'text-emerald-700 dark:text-emerald-300'
-                  : 'text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              {translateVal(node.gorevi)}
-            </p>
+            </div>
+            <div className={`text-[10.5px] mt-0.5 truncate ${theme.subColor}`} title={node.gorevi}>
+              {node.gorevi}
+            </div>
             <div
-              className={`flex items-center gap-1 mt-1 text-[10px] truncate ${
-                isL1 ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'
+              className={`text-[9.5px] mt-0.5 truncate ${
+                isDarkExec ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'
               }`}
             >
-              <MapPin className="w-2.5 h-2.5 shrink-0 opacity-75" />
-              <span className="truncate">{translateVal(node.effective_site || node.region)}</span>
-              {!node.isVirtual && node.sicil_no && (
-                <span className="font-mono opacity-80 shrink-0">• #{node.sicil_no}</span>
-              )}
+              {node.effective_site}
+              {node.sicil_no && !node.isVirtual ? ` • #${node.sicil_no}` : ''}
             </div>
           </div>
         </div>
 
-        {/* Subordinate Distribution Mini-Bar */}
-        {node.totalSubordinates > 0 && (
-          <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1">
-            <div className="flex items-center justify-between text-[10px]">
-              <span className={isL1 ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}>
-                {lang === 'ru' ? 'Прямые:' : 'Doğrudan:'} {node.directCount}
+        {hasChildren && (
+          <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60">
+            <div className="flex items-center justify-between text-[9.5px]">
+              <span className={isDarkExec ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300'}>
+                Doğrudan:{' '}
+                <span
+                  className={
+                    colorBySpan
+                      ? `px-1 py-0.2 rounded ${getSpanBadgeColor(node.directCount)}`
+                      : ''
+                  }
+                >
+                  {node.directCount}
+                </span>
               </span>
-              <span className={isL1 ? 'text-amber-200' : 'text-slate-600 dark:text-slate-300'}>
-                {lang === 'ru' ? 'ИТР' : 'Beyaz'}: {node.subordinateEndirekt} •{' '}
-                {lang === 'ru' ? 'Раб.' : 'Saha'}: {node.subordinateDirekt}
+              <span className={isDarkExec ? 'text-amber-300' : 'text-teal-700 dark:text-teal-400'}>
+                Toplam Alt: {node.totalSubordinates}
               </span>
             </div>
-            <div className="w-full h-1 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 flex">
-              <div className="bg-indigo-500 h-full" style={{ width: `${endirektPct}%` }} />
-              <div className="bg-teal-500 h-full" style={{ width: `${100 - endirektPct}%` }} />
+            <div className="mt-1 h-1 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex">
+              <div className="h-full bg-indigo-500" style={{ width: `${whiteRatio}%` }} />
+              <div className="h-full bg-teal-500" style={{ width: `${100 - whiteRatio}%` }} />
             </div>
           </div>
         )}
       </div>
 
-      {/* d3-org-chart Style Expand / Collapse Status Strip */}
-      {hasExpandableChildren && (
+      {hasChildren && (
         <div
-          className={`w-full py-1.5 px-3 text-[11px] flex items-center justify-between transition-colors border-t ${
+          className={`w-full px-3 py-1.5 text-[10.5px] flex items-center justify-between border-t transition-colors ${
             isExpanded
-              ? isL1
-                ? 'bg-amber-400 text-slate-950 border-amber-300'
+              ? isDarkExec
+                ? 'bg-amber-400 text-slate-950 border-amber-400'
                 : 'bg-teal-600 text-white border-teal-600'
-              : isL1
-              ? 'bg-white/10 hover:bg-white/15 text-amber-200 border-white/15'
-              : 'bg-slate-100/90 hover:bg-teal-50 dark:bg-slate-800/90 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80'
+              : isDarkExec
+                ? 'bg-white/10 text-amber-200 border-white/10'
+                : 'bg-slate-50 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80'
           }`}
         >
           <span>
             {isExpanded
-              ? lang === 'ru'
-                ? 'Открыто • Нажмите, чтобы закрыть'
-                : 'Açık • Kapatmak için dokunun'
-              : lang === 'ru'
-              ? `+${node.totalSubordinates.toLocaleString('tr-TR')} чел. • Нажмите`
-              : `+${node.totalSubordinates.toLocaleString('tr-TR')} Kişi • Açmak için dokunun`}
+              ? 'Açık • Kapatmak için dokun'
+              : `+${node.totalSubordinates} Kişi • Açmak için dokun`}
           </span>
-          {isExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
+          {isExpanded ? (
+            <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+          )}
         </div>
       )}
     </div>
   );
 }
 
-export default function OrganizationChartView({
-  onNavigateToPersonnel,
-}: OrganizationChartViewProps) {
-  const { user } = useAuth();
-  const { lang, translateVal } = useLanguage();
+/** Deterministic Level-Row Layout Structures */
+type LayoutNodeKind = 'person' | 'crew_specialist' | 'crew_worker';
 
-  const [people, setPeople] = useState<OrgRawPerson[]>([]);
+interface LayoutTreeItem {
+  id: string;
+  kind: LayoutNodeKind;
+  node: OrgNode;
+  members?: OrgNode[];
+  levelNo: OrgRoleLevel;
+  subTier: number;
+  rowKey: string;
+  width: number;
+  height: number;
+  subtreeWidth: number;
+  x: number;
+  y: number;
+  centerX: number;
+  children: LayoutTreeItem[];
+  totalChildSlots: number;
+  currentPage: number;
+  totalPages: number;
+  showAllActive: boolean;
+}
+
+interface SwimlaneBand {
+  rowKey: string;
+  levelNo: OrgRoleLevel;
+  subTier: number;
+  isEmptyPassThrough: boolean;
+  topY: number;
+  height: number;
+  cardTopY: number;
+}
+
+export default function OrganizationChartView() {
+  const { user, getAuthHeaders, showPermissionDenied } = useAuth();
+  const { lang } = useLanguage();
+  const canEditJobLevels = Boolean(user && user.role !== 'viewer');
+
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [rawPeople, setRawPeople] = useState<OrgRawPerson[]>([]);
+  const [jobLevelMap, setJobLevelMap] = useState<Record<string, number>>({});
+  const [unconfirmedTitles, setUnconfirmedTitles] = useState<JobLevelItemDto[]>([]);
 
-  // Filters & Classic Org-Chart Modes
+  // Modal state for Job Title Levels Management
+  const [isLevelModalOpen, setIsLevelModalOpen] = useState(false);
+  const [levelModalInitialTab, setLevelModalInitialTab] = useState<'all' | 'unconfirmed' | 'active'>('active');
+
+  // Filter & Mode Controls
   const [hierarchyMode, setHierarchyMode] = useState<OrgHierarchyMode>('combined');
-  const [selectedSite, setSelectedSite] = useState<string>('all');
-  const [selectedDept, setSelectedDept] = useState<string>('all');
+  const [siteFilter, setSiteFilter] = useState<string>('all');
+  const [deptFilter, setDeptFilter] = useState<string>('all');
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
-  const [viewStyle, setViewStyle] = useState<'canvas' | 'directory'>('canvas');
-  const [orientation, setOrientation] = useState<ChartOrientation>('vertical');
-  const [heatmapMode, setHeatmapMode] = useState<boolean>(false);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [levelHighlight, setLevelHighlight] = useState<OrgRoleLevel | null>(null);
+  const [viewTab, setViewTab] = useState<'chart' | 'directory'>('chart');
+  const [colorBySpan, setColorBySpan] = useState<boolean>(false);
 
-  // Search, Selection & Sibling Pagination (d3-org-chart v3 paging pattern)
-  const [searchQuery, setSearchQuery] = useState('');
+  // Readable Zoom & Fullscreen
+  const [zoom, setZoom] = useState<number>(DEFAULT_READABLE_ZOOM);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  // Expanded manager nodes + expanded consolidated crew lists + sibling pagination
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [expandedCrewKeys, setExpandedCrewKeys] = useState<Set<string>>(new Set());
+  const [siblingPageByParent, setSiblingPageByParent] = useState<Record<string, number>>({});
+  const [showAllByParent, setShowAllByParent] = useState<Record<string, boolean>>({});
+
+  // Search, Künye Inspector & 198-Column Drawer
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [drawerPerson, setDrawerPerson] = useState<PersonnelRecord | null>(null);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [siblingPages, setSiblingPages] = useState<Record<string, number>>({});
-  const [showAllSiblingsFor, setShowAllSiblingsFor] = useState<Set<string>>(new Set());
+  const [drawerRecord, setDrawerRecord] = useState<PersonnelRecord | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState<boolean>(false);
 
-  // Always-Readable Zoom + Drag-to-Scroll Container
-  const [zoom, setZoom] = useState<number>(DEFAULT_READABLE_ZOOM);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const dragScrollRef = useRef<{
-    active: boolean;
-    moved: boolean;
-    startX: number;
-    startY: number;
-    scrollLeft: number;
-    scrollTop: number;
-  }>({ active: false, moved: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
+  const canvasViewportRef = useRef<HTMLDivElement | null>(null);
+  const orgContainerRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingRef = useRef(false);
+  const didDragMoveRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  // Fetch active personnel for Org Chart (RLS aware)
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (user?.scope_type && user.scope_type !== 'all' && user.scope_value) {
-      params.set('userScopeType', user.scope_type);
-      params.set('userScopeValue', user.scope_value);
-    }
-    fetch(`/api/org-chart?${params.toString()}`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (!cancelled && res?.success && Array.isArray(res.people)) {
-          setPeople(res.people);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  useEffect(() => {
-    if (!isFullscreen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsFullscreen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isFullscreen]);
-
-  // Build full tree in memory
-  const orgResult = useMemo(
-    () =>
-      buildOrganizationHierarchy(people, {
-        mode: hierarchyMode,
-        siteFilter: selectedSite,
-        departmentFilter: selectedDept,
-        focusNodeId,
-      }),
-    [people, hierarchyMode, selectedSite, selectedDept, focusNodeId]
-  );
-
-  // Smoothly scroll a specific node card to the center of the scrollable canvas
-  const centerNodeInViewport = useCallback((nodeId: string, delayMs = 70) => {
-    setTimeout(() => {
-      const container = scrollContainerRef.current;
-      const cardEl = document.getElementById(`org-node-${nodeId}`);
-      if (!container || !cardEl) return;
-
-      const cRect = container.getBoundingClientRect();
-      const eRect = cardEl.getBoundingClientRect();
-      const deltaX = eRect.left + eRect.width / 2 - (cRect.left + cRect.width / 2);
-      const deltaY = eRect.top - (cRect.top + 48);
-
-      container.scrollBy({
-        left: deltaX,
-        top: Math.abs(deltaY) > 60 ? deltaY : 0,
-        behavior: 'smooth',
-      });
-    }, delayMs);
+  const clampZoom = useCallback((val: number) => {
+    return Math.min(
+      MAX_READABLE_ZOOM,
+      Math.max(MIN_READABLE_ZOOM, Number(val.toFixed(2)))
+    );
   }, []);
 
-  // Reset to clean, 100%-readable initial view: ONLY top root expanded (showing Level-2 direct leaders!)
-  const resetToReadableInitialView = useCallback(
-    (roots = orgResult.roots) => {
-      const next = new Set<string>();
-      if (roots.length === 1) {
-        next.add(roots[0].nodeId);
-      } else if (roots.length > 1 && roots.length <= 3) {
-        next.add(roots[0].nodeId);
+  const fetchOrgData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const scopeParams = new URLSearchParams();
+      if (user?.scope_type && user.scope_type !== 'all') {
+        scopeParams.set('userScopeType', user.scope_type);
+        scopeParams.set('userScopeValue', user.scope_value || 'all');
       }
-      setExpandedIds(next);
-      setSiblingPages({});
-      setShowAllSiblingsFor(new Set());
-      setHighlightedNodeId(null);
-      setZoom(DEFAULT_READABLE_ZOOM);
-      if (roots[0]) {
-        centerNodeInViewport(roots[0].nodeId, 80);
+      const res = await fetch(`/api/org-chart?${scopeParams.toString()}`, {
+        headers: getAuthHeaders(),
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Organizasyon verisi alınamadı.');
       }
-    },
-    [orgResult.roots, centerNodeInViewport]
-  );
+      setRawPeople(data.people || []);
+      if (data.jobLevelMap) {
+        setJobLevelMap(data.jobLevelMap);
+      }
+      if (Array.isArray(data.unconfirmedTitles)) {
+        setUnconfirmedTitles(data.unconfirmedTitles);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Veri yüklenirken hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  }, [user, getAuthHeaders]);
 
   useEffect(() => {
-    if (orgResult.roots.length > 0) {
-      resetToReadableInitialView(orgResult.roots);
+    fetchOrgData();
+  }, [fetchOrgData]);
+
+  const orgResult = useMemo(() => {
+    return buildOrganizationHierarchy(rawPeople, {
+      mode: hierarchyMode,
+      siteFilter,
+      departmentFilter: deptFilter,
+      focusNodeId,
+      jobLevelMap,
+    });
+  }, [rawPeople, hierarchyMode, siteFilter, deptFilter, focusNodeId, jobLevelMap]);
+
+  const centerNodeInViewport = useCallback(
+    (nodeId: string, zoomOverride?: number) => {
+      const vp = canvasViewportRef.current;
+      if (!vp) return;
+      requestAnimationFrame(() => {
+        const cardEl = document.getElementById(`org-card-${nodeId}`);
+        if (!cardEl || !canvasViewportRef.current) return;
+        const z = zoomOverride ?? zoom;
+        const vpRect = vp.getBoundingClientRect();
+        const cardRect = cardEl.getBoundingClientRect();
+        const deltaX = cardRect.left + cardRect.width / 2 - (vpRect.left + vpRect.width / 2);
+        const deltaY = cardRect.top - (vpRect.top + 48 * z);
+        vp.scrollTo({
+          left: Math.max(0, vp.scrollLeft + deltaX),
+          top: Math.max(0, vp.scrollTop + deltaY),
+          behavior: 'smooth',
+        });
+      });
+    },
+    [zoom]
+  );
+
+  // Initial Load: Expand ONLY top root(s) at readable 96% zoom so L1, L2 (CEO/GM), and L3 (Directors) appear immediately on their respective Level Rows!
+  const resetToReadableInitialView = useCallback(() => {
+    const next = new Set<string>();
+    for (const r of orgResult.roots.slice(0, 2)) {
+      next.add(r.nodeId);
     }
+    setExpandedIds(next);
+    setExpandedCrewKeys(new Set());
+    setSiblingPageByParent({});
+    setShowAllByParent({});
+    setZoom(DEFAULT_READABLE_ZOOM);
+    setHighlightedNodeId(null);
+
+    if (orgResult.roots[0]) {
+      setTimeout(() => {
+        centerNodeInViewport(orgResult.roots[0].nodeId, DEFAULT_READABLE_ZOOM);
+      }, 60);
+    }
+  }, [orgResult.roots, centerNodeInViewport]);
+
+  useEffect(() => {
+    resetToReadableInitialView();
   }, [orgResult.roots, resetToReadableInitialView]);
 
-  // Upward chain computation
-  const getUpwardChain = useCallback(
-    (startId: string | null): OrgNode[] => {
-      if (!startId) return [];
-      const chain: OrgNode[] = [];
-      const seen = new Set<string>();
-      let curr = orgResult.nodeById.get(startId);
-      while (curr && !seen.has(curr.nodeId)) {
-        seen.add(curr.nodeId);
-        chain.unshift(curr);
-        curr = curr.parentId ? orgResult.nodeById.get(curr.parentId) : undefined;
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const el = orgContainerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }, []);
+
+  // Build Visible Layout Tree with True Level-Row (Swimlane) Alignment!
+  const layoutData = useMemo(() => {
+    if (orgResult.roots.length === 0) {
+      return {
+        rootItems: [] as LayoutTreeItem[],
+        allItems: [] as LayoutTreeItem[],
+        swimlanes: [] as SwimlaneBand[],
+        canvasWidth: 960,
+        canvasHeight: 420,
+      };
+    }
+
+    const buildVisibleItem = (
+      node: OrgNode,
+      parentLevelNo: number | null,
+      parentSubTier: number
+    ): LayoutTreeItem => {
+      let levelNo: OrgRoleLevel = node.roleLevel;
+      let subTier = 0;
+      if (parentLevelNo !== null) {
+        if (node.roleLevel > parentLevelNo) {
+          levelNo = node.roleLevel;
+          subTier = 0;
+        } else {
+          levelNo = parentLevelNo as OrgRoleLevel;
+          subTier = parentSubTier + 1;
+        }
       }
-      return chain;
-    },
-    [orgResult.nodeById]
-  );
+      const rowKey = `${levelNo}:${subTier}`;
+      const isExp = expandedIds.has(node.nodeId);
 
-  const highlightChainIds = useMemo(() => {
-    const chain = getUpwardChain(highlightedNodeId);
-    return new Set(chain.map((n) => n.nodeId));
-  }, [getUpwardChain, highlightedNodeId]);
+      // Assemble full child descriptors (individual manager/leader cards + L6 specialist group + L8 worker list)
+      const rawDescriptors: Array<
+        | { kind: 'person'; childNode: OrgNode }
+        | { kind: 'crew_specialist'; members: OrgNode[] }
+        | { kind: 'crew_worker'; members: OrgNode[] }
+      > = [];
 
-  const focusBreadcrumb = useMemo(
-    () => getUpwardChain(focusNodeId),
-    [getUpwardChain, focusNodeId]
-  );
+      if (isExp && node.directCount > 0) {
+        for (const m of node.managerChildren) {
+          rawDescriptors.push({ kind: 'person', childNode: m });
+        }
+        if (node.specialistLeaves.length === 1) {
+          rawDescriptors.push({ kind: 'person', childNode: node.specialistLeaves[0] });
+        } else if (node.specialistLeaves.length > 1) {
+          rawDescriptors.push({
+            kind: 'crew_specialist',
+            members: node.specialistLeaves,
+          });
+        }
+        if (node.workerLeaves.length > 0) {
+          rawDescriptors.push({
+            kind: 'crew_worker',
+            members: node.workerLeaves,
+          });
+        }
+      }
 
-  const selectedNode = selectedNodeId ? orgResult.nodeById.get(selectedNodeId) || null : null;
-  const selectedNodeChain = useMemo(
-    () => getUpwardChain(selectedNodeId),
-    [getUpwardChain, selectedNodeId]
-  );
+      const totalChildSlots = rawDescriptors.length;
+      const showAllActive = Boolean(showAllByParent[node.nodeId]);
+      const needsPaging = totalChildSlots > SIBLING_PAGE_SIZE && !showAllActive;
+      const totalPages = Math.max(1, Math.ceil(totalChildSlots / SIBLING_PAGE_SIZE));
+      const currentPage = Math.min(
+        siblingPageByParent[node.nodeId] || 0,
+        totalPages - 1
+      );
 
-  /**
-   * STRICT ENTERPRISE ACCORDION CARD CLICK:
-   * - Touching/clicking a manager card opens their direct subordinates AND automatically closes
-   *   any open sibling branch (and all of that sibling's open descendants)!
-   * - Touching an already-open manager card closes their branch.
-   * - Touching a leaf employee card opens their Reporting Chain Künye drawer.
-   */
+      const visibleSlice = needsPaging
+        ? rawDescriptors.slice(
+            currentPage * SIBLING_PAGE_SIZE,
+            (currentPage + 1) * SIBLING_PAGE_SIZE
+          )
+        : rawDescriptors;
+
+      const childItems: LayoutTreeItem[] = visibleSlice.map((desc) => {
+        if (desc.kind === 'person') {
+          return buildVisibleItem(desc.childNode, levelNo, subTier);
+        }
+        const targetLvl: OrgRoleLevel = desc.kind === 'crew_specialist' ? 6 : 8;
+        const cLevelNo: OrgRoleLevel =
+          targetLvl > levelNo ? targetLvl : (levelNo as OrgRoleLevel);
+        const cSubTier = targetLvl > levelNo ? 0 : subTier + 1;
+        const cRowKey = `${cLevelNo}:${cSubTier}`;
+        const crewKey = `${node.nodeId}:${desc.kind}`;
+        const crewOpen = expandedCrewKeys.has(crewKey);
+        return {
+          id: crewKey,
+          kind: desc.kind,
+          node,
+          members: desc.members,
+          levelNo: cLevelNo,
+          subTier: cSubTier,
+          rowKey: cRowKey,
+          width: CREW_CARD_WIDTH,
+          height: crewOpen ? CREW_EXPANDED_HEIGHT : CARD_COLLAPSED_HEIGHT,
+          subtreeWidth: CREW_CARD_WIDTH,
+          x: 0,
+          y: 0,
+          centerX: 0,
+          children: [],
+          totalChildSlots: 0,
+          currentPage: 0,
+          totalPages: 1,
+          showAllActive: false,
+        };
+      });
+
+      let subtreeWidth = CARD_WIDTH;
+      if (childItems.length > 0) {
+        const childrenSpan =
+          childItems.reduce((acc, c) => acc + c.subtreeWidth, 0) +
+          (childItems.length - 1) * H_GAP;
+        subtreeWidth = Math.max(CARD_WIDTH, childrenSpan);
+      }
+
+      return {
+        id: node.nodeId,
+        kind: 'person',
+        node,
+        levelNo,
+        subTier,
+        rowKey,
+        width: CARD_WIDTH,
+        height: CARD_COLLAPSED_HEIGHT,
+        subtreeWidth,
+        x: 0,
+        y: 0,
+        centerX: 0,
+        children: childItems,
+        totalChildSlots,
+        currentPage,
+        totalPages,
+        showAllActive,
+      };
+    };
+
+    const rootItems = orgResult.roots.map((r) => buildVisibleItem(r, null, 0));
+
+    // Collect all items & active row metadata
+    const allItems: LayoutTreeItem[] = [];
+    const rowMaxHeight = new Map<string, { levelNo: OrgRoleLevel; subTier: number; maxH: number; hasPagerAbove: boolean }>();
+    let minLvl = 8;
+    let maxLvl = 1;
+
+    const collectDfs = (it: LayoutTreeItem, parentHadPager: boolean) => {
+      allItems.push(it);
+      if (it.levelNo < minLvl) minLvl = it.levelNo;
+      if (it.levelNo > maxLvl) maxLvl = it.levelNo;
+
+      const cur = rowMaxHeight.get(it.rowKey) || {
+        levelNo: it.levelNo,
+        subTier: it.subTier,
+        maxH: CARD_COLLAPSED_HEIGHT,
+        hasPagerAbove: false,
+      };
+      if (it.height > cur.maxH) cur.maxH = it.height;
+      if (parentHadPager) cur.hasPagerAbove = true;
+      rowMaxHeight.set(it.rowKey, cur);
+
+      const thisHasPager = it.totalChildSlots > SIBLING_PAGE_SIZE;
+      for (const ch of it.children) {
+        collectDfs(ch, thisHasPager);
+      }
+    };
+
+    for (const r of rootItems) {
+      collectDfs(r, false);
+    }
+
+    // Ensure every corporate level between minLvl and maxLvl has a Swimlane Band (compact 36px if empty pass-through)
+    const bandSpecs: Array<{
+      rowKey: string;
+      levelNo: OrgRoleLevel;
+      subTier: number;
+      isEmptyPassThrough: boolean;
+      maxCardH: number;
+      hasPagerAbove: boolean;
+    }> = [];
+
+    for (let lvl = minLvl; lvl <= maxLvl; lvl++) {
+      const matchingSubTiers = Array.from(rowMaxHeight.entries())
+        .filter(([, v]) => v.levelNo === lvl)
+        .sort((a, b) => a[1].subTier - b[1].subTier);
+
+      if (matchingSubTiers.length === 0) {
+        bandSpecs.push({
+          rowKey: `${lvl}:0`,
+          levelNo: lvl as OrgRoleLevel,
+          subTier: 0,
+          isEmptyPassThrough: true,
+          maxCardH: 0,
+          hasPagerAbove: false,
+        });
+      } else {
+        for (const [rk, v] of matchingSubTiers) {
+          bandSpecs.push({
+            rowKey: rk,
+            levelNo: v.levelNo,
+            subTier: v.subTier,
+            isEmptyPassThrough: false,
+            maxCardH: v.maxH,
+            hasPagerAbove: v.hasPagerAbove,
+          });
+        }
+      }
+    }
+
+    const swimlanes: SwimlaneBand[] = [];
+    const rowCardTopMap = new Map<string, number>();
+    let cursorY = 20;
+
+    for (const b of bandSpecs) {
+      if (b.isEmptyPassThrough) {
+        const h = 36;
+        swimlanes.push({
+          rowKey: b.rowKey,
+          levelNo: b.levelNo,
+          subTier: b.subTier,
+          isEmptyPassThrough: true,
+          topY: cursorY,
+          height: h,
+          cardTopY: cursorY + 18,
+        });
+        rowCardTopMap.set(b.rowKey, cursorY + 18);
+        cursorY += h;
+      } else {
+        const topPad = b.hasPagerAbove ? 44 : 26;
+        const bottomPad = 24;
+        const h = topPad + b.maxCardH + bottomPad;
+        const cardTopY = cursorY + topPad;
+        swimlanes.push({
+          rowKey: b.rowKey,
+          levelNo: b.levelNo,
+          subTier: b.subTier,
+          isEmptyPassThrough: false,
+          topY: cursorY,
+          height: h,
+          cardTopY,
+        });
+        rowCardTopMap.set(b.rowKey, cardTopY);
+        cursorY += h;
+      }
+    }
+
+    // Assign X & Y coordinates top-down
+    const totalRootsSpan =
+      rootItems.reduce((acc, r) => acc + r.subtreeWidth, 0) +
+      Math.max(0, rootItems.length - 1) * (H_GAP * 2);
+
+    const startLeftX = SWIMLANE_LABEL_WIDTH + 32;
+
+    const assignCoords = (it: LayoutTreeItem, leftX: number) => {
+      it.centerX = leftX + it.subtreeWidth / 2;
+      it.x = it.centerX - it.width / 2;
+      it.y = rowCardTopMap.get(it.rowKey) ?? 24;
+
+      if (it.children.length > 0) {
+        const childrenSpan =
+          it.children.reduce((acc, c) => acc + c.subtreeWidth, 0) +
+          (it.children.length - 1) * H_GAP;
+        let childCursorX = leftX + (it.subtreeWidth - childrenSpan) / 2;
+        for (const ch of it.children) {
+          assignCoords(ch, childCursorX);
+          childCursorX += ch.subtreeWidth + H_GAP;
+        }
+      }
+    };
+
+    let rootCursorX = startLeftX;
+    for (const r of rootItems) {
+      assignCoords(r, rootCursorX);
+      rootCursorX += r.subtreeWidth + H_GAP * 2;
+    }
+
+    const canvasWidth = Math.max(980, startLeftX + totalRootsSpan + 48);
+    const canvasHeight = Math.max(420, cursorY + 32);
+
+    return {
+      rootItems,
+      allItems,
+      swimlanes,
+      canvasWidth,
+      canvasHeight,
+    };
+  }, [orgResult.roots, expandedIds, expandedCrewKeys, siblingPageByParent, showAllByParent]);
+
+  // Strict Sibling Accordion on Card Click
   const handleCardClick = useCallback(
     (node: OrgNode) => {
-      const hasExpandable =
-        node.managerChildren.length > 0 ||
-        node.specialistLeaves.length > 0 ||
-        node.workerLeaves.length > 0;
+      if (didDragMoveRef.current) return;
+      setSelectedNodeId(node.nodeId);
 
-      if (!hasExpandable) {
-        setSelectedNodeId(node.nodeId);
+      if (node.directCount === 0) {
         return;
       }
 
       setExpandedIds((prev) => {
         const next = new Set(prev);
-        const collapseSubtree = (n: OrgNode) => {
-          next.delete(n.nodeId);
-          for (const c of n.managerChildren) collapseSubtree(c);
+
+        const collapseSubtree = (target: OrgNode) => {
+          next.delete(target.nodeId);
+          for (const ch of target.managerChildren) {
+            collapseSubtree(ch);
+          }
         };
 
         if (next.has(node.nodeId)) {
           collapseSubtree(node);
         } else {
-          // Collapse ALL sibling branches at this same parent level (or sibling roots)
+          // Strict Sibling Accordion: close sibling branches before opening this branch
           if (node.parentId) {
             const parent = orgResult.nodeById.get(node.parentId);
             if (parent) {
               for (const sib of parent.managerChildren) {
-                if (sib.nodeId !== node.nodeId) {
+                if (sib.nodeId !== node.nodeId && next.has(sib.nodeId)) {
                   collapseSubtree(sib);
                 }
               }
             }
           } else {
-            for (const rootSib of orgResult.roots) {
-              if (rootSib.nodeId !== node.nodeId) {
-                collapseSubtree(rootSib);
+            for (const r of orgResult.roots) {
+              if (r.nodeId !== node.nodeId && next.has(r.nodeId)) {
+                collapseSubtree(r);
               }
             }
           }
           next.add(node.nodeId);
         }
+
         return next;
       });
 
-      centerNodeInViewport(node.nodeId, 80);
+      setTimeout(() => {
+        centerNodeInViewport(node.nodeId);
+      }, 60);
     },
     [orgResult.nodeById, orgResult.roots, centerNodeInViewport]
   );
 
-  // Search autocomplete results across all real employees
-  const searchResults = useMemo(() => {
+  const handleSetSiblingPage = useCallback((parentId: string, page: number) => {
+    setSiblingPageByParent((prev) => ({ ...prev, [parentId]: page }));
+  }, []);
+
+  const handleToggleShowAllSiblings = useCallback((parentId: string) => {
+    setShowAllByParent((prev) => ({ ...prev, [parentId]: !prev[parentId] }));
+  }, []);
+
+  const handleToggleCrewList = useCallback((crewKey: string) => {
+    setExpandedCrewKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(crewKey)) next.delete(crewKey);
+      else next.add(crewKey);
+      return next;
+    });
+  }, []);
+
+  // Search Autocomplete Results
+  const searchMatches = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    const matches: OrgNode[] = [];
-    for (const n of Array.from(orgResult.nodeById.values())) {
-      if (n.isVirtual) continue;
+    if (q.length < 2) return [];
+    const results: OrgNode[] = [];
+    for (const node of Array.from(orgResult.nodeById.values())) {
+      if (node.isVirtual) continue;
       if (
-        n.ad_soyad.toLowerCase().includes(q) ||
-        n.sicil_no.toLowerCase().includes(q) ||
-        n.gorevi.toLowerCase().includes(q)
+        node.ad_soyad.toLowerCase().includes(q) ||
+        node.sicil_no.toLowerCase().includes(q) ||
+        node.gorevi.toLowerCase().includes(q)
       ) {
-        matches.push(n);
+        results.push(node);
+        if (results.length >= 12) break;
       }
     }
-    matches.sort((a, b) => {
-      if (a.roleLevel !== b.roleLevel) return a.roleLevel - b.roleLevel;
-      return b.totalSubordinates - a.totalSubordinates;
-    });
-    return matches.slice(0, 12);
+    return results;
   }, [searchQuery, orgResult.nodeById]);
 
-  // Locate a searched person -> open ONLY their exact upward chain, flip sibling pagers to the exact page, and center!
   const handleLocatePersonInChart = useCallback(
     (target: OrgNode) => {
-      setFocusNodeId(null);
-      const chain = getUpwardChain(target.nodeId);
-      const nextExpanded = new Set<string>();
-      const nextPages: Record<string, number> = {};
+      setViewTab('chart');
+      setSelectedNodeId(target.nodeId);
+      setHighlightedNodeId(target.nodeId);
+      setSearchQuery('');
 
-      for (let i = 0; i < chain.length; i++) {
-        const step = chain[i];
-        if (step.nodeId !== target.nodeId || target.totalSubordinates > 0) {
-          nextExpanded.add(step.nodeId);
+      const nextExpanded = new Set<string>();
+      const pageUpdates: Record<string, number> = {};
+
+      let childCursor: OrgNode | undefined = target;
+      let parentCursor: OrgNode | undefined = target.parentId
+        ? orgResult.nodeById.get(target.parentId)
+        : undefined;
+
+      while (parentCursor) {
+        nextExpanded.add(parentCursor.nodeId);
+        const childIdx = parentCursor.managerChildren.findIndex(
+          (m) => m.nodeId === childCursor?.nodeId
+        );
+        if (childIdx >= 0) {
+          pageUpdates[parentCursor.nodeId] = Math.floor(childIdx / SIBLING_PAGE_SIZE);
+        } else if (childCursor) {
+          const totalMgr = parentCursor.managerChildren.length;
+          const specSlots = parentCursor.specialistLeaves.length > 0 ? 1 : 0;
+          const slotIdx =
+            childCursor.roleLevel <= 6 ? totalMgr : totalMgr + specSlots;
+          pageUpdates[parentCursor.nodeId] = Math.floor(slotIdx / SIBLING_PAGE_SIZE);
         }
-        // Ensure parent's sibling page points to the page containing `step`
-        if (step.parentId) {
-          nextExpanded.add(step.parentId);
-          const parent = orgResult.nodeById.get(step.parentId);
-          if (parent) {
-            const idxInManagers = parent.managerChildren.findIndex((m) => m.nodeId === step.nodeId);
-            if (idxInManagers >= 0) {
-              nextPages[parent.nodeId] = Math.floor(idxInManagers / SIBLING_PAGE_SIZE);
-            } else {
-              // Target is in specialistLeaves or workerLeaves (placed at the end of parent's child items)
-              const totalItems =
-                parent.managerChildren.length +
-                (parent.specialistLeaves.length > 0
-                  ? parent.specialistLeaves.length <= 2 && parent.managerChildren.length <= 2
-                    ? parent.specialistLeaves.length
-                    : 1
-                  : 0) +
-                (parent.workerLeaves.length > 0 ? 1 : 0);
-              nextPages[parent.nodeId] = Math.max(0, Math.ceil(totalItems / SIBLING_PAGE_SIZE) - 1);
-            }
-          }
-        }
+        childCursor = parentCursor;
+        parentCursor = parentCursor.parentId
+          ? orgResult.nodeById.get(parentCursor.parentId)
+          : undefined;
+      }
+
+      if (target.directCount > 0) {
+        nextExpanded.add(target.nodeId);
       }
 
       setExpandedIds(nextExpanded);
-      setSiblingPages((prev) => ({ ...prev, ...nextPages }));
-      setHighlightedNodeId(target.nodeId);
-      setSelectedNodeId(target.nodeId);
-      setSearchQuery('');
-      centerNodeInViewport(target.nodeId, 110);
+      setSiblingPageByParent((prev) => ({ ...prev, ...pageUpdates }));
+
+      const scrollTargetId =
+        target.directCount > 0 || target.roleLevel <= 5 || target.roleLevel === 7
+          ? target.nodeId
+          : target.parentId || target.nodeId;
+
+      setTimeout(() => {
+        centerNodeInViewport(scrollTargetId);
+      }, 90);
     },
-    [getUpwardChain, orgResult.nodeById, centerNodeInViewport]
+    [orgResult.nodeById, centerNodeInViewport]
   );
 
-  // Export full hierarchy to .xlsx (Zero salary columns, dd.mm.yyyy dates)
-  const handleExportExcel = () => {
-    const rows: Record<string, string | number>[] = [];
-    const walk = (n: OrgNode, chainNames: string[]) => {
-      const nextChain = [...chainNames, n.ad_soyad];
-      if (!n.isVirtual) {
+  // Open 198-Column PersonnelDetailDrawer
+  const handleInspectDrawer = useCallback(
+    async (node: OrgNode) => {
+      if (!node.personId || node.isVirtual) return;
+      setDrawerLoading(true);
+      try {
+        const res = await fetch(
+          `/api/personnel?search=${encodeURIComponent(node.sicil_no || node.ad_soyad)}&limit=10`,
+          { headers: getAuthHeaders() }
+        );
+        const data = await res.json();
+        const records: PersonnelRecord[] = data.records || data.data || [];
+        const exact =
+          records.find((r) => Number(r.id) === Number(node.personId)) ||
+          records.find((r) => r.sicil_no === node.sicil_no) ||
+          records[0];
+        setDrawerRecord(exact || toMinimalPersonnelRecord(node));
+      } catch {
+        setDrawerRecord(toMinimalPersonnelRecord(node));
+      } finally {
+        setDrawerLoading(false);
+      }
+    },
+    [getAuthHeaders]
+  );
+
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return null;
+    return orgResult.nodeById.get(selectedNodeId) || null;
+  }, [selectedNodeId, orgResult.nodeById]);
+
+  const selectedChain = useMemo(() => {
+    if (!selectedNode) return [];
+    const chain: OrgNode[] = [];
+    let curr: OrgNode | undefined = selectedNode;
+    const guard = new Set<string>();
+    while (curr && !guard.has(curr.nodeId)) {
+      guard.add(curr.nodeId);
+      chain.unshift(curr);
+      curr = curr.parentId ? orgResult.nodeById.get(curr.parentId) : undefined;
+    }
+    return chain;
+  }, [selectedNode, orgResult.nodeById]);
+
+  const focusBreadcrumb = useMemo(() => {
+    if (!focusNodeId) return [];
+    const list: OrgNode[] = [];
+    let cur: OrgNode | undefined = orgResult.nodeById.get(focusNodeId);
+    const guard = new Set<string>();
+    while (cur && !guard.has(cur.nodeId)) {
+      guard.add(cur.nodeId);
+      list.unshift(cur);
+      cur = cur.parentId ? orgResult.nodeById.get(cur.parentId) : undefined;
+    }
+    return list;
+  }, [focusNodeId, orgResult.nodeById]);
+
+  // Excel Export (strictly zero salary data per corporate privacy rule)
+  const handleExportHierarchyExcel = useCallback(() => {
+    const rows: Array<Record<string, string | number>> = [];
+    const walk = (node: OrgNode, chainNames: string[]) => {
+      const currentChain = [...chainNames, node.ad_soyad];
+      if (!node.isVirtual) {
         rows.push({
-          Kademe: `L${n.roleLevel}`,
-          Derinlik: n.depth + 1,
-          'Sicil No': n.sicil_no,
-          'Ad Soyad': n.ad_soyad,
-          Görev: n.gorevi,
-          'Yaka Türü': n.endirekt_direkt,
-          Şantiye: n.effective_site,
-          Departman: n.departman,
-          'Sorumlu Kişi (eBA)': n.sorumlu_kisi || '-',
-          'Grup Şefi (eBA)': n.grup_sefi || '-',
-          'Doğrudan Bağlı': n.directCount,
-          'Toplam Alt Kadro': n.totalSubordinates,
-          'İşe Giriş Tarihi': n.ise_giris_tarihi || '-',
-          'Raporlama Zinciri': nextChain.join(' ➔ '),
+          'Kademe Seviyesi': `L${node.roleLevel} - ${ROLE_LEVEL_THEMES[node.roleLevel].rowTitleTr}`,
+          'Sicil No': node.sicil_no,
+          'Ad Soyad': node.ad_soyad,
+          Görevi: node.gorevi,
+          'Şantiye / Lokasyon': node.effective_site,
+          Departman: node.departman,
+          'Yaka Türü': node.endirekt_direkt,
+          'Sorumlu Kişi (eBA)': node.sorumlu_kisi || '-',
+          'Grup Şefi (eBA)': node.grup_sefi || '-',
+          'Doğrudan Bağlı Sayısı': node.directCount,
+          'Toplam Alt Ekip': node.totalSubordinates,
+          'İşe Giriş Tarihi': node.ise_giris_tarihi,
+          'Üst Yönetim Zinciri': currentChain.join(' -> '),
         });
       }
-      for (const m of n.managerChildren) walk(m, nextChain);
-      for (const s of n.specialistLeaves) walk(s, nextChain);
-      for (const w of n.workerLeaves) walk(w, nextChain);
+      for (const m of node.managerChildren) walk(m, currentChain);
+      for (const s of node.specialistLeaves) walk(s, currentChain);
+      for (const w of node.workerLeaves) walk(w, currentChain);
     };
-    for (const r of orgResult.roots) walk(r, []);
+
+    for (const r of orgResult.roots) {
+      walk(r, []);
+    }
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Organizasyon_Hiyerarsisi');
-    XLSX.writeFile(
-      wb,
-      `Pondera_Organizasyon_Semasi_${selectedSite === 'all' ? 'Tum_Sirket' : selectedSite}_${new Date()
-        .toISOString()
-        .slice(0, 10)}.xlsx`
-    );
-  };
+    XLSX.utils.book_append_sheet(wb, ws, 'Organizasyon Hiyerarsisi');
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    XLSX.writeFile(wb, `Pondera_Organizasyon_Semasi_${dd}.${mm}.${yyyy}.xlsx`);
+  }, [orgResult.roots]);
 
-  /**
-   * Classic Enterprise Org-Chart Subtree Renderer:
-   * - Pixel-perfect orthogonal tree connectors (`react-organizational-chart` pattern)
-   * - `d3-org-chart v3` Sibling Pagination (`5` crisp cards per page, or `Tümü` toggle)
-   * - Strict single-branch accordion drill-down so screen stays 100% readable at all times!
-   */
-  const renderOrgSubtree = (node: OrgNode): React.ReactNode => {
-    const hasExpandable =
-      node.managerChildren.length > 0 ||
-      node.specialistLeaves.length > 0 ||
-      node.workerLeaves.length > 0;
-    const isExpanded = expandedIds.has(node.nodeId);
-
-    const cardEl = (
-      <OrgEnterpriseCard
-        node={node}
-        heatmapMode={heatmapMode}
-        isExpanded={isExpanded}
-        hasExpandableChildren={hasExpandable}
-        isSelected={selectedNodeId === node.nodeId}
-        isInHighlightChain={highlightChainIds.has(node.nodeId)}
-        isHighlightedTarget={highlightedNodeId === node.nodeId}
-        dimmedByLevelFilter={levelHighlight !== null && node.roleLevel !== levelHighlight}
-        lang={lang}
-        translateVal={translateVal}
-        onCardClick={handleCardClick}
-        onInspectChain={(n) => setSelectedNodeId(n.nodeId)}
-        onFocusSubtree={(n) => {
-          setFocusNodeId(n.nodeId);
-          setExpandedIds(new Set([n.nodeId]));
-          setSiblingPages({});
-          centerNodeInViewport(n.nodeId, 80);
-        }}
-        onOpenFullProfile={(n) => setDrawerPerson(toMinimalPersonnelRecord(n))}
-      />
-    );
-
-    if (!isExpanded || !hasExpandable) {
-      return (
-        <div key={node.nodeId} className="shrink-0 w-max flex flex-col items-center">
-          {cardEl}
-        </div>
-      );
-    }
-
-    // Build ordered list of direct child elements under `node`
-    interface ChildSlot {
-      key: string;
-      isActiveBranch: boolean;
-      element: React.ReactNode;
-    }
-
-    const allChildSlots: ChildSlot[] = [];
-
-    for (const mgrChild of node.managerChildren) {
-      allChildSlots.push({
-        key: mgrChild.nodeId,
-        isActiveBranch: expandedIds.has(mgrChild.nodeId) || highlightChainIds.has(mgrChild.nodeId),
-        element: renderOrgSubtree(mgrChild),
-      });
-    }
-
-    if (node.specialistLeaves.length > 0) {
-      if (node.specialistLeaves.length <= 2 && node.managerChildren.length <= 2) {
-        for (const sp of node.specialistLeaves) {
-          allChildSlots.push({
-            key: sp.nodeId,
-            isActiveBranch: highlightedNodeId === sp.nodeId,
-            element: renderOrgSubtree(sp),
-          });
-        }
-      } else {
-        allChildSlots.push({
-          key: `spc_box_${node.nodeId}`,
-          isActiveBranch: Boolean(
-            highlightedNodeId && node.specialistLeaves.some((s) => s.nodeId === highlightedNodeId)
-          ),
-          element: (
-            <ConsolidatedCrewCard
-              title={lang === 'ru' ? 'Инженеры и специалисты' : 'Uzman & Mühendisler'}
-              subtitle={`${node.ad_soyad} • Beyaz Yaka`}
-              members={node.specialistLeaves}
-              variant="specialists"
-              highlightedNodeId={highlightedNodeId}
-              lang={lang}
-              translateVal={translateVal}
-              onSelectPerson={(m) => setSelectedNodeId(m.nodeId)}
-              onOpenFullProfile={(m) => setDrawerPerson(toMinimalPersonnelRecord(m))}
-            />
-          ),
-        });
-      }
-    }
-
-    if (node.workerLeaves.length > 0) {
-      allChildSlots.push({
-        key: `wrk_box_${node.nodeId}`,
-        isActiveBranch: Boolean(
-          highlightedNodeId && node.workerLeaves.some((w) => w.nodeId === highlightedNodeId)
-        ),
-        element: (
-          <ConsolidatedCrewCard
-            title={lang === 'ru' ? 'Рабочая бригада (Список)' : 'Saha İşçileri Listesi'}
-            subtitle={`${node.ad_soyad} • Doğrudan Ekip`}
-            members={node.workerLeaves}
-            variant="workers"
-            highlightedNodeId={highlightedNodeId}
-            lang={lang}
-            translateVal={translateVal}
-            onSelectPerson={(m) => setSelectedNodeId(m.nodeId)}
-            onOpenFullProfile={(m) => setDrawerPerson(toMinimalPersonnelRecord(m))}
-          />
-        ),
-      });
-    }
-
-    // Sibling Pagination (`d3-org-chart v3` style) when > SIBLING_PAGE_SIZE items
-    const showAllUnpaged = showAllSiblingsFor.has(node.nodeId);
-    const needsPaging = allChildSlots.length > SIBLING_PAGE_SIZE && !showAllUnpaged;
-    const totalPages = Math.max(1, Math.ceil(allChildSlots.length / SIBLING_PAGE_SIZE));
-    const currentPage = Math.min(totalPages - 1, siblingPages[node.nodeId] || 0);
-
-    const visibleSlots = needsPaging
-      ? allChildSlots.slice(
-          currentPage * SIBLING_PAGE_SIZE,
-          (currentPage + 1) * SIBLING_PAGE_SIZE
-        )
-      : allChildSlots;
-
-    const handlePageChange = (nextPage: number) => {
-      const clamped = (nextPage + totalPages) % totalPages;
-      setSiblingPages((prev) => ({ ...prev, [node.nodeId]: clamped }));
-      // Collapse open sibling branches when flipping pages so screen stays tidy
-      setExpandedIds((prev) => {
-        const next = new Set(prev);
-        const collapseRec = (n: OrgNode) => {
-          next.delete(n.nodeId);
-          for (const c of n.managerChildren) collapseRec(c);
-        };
-        for (const c of node.managerChildren) collapseRec(c);
-        return next;
-      });
-      centerNodeInViewport(node.nodeId, 60);
+  // Drag-to-pan on canvas background
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button, input, select, a, [id^="org-card-"]')) return;
+    const vp = canvasViewportRef.current;
+    if (!vp) return;
+    isDraggingRef.current = true;
+    didDragMoveRef.current = false;
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: vp.scrollLeft,
+      scrollTop: vp.scrollTop,
     };
+  };
 
-    const pagerBarEl =
-      allChildSlots.length > SIBLING_PAGE_SIZE ? (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="mb-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-700 dark:text-slate-200 shadow-2xs select-none"
-        >
-          {!showAllUnpaged && (
-            <>
-              <button
-                type="button"
-                onClick={() => handlePageChange(currentPage - 1)}
-                className="p-0.5 rounded-full hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
-                title={lang === 'ru' ? 'Предыдущие' : 'Önceki Grup'}
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <span className="font-mono text-[10.5px] px-1">
-                {currentPage * SIBLING_PAGE_SIZE + 1}–
-                {Math.min((currentPage + 1) * SIBLING_PAGE_SIZE, allChildSlots.length)} /{' '}
-                {allChildSlots.length}
-              </span>
-              <button
-                type="button"
-                onClick={() => handlePageChange(currentPage + 1)}
-                className="p-0.5 rounded-full hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
-                title={lang === 'ru' ? 'Следующие' : 'Sonraki Grup'}
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-slate-300 dark:text-slate-600">|</span>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() =>
-              setShowAllSiblingsFor((prev) => {
-                const next = new Set(prev);
-                if (next.has(node.nodeId)) next.delete(node.nodeId);
-                else next.add(node.nodeId);
-                return next;
-              })
-            }
-            className="text-[10.5px] text-teal-700 dark:text-teal-300 hover:underline cursor-pointer"
-          >
-            {showAllUnpaged
-              ? lang === 'ru'
-                ? 'По 5 в ряд'
-                : '5’li Sayfala'
-              : lang === 'ru'
-              ? `Все (${allChildSlots.length})`
-              : `Tümünü Aç (${allChildSlots.length})`}
-          </button>
-        </div>
-      ) : null;
-
-    const anyChildActive = visibleSlots.some((s) => s.isActiveBranch);
-
-    // HORIZONTAL ORIENTATION (Left ➔ Right Org Chart)
-    if (orientation === 'horizontal') {
-      return (
-        <div key={node.nodeId} className="shrink-0 w-max flex items-center">
-          {cardEl}
-          <div
-            className={`w-6 h-[2px] shrink-0 ${
-              anyChildActive ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'
-            }`}
-          />
-          <div className="flex flex-col items-start">
-            {pagerBarEl && <div className="ml-4 mb-2">{pagerBarEl}</div>}
-            <div className="flex flex-col">
-              {visibleSlots.map((slot, idx) => {
-                const isFirst = idx === 0;
-                const isLast = idx === visibleSlots.length - 1;
-                const onlyOne = visibleSlots.length === 1;
-                return (
-                  <div key={slot.key} className="relative flex items-center pl-6 py-2">
-                    {!onlyOne && (
-                      <>
-                        {!isFirst && (
-                          <span className="absolute left-0 top-0 h-1/2 w-[2px] bg-slate-300 dark:bg-slate-600" />
-                        )}
-                        {!isLast && (
-                          <span className="absolute left-0 bottom-0 h-1/2 w-[2px] bg-slate-300 dark:bg-slate-600" />
-                        )}
-                      </>
-                    )}
-                    <span
-                      className={`absolute left-0 top-1/2 -translate-y-1/2 w-6 h-[2px] ${
-                        slot.isActiveBranch ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'
-                      }`}
-                    />
-                    {slot.element}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      );
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || !canvasViewportRef.current) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      didDragMoveRef.current = true;
     }
-
-    // CLASSIC VERTICAL ORG CHART (Top ➔ Bottom with pixel-perfect orthogonal connectors)
-    return (
-      <div key={node.nodeId} className="shrink-0 w-max flex flex-col items-center">
-        {cardEl}
-
-        {/* Vertical Stem Down from Parent Card */}
-        <div
-          className={`w-[2px] h-5 ${
-            anyChildActive ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'
-          }`}
-        />
-
-        {pagerBarEl && (
-          <>
-            {pagerBarEl}
-            <div className="w-[2px] h-3 bg-slate-300 dark:bg-slate-600 -mt-1" />
-          </>
-        )}
-
-        {/* Horizontal Orthogonal Connector Rail + Child Columns */}
-        <div className="flex items-start justify-center w-max">
-          {visibleSlots.map((slot, idx) => {
-            const isFirst = idx === 0;
-            const isLast = idx === visibleSlots.length - 1;
-            const onlyOne = visibleSlots.length === 1;
-
-            return (
-              <div
-                key={slot.key}
-                className="shrink-0 w-max flex flex-col items-center relative px-2 pt-5"
-              >
-                {!onlyOne && (
-                  <>
-                    {!isFirst && (
-                      <span className="absolute top-0 left-0 w-1/2 h-[2px] bg-slate-300 dark:bg-slate-600" />
-                    )}
-                    {!isLast && (
-                      <span className="absolute top-0 right-0 w-1/2 h-[2px] bg-slate-300 dark:bg-slate-600" />
-                    )}
-                  </>
-                )}
-                <span
-                  className={`absolute top-0 left-1/2 -translate-x-1/2 w-[2px] h-5 ${
-                    slot.isActiveBranch ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'
-                  }`}
-                />
-                {slot.element}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
+    canvasViewportRef.current.scrollLeft = dragStartRef.current.scrollLeft - dx;
+    canvasViewportRef.current.scrollTop = dragStartRef.current.scrollTop - dy;
   };
 
-  // Directory Outline View Renderer
-  const renderDirectoryRow = (node: OrgNode, indent = 0): React.ReactNode => {
-    const hasKids =
-      node.managerChildren.length > 0 ||
-      node.specialistLeaves.length > 0 ||
-      node.workerLeaves.length > 0;
-    const isExp = expandedIds.has(node.nodeId);
-    const tier = ROLE_TIER_CONFIG[node.roleLevel];
-    const TierIcon = tier.icon;
+  const handleMouseUp = () => {
+    isDraggingRef.current = false;
+    setTimeout(() => {
+      didDragMoveRef.current = false;
+    }, 30);
+  };
 
+  const handleWheelZoom = useCallback(
+    (e: React.WheelEvent<HTMLDivElement>) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.06 : -0.06;
+      setZoom((z) => clampZoom(z + delta));
+    },
+    [clampZoom]
+  );
+
+  const openLevelModal = (tab: 'all' | 'unconfirmed' | 'active') => {
+    setLevelModalInitialTab(tab);
+    setIsLevelModalOpen(true);
+  };
+
+  if (loading) {
     return (
-      <div key={node.nodeId}>
-        <div
-          style={{ paddingLeft: `${Math.min(indent * 22, 160) + 12}px` }}
-          onClick={() => handleCardClick(node)}
-          className={`py-2 pr-4 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/70 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer text-xs ${
-            highlightedNodeId === node.nodeId ? 'bg-emerald-50 dark:bg-emerald-950/40' : ''
-          }`}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 flex flex-col items-center justify-center gap-3">
+        <RefreshCw className="w-7 h-7 text-teal-600 animate-spin" />
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {lang === 'ru'
+            ? 'Построение иерархии по уровням должностей (L1–L8)...'
+            : 'Görev sınıf seviyelerine (L1–L8) göre organizasyon şeması hazırlanıyor...'}
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-900/50 p-8 text-center space-y-3">
+        <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
+        <button
+          type="button"
+          onClick={fetchOrgData}
+          className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs cursor-pointer"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            {hasKids ? (
-              <span className="w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
-                {isExp ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-              </span>
-            ) : (
-              <span className="w-5 shrink-0" />
-            )}
-            <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${tier.avatarClass}`}>
-              <TierIcon className="w-3.5 h-3.5" />
-            </span>
-            <span className="text-slate-900 dark:text-white truncate">{node.ad_soyad}</span>
-            <span className="text-slate-500 dark:text-slate-400 truncate">
-              • {translateVal(node.gorevi)}
-            </span>
-            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 shrink-0">
-              {translateVal(node.effective_site)}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {node.totalSubordinates > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-[11px]">
-                +{node.totalSubordinates.toLocaleString('tr-TR')} {lang === 'ru' ? 'чел.' : 'Kişi'}
-              </span>
-            )}
-            {!node.isVirtual && node.personId && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDrawerPerson(toMinimalPersonnelRecord(node));
-                }}
-                className="p-1 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-slate-800 cursor-pointer"
-              >
-                <Eye className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {isExp && hasKids && (
-          <div>
-            {node.managerChildren.map((c) => renderDirectoryRow(c, indent + 1))}
-            {node.specialistLeaves.map((s) => renderDirectoryRow(s, indent + 1))}
-            {node.workerLeaves.length > 0 && (
-              <div
-                style={{ paddingLeft: `${Math.min((indent + 1) * 22, 180) + 16}px` }}
-                className="py-2.5 pr-4 bg-slate-50/70 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800"
-              >
-                <ConsolidatedCrewCard
-                  title={lang === 'ru' ? 'Рабочая бригада' : 'Saha İşçileri Listesi'}
-                  subtitle={node.ad_soyad}
-                  members={node.workerLeaves}
-                  variant="workers"
-                  highlightedNodeId={highlightedNodeId}
-                  lang={lang}
-                  translateVal={translateVal}
-                  onSelectPerson={(m) => setSelectedNodeId(m.nodeId)}
-                  onOpenFullProfile={(m) => setDrawerPerson(toMinimalPersonnelRecord(m))}
-                />
-              </div>
-            )}
-          </div>
-        )}
+          Tekrar Dene
+        </button>
       </div>
     );
-  };
+  }
 
   return (
     <div
-      className={
-        isFullscreen
-          ? 'fixed inset-0 z-[80] bg-[#F8FAFC] dark:bg-[#0B1120] p-3 flex flex-col gap-2.5 overflow-hidden'
-          : 'px-3 sm:px-4 py-2.5 space-y-2.5'
-      }
+      ref={orgContainerRef}
+      className={`space-y-2 ${
+        isFullscreen ? 'bg-slate-50 dark:bg-slate-950 p-3 h-screen overflow-hidden flex flex-col' : ''
+      }`}
     >
-      {/* 1. COMPACT HEADER (Top KPI boxes removed for maximum chart space!) */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 text-white flex items-center justify-center shadow-xs shrink-0">
-            <GitFork className="w-4 h-4" />
-          </div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">
-              {lang === 'ru'
-                ? 'Организационная структура и иерархия'
-                : 'Organizasyon Şeması & Raporlama Hiyerarşisi'}
-            </h1>
-            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
-              <span>
-                {orgResult.totalStaff.toLocaleString('tr-TR')}{' '}
-                {lang === 'ru' ? 'сотр.' : 'Aktif'}
-              </span>
-              <span>•</span>
-              <span>
-                {orgResult.totalManagers} {lang === 'ru' ? 'рук.' : 'Yönetici'}
-              </span>
-              <span>•</span>
-              <span className="text-teal-700 dark:text-teal-300">
-                {lang === 'ru'
-                  ? 'Нажмите на карточку, чтобы открыть ветку'
-                  : 'Alt ekibi açmak için yönetici kartına dokunun'}
-              </span>
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex p-0.5 rounded-xl bg-white dark:bg-[#131C31] border border-slate-200 dark:border-slate-800 shadow-2xs">
-            {(
-              [
-                {
-                  id: 'combined',
-                  tr: 'Birleşik (Grup Şefi ➔ Sorumlu)',
-                  ru: 'Полная (Нач. гр. ➔ Отв.)',
-                },
-                { id: 'sorumlu', tr: 'Sorumlu Kişi', ru: 'По ответственному' },
-                { id: 'grup_sefi', tr: 'Grup Şefi', ru: 'По нач. группы' },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setHierarchyMode(m.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11.5px] transition-all cursor-pointer ${
-                  hierarchyMode === m.id
-                    ? 'bg-teal-600 text-white shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {lang === 'ru' ? m.ru : m.tr}
-              </button>
-            ))}
+      {/* Warning Banner when newly arrived job titles have unconfirmed levels */}
+      {unconfirmedTitles.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4.5 h-4.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs text-amber-950 dark:text-amber-100">
+                Yeni Görev Seviyesi Tanımlaması Gerekiyor ({unconfirmedTitles.length} Yeni Görev)
+              </div>
+              <div className="text-[11px] text-amber-800 dark:text-amber-300 truncate max-w-3xl">
+                Seviyesi onaylanmamış yeni görevler:{' '}
+                {unconfirmedTitles
+                  .slice(0, 4)
+                  .map((t) => `${t.displayTitle} (${t.activeCount} kişi)`)
+                  .join(', ')}
+                {unconfirmedTitles.length > 4 ? ` +${unconfirmedTitles.length - 4} diğer` : ''}
+              </div>
+            </div>
           </div>
 
           <button
             type="button"
-            onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11.5px] bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
+            onClick={() => {
+              if (!canEditJobLevels) {
+                showPermissionDenied({
+                  actionLabelTr: 'Yeni Görev Seviyesi Tanımlama',
+                  titleTr: 'Düzenleme Yetkisi Gerekli (Viewer Rolü Kısıtlı)',
+                  messageTr:
+                    'Yeni gelen görevlerin sınıf seviyesini tanımlama yetkisi yalnızca Gözlemci (Viewer) olmayan kullanıcılara aittir.',
+                });
+                return;
+              }
+              openLevelModal('unconfirmed');
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs shadow-xs cursor-pointer shrink-0"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>{lang === 'ru' ? 'Экспорт (.xlsx)' : 'Hiyerarşi İndir (.xlsx)'}</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            Yeni Görev Seviyelerini Tanımla ({unconfirmedTitles.length})
           </button>
         </div>
-      </div>
+      )}
 
-      {/* 2. SINGLE-LINE ROLE FORMAT LEGEND + SEARCH & SITE FILTER BAR */}
-      <div className="px-3 py-2 rounded-2xl bg-white dark:bg-[#131C31] border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
-        {/* Single-line Görev Seviyesi Kart Formatları */}
-        <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap no-scrollbar pb-1.5 border-b border-slate-100 dark:border-slate-800/80">
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0 mr-0.5">
-            {lang === 'ru' ? 'Форматы карточек:' : 'Görev Seviyesi Kart Formatları:'}
-          </span>
-          {([1, 2, 3, 4, 5, 6] as OrgRoleLevel[]).map((lvl) => {
-            const cfg = ROLE_TIER_CONFIG[lvl];
-            const Icon = cfg.icon;
-            const active = levelHighlight === lvl;
-            return (
+      {/* Compact Header + Single-Line L1..L8 Role Legend + Filters */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 px-3.5 py-2.5 shadow-xs space-y-2 shrink-0">
+        {/* Row 1: Title + Job Levels Button + Mode Switch + Excel */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center shrink-0">
+              <GitBranch className="w-4 h-4" />
+            </div>
+            <h1 className="text-sm sm:text-base text-slate-900 dark:text-white truncate">
+              {lang === 'ru'
+                ? 'Организационная структура по уровням (L1–L8)'
+                : 'Organizasyon Şeması & Seviye Hiyerarşisi (L1–L8)'}
+            </h1>
+            <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              <span>{orgResult.totalStaff.toLocaleString('tr-TR')} Aktif</span>
+              <span>•</span>
+              <span>{orgResult.totalManagers} Yönetici</span>
+              <span>•</span>
+              <span>8 Görev Seviyesi</span>
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Job Title Levels Management Button */}
+            <button
+              type="button"
+              onClick={() =>
+                openLevelModal(unconfirmedTitles.length > 0 ? 'unconfirmed' : 'active')
+              }
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors cursor-pointer ${
+                unconfirmedTitles.length > 0
+                  ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+                  : 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100'
+              }`}
+              title="Görev unvanlarının L1–L8 sınıf seviyelerini görüntüle ve düzenle"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Görev Seviyeleri (L1–L8)</span>
+              {unconfirmedTitles.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-600 text-white text-[10px]">
+                  {unconfirmedTitles.length} Yeni
+                </span>
+              )}
+            </button>
+
+            <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
               <button
-                key={lvl}
                 type="button"
-                onClick={() => setLevelHighlight((cur) => (cur === lvl ? null : lvl))}
-                className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] border transition-all cursor-pointer ${
-                  active
-                    ? 'ring-2 ring-teal-500 bg-slate-900 text-white dark:bg-teal-600 border-transparent'
-                    : 'bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                onClick={() => setHierarchyMode('combined')}
+                className={`px-2 py-1 rounded-md text-[11px] transition-all cursor-pointer ${
+                  hierarchyMode === 'combined'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
                 }`}
               >
-                <span className={`w-3.5 h-3.5 rounded flex items-center justify-center ${cfg.avatarClass}`}>
-                  <Icon className="w-2.5 h-2.5" />
+                Birleşik (Grup Şefi → Sorumlu)
+              </button>
+              <button
+                type="button"
+                onClick={() => setHierarchyMode('sorumlu')}
+                className={`px-2 py-1 rounded-md text-[11px] transition-all cursor-pointer ${
+                  hierarchyMode === 'sorumlu'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                }`}
+              >
+                Sorumlu Kişi
+              </button>
+              <button
+                type="button"
+                onClick={() => setHierarchyMode('grup_sefi')}
+                className={`px-2 py-1 rounded-md text-[11px] transition-all cursor-pointer ${
+                  hierarchyMode === 'grup_sefi'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                }`}
+              >
+                Grup Şefi
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExportHierarchyExcel}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-[11px] transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>.xlsx</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Single-Line L1..L8 Role Level Formats Bar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar whitespace-nowrap py-0.5 border-t border-slate-100 dark:border-slate-800/80 pt-1.5">
+          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 shrink-0">
+            Görev Seviyesi Satırları:
+          </span>
+          {([1, 2, 3, 4, 5, 6, 7, 8] as OrgRoleLevel[]).map((lvl) => {
+            const t = ROLE_LEVEL_THEMES[lvl];
+            const LvlIcon = t.icon;
+            return (
+              <div
+                key={lvl}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] shrink-0 ${t.badgeBg} ${t.badgeText}`}
+              >
+                <LvlIcon className="w-3 h-3 shrink-0" />
+                <span>
+                  {t.code} • {lang === 'ru' ? t.shortRu : t.shortTr}
                 </span>
-                <span>{lang === 'ru' ? cfg.shortRu : cfg.shortTr}</span>
-                <span className="px-1 py-0.2 rounded bg-black/10 dark:bg-white/10 text-[9.5px] font-mono">
+                <span className="px-1 py-0.2 rounded bg-black/5 dark:bg-white/10 text-[9.5px]">
                   {orgResult.levelCounts[lvl].toLocaleString('tr-TR')}
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
 
-        {/* Search + Site Pills + Orientation & View Switches */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="relative w-full sm:w-64 lg:w-72 shrink-0">
+        {/* Row 3: Search + Site Quick Pills + Department + Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+          <div className="relative w-full sm:w-64 shrink-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                lang === 'ru'
-                  ? 'Поиск сотрудника ➔ открыть цепочку...'
-                  : 'Kişi veya Sicil ara ➔ Zinciri aç...'
-              }
-              className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+              placeholder="Kişi, görev veya sicil ara → Dalı aç..."
+              className="w-full pl-8 pr-7 py-1 text-[11.5px] rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
             />
             {searchQuery && (
               <button
@@ -1525,516 +1666,699 @@ export default function OrganizationChartView({
               </button>
             )}
 
-            {searchResults.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                {searchResults.map((res) => {
-                  const cfg = ROLE_TIER_CONFIG[res.roleLevel];
-                  return (
-                    <button
-                      key={res.nodeId}
-                      type="button"
-                      onClick={() => handleLocatePersonInChart(res)}
-                      className="w-full px-3 py-2 text-left hover:bg-teal-50/60 dark:hover:bg-slate-800 flex items-center justify-between gap-2 cursor-pointer"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs text-slate-900 dark:text-white truncate">
-                          {res.ad_soyad}{' '}
-                          <span className="font-mono text-[10px] text-slate-400">
-                            #{res.sicil_no}
-                          </span>
-                        </div>
-                        <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
-                          {translateVal(res.gorevi)} • {translateVal(res.effective_site)}
-                        </div>
+            {searchMatches.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl max-h-72 overflow-y-auto p-1">
+                {searchMatches.map((m) => (
+                  <button
+                    key={m.nodeId}
+                    type="button"
+                    onClick={() => handleLocatePersonInChart(m)}
+                    className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-950/50 text-left transition-colors cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs text-slate-900 dark:text-white truncate">
+                        {m.ad_soyad}
                       </div>
-                      <span className={`px-1.5 py-0.5 rounded text-[9.5px] shrink-0 ${cfg.pillClass}`}>
-                        L{res.roleLevel}
-                      </span>
-                    </button>
-                  );
-                })}
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                        {m.gorevi} • {m.effective_site}
+                      </div>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-300 shrink-0">
+                      L{m.roleLevel}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Site Quick Pills */}
-          <div className="flex-1 min-w-[200px] flex items-center gap-1 overflow-x-auto whitespace-nowrap no-scrollbar">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 min-w-[180px]">
             <button
               type="button"
               onClick={() => {
-                setSelectedSite('all');
+                setSiteFilter('all');
                 setFocusNodeId(null);
               }}
-              className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap cursor-pointer border transition-all ${
-                selectedSite === 'all'
-                  ? 'bg-slate-900 dark:bg-emerald-600 text-white border-transparent'
-                  : 'bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+              className={`px-2 py-1 rounded-lg text-[11px] whitespace-nowrap transition-all cursor-pointer ${
+                siteFilter === 'all'
+                  ? 'bg-slate-900 dark:bg-teal-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
               }`}
             >
-              {lang === 'ru' ? 'Вся компания' : 'Tüm Şirket'} ({people.length.toLocaleString('tr-TR')})
+              Tüm Şirket ({rawPeople.length.toLocaleString('tr-TR')})
             </button>
             {orgResult.sites.map((s) => (
               <button
                 key={s.name}
                 type="button"
                 onClick={() => {
-                  setSelectedSite(s.name);
+                  setSiteFilter(s.name);
                   setFocusNodeId(null);
                 }}
-                className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap cursor-pointer border transition-all ${
-                  selectedSite === s.name
-                    ? 'bg-teal-600 text-white border-teal-600'
-                    : 'bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                className={`px-2 py-1 rounded-lg text-[11px] whitespace-nowrap transition-all cursor-pointer ${
+                  siteFilter === s.name
+                    ? 'bg-teal-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
                 }`}
               >
-                {translateVal(s.name)} ({s.count.toLocaleString('tr-TR')})
+                {s.name} ({s.count.toLocaleString('tr-TR')})
               </button>
             ))}
           </div>
 
-          {/* Right Controls: Department + Dikey/Yatay + Yük Renklendirme + Şema/Dizin */}
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <select
-              value={selectedDept}
+              value={deptFilter}
               onChange={(e) => {
-                setSelectedDept(e.target.value);
+                setDeptFilter(e.target.value);
                 setFocusNodeId(null);
               }}
-              className="px-2 py-1 rounded-xl text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none max-w-[155px]"
+              className="px-2 py-1 text-[11px] rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
             >
-              <option value="all">{lang === 'ru' ? 'Все отделы' : 'Tüm Departmanlar'}</option>
+              <option value="all">Tüm Departmanlar</option>
               {orgResult.departments.map((d) => (
                 <option key={d.name} value={d.name}>
-                  {translateVal(d.name)} ({d.count})
+                  {d.name} ({d.count})
                 </option>
               ))}
             </select>
 
-            {viewStyle === 'canvas' && (
-              <div className="inline-flex p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setOrientation('vertical')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] cursor-pointer ${
-                    orientation === 'vertical'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
-                  <GitFork className="w-3 h-3" />
-                  <span>{lang === 'ru' ? 'Сверху вниз' : 'Dikey'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOrientation('horizontal')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] cursor-pointer ${
-                    orientation === 'horizontal'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
-                  <ArrowRightLeft className="w-3 h-3" />
-                  <span>{lang === 'ru' ? 'Слева направо' : 'Yatay'}</span>
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setColorBySpan((v) => !v)}
+              title="Yönetici kontrol yükü (Span of Control) renk göstergesi"
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border cursor-pointer ${
+                colorBySpan
+                  ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 text-amber-800 dark:text-amber-300'
+                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <Palette className="w-3 h-3" />
+              <span className="hidden md:inline">Yük Rengi</span>
+            </button>
 
-            {viewStyle === 'canvas' && (
+            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
               <button
                 type="button"
-                onClick={() => setHeatmapMode((v) => !v)}
-                title={
-                  lang === 'ru'
-                    ? 'Цветовая индикация нагрузки (1-8 зеленый, 9-20 желтый, 21+ красный)'
-                    : 'Yönetim Yükü: Yeşil (1-8), Sarı (9-20), Kırmızı (21+ doğrudan bağlı)'
-                }
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] border cursor-pointer transition-all ${
-                  heatmapMode
-                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                onClick={() => setViewTab('chart')}
+                className={`px-2 py-1 text-[11px] flex items-center gap-1 cursor-pointer ${
+                  viewTab === 'chart'
+                    ? 'bg-slate-900 dark:bg-teal-600 text-white'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'
                 }`}
               >
-                <Flame className="w-3.5 h-3.5" />
-                <span>{lang === 'ru' ? 'Нагрузка' : 'Yük Rengi'}</span>
-              </button>
-            )}
-
-            <div className="inline-flex p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <button
-                type="button"
-                onClick={() => setViewStyle('canvas')}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] cursor-pointer ${
-                  viewStyle === 'canvas'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                    : 'text-slate-500 dark:text-slate-400'
-                }`}
-              >
-                <LayoutGrid className="w-3 h-3" />
-                <span>{lang === 'ru' ? 'Схема' : 'Şema'}</span>
+                <GitBranch className="w-3 h-3" />
+                Şema
               </button>
               <button
                 type="button"
-                onClick={() => setViewStyle('directory')}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] cursor-pointer ${
-                  viewStyle === 'directory'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                    : 'text-slate-500 dark:text-slate-400'
+                onClick={() => setViewTab('directory')}
+                className={`px-2 py-1 text-[11px] flex items-center gap-1 cursor-pointer ${
+                  viewTab === 'directory'
+                    ? 'bg-slate-900 dark:bg-teal-600 text-white'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'
                 }`}
               >
                 <ListTree className="w-3 h-3" />
-                <span>{lang === 'ru' ? 'Список' : 'Dizin'}</span>
+                Dizin
               </button>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Active Chain / Focus Breadcrumb Bar */}
-      {(focusBreadcrumb.length > 0 || highlightChainIds.size > 0) && (
-        <div className="px-3 py-1.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/70 flex items-center justify-between gap-2 flex-wrap text-xs">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-indigo-800 dark:text-indigo-200">
-              {focusNodeId
-                ? lang === 'ru'
-                  ? 'Фокус ветки:'
-                  : 'Odaklanan Alt Şema:'
-                : lang === 'ru'
-                ? 'Открытая цепочка:'
-                : 'Açık Raporlama Zinciri:'}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setFocusNodeId(null);
-                setHighlightedNodeId(null);
-              }}
-              className="text-teal-700 dark:text-teal-300 hover:underline cursor-pointer"
-            >
-              Pondera Industry
-            </button>
-            {(focusNodeId ? focusBreadcrumb : getUpwardChain(highlightedNodeId)).map((item) => (
-              <React.Fragment key={item.nodeId}>
-                <ChevronRight className="w-3 h-3 text-slate-400" />
-                <button
-                  type="button"
-                  onClick={() => handleLocatePersonInChart(item)}
-                  className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-700 text-slate-800 dark:text-slate-100 hover:border-teal-500 cursor-pointer text-[11px]"
-                >
-                  {item.ad_soyad}
-                </button>
-              </React.Fragment>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setFocusNodeId(null);
-              setHighlightedNodeId(null);
-            }}
-            className="px-2.5 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 cursor-pointer text-[11px]"
-          >
-            {lang === 'ru' ? 'Вся схема' : 'Tam Şemaya Dön'}
-          </button>
-        </div>
-      )}
-
-      {/* 3. READABLE ENTERPRISE ORG CHART CANVAS */}
-      <div
-        className={`relative bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card overflow-hidden ${
-          isFullscreen ? 'flex-1 min-h-0' : 'h-[calc(100vh-226px)] min-h-[540px]'
-        }`}
-      >
-        {loading ? (
-          <div className="h-full flex flex-col items-center justify-center gap-3">
-            <div className="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs text-slate-600 dark:text-slate-300">
-              {lang === 'ru'
-                ? 'Построение организационной структуры...'
-                : 'Organizasyon şeması hazırlanıyor...'}
-            </p>
-          </div>
-        ) : orgResult.roots.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-xs text-slate-500">
-            {lang === 'ru'
-              ? 'Сотрудники по выбранному фильтру не найдены.'
-              : 'Seçilen filtreye uygun personel bulunamadı.'}
-          </div>
-        ) : viewStyle === 'directory' ? (
-          <div className="h-full overflow-y-auto">{orgResult.roots.map((r) => renderDirectoryRow(r, 0))}</div>
-        ) : (
-          <>
-            {/* Scrollable & Grab-to-Pan Readable Org-Chart Canvas */}
-            <div
-              ref={scrollContainerRef}
-              onMouseDown={(e) => {
-                if (e.button !== 0 && e.button !== 1) return;
-                const target = e.target as HTMLElement | null;
-                if (target?.closest('button, input, select, .org-roster-scroll')) return;
-                const sc = scrollContainerRef.current;
-                if (!sc) return;
-                dragScrollRef.current = {
-                  active: true,
-                  moved: false,
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  scrollLeft: sc.scrollLeft,
-                  scrollTop: sc.scrollTop,
-                };
-              }}
-              onMouseMove={(e) => {
-                if (!dragScrollRef.current.active) return;
-                const sc = scrollContainerRef.current;
-                if (!sc) return;
-                const dx = e.clientX - dragScrollRef.current.startX;
-                const dy = e.clientY - dragScrollRef.current.startY;
-                if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-                  dragScrollRef.current.moved = true;
-                }
-                sc.scrollLeft = dragScrollRef.current.scrollLeft - dx;
-                sc.scrollTop = dragScrollRef.current.scrollTop - dy;
-              }}
-              onMouseUp={() => {
-                dragScrollRef.current.active = false;
-              }}
-              onMouseLeave={() => {
-                dragScrollRef.current.active = false;
-              }}
-              onClick={(e) => {
-                if (dragScrollRef.current.moved) return;
-                if (e.target === e.currentTarget) {
-                  setSelectedNodeId(null);
-                }
-              }}
-              className="w-full h-full overflow-auto cursor-grab active:cursor-grabbing bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:20px_20px]"
-            >
-              <div className="min-w-full min-h-full flex justify-center items-start p-6 pb-20">
-                <div
-                  style={{ zoom } as React.CSSProperties}
-                  className="flex flex-wrap items-start justify-center gap-8"
-                >
-                  {orgResult.roots.map((rootNode) => renderOrgSubtree(rootNode))}
-                </div>
-              </div>
-            </div>
-
-            {/* BOTTOM-RIGHT CORNER READABLE ZOOM & RESET CONTROLS */}
-            <div
-              className={`absolute bottom-3 z-30 flex items-center gap-1 p-1.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-700 shadow-xl transition-all ${
-                selectedNode ? 'right-3 lg:right-[314px]' : 'right-3'
-              }`}
-            >
+        {/* Subtree Focus Breadcrumb */}
+        {focusNodeId && focusBreadcrumb.length > 0 && (
+          <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-[11px]">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+              <span className="text-teal-700 dark:text-teal-300 shrink-0">Odaklanan Dal:</span>
               <button
                 type="button"
-                onClick={() =>
-                  setZoom((z) =>
-                    Math.max(MIN_READABLE_ZOOM, Math.round((z - 0.08) * 100) / 100)
-                  )
-                }
-                disabled={zoom <= MIN_READABLE_ZOOM}
-                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-35 cursor-pointer"
-                title={lang === 'ru' ? 'Чуть уменьшить' : 'Küçült (Okunur Sınır %75)'}
+                onClick={() => setFocusNodeId(null)}
+                className="px-1.5 py-0.5 rounded hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-800 dark:text-teal-200 cursor-pointer shrink-0"
               >
-                <ZoomOut className="w-4 h-4" />
+                Tüm Şirket
               </button>
+              {focusBreadcrumb.map((b) => (
+                <React.Fragment key={b.nodeId}>
+                  <ChevronRight className="w-3 h-3 text-teal-400 shrink-0" />
+                  <button
+                    type="button"
+                    onClick={() => setFocusNodeId(b.nodeId)}
+                    className={`px-1.5 py-0.5 rounded cursor-pointer shrink-0 ${
+                      b.nodeId === focusNodeId
+                        ? 'bg-teal-600 text-white'
+                        : 'hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-800 dark:text-teal-200'
+                    }`}
+                  >
+                    {b.ad_soyad} (L{b.roleLevel})
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setFocusNodeId(null)}
+              className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300 hover:bg-teal-100 cursor-pointer shrink-0"
+            >
+              Tüm Ağaca Dön
+            </button>
+          </div>
+        )}
+      </div>
 
+      {/* Main Chart Canvas OR Directory Table */}
+      {viewTab === 'chart' ? (
+        <div
+          className={`grid grid-cols-1 xl:grid-cols-12 gap-3 ${
+            isFullscreen ? 'flex-1 min-h-0' : ''
+          }`}
+        >
+          <div
+            className={`${
+              selectedNode ? 'xl:col-span-9' : 'xl:col-span-12'
+            } relative bg-slate-50/80 dark:bg-slate-950/80 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden`}
+          >
+            {/* Top-left subtle interaction tip */}
+            <div className="absolute top-2.5 right-3 z-20 hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs border border-slate-200/80 dark:border-slate-700 text-[10.5px] text-slate-600 dark:text-slate-300 shadow-xs pointer-events-none">
+              <span>Her görev kendi L1–L8 seviye satırında hizalanır • Karta dokunarak alt ekibi aç/kapat</span>
+            </div>
+
+            {/* Bottom-Right Corner Readable Zoom Controls */}
+            <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 p-1 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
+              <button
+                type="button"
+                onClick={() => setZoom((z) => clampZoom(z - 0.08))}
+                disabled={zoom <= MIN_READABLE_ZOOM}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 text-slate-700 dark:text-slate-300 cursor-pointer"
+                title="Küçült (Okunabilir Sınır: %75)"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
               <button
                 type="button"
                 onClick={() => setZoom(1)}
-                className="px-2 py-1 rounded-lg font-mono text-xs text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 min-w-[46px] text-center cursor-pointer"
+                className="px-1.5 py-1 text-[11px] text-slate-700 dark:text-slate-200 min-w-[44px] text-center hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
                 title="%100 Tam Boyut"
               >
                 {Math.round(zoom * 100)}%
               </button>
-
               <button
                 type="button"
-                onClick={() =>
-                  setZoom((z) =>
-                    Math.min(MAX_READABLE_ZOOM, Math.round((z + 0.08) * 100) / 100)
-                  )
-                }
+                onClick={() => setZoom((z) => clampZoom(z + 0.08))}
                 disabled={zoom >= MAX_READABLE_ZOOM}
-                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-35 cursor-pointer"
-                title={lang === 'ru' ? 'Увеличить' : 'Büyüt (+)'}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 text-slate-700 dark:text-slate-300 cursor-pointer"
+                title="Büyüt"
               >
-                <ZoomIn className="w-4 h-4" />
+                <ZoomIn className="w-3.5 h-3.5" />
               </button>
-
+              <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
               <button
                 type="button"
-                onClick={() => {
-                  setFocusNodeId(null);
-                  resetToReadableInitialView(orgResult.roots);
-                }}
-                className="px-2.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[11px] inline-flex items-center gap-1 cursor-pointer shadow-xs"
-                title={lang === 'ru' ? 'Сбросить к начальному виду' : 'İlk Görünüme Sıfırla & Ortala'}
+                onClick={resetToReadableInitialView}
+                className="px-2 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] flex items-center gap-1 cursor-pointer"
+                title="İlk Okunur Görünüme Sıfırla"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>{lang === 'ru' ? 'Сброс' : 'Sıfırla'}</span>
+                <RotateCcw className="w-3 h-3" />
+                <span>Sıfırla</span>
               </button>
-
               <button
                 type="button"
-                onClick={() => setIsFullscreen((v) => !v)}
-                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer"
-                title={
-                  isFullscreen
-                    ? lang === 'ru'
-                      ? 'Выйти из полного экрана'
-                      : 'Tam Ekrandan Çık (Esc)'
-                    : lang === 'ru'
-                    ? 'На весь экран'
-                    : 'Tam Ekran Modu'
-                }
+                onClick={toggleFullscreen}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                title="Tam Ekran"
               >
-                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                {isFullscreen ? (
+                  <Minimize2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
               </button>
             </div>
-          </>
-        )}
 
-        {/* FLOATING RIGHT REPORTING CHAIN INSPECTOR DRAWER */}
-        {selectedNode && (
-          <div className="absolute top-3 right-3 bottom-3 w-[296px] z-40 p-3.5 rounded-2xl bg-white/95 dark:bg-[#131C31]/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col justify-between overflow-y-auto animate-in slide-in-from-right-4 duration-150">
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
-                <div className="min-w-0">
+            {/* Scrollable & Drag-Pannable Level-Row Canvas */}
+            <div
+              ref={canvasViewportRef}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onWheel={handleWheelZoom}
+              className={`${
+                isFullscreen ? 'h-[calc(100vh-175px)]' : 'h-[calc(100vh-225px)] min-h-[540px]'
+              } overflow-auto cursor-grab active:cursor-grabbing`}
+            >
+              {layoutData.rootItems.length === 0 ? (
+                <div className="py-20 text-center text-sm text-slate-500">
+                  Seçili filtre kriterlerine uygun personel bulunamadı.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    width: layoutData.canvasWidth * zoom,
+                    height: layoutData.canvasHeight * zoom,
+                  }}
+                  className="relative"
+                >
+                  <div
+                    style={{
+                      width: layoutData.canvasWidth,
+                      height: layoutData.canvasHeight,
+                      transform: `scale(${zoom})`,
+                      transformOrigin: 'top left',
+                    }}
+                    className="relative"
+                  >
+                    {/* 1. Horizontal Corporate Level Swimlane Bands (L1 .. L8) */}
+                    {layoutData.swimlanes.map((band) => {
+                      const theme = ROLE_LEVEL_THEMES[band.levelNo];
+                      const BandIcon = theme.icon;
+                      return (
+                        <div
+                          key={band.rowKey}
+                          style={{ top: band.topY, height: band.height }}
+                          className={`absolute left-0 right-0 border-b border-dashed border-slate-200/80 dark:border-slate-800/80 ${
+                            band.isEmptyPassThrough ? 'opacity-65' : theme.swimlaneBg
+                          }`}
+                        >
+                          <div
+                            style={{ width: SWIMLANE_LABEL_WIDTH - 12 }}
+                            className="sticky left-2 z-10 pl-2 pt-2 pointer-events-none"
+                          >
+                            <div
+                              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10.5px] shadow-2xs ${theme.swimlanePill}`}
+                            >
+                              <BandIcon className="w-3 h-3 shrink-0" />
+                              <span className="truncate">
+                                {theme.code}
+                                {band.subTier > 0 ? `.${band.subTier + 1}` : ''} •{' '}
+                                {lang === 'ru' ? theme.shortRu : theme.shortTr}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* 2. Crisp SVG Orthogonal Level-Aligned Connectors */}
+                    <svg
+                      width={layoutData.canvasWidth}
+                      height={layoutData.canvasHeight}
+                      className="absolute inset-0 pointer-events-none z-[2]"
+                    >
+                      {layoutData.allItems.map((parentItem) => {
+                        if (parentItem.children.length === 0) return null;
+                        const pX = parentItem.centerX;
+                        const pBottomY = parentItem.y + parentItem.height;
+                        const hasPager = parentItem.totalChildSlots > SIBLING_PAGE_SIZE;
+                        const busY = pBottomY + (hasPager ? 34 : 16);
+
+                        const firstChild = parentItem.children[0];
+                        const lastChild = parentItem.children[parentItem.children.length - 1];
+                        const strokeColor = '#14b8a6';
+
+                        return (
+                          <g key={`edges-${parentItem.id}`}>
+                            {/* Stem from parent bottom to distribution bus */}
+                            <line
+                              x1={pX}
+                              y1={pBottomY}
+                              x2={pX}
+                              y2={busY}
+                              stroke={strokeColor}
+                              strokeWidth={2}
+                            />
+                            {/* Horizontal distribution bus across visible children */}
+                            {parentItem.children.length > 1 && (
+                              <line
+                                x1={firstChild.centerX}
+                                y1={busY}
+                                x2={lastChild.centerX}
+                                y2={busY}
+                                stroke={strokeColor}
+                                strokeWidth={2}
+                              />
+                            )}
+                            {/* Vertical drop lines straight into each child's exact Level Row */}
+                            {parentItem.children.map((ch) => {
+                              const isDeepDrop = ch.y - busY > 55;
+                              return (
+                                <g key={`drop-${parentItem.id}-${ch.id}`}>
+                                  <line
+                                    x1={ch.centerX}
+                                    y1={busY}
+                                    x2={ch.centerX}
+                                    y2={ch.y}
+                                    stroke={strokeColor}
+                                    strokeWidth={1.8}
+                                    strokeDasharray={isDeepDrop ? '5 3' : undefined}
+                                  />
+                                  <circle
+                                    cx={ch.centerX}
+                                    cy={ch.y}
+                                    r={3}
+                                    fill={strokeColor}
+                                  />
+                                </g>
+                              );
+                            })}
+                          </g>
+                        );
+                      })}
+                    </svg>
+
+                    {/* 3. Interactive Sibling Pager Pills on Expanded Managers with > 6 Direct Slots */}
+                    {layoutData.allItems.map((it) => {
+                      if (it.totalChildSlots <= SIBLING_PAGE_SIZE) return null;
+                      const pillTop = it.y + it.height + 5;
+                      const startIdx = it.currentPage * SIBLING_PAGE_SIZE + 1;
+                      const endIdx = Math.min(
+                        (it.currentPage + 1) * SIBLING_PAGE_SIZE,
+                        it.totalChildSlots
+                      );
+
+                      return (
+                        <div
+                          key={`pager-${it.id}`}
+                          style={{
+                            left: it.centerX,
+                            top: pillTop,
+                            transform: 'translateX(-50%)',
+                          }}
+                          className="absolute z-[6] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 shadow-sm text-[10px] whitespace-nowrap"
+                        >
+                          {!it.showAllActive && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={it.currentPage === 0}
+                                onClick={() =>
+                                  handleSetSiblingPage(it.node.nodeId, it.currentPage - 1)
+                                }
+                                className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-35 cursor-pointer"
+                              >
+                                <ChevronLeft className="w-3 h-3" />
+                              </button>
+                              <span className="text-slate-700 dark:text-slate-200">
+                                {startIdx}–{endIdx} / {it.totalChildSlots}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={it.currentPage >= it.totalPages - 1}
+                                onClick={() =>
+                                  handleSetSiblingPage(it.node.nodeId, it.currentPage + 1)
+                                }
+                                className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-35 cursor-pointer"
+                              >
+                                <ChevronRight className="w-3 h-3" />
+                              </button>
+                              <span className="text-slate-300 dark:text-slate-700">|</span>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleShowAllSiblings(it.node.nodeId)}
+                            className="text-teal-700 dark:text-teal-300 hover:underline cursor-pointer"
+                          >
+                            {it.showAllActive
+                              ? 'Sayfalı Göster'
+                              : `Tümünü Aç (${it.totalChildSlots})`}
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {/* 4. Positioned Enterprise Cards & Consolidated Crew Cards on Their Exact Level Rows */}
+                    {layoutData.allItems.map((it) => (
+                      <div
+                        key={it.id}
+                        style={{ left: it.x, top: it.y }}
+                        className="absolute z-[5]"
+                      >
+                        {it.kind === 'person' ? (
+                          <OrgEnterpriseCard
+                            node={it.node}
+                            isExpanded={expandedIds.has(it.node.nodeId)}
+                            isSelected={selectedNodeId === it.node.nodeId}
+                            isHighlighted={highlightedNodeId === it.node.nodeId}
+                            colorBySpan={colorBySpan}
+                            onCardClick={handleCardClick}
+                            onOpenKunye={(n) => setSelectedNodeId(n.nodeId)}
+                            onInspectDrawer={handleInspectDrawer}
+                            onFocusSubtree={(id) => setFocusNodeId(id)}
+                          />
+                        ) : (
+                          <ConsolidatedCrewCard
+                            parentNode={it.node}
+                            members={it.members || []}
+                            variant={it.kind === 'crew_worker' ? 'worker' : 'specialist'}
+                            isListOpen={expandedCrewKeys.has(it.id)}
+                            onToggleList={() => handleToggleCrewList(it.id)}
+                            onInspectPerson={handleInspectDrawer}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Reporting Chain & Künye Panel */}
+          {selectedNode && (
+            <div className="xl:col-span-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4 h-fit sticky top-20 shadow-sm">
+              <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div>
                   <span className="text-[10px] uppercase tracking-wider text-teal-600 dark:text-teal-400">
-                    {lang === 'ru' ? 'Карточка иерархии' : 'Hiyerarşi & Bağlılık Künyesi'}
+                    Hiyerarşi & Seviye Künyesi (L{selectedNode.roleLevel})
                   </span>
-                  <h3 className="text-sm text-slate-900 dark:text-white mt-0.5 truncate">
+                  <h3 className="text-sm text-slate-900 dark:text-white mt-0.5">
                     {selectedNode.ad_soyad}
                   </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300">
-                    {translateVal(selectedNode.gorevi)}
-                  </p>
-                  <p className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {translateVal(selectedNode.effective_site)}
-                    {selectedNode.sicil_no && !selectedNode.isVirtual ? ` • #${selectedNode.sicil_no}` : ''}
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {selectedNode.gorevi}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedNodeId(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="space-y-1.5 text-xs">
-                <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700">
-                  <span className="text-[9.5px] uppercase text-slate-400 block">Sorumlu Kişi (eBA)</span>
-                  <span className="text-slate-900 dark:text-white">{selectedNode.sorumlu_kisi || '-'}</span>
-                </div>
-                <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700">
-                  <span className="text-[9.5px] uppercase text-slate-400 block">Grup Şefi (eBA)</span>
-                  <span className="text-slate-900 dark:text-white">{selectedNode.grup_sefi || '-'}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <div className="p-2 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-800/60">
-                    <span className="text-[9.5px] text-indigo-600 dark:text-indigo-300 block">
-                      {lang === 'ru' ? 'Прямых' : 'Doğrudan Bağlı'}
+              <div className="space-y-2 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                  <div className="text-[10px] text-slate-400 uppercase">Görev Sınıf Seviyesi</div>
+                  <div className="text-slate-800 dark:text-slate-100 mt-0.5 flex items-center justify-between">
+                    <span>
+                      L{selectedNode.roleLevel} • {ROLE_LEVEL_THEMES[selectedNode.roleLevel].rowTitleTr}
                     </span>
-                    <span className="text-sm text-indigo-900 dark:text-indigo-100">
-                      {selectedNode.directCount}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openLevelModal('active')}
+                      className="text-[10.5px] text-teal-600 hover:underline cursor-pointer"
+                    >
+                      Seviye Düzenle
+                    </button>
                   </div>
-                  <div className="p-2 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-200/70 dark:border-emerald-800/60">
-                    <span className="text-[9.5px] text-emerald-600 dark:text-emerald-300 block">
-                      {lang === 'ru' ? 'Всего внизу' : 'Toplam Alt Ekip'}
-                    </span>
-                    <span className="text-sm text-emerald-900 dark:text-emerald-100">
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                  <div className="text-[10px] text-slate-400 uppercase">Sorumlu Kişi (eBA)</div>
+                  <div className="text-slate-800 dark:text-slate-100 mt-0.5">
+                    {selectedNode.sorumlu_kisi || '-'}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                  <div className="text-[10px] text-slate-400 uppercase">Grup Şefi (eBA)</div>
+                  <div className="text-slate-800 dark:text-slate-100 mt-0.5">
+                    {selectedNode.grup_sefi || '-'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/50 dark:border-indigo-800/50">
+                    <div className="text-[10px] text-indigo-600 dark:text-indigo-300">
+                      Doğrudan Bağlı
+                    </div>
+                    <div className="text-base text-indigo-900 dark:text-indigo-100">
+                      {selectedNode.directCount}
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-teal-50/60 dark:bg-teal-950/30 border border-teal-200/50 dark:border-teal-800/50">
+                    <div className="text-[10px] text-teal-600 dark:text-teal-300">
+                      Toplam Alt Ekip
+                    </div>
+                    <div className="text-base text-teal-900 dark:text-teal-100">
                       {selectedNode.totalSubordinates.toLocaleString('tr-TR')}
-                    </span>
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div>
-                <span className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">
-                  {lang === 'ru' ? 'Вертикаль подчинения' : 'Üst Yönetim Zinciri (Kime Bağlı)'}
-                </span>
-                <div className="space-y-1">
-                  {selectedNodeChain.map((step, i) => {
-                    const isSelf = step.nodeId === selectedNode.nodeId;
-                    return (
-                      <div
-                        key={step.nodeId}
-                        onClick={() => handleLocatePersonInChart(step)}
-                        className={`p-1.5 rounded-xl border text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
-                          isSelf
-                            ? 'bg-teal-50 dark:bg-teal-950/60 border-teal-400'
-                            : 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-700 hover:border-teal-400'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="text-slate-900 dark:text-white truncate text-[11.5px]">
-                            {i + 1}. {step.ad_soyad}
-                          </div>
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                            {translateVal(step.gorevi)}
-                          </div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-2">
+                  Üst Yönetim Zinciri (Kime Bağlı)
+                </div>
+                <div className="space-y-1.5">
+                  {selectedChain.map((step, idx) => (
+                    <button
+                      key={step.nodeId}
+                      type="button"
+                      onClick={() => handleLocatePersonInChart(step)}
+                      className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                        step.nodeId === selectedNode.nodeId
+                          ? 'bg-teal-50 dark:bg-teal-950/50 border-teal-300 dark:border-teal-700'
+                          : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-teal-400'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-slate-900 dark:text-white truncate">
+                          {idx + 1}. {step.ad_soyad}
                         </div>
-                        <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 shrink-0">
-                          L{step.roleLevel}
-                        </span>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                          {step.gorevi}
+                        </div>
                       </div>
-                    );
-                  })}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0">
+                        L{step.roleLevel}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
+
+              <div className="flex flex-col gap-2">
+                {selectedNode.directCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFocusNodeId(selectedNode.nodeId)}
+                    className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Crosshair className="w-3.5 h-3.5" />
+                    Sadece Bu Yöneticinin Ağacına Odaklan
+                  </button>
+                )}
+
+                {!selectedNode.isVirtual && selectedNode.personId && (
+                  <button
+                    type="button"
+                    disabled={drawerLoading}
+                    onClick={() => handleInspectDrawer(selectedNode)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    {drawerLoading ? 'Yükleniyor...' : '198 Kolonlu Personel Kartını Aç'}
+                  </button>
+                )}
+              </div>
             </div>
-
-            <div className="space-y-1.5 pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
-              {selectedNode.totalSubordinates > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFocusNodeId(selectedNode.nodeId);
-                    setExpandedIds(new Set([selectedNode.nodeId]));
-                    setSiblingPages({});
-                  }}
-                  className="w-full py-1.5 px-3 rounded-xl text-xs bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Crosshair className="w-3.5 h-3.5" />
-                  <span>
-                    {lang === 'ru' ? 'Сфокусировать ветку' : 'Bu Yöneticinin Alt Şemasını Odakla'}
-                  </span>
-                </button>
-              )}
-
-              {!selectedNode.isVirtual && selectedNode.personId && (
-                <button
-                  type="button"
-                  onClick={() => setDrawerPerson(toMinimalPersonnelRecord(selectedNode))}
-                  className="w-full py-1.5 px-3 rounded-xl text-xs bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>
-                    {lang === 'ru' ? 'Полная карточка (198 полей)' : 'Tam Personel Kartını Aç (198 Kolon)'}
-                  </span>
-                </button>
-              )}
-
-              {onNavigateToPersonnel && !selectedNode.isVirtual && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPersonnel('search', selectedNode.ad_soyad)}
-                  className="w-full py-1.5 px-3 rounded-xl text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <span>{lang === 'ru' ? 'В списке персонала' : 'Personel Listesinde Göster'}</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
-              )}
+          )}
+        </div>
+      ) : (
+        /* Directory Table View */
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm text-slate-900 dark:text-white">
+                Yönetici & Ekip Sorumluları Dizini ({orgResult.totalManagers} Lider)
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Herhangi bir yöneticiye tıklayarak şemada kendi L1–L8 seviye satırında açabilirsiniz.
+              </p>
             </div>
           </div>
-        )}
-      </div>
+          <div className="overflow-x-auto max-h-[620px]">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-500">
+                <tr>
+                  <th className="py-2.5 px-4">Seviye</th>
+                  <th className="py-2.5 px-4">Yönetici / Sorumlu</th>
+                  <th className="py-2.5 px-4">Görevi</th>
+                  <th className="py-2.5 px-4">Şantiye</th>
+                  <th className="py-2.5 px-4">Üst Yöneticisi</th>
+                  <th className="py-2.5 px-4 text-right">Doğrudan Bağlı</th>
+                  <th className="py-2.5 px-4 text-right">Toplam Alt Ekip</th>
+                  <th className="py-2.5 px-4 text-right">İşlem</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
+                {Array.from(orgResult.nodeById.values())
+                  .filter((n) => !n.isVirtual && (n.directCount > 0 || n.roleLevel <= 3))
+                  .sort(
+                    (a, b) =>
+                      a.roleLevel - b.roleLevel || b.totalSubordinates - a.totalSubordinates
+                  )
+                  .map((mgr) => {
+                    const t = ROLE_LEVEL_THEMES[mgr.roleLevel];
+                    return (
+                      <tr
+                        key={mgr.nodeId}
+                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                      >
+                        <td className="py-2.5 px-4">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] ${t.badgeBg} ${t.badgeText}`}>
+                            {t.code} • {t.shortTr}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-900 dark:text-white">
+                          {mgr.ad_soyad}{' '}
+                          {mgr.sicil_no ? (
+                            <span className="text-slate-400">#{mgr.sicil_no}</span>
+                          ) : null}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600 dark:text-slate-300">
+                          {mgr.gorevi}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600 dark:text-slate-300">
+                          {mgr.effective_site}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-500">
+                          {mgr.sorumlu_kisi || mgr.grup_sefi || '-'}
+                        </td>
+                        <td className="py-2.5 px-4 text-right text-slate-800 dark:text-slate-200">
+                          {mgr.directCount}
+                        </td>
+                        <td className="py-2.5 px-4 text-right text-teal-700 dark:text-teal-400">
+                          {mgr.totalSubordinates.toLocaleString('tr-TR')}
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleLocatePersonInChart(mgr)}
+                            className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 cursor-pointer"
+                          >
+                            Şemada Göster
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-      {/* Full 198-Column Personnel Detail Drawer */}
-      <PersonnelDetailDrawer personnel={drawerPerson} onClose={() => setDrawerPerson(null)} />
+      {/* Job Title Class Levels Management Modal (L1 - L8) */}
+      <JobTitleLevelModal
+        isOpen={isLevelModalOpen}
+        initialTab={levelModalInitialTab}
+        onClose={() => setIsLevelModalOpen(false)}
+        onSaved={(updatedMap, updatedUnconfirmed) => {
+          setJobLevelMap(updatedMap);
+          setUnconfirmedTitles(updatedUnconfirmed);
+        }}
+      />
+
+      {/* 198-Column Personnel Detail Drawer */}
+      <PersonnelDetailDrawer
+        personnel={drawerRecord}
+        onClose={() => setDrawerRecord(null)}
+      />
     </div>
   );
 }

@@ -191,10 +191,14 @@ export function resetDb() {
   delete gState.__ponderaUpcomingTicketsSeeded;
   delete gState.__ponderaAiTicketTablesEnsured;
   delete gState.__ponderaQuotaTablesEnsured;
+  delete gState.__ponderaOrgJobLevelsEnsured;
   delete gState.__ponderaEmployeeMatchIndex;
   delete gState.__ponderaStatusPdfCache;
   if (gState.__ponderaAnalyticsResponseCache?.clear) {
     gState.__ponderaAnalyticsResponseCache.clear();
+  }
+  if (gState.__ponderaOrgChartCache?.clear) {
+    gState.__ponderaOrgChartCache.clear();
   }
   delete gState.__ponderaZupReconciliationCache;
 }

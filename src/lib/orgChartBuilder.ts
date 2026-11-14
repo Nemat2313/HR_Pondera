@@ -3,15 +3,17 @@ import type { OrgRawPerson } from '@/app/api/org-chart/route';
 export type OrgHierarchyMode = 'combined' | 'sorumlu' | 'grup_sefi';
 
 /**
- * 6 Visual Role Levels (since employees do not have profile photos):
- * 1 = Üst Yönetim (Başkan, Genel Müdür, Direktör)
- * 2 = Proje Müdürü / Şantiye Şefi / Merkez Müdürü
- * 3 = Grup Şefi / Kısım Şefi / Saha Şefi
- * 4 = Mühendis / Uzman / Süpervizör (Beyaz Yaka)
- * 5 = Formen / Saha Ekip Sorumlusu
- * 6 = Saha İşçileri / Mavi Yaka (Consolidated into single Crew List Box)
+ * 8 Official Corporate Role / Job Class Levels (backed by SQLite `org_job_title_levels` table):
+ * 1 = Yönetim Kurulu & Genel Başkan
+ * 2 = İcra Kurulu (CEO / COO / Genel Müdür)
+ * 3 = Direktör & Koordinatör
+ * 4 = Müdür, Proje Müdürü & Şantiye Lideri
+ * 5 = Grup, Kısım & Birim Şefi
+ * 6 = Mühendis, Uzman & İdari Kadro (Beyaz Yaka)
+ * 7 = Formen, Saha Amiri & Sorumlu
+ * 8 = Saha Ekip, Usta & İşçi Kadrosu (Mavi Yaka — Tek Kutu Liste)
  */
-export type OrgRoleLevel = 1 | 2 | 3 | 4 | 5 | 6;
+export type OrgRoleLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export interface OrgNode {
   nodeId: string;
@@ -36,11 +38,11 @@ export interface OrgNode {
   roleLevel: OrgRoleLevel;
   parentId: string | null;
   dottedGrupSefiName: string | null;
-  /** Child nodes that themselves manage people (or are sub-groups) */
+  /** Child nodes that appear as individual cards on their respective Level Rows */
   managerChildren: OrgNode[];
-  /** Leaf White-Collar / Specialist direct reports (0 subordinates) */
+  /** Leaf L6 White-Collar / Specialist direct reports (0 subordinates) */
   specialistLeaves: OrgNode[];
-  /** Leaf Blue-Collar / Field Worker direct reports (0 subordinates -> shown in single consolidated list box!) */
+  /** Leaf L8 Blue-Collar / Field Worker direct reports (0 subordinates -> single consolidated list box on L8) */
   workerLeaves: OrgNode[];
   /** Direct reports count (managerChildren + specialistLeaves + workerLeaves) */
   directCount: number;
@@ -50,7 +52,7 @@ export interface OrgNode {
   subordinateEndirekt: number;
   /** Total Direkt underneath this node */
   subordinateDirekt: number;
-  /** Depth from root (0 = root) */
+  /** Tree edge depth from root (0 = root) */
   depth: number;
 }
 
@@ -84,8 +86,29 @@ export function normalizeOrgPersonName(raw?: string | null): string {
   if (!raw) return '';
   const stripped = String(raw)
     .trim()
-    .replace(/\s+\d+$/, ''); // e.g. "OMER FARUK BOZKURT 2" -> "OMER FARUK BOZKURT"
+    .replace(/\s+\d+$/, '');
   return stripped
+    .replace(/İ/g, 'I')
+    .replace(/ı/g, 'I')
+    .replace(/Ş/g, 'S')
+    .replace(/ş/g, 'S')
+    .replace(/Ğ/g, 'G')
+    .replace(/ğ/g, 'G')
+    .replace(/Ü/g, 'U')
+    .replace(/ü/g, 'U')
+    .replace(/Ö/g, 'O')
+    .replace(/ö/g, 'O')
+    .replace(/Ç/g, 'C')
+    .replace(/ç/g, 'C')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function normalizeOrgJobTitleClient(raw?: string | null): string {
+  if (!raw) return '';
+  return String(raw)
+    .trim()
     .replace(/İ/g, 'I')
     .replace(/ı/g, 'I')
     .replace(/Ş/g, 'S')
@@ -106,46 +129,55 @@ export function normalizeOrgPersonName(raw?: string | null): string {
 export function classifyRoleLevel(
   gorevi: string,
   endirektDirekt: string,
-  isGrupSefiRef: boolean,
-  hasSubordinates: boolean
+  jobLevelMap?: Record<string, number>
 ): OrgRoleLevel {
-  const g = normalizeOrgPersonName(gorevi);
+  const nk = normalizeOrgJobTitleClient(gorevi);
+  if (nk && jobLevelMap && jobLevelMap[nk] !== undefined) {
+    const mapped = Math.round(Number(jobLevelMap[nk]));
+    if (mapped >= 1 && mapped <= 8) {
+      return mapped as OrgRoleLevel;
+    }
+  }
 
-  if (
-    g.includes('GENEL BASKAN') ||
-    g.includes('GENEL MUDUR') ||
-    g.includes('DIREKTOR') ||
-    g.includes('KOORDINATOR')
-  ) {
+  if (!nk) {
+    return endirektDirekt === 'Endirekt' ? 6 : 8;
+  }
+
+  const words = nk.split(/[\s/\-(),.]+/).filter(Boolean);
+  const hasWord = (w: string) => words.includes(w);
+
+  if (nk.includes('GENEL BASKAN') || nk.includes('YONETIM KURULU BASKAN') || hasWord('BASKAN')) {
     return 1;
   }
-
-  if (
-    g.includes('PROJE MUDURU') ||
-    g.includes('SANTIYE SEFI') ||
-    g.includes('YAPIM MUDURU') ||
-    g.includes('MUDUR')
-  ) {
+  if (hasWord('CEO') || hasWord('COO') || hasWord('CFO') || hasWord('CTO') || nk.includes('GENEL MUDUR')) {
     return 2;
   }
-
-  if (g.includes('SEF') || isGrupSefiRef) {
+  if (nk.includes('DIREKTOR') || nk.includes('KOORDINATOR')) {
     return 3;
   }
-
-  if (g.includes('FORMEN')) {
-    return 5;
-  }
-
-  if (endirektDirekt === 'Endirekt') {
+  if (
+    nk.includes('MUDUR') ||
+    nk.includes('SANTIYE SEFI') ||
+    nk.includes('PROJE BAS MUHENDISI') ||
+    hasWord('GIP') ||
+    nk.includes('SUPERINTENDENT')
+  ) {
     return 4;
   }
-
-  if (hasSubordinates) {
+  if (
+    hasWord('SEFI') ||
+    hasWord('SEF') ||
+    (hasWord('BAS') && (nk.includes('MUHENDIS') || hasWord('PUANTOR')))
+  ) {
     return 5;
   }
-
-  return 6;
+  if (nk.includes('FORMEN') || hasWord('AMIRI') || hasWord('AMIR') || nk.includes('SORUMLUSU')) {
+    return 7;
+  }
+  if (endirektDirekt === 'Endirekt') {
+    return 6;
+  }
+  return 8;
 }
 
 function isPlaceholderSupervisor(norm: string): boolean {
@@ -163,9 +195,16 @@ export function buildOrganizationHierarchy(
     siteFilter?: string;
     departmentFilter?: string;
     focusNodeId?: string | null;
+    jobLevelMap?: Record<string, number>;
   }
 ): OrgBuildResult {
-  const { mode, siteFilter = 'all', departmentFilter = 'all', focusNodeId = null } = options;
+  const {
+    mode,
+    siteFilter = 'all',
+    departmentFilter = 'all',
+    focusNodeId = null,
+    jobLevelMap,
+  } = options;
 
   // Compute global site & department counts before filtering so filter pills stay populated
   const siteCounter = new Map<string, number>();
@@ -203,6 +242,17 @@ export function buildOrganizationHierarchy(
     return true;
   });
 
+  const emptyLevelCounts: Record<OrgRoleLevel, number> = {
+    1: 0,
+    2: 0,
+    3: 0,
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+  };
+
   if (filteredPeople.length === 0) {
     return {
       roots: [],
@@ -212,13 +262,12 @@ export function buildOrganizationHierarchy(
       totalManagers: 0,
       avgSpanOfControl: 0,
       maxDepth: 0,
-      levelCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
+      levelCounts: emptyLevelCounts,
       sites,
       departments,
     };
   }
 
-  // Index people by normalized name (if duplicate names exist, prefer Endirekt / higher seniority)
   const personByNormName = new Map<string, OrgRawPerson[]>();
   const gsRefSet = new Set<string>();
   const skRefSet = new Set<string>();
@@ -250,8 +299,8 @@ export function buildOrganizationHierarchy(
       const aEnd = a.endirekt_direkt === 'Endirekt' ? 1 : 0;
       const bEnd = b.endirekt_direkt === 'Endirekt' ? 1 : 0;
       if (aEnd !== bEnd) return bEnd - aEnd;
-      const aLvl = classifyRoleLevel(a.gorevi, a.endirekt_direkt, true, true);
-      const bLvl = classifyRoleLevel(b.gorevi, b.endirekt_direkt, true, true);
+      const aLvl = classifyRoleLevel(a.gorevi, a.endirekt_direkt, jobLevelMap);
+      const bLvl = classifyRoleLevel(b.gorevi, b.endirekt_direkt, jobLevelMap);
       return aLvl - bLvl;
     });
     return sorted[0];
@@ -263,13 +312,7 @@ export function buildOrganizationHierarchy(
 
   for (const p of filteredPeople) {
     const nodeId = `emp_${p.id}`;
-    const normSelf = normalizeOrgPersonName(p.ad_soyad);
-    const prelimLevel = classifyRoleLevel(
-      p.gorevi,
-      p.endirekt_direkt,
-      gsRefSet.has(normSelf),
-      skRefSet.has(normSelf)
-    );
+    const assignedLevel = classifyRoleLevel(p.gorevi, p.endirekt_direkt, jobLevelMap);
     const node: OrgNode = {
       nodeId,
       personId: p.id,
@@ -289,7 +332,7 @@ export function buildOrganizationHierarchy(
       uyruk: p.uyruk,
       firma: p.firma,
       ise_giris_tarihi: p.ise_giris_tarihi,
-      roleLevel: prelimLevel,
+      roleLevel: assignedLevel,
       parentId: null,
       dottedGrupSefiName: null,
       managerChildren: [],
@@ -305,21 +348,19 @@ export function buildOrganizationHierarchy(
     personNodeByDbId.set(p.id, node);
   }
 
-  // Identify top leader per effective_site (Proje Direktörü > Proje Müdürü > Şantiye Şefi > Yapım Müdürü > Teknik Ofis Müdürü)
+  // Identify top leader per effective_site
   const siteLeaderBySite = new Map<string, OrgNode>();
   const getSiteLeaderPriority = (n: OrgNode): number => {
-    const g = normalizeOrgPersonName(n.gorevi);
-    if (g.includes('GENEL BASKAN')) return 100;
-    if (g.includes('GENEL MUDUR')) return 95;
-    if (g.includes('PROJE DIREKTORU')) return 90;
-    if (g.includes('DIREKTOR')) return 85;
-    if (g.includes('PROJE MUDURU')) return 80;
-    if (g.includes('SANTIYE SEFI')) return 75;
-    if (g.includes('YAPIM MUDURU')) return 70;
-    if (g.includes('TEKNIK OFIS MUDURU')) return 65;
-    if (n.roleLevel === 2) return 55;
-    if (n.roleLevel === 3) return 45;
-    return 10;
+    const g = normalizeOrgJobTitleClient(n.gorevi);
+    const baseScore = (9 - n.roleLevel) * 100;
+    if (g.includes('GENEL BASKAN')) return baseScore + 90;
+    if (g === 'CEO' || g.includes('GENEL MUDUR')) return baseScore + 85;
+    if (g.includes('PROJE DIREKTORU')) return baseScore + 80;
+    if (g.includes('PROJE MUDURU')) return baseScore + 75;
+    if (g.includes('SANTIYE SEFI')) return baseScore + 70;
+    if (g.includes('YAPIM MUDURU')) return baseScore + 65;
+    if (g.includes('TEKNIK OFIS MUDURU')) return baseScore + 60;
+    return baseScore;
   };
 
   for (const n of Array.from(nodeById.values())) {
@@ -330,7 +371,6 @@ export function buildOrganizationHierarchy(
     }
   }
 
-  // Virtual nodes for Subcon & external supervisors (with >= 2 reports) & pending pools
   const getOrCreateVirtualNode = (
     key: string,
     label: string,
@@ -377,11 +417,17 @@ export function buildOrganizationHierarchy(
     return vNode;
   };
 
-  // Count unmatched external supervisor occurrences so we create virtual supervisor nodes for active external leads
-  const unmatchedSupCounts = new Map<string, { rawName: string; count: number; grupSefiVotes: Map<string, number>; site: string }>();
+  const unmatchedSupCounts = new Map<
+    string,
+    { rawName: string; count: number; grupSefiVotes: Map<string, number>; site: string }
+  >();
   for (const p of filteredPeople) {
     const skNorm = normalizeOrgPersonName(p.sorumlu_kisi);
-    if (!isPlaceholderSupervisor(skNorm) && !isSubconSupervisor(skNorm) && !personByNormName.has(skNorm)) {
+    if (
+      !isPlaceholderSupervisor(skNorm) &&
+      !isSubconSupervisor(skNorm) &&
+      !personByNormName.has(skNorm)
+    ) {
       const entry = unmatchedSupCounts.get(skNorm) || {
         rawName: p.sorumlu_kisi,
         count: 0,
@@ -397,7 +443,6 @@ export function buildOrganizationHierarchy(
     }
   }
 
-  // Track implied upward bridge votes: for any supervisor S, which Grup Şefi G do their subordinates belong to?
   const supervisorToGrupSefiVotes = new Map<string, Map<string, number>>();
 
   // Pass 1: Assign primary parentId for every real employee
@@ -410,7 +455,13 @@ export function buildOrganizationHierarchy(
     const validSk = !isPlaceholderSupervisor(skNorm) && skNorm !== selfNorm ? skNorm : '';
     const validGs = !isPlaceholderSupervisor(gsNorm) && gsNorm !== selfNorm ? gsNorm : '';
 
-    if (validSk && validGs && validSk !== validGs && !isSubconSupervisor(validSk) && !isSubconSupervisor(validGs)) {
+    if (
+      validSk &&
+      validGs &&
+      validSk !== validGs &&
+      !isSubconSupervisor(validSk) &&
+      !isSubconSupervisor(validGs)
+    ) {
       node.dottedGrupSefiName = p.grup_sefi;
       const voteMap = supervisorToGrupSefiVotes.get(validSk) || new Map<string, number>();
       voteMap.set(validGs, (voteMap.get(validGs) || 0) + 1);
@@ -423,7 +474,6 @@ export function buildOrganizationHierarchy(
     } else if (mode === 'grup_sefi') {
       chosenNorm = validGs || validSk;
     } else {
-      // 'combined': immediate parent is Sorumlu Kişi, falling back to Grup Şefi
       chosenNorm = validSk || validGs;
     }
 
@@ -435,7 +485,7 @@ export function buildOrganizationHierarchy(
           'Alt Yüklenici / Taşeron Birimi',
           p.effective_site || p.region,
           'subcon',
-          3
+          5
         );
         node.parentId = subNode.nodeId;
       } else {
@@ -443,7 +493,6 @@ export function buildOrganizationHierarchy(
         if (mgrPerson && mgrPerson.id !== p.id) {
           node.parentId = `emp_${mgrPerson.id}`;
         } else if (mode !== 'grup_sefi' && validGs && validGs !== chosenNorm) {
-          // If Sorumlu Kişi was an unmatched 1-off person, try Grup Şefi directly
           const gsPerson = pickBestManagerRecord(validGs, p.effective_site);
           if (gsPerson && gsPerson.id !== p.id) {
             const extInfo = unmatchedSupCounts.get(chosenNorm);
@@ -454,7 +503,7 @@ export function buildOrganizationHierarchy(
                 'Saha Sorumlusu (Dış / İzinli)',
                 extInfo.site,
                 'external_supervisor',
-                5
+                7
               );
               extNode.parentId = `emp_${gsPerson.id}`;
               node.parentId = extNode.nodeId;
@@ -471,7 +520,7 @@ export function buildOrganizationHierarchy(
               'Saha Sorumlusu (Dış / İzinli)',
               extInfo.site,
               'external_supervisor',
-              5
+              7
             );
             node.parentId = extNode.nodeId;
           }
@@ -480,8 +529,7 @@ export function buildOrganizationHierarchy(
     }
   }
 
-  // Pass 2 (Combined Mode Bridge): If a supervisor S still has no parentId (e.g. their own sorumlu_kisi was self, IZIN, or BEKLENIYOR),
-  // bridge S upward to their team's majority Grup Şefi G!
+  // Pass 2 (Combined Mode Bridge): Bridge unparented supervisors upward to their team's majority Grup Şefi
   if (mode === 'combined') {
     for (const node of Array.from(nodeById.values())) {
       if (node.parentId || node.isVirtual) continue;
@@ -492,7 +540,6 @@ export function buildOrganizationHierarchy(
         const gsPerson = pickBestManagerRecord(topGsNorm, node.effective_site);
         if (gsPerson && `emp_${gsPerson.id}` !== node.nodeId) {
           const gsNode = personNodeByDbId.get(gsPerson.id);
-          // Only bridge upward if gsNode has higher/equal seniority (smaller/equal roleLevel number)
           if (gsNode && gsNode.roleLevel <= node.roleLevel) {
             node.parentId = gsNode.nodeId;
           }
@@ -501,18 +548,17 @@ export function buildOrganizationHierarchy(
     }
   }
 
-  // Pass 3: Connect unparented site managers, subcon units, and pending workers cleanly to their Site Leader,
-  // and connect Site Leaders & Merkez Ofis Directors under the top Company Root (Genel Başkan: RAIF SENGONUL)
+  // Pass 3: Connect unparented executives, directors, site leaders, and pending pools cleanly
   let crownRoot: OrgNode | null = null;
   for (const n of Array.from(nodeById.values())) {
-    if (!n.isVirtual && normalizeOrgPersonName(n.gorevi).includes('GENEL BASKAN')) {
+    if (!n.isVirtual && n.roleLevel === 1) {
       crownRoot = n;
       break;
     }
   }
   if (!crownRoot && siteFilter === 'all' && departmentFilter === 'all') {
     for (const n of Array.from(nodeById.values())) {
-      if (!n.isVirtual && normalizeOrgPersonName(n.gorevi).includes('GENEL MUDUR')) {
+      if (!n.isVirtual && n.roleLevel === 2) {
         crownRoot = n;
         break;
       }
@@ -526,10 +572,10 @@ export function buildOrganizationHierarchy(
     const siteKey = node.effective_site || 'Merkez Ofis';
     const siteLeader = siteLeaderBySite.get(siteKey);
 
-    // If this node IS the site leader of a project/site (or a Merkez Ofis L1 Director), attach to crownRoot if available
+    // Any L1/L2/L3 executive/director or site leader attaches directly to crownRoot (so they land on their L2 / L3 / L4 row!)
     if (
-      (siteLeader && node.nodeId === siteLeader.nodeId) ||
-      (siteKey === 'Merkez Ofis' && node.roleLevel === 1)
+      node.roleLevel <= 3 ||
+      (siteLeader && node.nodeId === siteLeader.nodeId)
     ) {
       if (crownRoot && crownRoot.nodeId !== node.nodeId) {
         node.parentId = crownRoot.nodeId;
@@ -537,13 +583,11 @@ export function buildOrganizationHierarchy(
       continue;
     }
 
-    // If this person is a worker/specialist whose sorumlu_kisi was BEKLENIYOR / IZIN and has 0 reports,
-    // group them under a clean collapsible "Atama Bekleyen / İzinli Havuzu" under the Site Leader so they don't clutter top managers
     const skUpper = normalizeOrgPersonName(node.sorumlu_kisi);
     const isPendingOrLeave = skUpper === 'BEKLENIYOR' || skUpper === 'IZIN' || !skUpper;
     const isSubManager =
       node.isVirtual ||
-      node.roleLevel <= 3 ||
+      node.roleLevel <= 5 ||
       skRefSet.has(normalizeOrgPersonName(node.ad_soyad)) ||
       gsRefSet.has(normalizeOrgPersonName(node.ad_soyad));
 
@@ -554,7 +598,7 @@ export function buildOrganizationHierarchy(
         'Sorumlu / Grup Şefi Ataması Beklenen Personel',
         siteKey,
         'pending_pool',
-        4
+        6
       );
       if (!poolNode.parentId && poolNode.nodeId !== siteLeader.nodeId) {
         poolNode.parentId = siteLeader.nodeId;
@@ -570,14 +614,13 @@ export function buildOrganizationHierarchy(
     }
   }
 
-  // Pass 4: Cycle Detection & Breaking (guarantees strict forest/tree)
+  // Pass 4: Cycle Detection & Breaking
   for (const node of Array.from(nodeById.values())) {
     if (!node.parentId) continue;
     const visited = new Set<string>([node.nodeId]);
     let curr: OrgNode | undefined = node;
     while (curr?.parentId) {
       if (visited.has(curr.parentId) || !nodeById.has(curr.parentId)) {
-        // Break cycle at curr
         curr.parentId = crownRoot && curr.nodeId !== crownRoot.nodeId ? crownRoot.nodeId : null;
         break;
       }
@@ -586,7 +629,7 @@ export function buildOrganizationHierarchy(
     }
   }
 
-  // Pass 5: Assemble children & refine final roleLevel based on actual subordinate count
+  // Pass 5: Assemble children & compute level counts
   const tempChildrenMap = new Map<string, OrgNode[]>();
   for (const node of Array.from(nodeById.values())) {
     if (node.parentId && nodeById.has(node.parentId) && node.parentId !== node.nodeId) {
@@ -598,24 +641,22 @@ export function buildOrganizationHierarchy(
     }
   }
 
-  // Update final role levels now that we know exact subordinate counts
-  const levelCounts: Record<OrgRoleLevel, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+  const levelCounts: Record<OrgRoleLevel, number> = {
+    1: 0,
+    2: 0,
+    3: 0,
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+  };
   for (const node of Array.from(nodeById.values())) {
-    const rawChildren = tempChildrenMap.get(node.nodeId) || [];
     if (!node.isVirtual) {
-      const normSelf = normalizeOrgPersonName(node.ad_soyad);
-      const lvl = classifyRoleLevel(
-        node.gorevi,
-        node.endirekt_direkt,
-        gsRefSet.has(normSelf),
-        rawChildren.length > 0
-      );
-      node.roleLevel = lvl;
-      levelCounts[lvl] += 1;
+      levelCounts[node.roleLevel] += 1;
     }
   }
 
-  // Recursive bottom-up metric & child-bucket computation
   let maxDepth = 0;
   const computeSubtree = (node: OrgNode, depth: number, visiting: Set<string>) => {
     if (visiting.has(node.nodeId)) return;
@@ -649,19 +690,20 @@ export function buildOrganizationHierarchy(
         subDir += child.subordinateDirekt;
       }
 
-      if (childHasReports || child.isVirtual || child.roleLevel <= 3) {
+      // L1..L5 leaders, L7 foremen, virtual groups, and anyone with direct reports appear as individual cards on their exact Level Row
+      if (childHasReports || child.isVirtual || child.roleLevel <= 5 || child.roleLevel === 7) {
         mgrKids.push(child);
-      } else if (child.endirekt_direkt === 'Endirekt') {
+      } else if (child.roleLevel <= 6) {
         specKids.push(child);
       } else {
         wrkKids.push(child);
       }
     }
 
-    // Sort manager children: real people before virtual pools, higher level first, larger team first
+    // Sort manager children strictly by Corporate Job Level Row first (L1 -> L2 -> L3 -> L4 -> L5 -> L6 -> L7 -> L8), then real before virtual, then team size
     mgrKids.sort((a, b) => {
-      if (a.isVirtual !== b.isVirtual) return a.isVirtual ? 1 : -1;
       if (a.roleLevel !== b.roleLevel) return a.roleLevel - b.roleLevel;
+      if (a.isVirtual !== b.isVirtual) return a.isVirtual ? 1 : -1;
       if (b.totalSubordinates !== a.totalSubordinates) return b.totalSubordinates - a.totalSubordinates;
       return a.ad_soyad.localeCompare(b.ad_soyad, 'tr');
     });
@@ -672,7 +714,6 @@ export function buildOrganizationHierarchy(
       return a.ad_soyad.localeCompare(b.ad_soyad, 'tr');
     });
 
-    // Remove empty virtual nodes
     node.managerChildren = mgrKids.filter((c) => !c.isVirtual || c.totalSubordinates > 0);
     node.specialistLeaves = specKids;
     node.workerLeaves = wrkKids;
@@ -696,12 +737,10 @@ export function buildOrganizationHierarchy(
       return b.totalSubordinates - a.totalSubordinates;
     });
 
-  // If user focused a specific manager as subtree root, return that node as the active visual root
   if (focusNodeId && nodeById.has(focusNodeId)) {
     roots = [nodeById.get(focusNodeId)!];
   }
 
-  // Count active managers (real people who have >= 1 direct report)
   let totalManagers = 0;
   let totalDirectLinks = 0;
   for (const n of Array.from(nodeById.values())) {

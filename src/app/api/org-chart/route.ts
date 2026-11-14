@@ -5,6 +5,10 @@ import {
   resolveEffectiveRegion,
 } from '@/lib/regionSiteHelper';
 import { formatKnownDateToDdMmYyyy } from '@/lib/dateFormatter';
+import {
+  getOrgJobLevelsRevision,
+  syncAndGetJobTitleLevels,
+} from '@/lib/orgJobLevelManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,8 +48,9 @@ export async function GET(request: Request) {
     const stampRow = db
       .prepare("SELECT value FROM system_info WHERE key = 'last_updated'")
       .get() as { value: string } | undefined;
+    const jobLevelsRev = getOrgJobLevelsRevision(db);
 
-    const cacheKey = `org_v1:${verRow.cnt}:${verRow.maxId}:${stampRow?.value || ''}:${scopeType}:${scopeVal}`;
+    const cacheKey = `org_v2:${verRow.cnt}:${verRow.maxId}:${stampRow?.value || ''}:${jobLevelsRev}:${scopeType}:${scopeVal}`;
     const gCache = globalThis as unknown as {
       __ponderaOrgChartCache?: Map<string, any>;
     };
@@ -56,6 +61,8 @@ export async function GET(request: Request) {
     if (hit) {
       return NextResponse.json(hit);
     }
+
+    const jobLevelSync = syncAndGetJobTitleLevels(db);
 
     const whereConds: string[] = ["genel_durum = 'Mevcut'"];
     const params: any[] = [];
@@ -116,6 +123,10 @@ export async function GET(request: Request) {
       success: true,
       totalActive: people.length,
       people,
+      jobLevelMap: jobLevelSync.levelMap,
+      unconfirmedTitles: jobLevelSync.unconfirmedTitles,
+      totalConfiguredTitles: jobLevelSync.items.length,
+      jobLevelsRevision: jobLevelSync.revision,
     };
 
     if (gCache.__ponderaOrgChartCache.size > 15) {

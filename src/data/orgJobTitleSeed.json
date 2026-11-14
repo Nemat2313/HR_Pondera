@@ -1,0 +1,2272 @@
+[
+  {
+    "normTitle": "GENEL BASKAN",
+    "displayTitle": "Genel Baskan",
+    "levelNo": 1
+  },
+  {
+    "normTitle": "CEO",
+    "displayTitle": "CEO",
+    "levelNo": 2
+  },
+  {
+    "normTitle": "COO",
+    "displayTitle": "COO",
+    "levelNo": 2
+  },
+  {
+    "normTitle": "GENEL MUDUR",
+    "displayTitle": "Genel Mudur",
+    "levelNo": 2
+  },
+  {
+    "normTitle": "DONUSUM DIREKTORU",
+    "displayTitle": "Donusum Direktoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "IS GELISTIRME DIREKTORU",
+    "displayTitle": "Is Gelistirme Direktoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "IS GUVENLIGI KOORDINATORU",
+    "displayTitle": "Is Guvenligi Koordinatoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "KALITE KONTROL DIREKTORU",
+    "displayTitle": "Kalite Kontrol Direktoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "KALITE KONTROL KOORDINATORU",
+    "displayTitle": "Kalite Kontrol Koordinatoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "NDT KOORDINATORU",
+    "displayTitle": "NDT Koordinatoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "OPERASYON DIREKTORU - INSAAT",
+    "displayTitle": "Operasyon Direktoru - Insaat",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "PROJE DIREKTORU",
+    "displayTitle": "Proje Direktoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "PROJE KONTROL DIREKTORU",
+    "displayTitle": "Proje Kontrol Direktoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "SATINALMA DIREKTORU",
+    "displayTitle": "Satinalma Direktoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "TEKNIK DIREKTOR",
+    "displayTitle": "Teknik Direktor",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "TICARI DIREKTOR",
+    "displayTitle": "Ticari Direktor",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "YAPIM DIREKTORU",
+    "displayTitle": "Yapim Direktoru",
+    "levelNo": 3
+  },
+  {
+    "normTitle": "AWP MUDURU",
+    "displayTitle": "AWP Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "BILGI ISLEM MUDURU",
+    "displayTitle": "Bilgi Islem Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "BORU GRUP MUDURU",
+    "displayTitle": "Boru Grup Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "FABRIKA MUDURU",
+    "displayTitle": "Fabrika Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "FINANS MUDURU",
+    "displayTitle": "Finans Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "GUVENLIK MUDURU",
+    "displayTitle": "Guvenlik Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "IDARI ISLER MUDURU",
+    "displayTitle": "Idari Isler Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "IS GUVENLIGI MUDURU",
+    "displayTitle": "Is Guvenligi Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "KALITE KONTROL MUDUR YARDIMCISI",
+    "displayTitle": "Kalite Kontrol Mudur Yardimcisi",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "KALITE KONTROL MUDURU",
+    "displayTitle": "Kalite Kontrol Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "KAYNAK SUPERINTENDENT",
+    "displayTitle": "Kaynak Superintendent",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "MEKANIK ISLER MUDURU",
+    "displayTitle": "Mekanik Isler Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "MONTAJ SUPERINTENDENT",
+    "displayTitle": "Montaj Superintendent",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "MUHASEBE MUDURU",
+    "displayTitle": "Muhasebe Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "PERSONEL VE IDARI ISLER MUDURU",
+    "displayTitle": "Personel ve Idari Isler Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "PROJE BAS MUHENDISI (GIP)",
+    "displayTitle": "Proje Bas Muhendisi (GIP)",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "PROJE MUDUR YARDIMCISI",
+    "displayTitle": "Proje Mudur Yardimcisi",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "PROJE MUDURU",
+    "displayTitle": "Proje Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "PTO MUDUR YARDIMCISI",
+    "displayTitle": "PTO Mudur Yardimcisi",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "PTO MUDURU",
+    "displayTitle": "PTO Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "SANTIYE SEFI",
+    "displayTitle": "Santiye Sefi",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "SATINALMA MUDURU",
+    "displayTitle": "Satinalma Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "SUPERINTENDENT",
+    "displayTitle": "Superintendent",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "TEKNIK OFIS MUDURU",
+    "displayTitle": "Teknik Ofis Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "YAPIM MUDURU",
+    "displayTitle": "Yapim Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "YAPIM TEKNIK OFIS MUDURU",
+    "displayTitle": "Yapim Teknik Ofis Muduru",
+    "levelNo": 4
+  },
+  {
+    "normTitle": "ALTYAPI ISLERI SEFI",
+    "displayTitle": "Altyapi Isleri Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "AMBAR SEF YARDIMCISI",
+    "displayTitle": "Ambar Sef Yardimcisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "AMBAR SEFI",
+    "displayTitle": "Ambar Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "ATOLYE SEFI",
+    "displayTitle": "Atolye Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "BAS KAYNAK MUHENDISI",
+    "displayTitle": "Bas Kaynak Muhendisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "BAS MUHENDIS",
+    "displayTitle": "Bas Muhendis",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "BAS PUANTOR",
+    "displayTitle": "Bas Puantor",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "BORU GRUP SEFI",
+    "displayTitle": "Boru Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "BORU KISIM SEFI",
+    "displayTitle": "Boru Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "BORU TEST GRUP SEFI",
+    "displayTitle": "Boru Test Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "BOYA GRUP SEFI",
+    "displayTitle": "Boya Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "CELIK EKIPMAN GRUP SEFI",
+    "displayTitle": "Celik Ekipman Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "CELIK GRUP SEFI",
+    "displayTitle": "Celik Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "CELIK KISIM SEFI",
+    "displayTitle": "Celik Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "CELIK MONTAJ SEFI",
+    "displayTitle": "Celik Montaj Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "CELIK VE EKIPMAN KISIM SEFI",
+    "displayTitle": "Celik ve Ekipman Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "DCC SEFI",
+    "displayTitle": "DCC Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "EKIPMAN GRUP SEFI",
+    "displayTitle": "Ekipman Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "EKIPMAN KISIM SEFI",
+    "displayTitle": "Ekipman Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "ELEKTRIK ENSTRUMENTASYON GRUP SEFI",
+    "displayTitle": "Elektrik Enstrumentasyon Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "ELEKTRIK SAHA SEFI",
+    "displayTitle": "Elektrik Saha Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "FINANS SEFI",
+    "displayTitle": "Finans Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "GUC SISTEMLERI BAS MUHENDISI",
+    "displayTitle": "Guc Sistemleri Bas Muhendisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "HAKEDIS SEFI",
+    "displayTitle": "Hakedis Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "HR SEFI",
+    "displayTitle": "HR Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "IDARI ISLER SEFI",
+    "displayTitle": "Idari Isler Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "INCOMING KONTROL SEFI",
+    "displayTitle": "Incoming Kontrol Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "INSAAT GRUP SEFI",
+    "displayTitle": "Insaat Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "INSAAT ISLERI SEFI",
+    "displayTitle": "Insaat Isleri Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "INSAAT KISIM SEFI",
+    "displayTitle": "Insaat Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "INSAAT VE ALTYAPI ISLERI SEFI",
+    "displayTitle": "Insaat ve Altyapi Isleri Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "IS GUVENLIGI KISIM SEFI",
+    "displayTitle": "Is Guvenligi Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "IS GUVENLIGI SAHA SEFI",
+    "displayTitle": "Is Guvenligi Saha Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "IS GUVENLIGI SEFI",
+    "displayTitle": "Is Guvenligi Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "ISKELE GRUP SEFI",
+    "displayTitle": "Iskele Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "ISKELE KISIM SEFI",
+    "displayTitle": "Iskele Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "ISKELE VE IZOLASYON GRUP SORUMLUSU",
+    "displayTitle": "Iskele ve Izolasyon Grup Sorumlusu",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "IZOLASYON GRUP SEFI",
+    "displayTitle": "Izolasyon Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "KALITE KAYNAK GRUP SEFI",
+    "displayTitle": "Kalite Kaynak Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "KALITE KONTROL BAS MUHENDISI",
+    "displayTitle": "Kalite Kontrol Bas Muhendisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "KALITE KONTROL KISIM SEFI",
+    "displayTitle": "Kalite Kontrol Kisim Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "KALITE KONTROL OFIS SEFI",
+    "displayTitle": "Kalite Kontrol Ofis Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "KALITE KONTROL RAPOR SEFI",
+    "displayTitle": "Kalite Kontrol Rapor Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "KALITE KONTROL SAHA SEFI",
+    "displayTitle": "Kalite Kontrol Saha Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "KALITE KONTROL SEFI",
+    "displayTitle": "Kalite Kontrol Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "MAKINE EKIPMAN SEFI",
+    "displayTitle": "Makine Ekipman Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "MALI ISLER SEFI",
+    "displayTitle": "Mali Isler Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "MALIYET KONTROL SEFI",
+    "displayTitle": "Maliyet Kontrol Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "MEKANIK ISLER GRUP SEFI",
+    "displayTitle": "Mekanik Isler Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "MOBILIZASYON GRUP SEFI",
+    "displayTitle": "Mobilizasyon Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "NDT BAS MUHENDIS",
+    "displayTitle": "NDT Bas Muhendis",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "OLCME GRUP SEFI",
+    "displayTitle": "Olcme Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "OLCME SEFI",
+    "displayTitle": "Olcme Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PERSONEL SEF YARDIMCISI",
+    "displayTitle": "Personel Sef Yardimcisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PERSONEL SEFI",
+    "displayTitle": "Personel Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PERSONEL VE IDARI ISLER SEFI",
+    "displayTitle": "Personel ve Idari Isler Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PLANLAMA SEFI",
+    "displayTitle": "Planlama Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PROJE AMBAR SEF YARDIMCISI",
+    "displayTitle": "Proje Ambar Sef Yardimcisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PROJE AMBAR SEFI",
+    "displayTitle": "Proje Ambar Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PTO BAS MUHENDISI",
+    "displayTitle": "PTO Bas Muhendisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "PTO SEFI",
+    "displayTitle": "PTO Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "SATINALMA SEF YARDIMCISI",
+    "displayTitle": "Satinalma Sef Yardimcisi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "SATINALMA SEFI",
+    "displayTitle": "Satinalma Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "SOZLESME SEFI",
+    "displayTitle": "Sozlesme Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "SUPPORT IMALAT SEFI",
+    "displayTitle": "Support Imalat Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TAHAKKUK SEFI",
+    "displayTitle": "Tahakkuk Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TEKLIF SEFI",
+    "displayTitle": "Teklif Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TEKNIK OFIS GRUP SEFI",
+    "displayTitle": "Teknik Ofis Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TEKNIK OFIS INCOME SEFI",
+    "displayTitle": "Teknik Ofis Income Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TEKNIK OFIS MALIYET KONTROL SEFI",
+    "displayTitle": "Teknik Ofis Maliyet Kontrol Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TEKNIK OFIS SEFI",
+    "displayTitle": "Teknik Ofis Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TEST GRUP SEFI",
+    "displayTitle": "Test Grup Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "TEST SEFI",
+    "displayTitle": "Test Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "YAPIM TEKNIK OFIS SEFI",
+    "displayTitle": "Yapim Teknik Ofis Sefi",
+    "levelNo": 5
+  },
+  {
+    "normTitle": "ALET OPERATORU",
+    "displayTitle": "Alet Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "AMBAR KIDEMLI UZMANI",
+    "displayTitle": "Ambar Kidemli Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "AMBAR MEMURU",
+    "displayTitle": "Ambar Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "AMBAR OPERATORU",
+    "displayTitle": "Ambar Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "AMBAR UZMANI",
+    "displayTitle": "Ambar Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "AVUKAT",
+    "displayTitle": "Avukat",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BAS KAYNAK DATA OPERATORU",
+    "displayTitle": "Bas Kaynak Data Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BILGI ISLEM UZMANI",
+    "displayTitle": "Bilgi Islem Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BORU INSPEKTORU",
+    "displayTitle": "Boru Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BORU KIDEMLI MUHENDISI",
+    "displayTitle": "Boru Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BORU MONTAJ SUPERVIZORU",
+    "displayTitle": "Boru Montaj Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BORU MUHENDISI",
+    "displayTitle": "Boru Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BORU TEKNIKERI",
+    "displayTitle": "Boru Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BOYA INSPEKTORU",
+    "displayTitle": "Boya Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BOYA MUHENDISI",
+    "displayTitle": "Boya Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "BOYA SUPERVIZORU",
+    "displayTitle": "Boya Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "CELIK KIDEMLI MUHENDISI",
+    "displayTitle": "Celik Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "CELIK MONTAJ SUPERVIZORU",
+    "displayTitle": "Celik Montaj Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "CELIK MUHENDISI",
+    "displayTitle": "Celik Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "CELIK SAHA MUHENDISI",
+    "displayTitle": "Celik Saha Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "CELIK TEKNIKERI",
+    "displayTitle": "Celik Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "CEVRE MUHENDISI",
+    "displayTitle": "Cevre Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "CEVRE UZMANI",
+    "displayTitle": "Cevre Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "DATA OPERATORU",
+    "displayTitle": "Data Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "DCC UZMANI",
+    "displayTitle": "DCC Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "DEVREYE ALMA MUHENDISI",
+    "displayTitle": "Devreye Alma Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "DOKTOR",
+    "displayTitle": "Doktor",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "EKIPMAN BAKIM SUPERVIZORU",
+    "displayTitle": "Ekipman Bakim Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "EKIPMAN MONTAJ KIDEMLI MUHENDISI",
+    "displayTitle": "Ekipman Montaj Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "EKIPMAN MONTAJ MUHENDISI",
+    "displayTitle": "Ekipman Montaj Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "EKIPMAN MONTAJ SUPERVIZORU",
+    "displayTitle": "Ekipman Montaj Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "EKIPMAN PROPUSK UZMANI",
+    "displayTitle": "Ekipman Propusk Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "EKIPMAN SEVK MEMURU",
+    "displayTitle": "Ekipman Sevk Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ELEKTRIK DOKUMANTASYON MEMURU",
+    "displayTitle": "Elektrik Dokumantasyon Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ELEKTRIK ENSTRUMENTASYON MUHENDISI",
+    "displayTitle": "Elektrik Enstrumentasyon Mühendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ELEKTRIK MUHENDISI",
+    "displayTitle": "Elektrik Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ELEKTRIK SUPERVIZORU",
+    "displayTitle": "Elektrik Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "EVRAK MEMURU",
+    "displayTitle": "Evrak Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "FINANS MEMURU",
+    "displayTitle": "Finans Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "FINANS UZMANI",
+    "displayTitle": "Finans Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "FIT-UP KONTROL INSPEKTORU",
+    "displayTitle": "Fit-Up Kontrol Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IDARI ISLER KIDEMLI UZMANI",
+    "displayTitle": "Idari Isler Kidemli Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IDARI ISLER MEMURU",
+    "displayTitle": "Idari Isler Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IDARI ISLER UZMANI",
+    "displayTitle": "Idari Isler Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IK UZMANI",
+    "displayTitle": "IK Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INCE ISLER SUPERVIZORU",
+    "displayTitle": "Ince Isler Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INCOMING KONTROL INSPEKTORU",
+    "displayTitle": "Incoming Kontrol Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INCOMING KONTROL KIDEMLI MUHENDISI",
+    "displayTitle": "Incoming Kontrol Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INCOMING KONTROL MUHENDISI",
+    "displayTitle": "Incoming Kontrol Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INCOMING KONTROL TEKNIKERI",
+    "displayTitle": "Incoming Kontrol Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INSAAT DATA OPERATORU",
+    "displayTitle": "Insaat Data Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INSAAT ISLERI KIDEMLI MUHENDISI",
+    "displayTitle": "Insaat Isleri Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INSAAT ISLERI TEKNIKERI",
+    "displayTitle": "Insaat Isleri Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "INSAAT SUPERVIZORU",
+    "displayTitle": "Insaat Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI DOKUMAN UZMANI",
+    "displayTitle": "Is Guvenligi Dokuman Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI EGITMENI",
+    "displayTitle": "Is Guvenligi Egitmeni",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI INSPEKTORU",
+    "displayTitle": "Is Guvenligi Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI KIDEMLI UZMANI",
+    "displayTitle": "Is Guvenligi Kidemli Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI MEMURU",
+    "displayTitle": "Is Guvenligi Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI MUHENDISI",
+    "displayTitle": "Is Guvenligi Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI SUPERVIZORU",
+    "displayTitle": "Is Guvenligi Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI TEKNIKERI",
+    "displayTitle": "Is Guvenligi Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI UZMANI",
+    "displayTitle": "Is Guvenligi Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IS GUVENLIGI YASAL UZMANI",
+    "displayTitle": "Is Guvenligi Yasal Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ISIL ISLEM MUHENDISI",
+    "displayTitle": "Isil Islem Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ISKELE DATA OPERATORU",
+    "displayTitle": "Iskele Data Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ISKELE INSPEKTORU",
+    "displayTitle": "Iskele Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ISKELE SUPERVIZORU",
+    "displayTitle": "Iskele Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IZOLASYON INSPEKTORU",
+    "displayTitle": "Izolasyon Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IZOLASYON KIDEMLI MUHENDISI",
+    "displayTitle": "Izolasyon Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IZOLASYON MUHENDISI",
+    "displayTitle": "Izolasyon Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "IZOLASYON SUPERVIZORU",
+    "displayTitle": "Izolasyon Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KALITE KONTROL INSPEKTORU",
+    "displayTitle": "Kalite Kontrol Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KALITE KONTROL MUHENDISI",
+    "displayTitle": "Kalite Kontrol Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KALITE KONTROL OPERATORU",
+    "displayTitle": "Kalite Kontrol Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KALITE KONTROL UZMANI",
+    "displayTitle": "Kalite Kontrol Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KAMP MEMURU",
+    "displayTitle": "Kamp Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KAYNAK DATA OPERATORU",
+    "displayTitle": "Kaynak Data Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KAYNAK INSPEKTORU",
+    "displayTitle": "Kaynak Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KAYNAK MUHENDISI",
+    "displayTitle": "Kaynak Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KAYNAK SUPERVIZORU",
+    "displayTitle": "Kaynak Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KAYNAK URETIM UZMANI",
+    "displayTitle": "Kaynak Uretim Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI DEVREYE ALMA MUHENDISI",
+    "displayTitle": "Kidemli Devreye Alma Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI IK UZMANI",
+    "displayTitle": "Kidemli IK Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI IS GUVENLIGI SUPERVIZORU",
+    "displayTitle": "Kidemli Is Guvenligi Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI KALITE KONTROL MUHENDISI",
+    "displayTitle": "Kidemli Kalite Kontrol Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI MEKANIK ISLER MUHENDISI",
+    "displayTitle": "Kidemli Mekanik Isler Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI PERSONEL UZMANI",
+    "displayTitle": "Kidemli Personel Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI PLANLAMA MUHENDISI",
+    "displayTitle": "Kidemli Planlama Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI SAHA MUHENDISI",
+    "displayTitle": "Kidemli Saha Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI SATINALMA MEMURU",
+    "displayTitle": "Kidemli Satinalma Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI TEKNIK OFIS MUHENDISI",
+    "displayTitle": "Kidemli Teknik Ofis Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI TEST MUHENDISI",
+    "displayTitle": "Kidemli Test Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "KIDEMLI YAPIM TEKNIK OFIS MUHENDISI",
+    "displayTitle": "Kidemli Yapim Teknik Ofis Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "LABORANT",
+    "displayTitle": "Laborant",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "LABORATUAR MUHENDISI",
+    "displayTitle": "Laboratuar Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "LOJISTIK MUHENDISI",
+    "displayTitle": "Lojistik Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MAKINE EKIPMAN PUANTORU",
+    "displayTitle": "Makine Ekipman Puantoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MAKINE EKIPMAN SUPERVIZORU",
+    "displayTitle": "Makine Ekipman Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MAKINE TEKNIKERI",
+    "displayTitle": "Makine Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MALI ISLER UZMANI",
+    "displayTitle": "Mali Isler Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MALIYET KONTROL MUHENDISI",
+    "displayTitle": "Maliyet Kontrol Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MEKANIK",
+    "displayTitle": "Mekanik",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MEKANIK ISLER MUHENDISI",
+    "displayTitle": "Mekanik Isler Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "METRAJ HESAPLAMA MUHENDISI",
+    "displayTitle": "Metraj Hesaplama Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MUHASEBECI",
+    "displayTitle": "Muhasebeci",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "MUHENDIS",
+    "displayTitle": "Muhendis",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "NDT DATA KIDEMLI UZMANI",
+    "displayTitle": "NDT Data Kidemli Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "NDT INSPEKTORU",
+    "displayTitle": "NDT Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "NDT MUHENDISI",
+    "displayTitle": "NDT Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "NDT OPERATORU",
+    "displayTitle": "NDT Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "NDT SUPERVIZORU",
+    "displayTitle": "NDT Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "OLCME MUHENDISI",
+    "displayTitle": "Olcme Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PERMIT MEMURU",
+    "displayTitle": "Permit Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PERSONEL MEMURU",
+    "displayTitle": "Personel Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PERSONEL UZMANI",
+    "displayTitle": "Personel Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PLANLAMA MUHENDISI",
+    "displayTitle": "Planlama Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PROJE AMBAR INSPEKTORU",
+    "displayTitle": "Proje Ambar Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PROPUSK MEMURU",
+    "displayTitle": "Propusk Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PTO DOKUMANTASYON CALISANI",
+    "displayTitle": "PTO Dokümantasyon Calisani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PTO KIDEMLI MUHENDISI",
+    "displayTitle": "PTO Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PTO MUHENDISI",
+    "displayTitle": "PTO Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PTO OPERATORU",
+    "displayTitle": "PTO Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PTO UZMANI",
+    "displayTitle": "PTO Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PUANTOR",
+    "displayTitle": "Puantor",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PWHT SUPERVIZORU",
+    "displayTitle": "PWHT Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "PWHT TEKNIKERI",
+    "displayTitle": "PWHT Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "REFRAKTER UZMANI",
+    "displayTitle": "Refrakter Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SAGLIK GOREVLISI",
+    "displayTitle": "Saglik Gorevlisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SAHA MUHENDISI",
+    "displayTitle": "Saha Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SATINALMA MEMURU",
+    "displayTitle": "Satinalma Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SEKRETER",
+    "displayTitle": "Sekreter",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SERTIFIKASYON VE IZIN BELGELERI UZMANI",
+    "displayTitle": "Sertifikasyon ve Izin Belgeleri Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SEVK KALITE KONTROL INSPEKTORU",
+    "displayTitle": "Sevk Kalite Kontrol Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SEVK KALITE KONTROL MUHENDISI",
+    "displayTitle": "Sevk Kalite Kontrol Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SEVK MEMURU",
+    "displayTitle": "Sevk Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SOZLESME VE HAKEDIS MUHENDISI",
+    "displayTitle": "Sozlesme Ve Hakedis Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "STAJYER",
+    "displayTitle": "Stajyer",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "SUPPORT IMALAT KIDEMLI MUHENDISI",
+    "displayTitle": "Support Imalat Kidemli Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TAHAKKUK OPERATORU",
+    "displayTitle": "Tahakkuk Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TAHAKKUK UZMANI",
+    "displayTitle": "Tahakkuk Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKLIF MUHENDISI",
+    "displayTitle": "Teklif Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK DANISMAN",
+    "displayTitle": "Teknik Danisman",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK DIZAYN MUHENDISI",
+    "displayTitle": "Teknik Dizayn Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS HAKEDIS MUHENDISI",
+    "displayTitle": "Teknik Ofis Hakedis Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS IS HAZIRLAMA TEKNIKERI",
+    "displayTitle": "Teknik Ofis Is Hazirlama Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS KIDEMLI UZMANI",
+    "displayTitle": "Teknik Ofis Kidemli Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS MUHENDISI",
+    "displayTitle": "Teknik Ofis Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS OPERATORU",
+    "displayTitle": "Teknik Ofis Operatoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS PUANTAJ MALIYET MEMURU",
+    "displayTitle": "Teknik Ofis Puantaj Maliyet Memuru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS PUANTAJ MALIYET UZMANI",
+    "displayTitle": "Teknik Ofis Puantaj Maliyet Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS RAPORLAMA UZMANI",
+    "displayTitle": "Teknik Ofis Raporlama Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK OFIS UZMANI",
+    "displayTitle": "Teknik Ofis Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIK RESSAM",
+    "displayTitle": "Teknik Ressam",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEKNIKER",
+    "displayTitle": "Tekniker",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TERCUMAN",
+    "displayTitle": "Tercuman",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEST MUHENDISI",
+    "displayTitle": "Test Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEST SUPERVIZORU",
+    "displayTitle": "Test Supervizoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TEST TEKNIKERI",
+    "displayTitle": "Test Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TOPOGRAF",
+    "displayTitle": "Topograf",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TRAFIK GUVENLIK INSPEKTORU",
+    "displayTitle": "Trafik Guvenlik Inspektoru",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "TRANSPORT MUHENDISI",
+    "displayTitle": "Transport Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "YANGIN UZMANI",
+    "displayTitle": "Yangin Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "YAPIM TEKNIK OFIS MUHENDISI",
+    "displayTitle": "Yapim Teknik Ofis Muhendisi",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "YAPIM TEKNIK OFIS TEKNIKERI",
+    "displayTitle": "Yapim Teknik Ofis Teknikeri",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "YOL GUVENLIGI UZMANI",
+    "displayTitle": "Yol Guvenligi Uzmani",
+    "levelNo": 6
+  },
+  {
+    "normTitle": "ALPINIST FORMENI",
+    "displayTitle": "Alpinist Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "ALTYAPI FORMENI",
+    "displayTitle": "Altyapi Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "AMBAR SAHA SORUMLUSU",
+    "displayTitle": "Ambar Saha Sorumlusu",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "AMBAR SORUMLUSU",
+    "displayTitle": "Ambar Sorumlusu",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "BORU FORMENI",
+    "displayTitle": "Boru Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "BORU SUPPORT FORMENI",
+    "displayTitle": "Boru Support Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "BORU TRANSPORT FORMENI",
+    "displayTitle": "Boru Transport Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "BOYA FORMENI",
+    "displayTitle": "Boya Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "CELIK FORMENI",
+    "displayTitle": "Celik Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "DEMIRCI FORMENI",
+    "displayTitle": "Demirci Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "EKIPMAN MONTAJ FORMENI",
+    "displayTitle": "Ekipman Montaj Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "ELEKTRIK FORMENI",
+    "displayTitle": "Elektrik Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "ENSTRUMAN FORMENI",
+    "displayTitle": "Enstruman Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "FORMEN",
+    "displayTitle": "Formen",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "GUVENLIK AMIRI",
+    "displayTitle": "Guvenlik Amiri",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "HVAC ISLERI SORUMLUSU",
+    "displayTitle": "HVAC Isleri Sorumlusu",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "INCE ISLER FORMENI",
+    "displayTitle": "Ince Isler Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "INSAAT FORMENI",
+    "displayTitle": "Insaat Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "ISKELE FORMENI",
+    "displayTitle": "Iskele Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "IZOLASYON FORMENI",
+    "displayTitle": "Izolasyon Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "KALDIRMA AMIRI",
+    "displayTitle": "Kaldırma Amiri",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "KALIPCI FORMENI",
+    "displayTitle": "Kalipci Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "KAMP AMIRI",
+    "displayTitle": "Kamp Amiri",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "KAYNAK FORMENI",
+    "displayTitle": "Kaynak Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "KAYNAK TEST OKUL SORUMLUSU",
+    "displayTitle": "Kaynak Test Okul Sorumlusu",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "MAKINE SORUMLUSU",
+    "displayTitle": "Makine Sorumlusu",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "MAZOT SORUMLUSU",
+    "displayTitle": "Mazot Sorumlusu",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "MEKANIK ISLER FORMENI",
+    "displayTitle": "Mekanik Isler Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "MOBILIZASYON FORMENI",
+    "displayTitle": "Mobilizasyon Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "ON IMALAT FORMENI",
+    "displayTitle": "On Imalat Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "REFRAKTER FORMENI",
+    "displayTitle": "Refrakter Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "TEST FORMENI",
+    "displayTitle": "Test Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "TRANSPORT FORMENI",
+    "displayTitle": "Transport Formeni",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "TUP SORUMLUSU",
+    "displayTitle": "Tup Sorumlusu",
+    "levelNo": 7
+  },
+  {
+    "normTitle": "AILE UYESI",
+    "displayTitle": "Aile Uyesi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ALCIPANCI",
+    "displayTitle": "Alcipanci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ALET OPERATOR YARDIMCISI",
+    "displayTitle": "Alet Operator Yardimcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ALPINIST",
+    "displayTitle": "Alpinist",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ALTYAPI BORU MONTAJCISI",
+    "displayTitle": "Altyapi Boru Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ALTYAPI MONTAJCISI",
+    "displayTitle": "Altyapi Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "AMBAR BEKCISI",
+    "displayTitle": "Ambar Bekcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "AMBAR DUZ ISCISI",
+    "displayTitle": "Ambar Duz Iscisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "AMBAR TEZGAH ELEMANI",
+    "displayTitle": "Ambar Tezgah Elemani",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "AMBARCI",
+    "displayTitle": "Ambarci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ARAC VINC OPERATORU",
+    "displayTitle": "Arac Vinc Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ASCI",
+    "displayTitle": "Asci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ATOLYE TAVAN VINC OPERATORU",
+    "displayTitle": "Atolye Tavan Vinc Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BEKCI",
+    "displayTitle": "Bekci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BETONCU",
+    "displayTitle": "Betoncu",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BETONCU EKIPBASI",
+    "displayTitle": "Betoncu Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BILGI ISLEM TEKNISYENI",
+    "displayTitle": "Bilgi Islem Teknisyeni",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BORU EKIPBASI",
+    "displayTitle": "Boru Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BORU KESIM OPERATORU",
+    "displayTitle": "Boru Kesim Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BORU MONTAJCISI",
+    "displayTitle": "Boru Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BOYA EKIPBASI",
+    "displayTitle": "Boya Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "BOYACI",
+    "displayTitle": "Boyaci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "CAMASIRHANE GOREVLISI",
+    "displayTitle": "Camasirhane Gorevlisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "CAYCI",
+    "displayTitle": "Cayci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "CELIK EKIPBASI",
+    "displayTitle": "Celik Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "CELIK MONTAJCISI",
+    "displayTitle": "Celik Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "CELIK PANEL EKIPBASI",
+    "displayTitle": "Celik Panel Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "CELIK PANEL USTASI",
+    "displayTitle": "Celik Panel Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "CNC OPERATORU",
+    "displayTitle": "CNC Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "DEMIRCI",
+    "displayTitle": "Demirci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "DEMIRCI EKIPBASI",
+    "displayTitle": "Demirci Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "DUVARCI",
+    "displayTitle": "Duvarci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "DUZ ISCI",
+    "displayTitle": "Duz Isci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "EKIPMAN MONTAJ EKIPBASI",
+    "displayTitle": "Ekipman Montaj Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "EKIPMAN MONTAJCISI",
+    "displayTitle": "Ekipman Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "EKSKAVATOR OPERATORU",
+    "displayTitle": "Ekskavator Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ELEKTRIK BAKIM ONARIM USTASI",
+    "displayTitle": "Elektrik Bakim Onarim Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ELEKTRIK EKIPBASI",
+    "displayTitle": "Elektrik Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ELEKTRIK SEBEKELERI VE ELEKTRIKLI EKIPMANLAR ICIN ELEKTRIKCI",
+    "displayTitle": "Elektrik Sebekeleri ve Elektrikli Ekipmanlar icin Elektrikci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ELEKTRIK TEKNISYENI",
+    "displayTitle": "Elektrik Teknisyeni",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ELEKTRIKCI",
+    "displayTitle": "Elektrikci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ELEKTROD AMBARCISI",
+    "displayTitle": "Elektrod Ambarcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ELEKTROT KAYNAKCISI",
+    "displayTitle": "Elektrot Kaynakcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ENSTRUMANTASYON VE OTOMASYON MONTAJCISI",
+    "displayTitle": "Enstrumantasyon ve Otomasyon Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "FAYANS USTASI",
+    "displayTitle": "Fayans Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "FORKLIFT OPERATORU",
+    "displayTitle": "Forklift Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "GAZALTI KAYNAKCISI",
+    "displayTitle": "Gazalti Kaynakcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "GUVENLIK MEMURU",
+    "displayTitle": "Guvenlik Memuru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "HAVALANDIRMACI",
+    "displayTitle": "Havalandırmacı",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "HAVALANDIRMA, KLIMA, PNOMATIK TASIMA VE ASPIRASYON SISTEMLERI MONTAJCISI",
+    "displayTitle": "Havalandirma, klima, pnomatik tasima ve aspirasyon sistemleri montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "HIUP OPERATORU",
+    "displayTitle": "Hiup Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "HIZMETLI",
+    "displayTitle": "Hizmetli",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "IDARI ISLER ELEMANI",
+    "displayTitle": "Idari Isler Elemani",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "INCE ISLER EKIPBASI",
+    "displayTitle": "Ince Isler Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "INCE ISLER USTASI",
+    "displayTitle": "Ince Isler Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "INSAAT DUZ ISCISI",
+    "displayTitle": "Insaat Duz Iscisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "INSAAT EKIPBASI",
+    "displayTitle": "Insaat Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "INSAAT VE MONTAJ ISLERI USTASI",
+    "displayTitle": "Insaat ve Montaj Isleri Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ISIL ISLEM OPERATORU",
+    "displayTitle": "Isil Islem Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ISKELE DUZ ISCI",
+    "displayTitle": "Iskele Duz Isci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ISKELE EKIPBASI",
+    "displayTitle": "Iskele Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ISKELE MONTAJ USTASI",
+    "displayTitle": "Iskele Montaj Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "ITFAIYECI",
+    "displayTitle": "Itfaiyeci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "IZOLASYON EKIPBASI",
+    "displayTitle": "Izolasyon Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "IZOLASYON IMALATCISI",
+    "displayTitle": "Izolasyon Imalatcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "IZOLASYON ISCISI",
+    "displayTitle": "Izolasyon Iscisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "IZOLASYON SAC MONTAJCISI",
+    "displayTitle": "Izolasyon Sac Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "IZOLASYON USTASI",
+    "displayTitle": "Izolasyon Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KALAYCI",
+    "displayTitle": "Kalayci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KALIPCI",
+    "displayTitle": "Kalipci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KALIPCI EKIPBASI",
+    "displayTitle": "Kalipci Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KAMP BEKCISI",
+    "displayTitle": "Kamp Bekcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KAMP ISCISI",
+    "displayTitle": "Kamp Iscisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KAMP TEMIZLIKCISI",
+    "displayTitle": "Kamp Temizlikcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KAMP TESISATCI",
+    "displayTitle": "Kamp Tesisatci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KANTIN CALISANI",
+    "displayTitle": "Kantin Calisani",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KAYNAK MAKINASI OPERATORU",
+    "displayTitle": "Kaynak Makinasi Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KAYNAK OTOMASYON OPERATORU",
+    "displayTitle": "Kaynak Otomasyon Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KAYNAKCI",
+    "displayTitle": "Kaynakci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KOMPRESOR OPERATORU",
+    "displayTitle": "Kompresor Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KUMLAMACI",
+    "displayTitle": "Kumlamaci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "KURULUM VE TEST TEKNISYENI",
+    "displayTitle": "Kurulum ve Test Teknisyeni",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "LASTIK TAMIRCISI",
+    "displayTitle": "Lastik Tamircisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MAKINE TAMIRCISI",
+    "displayTitle": "Makine Tamircisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MAKINE TAMIRI BAKIM USTASI",
+    "displayTitle": "Makine Tamiri Bakim Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MANIPULATOR VINC OPERATORU",
+    "displayTitle": "Manipulator Vinc Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MEKANIK ISLER EKIPBASI",
+    "displayTitle": "Mekanik Isler Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MEKANIK ISLER USTASI",
+    "displayTitle": "Mekanik Isler Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MEKANIK TESISATCI",
+    "displayTitle": "Mekanik Tesisatci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MOBILIZASYON EKIPBASI",
+    "displayTitle": "Mobilizasyon Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MOBILIZASYON KAYNAKCISI",
+    "displayTitle": "Mobilizasyon Kaynakcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MOBILIZASYON MONTAJCISI",
+    "displayTitle": "Mobilizasyon Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "MOBILIZASYON USTASI",
+    "displayTitle": "Mobilizasyon Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "NDT ISCISI",
+    "displayTitle": "NDT Iscisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "NUMARATOR",
+    "displayTitle": "Numarator",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "OFIS BEKCISI",
+    "displayTitle": "Ofis Bekcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "OFIS CALISANI",
+    "displayTitle": "Ofis Calisani",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "OFIS TEMIZLIKCISI",
+    "displayTitle": "Ofis Temizlikcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "OTO ELEKTRICISI",
+    "displayTitle": "Oto Elektricisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "OTOBUS SOFORU",
+    "displayTitle": "Otobus Soforu",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PEKANISKA OPERATORU",
+    "displayTitle": "Pekaniska Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PERMITCI",
+    "displayTitle": "Permitci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PLAKA KAYNAKCISI",
+    "displayTitle": "Plaka Kaynakcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PLAZMA KESIM OPERATORU",
+    "displayTitle": "Plazma Kesim Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "POSTABASI",
+    "displayTitle": "Postabasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PROJE AMBAR DUZ ISCISI",
+    "displayTitle": "Proje Ambar Duz Iscisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PROJE AMBAR EKIPBASI",
+    "displayTitle": "Proje Ambar Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PROJE AMBAR GECE BEKCISI",
+    "displayTitle": "Proje Ambar Gece Bekcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PUNTACI",
+    "displayTitle": "Puntaci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PWHT ISCISI",
+    "displayTitle": "PWHT Iscisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "PWHT OPERATORU",
+    "displayTitle": "PWHT Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SAHA BEKCISI",
+    "displayTitle": "Saha Bekcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SAHA ELEKTRIK MONTAJCISI",
+    "displayTitle": "Saha Elektrik Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SAHA ELEKTRIK USTASI",
+    "displayTitle": "Saha Elektrik Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SAHA GECE BEKCISI",
+    "displayTitle": "Saha Gece Bekcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SAHA PERMITCISI",
+    "displayTitle": "Saha Permitcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SAHA TUVALET TEMIZLIKCISI",
+    "displayTitle": "Saha Tuvalet Temizlikcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SAPANCI",
+    "displayTitle": "Sapanci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SENOR",
+    "displayTitle": "Senor",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SERAMIKCI",
+    "displayTitle": "Seramikci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SIHHI TESISAT USTASI",
+    "displayTitle": "Sihhi Tesisat Ustasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SIVACI",
+    "displayTitle": "Sivaci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SOFOR",
+    "displayTitle": "Sofor",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "SUPPORT IMALAT EKIPBASI",
+    "displayTitle": "Support Imalat Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TAMIRCI",
+    "displayTitle": "Tamirci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TANKER SOFORU",
+    "displayTitle": "Tanker Soforu",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TEKNOLOJIK EKIPMAN VE ILGILI YAPILAR MONTAJCISI",
+    "displayTitle": "Teknolojik Ekipman ve ilgili Yapilar Montajcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TEMIZLIKCI",
+    "displayTitle": "Temizlikci",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TEST EKIPBASI",
+    "displayTitle": "Test Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TIR SOFORU",
+    "displayTitle": "TIR Soforu",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TOPRAK ISLERI",
+    "displayTitle": "Toprak Isleri",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TRANSPORT EKIPBASI",
+    "displayTitle": "Transport Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "TRANSPORT YARDIMCISI",
+    "displayTitle": "Transport Yardimcisi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "VIDANJOR SOFORU",
+    "displayTitle": "Vidanjor Soforu",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "VINC OPERATORU",
+    "displayTitle": "Vinc Operatoru",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "YAPI YALITIM EKIPBASI",
+    "displayTitle": "Yapi Yalitim Ekipbasi",
+    "levelNo": 8
+  },
+  {
+    "normTitle": "YEMEKHANE CALISANI",
+    "displayTitle": "Yemekhane Calisani",
+    "levelNo": 8
+  }
+]
