@@ -88,6 +88,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setUser(null);
     } finally {
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('pondera-has-saved-session');
+      }
       setLoading(false);
     }
   }, []);
@@ -119,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setUser(null);
       localStorage.removeItem('pondera_hr_user');
-      fetch('/api/auth/login', { method: 'DELETE' }).catch(() => {});
+      fetch('/api/auth/login', { method: 'DELETE' }).catch(() => { });
     }, 30000);
 
     return () => {
@@ -155,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('pondera_hr_user');
-    fetch('/api/auth/login', { method: 'DELETE' }).catch(() => {});
+    fetch('/api/auth/login', { method: 'DELETE' }).catch(() => { });
   };
 
   const switchUser = (targetUser: User) => {
@@ -218,12 +221,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         {user?.role === 'admin'
                           ? 'Admin'
                           : user?.role === 'user'
-                          ? lang === 'ru'
-                            ? 'Специалист HR (User)'
-                            : 'İK Uzmanı (User)'
-                          : lang === 'ru'
-                          ? 'Наблюдатель (Viewer)'
-                          : 'Gözlemci (Viewer)'}
+                            ? lang === 'ru'
+                              ? 'Специалист HR (User)'
+                              : 'İK Uzmanı (User)'
+                            : lang === 'ru'
+                              ? 'Наблюдатель (Viewer)'
+                              : 'Gözlemci (Viewer)'}
                       </strong>
                     </span>
                   </p>
@@ -254,9 +257,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
                 {lang === 'ru'
                   ? permModal.messageRu ||
-                    'У вас нет полномочий для выполнения этого действия. Данная операция может выполняться только пользователями с правами Системного Администратора (Admin).'
+                  'У вас нет полномочий для выполнения этого действия. Данная операция может выполняться только пользователями с правами Системного Администратора (Admin).'
                   : permModal.messageTr ||
-                    'Bu işlemi gerçekleştirme yetkiniz bulunmamaktadır. Bu işlem yalnızca Sistem Yöneticisi (Admin) yetkisine sahip kullanıcılar tarafından yapılabilir.'}
+                  'Bu işlemi gerçekleştirme yetkiniz bulunmamaktadır. Bu işlem yalnızca Sistem Yöneticisi (Admin) yetkisine sahip kullanıcılar tarafından yapılabilir.'}
               </p>
 
               {(permModal.hintTr || permModal.hintRu) && (

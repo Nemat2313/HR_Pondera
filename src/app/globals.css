@@ -84,3 +84,42 @@ b, strong, th, h1, h2, h3, h4, h5, h6, text, tspan,
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Password Manager & Browser Autofill Detection + Crisp Styling */
+@keyframes ponderaAutofillStart {
+  from { opacity: 0.999; }
+  to { opacity: 1; }
+}
+
+@keyframes ponderaAutofillCancel {
+  from { opacity: 0.999; }
+  to { opacity: 1; }
+}
+
+#pondera-login-form input:-webkit-autofill,
+#pondera-login-form input:-webkit-autofill:hover,
+#pondera-login-form input:-webkit-autofill:focus,
+#pondera-login-form input:-webkit-autofill:active {
+  animation-name: ponderaAutofillStart;
+  animation-duration: 0.01s;
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a;
+  -webkit-box-shadow: 0 0 0px 1000px #f0fdf4 inset !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+#pondera-login-form input:not(:-webkit-autofill) {
+  animation-name: ponderaAutofillCancel;
+  animation-duration: 0.01s;
+}
+
+/* Prevent login flash on F5 refresh when localStorage already has an active user,
+   while keeping the login <form> 100% visible in SSR HTML at DOMContentLoaded when logged out */
+html.pondera-has-saved-session .pondera-ssr-login-shell {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+html:not(.pondera-has-saved-session) .pondera-session-hydrating-loader {
+  display: none !important;
+}

@@ -22,7 +22,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="tr">
+    <html lang="tr" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('pondera_hr_user')){document.documentElement.classList.add('pondera-has-saved-session');}}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased selection:bg-indigo-500 selection:text-white">
         <Providers>{children}</Providers>
       </body>
