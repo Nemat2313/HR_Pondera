@@ -123,3 +123,28 @@ html.pondera-has-saved-session .pondera-ssr-login-shell {
 html:not(.pondera-has-saved-session) .pondera-session-hydrating-loader {
   display: none !important;
 }
+
+/* Collapsed Sidebar Animated Hover Flyout Pill */
+@keyframes sidebarFlyoutIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(-10px, -50%, 0) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, -50%, 0) scale(1);
+  }
+}
+
+.sidebar-flyout-pill {
+  animation: sidebarFlyoutIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Hide scrollbars cleanly for single-row pill strips */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

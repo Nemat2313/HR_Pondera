@@ -270,6 +270,9 @@ export default function Home() {
     } catch {
       // ignore
     }
+    if (activeTab === 'org_chart') {
+      setCollapsed(true);
+    }
   }, [activeTab, settingsInitialSubTab]);
 
   // Global search submit -> switches to Personnel List with search
@@ -360,6 +363,9 @@ export default function Home() {
           }
           if (tab === 'settings') {
             setSettingsInitialSubTab('users_rls');
+          }
+          if (tab === 'org_chart') {
+            setCollapsed(true);
           }
           setActiveTab(tab);
         }}
