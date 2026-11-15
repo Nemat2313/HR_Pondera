@@ -87,14 +87,21 @@ export default function PowerBIRankedRegionBars({
               <CartesianGrid strokeDasharray="3 3" stroke="#94A3B8" strokeOpacity={0.2} vertical={false} />
               <XAxis
                 dataKey="label"
-                stroke="#64748B"
+                stroke="#94A3B8"
+                tick={{ className: 'fill-slate-700 dark:fill-slate-200 font-medium' }}
                 fontSize={9.5}
                 tickLine={false}
                 interval={0}
                 angle={-26}
                 textAnchor="end"
               />
-              <YAxis stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis
+                stroke="#94A3B8"
+                tick={{ className: 'fill-slate-700 dark:fill-slate-200 font-medium' }}
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+              />
               <Tooltip
                 cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }}
                 content={({ active, payload }) => {
@@ -284,22 +291,29 @@ export default function PowerBIRankedRegionBars({
           </div>
         </div>
 
-        <div className="h-64 w-full">
+        <div className="h-80 flex-1 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               layout="vertical"
               data={nationalityData.slice(0, 7).map((d) => ({ ...d, displayLabel: translateVal(d.label) }))}
-              margin={{ top: 5, right: 90, left: 75, bottom: 5 }}
+              margin={{ top: 8, right: 95, left: 75, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#94A3B8" strokeOpacity={0.2} horizontal={false} />
-              <XAxis type="number" stroke="#64748B" fontSize={10} tickLine={false} />
+              <XAxis
+                type="number"
+                stroke="#94A3B8"
+                tick={{ className: 'fill-slate-700 dark:fill-slate-200 font-medium' }}
+                fontSize={10}
+                tickLine={false}
+              />
               <YAxis
                 type="category"
                 dataKey="displayLabel"
-                stroke="#475569"
-                fontSize={10}
+                stroke="#94A3B8"
+                tick={{ className: 'fill-slate-700 dark:fill-slate-100 font-semibold' }}
+                fontSize={10.5}
                 tickLine={false}
-                width={75}
+                width={80}
               />
               <Tooltip
                 cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }}
@@ -321,7 +335,8 @@ export default function PowerBIRankedRegionBars({
               />
               <Bar
                 dataKey="count"
-                radius={[0, 6, 6, 0]}
+                barSize={28}
+                radius={[0, 7, 7, 0]}
                 onClick={(entry) => entry && entry.label && onSelectNationality(entry.label)}
                 className="cursor-pointer"
               >
