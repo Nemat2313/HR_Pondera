@@ -370,7 +370,11 @@ export default function Home() {
   }
 
   const isIdariOnly = user?.role === 'idari_isler';
-  const effectiveTab = isIdariOnly ? 'travel_tickets' : activeTab;
+  const effectiveTab = isIdariOnly
+    ? activeTab === 'camp_management'
+      ? 'camp_management'
+      : 'travel_tickets'
+    : activeTab;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 transition-colors duration-200">
@@ -379,7 +383,7 @@ export default function Home() {
         activeTab={effectiveTab}
         setActiveTab={(tab) => {
           if (user?.role === 'idari_isler') {
-            setActiveTab('travel_tickets');
+            setActiveTab(tab === 'camp_management' ? 'camp_management' : 'travel_tickets');
             return;
           }
           if (user?.role === 'viewer' && (tab === 'settings' || tab === 'database' || tab === 'admin')) {
@@ -509,7 +513,11 @@ export default function Home() {
           />
         )}
 
-        {effectiveTab === 'camp_management' && <CampManagementView />}
+        {effectiveTab === 'camp_management' && (
+          <CampManagementView
+            onNavigateToPersonnel={isIdariOnly ? undefined : handleNavigateToPersonnel}
+          />
+        )}
 
         {effectiveTab === 'compliance' && (
           <ComplianceAnalyticsView

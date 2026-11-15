@@ -81,7 +81,7 @@ export default function Sidebar({
           setVersionInfo(json);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   interface MenuItem {
@@ -222,7 +222,7 @@ export default function Sidebar({
           id: 'camp_management',
           label: t('nav_camp_management'),
           icon: Building,
-          badge: lang === 'ru' ? 'Городок' : 'Lojman',
+          badge: lang === 'ru' ? '3D • Городок' : '3D • Lojman',
           badgeColor: 'bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-700/50',
         },
       ],
@@ -232,22 +232,30 @@ export default function Sidebar({
   const visibleNavGroups: NavGroup[] =
     user?.role === 'idari_isler'
       ? [
-          {
-            id: 'idari_only',
-            title: lang === 'ru' ? 'АХО И АВИАБИЛЕТЫ' : 'İDARİ İŞLER & UÇUŞ OPERASYON',
-            tag: 'TV • AI',
-            items: [
-              {
-                id: 'travel_tickets',
-                label: t('nav_travel_tickets'),
-                icon: Plane,
-                badge: 'TV • OCR',
-                badgeColor:
-                  'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-700/50',
-              },
-            ],
-          },
-        ]
+        {
+          id: 'idari_only',
+          title: lang === 'ru' ? 'АХО: БИЛЕТЫ И ОБЩЕЖИТИЯ' : 'İDARİ İŞLER: BİLET & LOJMAN',
+          tag: 'TV • 3D',
+          items: [
+            {
+              id: 'travel_tickets',
+              label: t('nav_travel_tickets'),
+              icon: Plane,
+              badge: 'TV • OCR',
+              badgeColor:
+                'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-700/50',
+            },
+            {
+              id: 'camp_management',
+              label: t('nav_camp_management'),
+              icon: Building,
+              badge: lang === 'ru' ? '3D • Городок' : '3D • Lojman',
+              badgeColor:
+                'bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-700/50',
+            },
+          ],
+        },
+      ]
       : navGroups;
 
   const handleSelectTab = (id: string) => {
@@ -270,7 +278,7 @@ export default function Sidebar({
         className={`fixed top-0 left-0 z-50 h-screen transition-all duration-300 ease-in-out bg-gradient-to-b from-white via-emerald-50/70 to-emerald-200/90 dark:from-[#0F172A] dark:via-[#0B1F24] dark:to-[#052e2b] border-r border-emerald-200/70 dark:border-teal-900/60 flex flex-col justify-between ${
           // Mobile state
           mobileOpen ? 'translate-x-0 w-60 shadow-2xl' : '-translate-x-full lg:translate-x-0'
-        } ${collapsed ? 'lg:w-20' : 'lg:w-60'}`}
+          } ${collapsed ? 'lg:w-20' : 'lg:w-60'}`}
       >
         {/* Top Header & Logo */}
         <div className="shrink-0">
@@ -337,29 +345,28 @@ export default function Sidebar({
               <div className="flex items-center justify-between">
                 <span className="font-normal text-slate-900 dark:text-white text-[11px] truncate">{user.name}</span>
                 <span
-                  className={`text-[9px] font-normal px-1.5 py-0.2 rounded border ${
-                    user.role === 'viewer'
-                      ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300/60 dark:border-amber-800/60'
-                      : user.role === 'idari_isler'
+                  className={`text-[9px] font-normal px-1.5 py-0.2 rounded border ${user.role === 'viewer'
+                    ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300/60 dark:border-amber-800/60'
+                    : user.role === 'idari_isler'
                       ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border-sky-300/60 dark:border-sky-800/60'
                       : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200/50 dark:border-indigo-800/50'
-                  }`}
+                    }`}
                 >
                   {user.role === 'admin'
                     ? lang === 'ru'
                       ? 'Админ'
                       : 'Admin'
                     : user.role === 'idari_isler'
-                    ? lang === 'ru'
-                      ? '✈️ АХО'
-                      : '✈️ İdari İşler'
-                    : user.role === 'viewer'
-                    ? lang === 'ru'
-                      ? '👁️ Наблюдатель'
-                      : '👁️ Gözlemci'
-                    : lang === 'ru'
-                    ? 'Пользователь'
-                    : 'Kullanıcı'}
+                      ? lang === 'ru'
+                        ? '✈️ АХО'
+                        : '✈️ İdari İşler'
+                      : user.role === 'viewer'
+                        ? lang === 'ru'
+                          ? '👁️ Наблюдатель'
+                          : '👁️ Gözlemci'
+                        : lang === 'ru'
+                          ? 'Пользователь'
+                          : 'Kullanıcı'}
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[10.5px] text-slate-700 dark:text-slate-300 mt-1 font-normal truncate">
@@ -394,109 +401,102 @@ export default function Sidebar({
           {visibleNavGroups.map((group) => {
             const isPoweriseGroup = group.id === 'powerise';
             return (
-            <div
-              key={group.id}
-              className={`space-y-0.5 ${
-                isPoweriseGroup
+              <div
+                key={group.id}
+                className={`space-y-0.5 ${isPoweriseGroup
                   ? 'mt-auto pt-4 border-t border-indigo-200/80 dark:border-indigo-800/50 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 px-1.5 pb-2'
                   : ''
-              }`}
-            >
-              {/* Group Header */}
-              {(!collapsed || mobileOpen) ? (
-                <div
-                  className={`flex items-center justify-between px-2 py-1 text-[10px] uppercase tracking-wider font-normal ${
-                    isPoweriseGroup
+                  }`}
+              >
+                {/* Group Header */}
+                {(!collapsed || mobileOpen) ? (
+                  <div
+                    className={`flex items-center justify-between px-2 py-1 text-[10px] uppercase tracking-wider font-normal ${isPoweriseGroup
                       ? 'text-indigo-700 dark:text-indigo-300 font-semibold'
                       : 'text-slate-600 dark:text-slate-400'
-                  }`}
-                >
-                  <span className="truncate">{group.title}</span>
-                  {group.tag && (
-                    <span
-                      className={`text-[8.5px] px-1.5 py-0.2 rounded font-normal ${
-                        isPoweriseGroup
+                      }`}
+                  >
+                    <span className="truncate">{group.title}</span>
+                    {group.tag && (
+                      <span
+                        className={`text-[8.5px] px-1.5 py-0.2 rounded font-normal ${isPoweriseGroup
                           ? 'bg-indigo-100 dark:bg-indigo-900/70 text-indigo-700 dark:text-indigo-200 border border-indigo-200/80 dark:border-indigo-700/60'
                           : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      {group.tag}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="w-full flex justify-center py-1">
-                  <div
-                    className={`w-4 h-0.5 rounded-full ${
-                      isPoweriseGroup ? 'bg-indigo-300 dark:bg-indigo-700' : 'bg-slate-300 dark:bg-slate-700'
-                    }`}
-                  />
-                </div>
-              )}
+                          }`}
+                      >
+                        {group.tag}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-full flex justify-center py-1">
+                    <div
+                      className={`w-4 h-0.5 rounded-full ${isPoweriseGroup ? 'bg-indigo-300 dark:bg-indigo-700' : 'bg-slate-300 dark:bg-slate-700'
+                        }`}
+                    />
+                  </div>
+                )}
 
-              {/* Group Items */}
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleSelectTab(item.id)}
-                    onMouseEnter={(e) => {
-                      if (collapsed && !mobileOpen) {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        setHoveredFlyout({
-                          id: item.id,
-                          label: item.label,
-                          badge: item.badge,
-                          badgeColor: item.badgeColor,
-                          isActive,
-                          centerY: r.top + r.height / 2,
-                        });
+                {/* Group Items */}
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelectTab(item.id)}
+                      onMouseEnter={(e) => {
+                        if (collapsed && !mobileOpen) {
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setHoveredFlyout({
+                            id: item.id,
+                            label: item.label,
+                            badge: item.badge,
+                            badgeColor: item.badgeColor,
+                            isActive,
+                            centerY: r.top + r.height / 2,
+                          });
+                        }
+                      }}
+                      onMouseLeave={() =>
+                        setHoveredFlyout((prev) => (prev?.id === item.id ? null : prev))
                       }
-                    }}
-                    onMouseLeave={() =>
-                      setHoveredFlyout((prev) => (prev?.id === item.id ? null : prev))
-                    }
-                    className={`group w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] transition-all duration-150 cursor-pointer ${
-                      isPoweriseGroup
+                      className={`group w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] transition-all duration-150 cursor-pointer ${isPoweriseGroup
                         ? isActive
                           ? 'bg-indigo-100/95 dark:bg-indigo-950/90 text-indigo-950 dark:text-indigo-100 border border-indigo-300/80 dark:border-indigo-700/70 shadow-2xs font-normal'
                           : 'text-indigo-950 dark:text-indigo-100 hover:text-indigo-950 dark:hover:text-white hover:bg-indigo-100/60 dark:hover:bg-indigo-900/40 font-normal'
                         : isActive
-                        ? 'bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 border border-emerald-300/70 dark:border-emerald-700/60 shadow-2xs font-normal'
-                        : 'text-slate-900 dark:text-slate-100 hover:text-black dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800/60 font-normal'
-                    } ${collapsed && !mobileOpen ? 'justify-center px-0 py-2' : ''}`}
-                  >
-                    <Icon
-                      className={`w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                        isPoweriseGroup
+                          ? 'bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 border border-emerald-300/70 dark:border-emerald-700/60 shadow-2xs font-normal'
+                          : 'text-slate-900 dark:text-slate-100 hover:text-black dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800/60 font-normal'
+                        } ${collapsed && !mobileOpen ? 'justify-center px-0 py-2' : ''}`}
+                    >
+                      <Icon
+                        className={`w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${isPoweriseGroup
                           ? isActive
                             ? 'text-indigo-700 dark:text-indigo-300'
                             : 'text-indigo-600/85 dark:text-indigo-300/85'
                           : isActive
-                          ? 'text-emerald-800 dark:text-emerald-300'
-                          : 'text-slate-700 dark:text-slate-300'
-                      }`}
-                    />
-                    {(!collapsed || mobileOpen) && (
-                      <div className="flex-1 flex items-center justify-between text-left min-w-0">
-                        <span className="truncate leading-tight tracking-tight">{item.label}</span>
-                        {item.badge && (
-                          <span
-                            className={`text-[9px] font-normal px-1.5 py-0.2 rounded shrink-0 ml-1 leading-normal ${
-                              item.badgeColor || 'bg-slate-200/90 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
-                            }`}
-                          >
-                            {item.badge}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                            ? 'text-emerald-800 dark:text-emerald-300'
+                            : 'text-slate-700 dark:text-slate-300'
+                          }`}
+                      />
+                      {(!collapsed || mobileOpen) && (
+                        <div className="flex-1 flex items-center justify-between text-left min-w-0">
+                          <span className="truncate leading-tight tracking-tight">{item.label}</span>
+                          {item.badge && (
+                            <span
+                              className={`text-[9px] font-normal px-1.5 py-0.2 rounded shrink-0 ml-1 leading-normal ${item.badgeColor || 'bg-slate-200/90 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
+                                }`}
+                            >
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             );
           })}
         </div>
@@ -551,9 +551,8 @@ export default function Sidebar({
           <span className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rotate-45 bg-slate-900/95 dark:bg-slate-800/95 border-l border-b border-emerald-500/40" />
 
           <span
-            className={`relative z-10 w-2 h-2 rounded-full shrink-0 ${
-              hoveredFlyout.isActive ? 'bg-emerald-400 animate-pulse' : 'bg-teal-400/80'
-            }`}
+            className={`relative z-10 w-2 h-2 rounded-full shrink-0 ${hoveredFlyout.isActive ? 'bg-emerald-400 animate-pulse' : 'bg-teal-400/80'
+              }`}
           />
           <span className="relative z-10 text-xs text-white tracking-tight">
             {hoveredFlyout.label}
