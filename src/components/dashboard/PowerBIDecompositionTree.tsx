@@ -21,8 +21,8 @@ interface PowerBIDecompositionTreeProps {
   onOpenDetail?: (type: 'region' | 'project' | 'department', value: string) => void;
 }
 
-const CARD_HEIGHT = 68; // px
-const CARD_GAP = 10; // px
+const CARD_HEIGHT = 56; // px
+const CARD_GAP = 6; // px
 const CARD_TOTAL = CARD_HEIGHT + CARD_GAP;
 
 export default function PowerBIDecompositionTree({
@@ -53,7 +53,7 @@ export default function PowerBIDecompositionTree({
 
   // Geometry calculations for horizontal tree alignment (yana yatmış ağaç)
   const maxColItems = Math.max(1, treeData.length, activeProjects.length, activeDepartments.length);
-  const TREE_STAGE_HEIGHT = Math.max(380, maxColItems * CARD_TOTAL);
+  const TREE_STAGE_HEIGHT = Math.max(330, maxColItems * CARD_TOTAL);
   const ROOT_CARD_HEIGHT = 140;
   const rootOffset = (TREE_STAGE_HEIGHT - ROOT_CARD_HEIGHT) / 2;
   const rootCenterY = rootOffset + ROOT_CARD_HEIGHT / 2;
@@ -203,7 +203,7 @@ export default function PowerBIDecompositionTree({
               <span className="text-[10px] text-slate-500 font-normal">({treeData.length})</span>
             </div>
 
-            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-2.5">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-1.5">
               {treeData.map((reg) => {
                 const isSelected = selectedRegion === reg.name;
                 const pct = totalCount > 0 ? Math.round((reg.count / totalCount) * 100) : 0;
@@ -216,7 +216,7 @@ export default function PowerBIDecompositionTree({
                       setSelectedProject(reg.projects[0]?.name || '');
                       onSelectNode('region', reg.name);
                     }}
-                    className={`h-[68px] p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex flex-col justify-between relative group ${
+                    className={`h-[56px] p-2 rounded-xl border text-xs cursor-pointer transition-all flex flex-col justify-between relative group ${
                       isSelected
                         ? 'bg-emerald-50 dark:bg-teal-900/70 border-emerald-500 dark:border-teal-400 text-slate-900 dark:text-white shadow-xs dark:shadow-md dark:shadow-teal-950/40 ring-2 ring-emerald-500/30 dark:ring-teal-400/40'
                         : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:bg-emerald-50/40 dark:hover:bg-slate-800 hover:border-emerald-300'
@@ -305,7 +305,7 @@ export default function PowerBIDecompositionTree({
               </span>
             </div>
 
-            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-2.5">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-1.5">
               {activeProjects.map((prj) => {
                 const isSelected = selectedProject === prj.name;
                 const regTotal = activeRegionObj?.count || 1;
@@ -318,7 +318,7 @@ export default function PowerBIDecompositionTree({
                       setSelectedProject(prj.name);
                       onSelectNode('project', prj.name);
                     }}
-                    className={`h-[68px] p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex flex-col justify-between relative group ${
+                    className={`h-[56px] p-2 rounded-xl border text-xs cursor-pointer transition-all flex flex-col justify-between relative group ${
                       isSelected
                         ? 'bg-cyan-50 dark:bg-cyan-900/70 border-cyan-500 dark:border-cyan-400 text-slate-900 dark:text-white shadow-xs dark:shadow-md dark:shadow-cyan-950/40 ring-2 ring-cyan-500/30 dark:ring-cyan-400/40'
                         : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:bg-cyan-50/40 dark:hover:bg-slate-800 hover:border-cyan-300'
@@ -397,7 +397,7 @@ export default function PowerBIDecompositionTree({
               </span>
             </div>
 
-            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-2.5">
+            <div style={{ height: TREE_STAGE_HEIGHT }} className="flex flex-col justify-center space-y-1.5">
               {activeDepartments.map((dpt, idx) => {
                 const prjTotal = activeProjectObj?.count || 1;
                 const pctOfPrj = Math.round((dpt.count / prjTotal) * 100);
@@ -406,7 +406,7 @@ export default function PowerBIDecompositionTree({
                   <div
                     key={idx}
                     onClick={() => onSelectNode('department', dpt.name)}
-                    className="h-[68px] p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-700 dark:text-slate-300 hover:border-emerald-400 dark:hover:border-teal-400 hover:bg-emerald-50/50 dark:hover:bg-slate-800 transition-all cursor-pointer group flex flex-col justify-between"
+                    className="h-[56px] p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-700 dark:text-slate-300 hover:border-emerald-400 dark:hover:border-teal-400 hover:bg-emerald-50/50 dark:hover:bg-slate-800 transition-all cursor-pointer group flex flex-col justify-between"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-900 dark:text-white truncate max-w-[145px] group-hover:text-emerald-600 dark:group-hover:text-teal-300">

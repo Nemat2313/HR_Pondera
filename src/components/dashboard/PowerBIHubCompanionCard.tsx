@@ -150,15 +150,15 @@ export default function PowerBIHubCompanionCard({
 
           {/* 3D Glassmorphic Venn / Overlap Diagram: 1C ZUP (Resmi) ↔ eBA Real (Saha) */}
           <div className="flex-1 flex flex-col justify-between py-2 gap-2.5">
-            <div className="relative rounded-2xl bg-gradient-to-b from-slate-50/90 via-white to-slate-50/70 dark:from-slate-900/70 dark:via-slate-900/40 dark:to-slate-950/70 border border-slate-200/80 dark:border-slate-800 p-3 flex flex-col items-center justify-center overflow-hidden">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
-                <Scale className="w-3 h-3 text-indigo-500" />
+            <div className="flex-1 relative rounded-2xl bg-gradient-to-b from-slate-50/90 via-white to-slate-50/70 dark:from-slate-900/70 dark:via-slate-900/40 dark:to-slate-950/70 border border-slate-200/80 dark:border-slate-800 p-3 flex flex-col items-center justify-center overflow-hidden">
+              <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                <Scale className="w-3.5 h-3.5 text-indigo-500" />
                 <span>
                   {lang === 'ru' ? 'Сверка: Официальный (1С) ↔ Фактический (eBA)' : 'Resmi (1C ZUP) ↔ Real (eBA) Kesişim Özeti'}
                 </span>
               </div>
 
-              <svg viewBox="0 0 340 165" className="w-full max-w-[330px] h-auto drop-shadow-sm select-none">
+              <svg viewBox="0 0 360 218" className="w-full max-w-[440px] h-auto drop-shadow-sm select-none my-auto">
                 <defs>
                   <radialGradient id="zupSphere3D" cx="35%" cy="30%" r="70%">
                     <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.92" />
@@ -175,63 +175,63 @@ export default function PowerBIHubCompanionCard({
                     <stop offset="100%" stopColor="#059669" stopOpacity="0.96" />
                   </linearGradient>
                   <filter id="soft3dShadow" x="-15%" y="-15%" width="130%" height="135%">
-                    <feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#0f172a" floodOpacity="0.22" />
+                    <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#0f172a" floodOpacity="0.24" />
                   </filter>
                   <clipPath id="leftCircleClip">
-                    <circle cx="118" cy="82" r="66" />
+                    <circle cx="126" cy="109" r="94" />
                   </clipPath>
                 </defs>
 
                 {/* Left 3D Sphere: 1C ZUP Resmi */}
                 <g filter="url(#soft3dShadow)">
-                  <circle cx="118" cy="82" r="66" fill="url(#zupSphere3D)" />
-                  <ellipse cx="98" cy="50" rx="28" ry="14" fill="white" fillOpacity="0.22" transform="rotate(-20 98 50)" />
+                  <circle cx="126" cy="109" r="94" fill="url(#zupSphere3D)" />
+                  <ellipse cx="96" cy="64" rx="40" ry="20" fill="white" fillOpacity="0.22" transform="rotate(-22 96 64)" />
                 </g>
 
                 {/* Right 3D Sphere: eBA Real Saha */}
                 <g filter="url(#soft3dShadow)">
-                  <circle cx="222" cy="82" r="66" fill="url(#ebaSphere3D)" />
-                  <ellipse cx="240" cy="50" rx="28" ry="14" fill="white" fillOpacity="0.22" transform="rotate(20 240 50)" />
+                  <circle cx="234" cy="109" r="94" fill="url(#ebaSphere3D)" />
+                  <ellipse cx="264" cy="64" rx="40" ry="20" fill="white" fillOpacity="0.22" transform="rotate(22 264 64)" />
                 </g>
 
-                {/* Center Overlap Lens */}
+                {/* Center Overlap Lens (wide 80-unit intersection for big count) */}
                 <g clipPath="url(#leftCircleClip)">
-                  <circle cx="222" cy="82" r="66" fill="url(#overlapLens3D)" />
+                  <circle cx="234" cy="109" r="94" fill="url(#overlapLens3D)" />
                 </g>
-                <circle cx="118" cy="82" r="66" fill="none" stroke="white" strokeOpacity="0.35" strokeWidth="1.2" />
-                <circle cx="222" cy="82" r="66" fill="none" stroke="white" strokeOpacity="0.35" strokeWidth="1.2" />
+                <circle cx="126" cy="109" r="94" fill="none" stroke="white" strokeOpacity="0.38" strokeWidth="1.4" />
+                <circle cx="234" cy="109" r="94" fill="none" stroke="white" strokeOpacity="0.38" strokeWidth="1.4" />
 
                 {/* Left Only Text (Sadece ZUP + Çıkışlı) */}
-                <text x="78" y="68" textAnchor="middle" fill="white" fontSize="9.5" fontWeight="700" opacity="0.92">
+                <text x="74" y="88" textAnchor="middle" fill="white" fontSize="10.5" fontWeight="700" opacity="0.95">
                   {lang === 'ru' ? 'Только 1С' : 'Sadece ZUP'}
                 </text>
-                <text x="78" y="88" textAnchor="middle" fill="white" fontSize="15" fontWeight="900" fontFamily="monospace">
+                <text x="74" y="114" textAnchor="middle" fill="white" fontSize="19" fontWeight="900" fontFamily="monospace">
                   {(zupOnlyNoEba + z.zupActiveButRealExited).toLocaleString('tr-TR')}
                 </text>
-                <text x="78" y="103" textAnchor="middle" fill="#e0e7ff" fontSize="8.5" fontWeight="600">
+                <text x="74" y="133" textAnchor="middle" fill="#e0e7ff" fontSize="9.5" fontWeight="600">
                   1C ZUP
                 </text>
 
-                {/* Center Match Text (Her İkisinde) */}
-                <text x="170" y="65" textAnchor="middle" fill="white" fontSize="9" fontWeight="800">
+                {/* Center Match Text (Her İkisinde - Largest) */}
+                <text x="180" y="84" textAnchor="middle" fill="white" fontSize="11" fontWeight="800">
                   {lang === 'ru' ? 'Совпадение' : 'Tam Eşleşme'}
                 </text>
-                <text x="170" y="86" textAnchor="middle" fill="white" fontSize="17" fontWeight="900" fontFamily="monospace">
+                <text x="180" y="113" textAnchor="middle" fill="white" fontSize="24" fontWeight="900" fontFamily="monospace">
                   {z.matchedActiveBoth.toLocaleString('tr-TR')}
                 </text>
-                <rect x="145" y="94" width="50" height="16" rx="8" fill="white" fillOpacity="0.22" />
-                <text x="170" y="105" textAnchor="middle" fill="white" fontSize="9.5" fontWeight="800" fontFamily="monospace">
+                <rect x="148" y="123" width="64" height="20" rx="10" fill="white" fillOpacity="0.24" />
+                <text x="180" y="137" textAnchor="middle" fill="white" fontSize="11" fontWeight="900" fontFamily="monospace">
                   %{z.officialMatchPct}
                 </text>
 
                 {/* Right Only Text (Sadece eBA) */}
-                <text x="262" y="68" textAnchor="middle" fill="white" fontSize="9.5" fontWeight="700" opacity="0.92">
+                <text x="286" y="88" textAnchor="middle" fill="white" fontSize="10.5" fontWeight="700" opacity="0.95">
                   {lang === 'ru' ? 'Только eBA' : 'Sadece eBA'}
                 </text>
-                <text x="262" y="88" textAnchor="middle" fill="white" fontSize="15" fontWeight="900" fontFamily="monospace">
+                <text x="286" y="114" textAnchor="middle" fill="white" fontSize="19" fontWeight="900" fontFamily="monospace">
                   {z.realOnlyNotInZup.toLocaleString('tr-TR')}
                 </text>
-                <text x="262" y="103" textAnchor="middle" fill="#ccfbf1" fontSize="8.5" fontWeight="600">
+                <text x="286" y="133" textAnchor="middle" fill="#ccfbf1" fontSize="9.5" fontWeight="600">
                   eBA Real
                 </text>
               </svg>
