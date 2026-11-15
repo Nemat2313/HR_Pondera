@@ -81,7 +81,7 @@ export default function PowerBIRankedRegionBars({
           </div>
         </div>
 
-        <div className="h-72 w-full">
+        <div className="h-60 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={regionData} margin={{ top: 24, right: 15, left: -20, bottom: 42 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#94A3B8" strokeOpacity={0.2} vertical={false} />
@@ -163,92 +163,6 @@ export default function PowerBIRankedRegionBars({
           </ResponsiveContainer>
         </div>
 
-        {/* Expandable Site Breakdown (Multi-site regions like Kazan have Aç/Kapa toggle; single-site regions do not) */}
-        {regionProjectsTree.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-            {regionProjectsTree.map((regNode) => {
-              const hasMultipleSites = regNode.projects && regNode.projects.length > 1;
-              const isExpanded = Boolean(expandedRegions[regNode.name]);
-              const isRegActive = selectedRegion === regNode.name;
-
-              if (!hasMultipleSites) {
-                return null;
-              }
-
-              return (
-                <div
-                  key={regNode.name}
-                  className="rounded-xl bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 px-3 py-2 text-xs"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                      <button
-                        type="button"
-                        onClick={() => onSelectRegion(regNode.name)}
-                        className={`cursor-pointer hover:underline ${
-                          isRegActive
-                            ? 'text-teal-700 dark:text-teal-300 font-bold'
-                            : 'text-slate-800 dark:text-slate-200 font-semibold'
-                        }`}
-                      >
-                        {regNode.name} {lang === 'ru' ? '— Разбивка по объектам' : '— Şantiye Kırılımı'} ({regNode.projects.length}{' '}
-                        {lang === 'ru' ? 'объекта' : 'Şantiye'})
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleRegionExpand(regNode.name)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 text-teal-700 dark:text-teal-300 border border-teal-500/30 text-[11px] cursor-pointer transition-all"
-                    >
-                      <span>
-                        {isExpanded
-                          ? lang === 'ru'
-                            ? 'Скрыть участки'
-                            : 'Şantiyeleri Kapat'
-                          : lang === 'ru'
-                          ? 'Показать участки'
-                          : 'Şantiyeleri Aç'}
-                      </span>
-                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2 pt-2 border-t border-slate-200/70 dark:border-slate-800">
-                      {regNode.projects.map((p) => {
-                        const pct = regNode.count > 0 ? Math.round((p.count / regNode.count) * 100) : 0;
-                        const isPrjSelected = selectedProject === p.name;
-                        return (
-                          <button
-                            key={p.name}
-                            type="button"
-                            onClick={() => onSelectProject && onSelectProject(p.name)}
-                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer ${
-                              isPrjSelected
-                                ? 'bg-teal-600 text-white border-teal-600'
-                                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-teal-400 text-slate-800 dark:text-slate-200'
-                            }`}
-                          >
-                            <span className="truncate text-[11px]">{p.name}</span>
-                            <span
-                              className={`text-[11px] font-mono shrink-0 ml-2 ${
-                                isPrjSelected ? 'text-white' : 'text-teal-600 dark:text-teal-400'
-                              }`}
-                            >
-                              {p.count.toLocaleString('tr-TR')} (%{pct})
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
           <span>{lang === 'ru' ? 'NHNK mPE-300, Свободный и Тобольск — крупнейшие объекты' : 'NHNK mPE-300, Svobodny ve Tobolsk en büyük sahalardır'}</span>
           <span className="text-teal-600 dark:text-teal-400 font-semibold">
@@ -291,7 +205,7 @@ export default function PowerBIRankedRegionBars({
           </div>
         </div>
 
-        <div className="h-80 flex-1 w-full">
+        <div className="h-60 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               layout="vertical"
@@ -335,7 +249,7 @@ export default function PowerBIRankedRegionBars({
               />
               <Bar
                 dataKey="count"
-                barSize={28}
+                barSize={22}
                 radius={[0, 7, 7, 0]}
                 onClick={(entry) => entry && entry.label && onSelectNationality(entry.label)}
                 className="cursor-pointer"
