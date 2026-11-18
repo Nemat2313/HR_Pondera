@@ -595,6 +595,46 @@ export default function OfficialVsRealView() {
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(regRows), '5_Bolge_Bazli_Mutabakat');
 
+    // Sheet 6: All Matched Active Personnel (FULL_MATCH + DATA_DIFF + SITE_TRANSFER_PERMIT_CHECK)
+    const matchedRows = data.records
+      .filter(
+        (r) =>
+          r.category === 'FULL_MATCH' ||
+          r.category === 'DATA_DIFF' ||
+          r.category === 'SITE_TRANSFER_PERMIT_CHECK'
+      )
+      .map((r) => ({
+        'eBA Sicil No': r.sicil_no,
+        '1C ZUP Tabel No': r.zup_tabel_no,
+        'Ad Soyad': r.name,
+        'Kiril İsim (1C ZUP)': r.kiril_name,
+        Uyruk: r.uyruk,
+        Bölge: r.region,
+        Proje: r.proje_adi,
+        '1C Resmi Şube (Подразделение)': r.zup_department_tr || r.zup_department || '—',
+        Firma: r.firma,
+        Görevi: r.gorev,
+        'eBA Durum': r.eba_status,
+        '1C ZUP Durum': r.zup_status,
+        'eBA İzin Türü': r.eba_permit,
+        '1C ZUP Statü': r.zup_tax_status,
+        'Eşleşme Durumu':
+          r.category === 'FULL_MATCH'
+            ? 'Tam Eşleşme (%100)'
+            : r.category === 'SITE_TRANSFER_PERMIT_CHECK'
+              ? 'Şantiye Transferi (ZUP Aktif)'
+              : 'Eşleşti (Veri Farkı Var)',
+        'Eşleşme Yöntemi': r.matchMethod,
+        'eBA İşe Giriş': r.eba_hire_date,
+        '1C ZUP İşe Giriş': r.zup_hire_date,
+        'Pasaport (eBA)': r.eba_passport,
+        'Pasaport (ZUP)': r.zup_passport,
+        'İNN (eBA)': r.eba_inn,
+        'İNN (ZUP)': r.zup_inn,
+        'Not / Detay': r.diffDetailsTr.join(' | '),
+      }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matchedRows), '6_Eslesmis_Aktif_Kadro');
+
     XLSX.writeFile(
       wb,
       `Pondera_1C_ZUP_vs_eBA_Real_Karsilastirma_${data.metadata.zupDate}_vs_${data.metadata.ebaDate}.xlsx`
@@ -1674,7 +1714,7 @@ export default function OfficialVsRealView() {
                           ? 'VKS (BKC)'
                           : ps.key === 'PATENT'
                           ? 'Patent'
-                          : ps.key === 'RNR_QUOTA'
+                          : ps.key === 'QUOTA_RNR' || ps.key === 'RNR_QUOTA'
                           ? 'Kota / RNR'
                           : ps.key === 'RESIDENT'
                           ? 'Rezident / RF'
@@ -1742,7 +1782,7 @@ export default function OfficialVsRealView() {
                       ? 'VKS'
                       : ps.key === 'PATENT'
                       ? 'Patent'
-                      : ps.key === 'RNR_QUOTA'
+                      : ps.key === 'QUOTA_RNR' || ps.key === 'RNR_QUOTA'
                       ? 'Kota/RNR'
                       : ps.key === 'RESIDENT'
                       ? 'Rezident'
