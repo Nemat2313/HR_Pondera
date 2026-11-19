@@ -16,7 +16,11 @@ import {
 } from '@/lib/interSiteTransfers';
 import { formatKnownDateToDdMmYyyy, normalizeRawRecordDates } from '@/lib/dateFormatter';
 import { getZupDatesIndex, matchZupDatesForPersonnelRow } from '@/lib/zupDatesLookup';
-import { syncAndGetJobTitleLevels } from '@/lib/orgJobLevelManager';
+import {
+  normalizeOrgJobTitle,
+  suggestJobClassLevel,
+  syncAndGetJobTitleLevels,
+} from '@/lib/orgJobLevelManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -271,14 +275,24 @@ export async function GET(request: Request) {
       }
     }
     if (title !== 'all') {
-      const lvlMatch = title.trim().match(/^L([1-8])\b/i);
+      const lvlMatch = title.trim().match(/^(?:0?\d\.\s*)?L([1-8])\b/i);
       if (lvlMatch) {
         const targetLvl = Number(lvlMatch[1]);
         const jobSync = syncAndGetJobTitleLevels(db);
-        const matchingTitles = jobSync.items
-          .filter((it) => it.levelNo === targetLvl)
-          .map((it) => it.displayTitle)
-          .filter(Boolean);
+        const rawJobRows = db
+          .prepare(
+            `SELECT DISTINCT TRIM(COALESCE(gorevi, '')) as gorevi, TRIM(COALESCE(endirekt_direkt, '')) as yaka FROM personnel`
+          )
+          .all() as Array<{ gorevi: string; yaka: string }>;
+        const matchedRawTitles = new Set<string>();
+        for (const jr of rawJobRows) {
+          const nk = normalizeOrgJobTitle(jr.gorevi);
+          const lvl = (nk && jobSync.levelMap[nk]) || suggestJobClassLevel(jr.gorevi, jr.yaka);
+          if (lvl === targetLvl) {
+            matchedRawTitles.add(jr.gorevi);
+          }
+        }
+        const matchingTitles = Array.from(matchedRawTitles);
         if (matchingTitles.length > 0) {
           const placeholders = matchingTitles.map(() => '?').join(', ');
           conditions.push(`TRIM(COALESCE(gorevi, '')) IN (${placeholders})`);

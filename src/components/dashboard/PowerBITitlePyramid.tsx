@@ -210,7 +210,9 @@ export default function PowerBITitlePyramid({
       {/* 8-Tiered Pyramid / Funnel Visual Representation */}
       <div className="space-y-1.5 relative z-10 my-1 flex flex-col items-center w-full">
         {pyramidData.map((item, idx) => {
-          const totalPct = totalCount > 0 ? ((item.count / totalCount) * 100).toFixed(1) : '0';
+          const pyramidTotal =
+            pyramidData.reduce((sum, row) => sum + (row.count || 0), 0) || totalCount;
+          const totalPct = pyramidTotal > 0 ? ((item.count / pyramidTotal) * 100).toFixed(1) : '0';
           const cleanTitle = item.title.replace(/^\d+\.\s*/, '');
           const isSelected =
             selectedTitle &&
