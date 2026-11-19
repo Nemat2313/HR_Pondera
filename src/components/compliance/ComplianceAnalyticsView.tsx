@@ -309,7 +309,7 @@ export default function ComplianceAnalyticsView({
       ) : (
         <>
           {/* TOP HEADER CARD */}
-      <div className="bg-white dark:bg-gradient-to-r dark:from-[#111F38] dark:via-[#162646] dark:to-[#122A44] rounded-2xl border border-slate-200 dark:border-emerald-500/30 p-4 sm:p-6 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-[#111F38] dark:via-[#162646] dark:to-[#122A44] rounded-2xl border border-emerald-200/80 dark:border-emerald-500/30 p-3.5 sm:p-4 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden">
         {/* Glow - dark mode only */}
         <div className="absolute top-0 right-1/4 w-96 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none hidden dark:block" />
 

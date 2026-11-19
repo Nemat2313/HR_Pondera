@@ -384,9 +384,9 @@ export default function SitesView({ stats, onNavigateToPersonnel }: SitesViewPro
   const activeRegionPct = total > 0 ? ((activeRegionCount / total) * 100).toFixed(1) : '0.0';
 
   return (
-    <div className="p-4 sm:p-6 lg:p-7 space-y-5 max-w-full">
+    <div className="p-3 sm:p-4 lg:p-5 space-y-4 max-w-full">
       {/* 1. MASTER HEADER & EXECUTIVE KPI BANNER */}
-      <div className="bg-white dark:bg-gradient-to-r dark:from-[#111F38] dark:via-[#162646] dark:to-[#122A44] rounded-2xl border border-slate-200/90 dark:border-teal-500/35 p-5 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden transition-colors">
+      <div className="bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-[#111F38] dark:via-[#162646] dark:to-[#122A44] rounded-2xl border border-emerald-200/80 dark:border-teal-500/35 p-4 text-slate-900 dark:text-white shadow-sm dark:shadow-2xl relative overflow-hidden transition-colors">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-teal-500/25 shrink-0">

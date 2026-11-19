@@ -775,9 +775,9 @@ export default function OfficialVsRealView() {
   ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-7 space-y-5 font-normal max-w-[1440px] mx-auto">
+    <div className="p-3 sm:p-4 lg:p-5 space-y-4 font-normal max-w-[1440px] mx-auto">
       {/* COMPACT TOP HEADER (MAX 2-3 LINES), COLLAPSIBLE EXPLANATION & ANIMATED WARNING POPUP TRIGGER */}
-      <div className="px-4 py-3 rounded-2xl bg-gradient-to-r from-indigo-50/90 via-white to-slate-50 dark:from-[#0F172A] dark:via-[#131C31] dark:to-indigo-950/70 border border-indigo-200/80 dark:border-indigo-900/60 text-slate-900 dark:text-white shadow-2xs space-y-2.5">
+      <div className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-[#0F172A] dark:via-[#131C31] dark:to-indigo-950/70 border border-emerald-200/80 dark:border-indigo-900/60 text-slate-900 dark:text-white shadow-2xs space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           {/* Left: Compact Icon + Single-Line Title + Collapsible Info Toggle */}
           <div className="flex flex-wrap items-center gap-2.5 min-w-0">

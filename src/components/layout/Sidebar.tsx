@@ -26,6 +26,7 @@ import {
   Building,
   Settings,
   GitFork,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -189,6 +190,13 @@ export default function Sidebar({
           icon: Building2,
           badge: user?.scope_type === 'region' ? (lang === 'ru' ? '1 Объект' : '1 Saha') : (lang === 'ru' ? '11 Объектов' : '11 Saha'),
           badgeColor: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60',
+        },
+        {
+          id: 'report_proposals',
+          label: lang === 'ru' ? 'Новые отчеты (7)' : 'Yeni Rapor Teklifleri',
+          icon: Sparkles,
+          badge: lang === 'ru' ? '7 Новых' : '7 Yeni',
+          badgeColor: 'bg-gradient-to-r from-emerald-100 to-indigo-100 dark:from-emerald-950/80 dark:to-indigo-950/80 text-indigo-800 dark:text-indigo-200 border border-indigo-300/60 dark:border-indigo-700/60',
         },
         {
           id: 'settings',

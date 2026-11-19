@@ -8,6 +8,8 @@ import Topbar from '@/components/layout/Topbar';
 import OverviewView from '@/components/dashboard/OverviewView';
 import SettingsView from '@/components/settings/SettingsView';
 import LoginModal from '@/components/auth/LoginModal';
+import CommandPaletteModal from '@/components/layout/CommandPaletteModal';
+import type { ProposalTabId } from '@/components/reports/ReportProposalsView';
 import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
@@ -137,6 +139,10 @@ const CampManagementView = dynamicWithRetry(
   () => import('@/components/powerise/CampManagementView'),
   'Kamp & Lojman Takibi yükleniyor...'
 );
+const ReportProposalsView = dynamicWithRetry(
+  () => import('@/components/reports/ReportProposalsView'),
+  'Yeni Rapor Teklifleri yükleniyor...'
+);
 const ExcelUploadModal = dynamicWithRetry(
   () => import('@/components/modals/ExcelUploadModal'),
   'Excel yükleme penceresi hazırlanıyor...'
@@ -152,6 +158,19 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [proposalInitialTab, setProposalInitialTab] = useState<ProposalTabId>('health');
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Cross-filtering state (Power BI style)
   const [selectedRegion, setSelectedRegion] = useState('all');
@@ -438,6 +457,7 @@ export default function Home() {
         onOpenLogin={() => setIsLoginModalOpen(true)}
         activeFilterCount={effectiveTab === 'overview' ? activeFilterCount : 0}
         onResetFilters={handleResetFilters}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
 
       {/* Main Content Area: pl-0 on mobile, responsive padding on desktop */}
@@ -541,6 +561,15 @@ export default function Home() {
           <SitesView stats={stats} onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
 
+        {effectiveTab === 'report_proposals' && !isIdariOnly && (
+          <div className="p-3 sm:p-4 lg:p-5 max-w-[1600px] mx-auto">
+            <ReportProposalsView
+              initialTab={proposalInitialTab}
+              onNavigateToPersonnel={handleNavigateToPersonnel}
+            />
+          </div>
+        )}
+
         {effectiveTab === 'demographics' && (
           <DemographicsView stats={stats} onNavigateToPersonnel={handleNavigateToPersonnel} />
         )}
@@ -585,6 +614,19 @@ export default function Home() {
           onUploadSuccess={fetchStats}
         />
       )}
+
+      {/* Global Ctrl+K Command Palette */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        isIdariOnly={isIdariOnly}
+        onSelectTab={(tabId, proposalTab) => {
+          if (proposalTab) setProposalInitialTab(proposalTab);
+          if (tabId === 'org_chart') setCollapsed(true);
+          setActiveTab(tabId);
+        }}
+        onSearchPersonnel={(q) => handleSearchSubmit(q)}
+      />
 
       {/* Login & Demo Account Switcher Modal */}
       <LoginModal

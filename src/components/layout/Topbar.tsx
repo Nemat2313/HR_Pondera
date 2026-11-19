@@ -39,6 +39,7 @@ interface TopbarProps {
   onOpenLogin: () => void;
   activeFilterCount: number;
   onResetFilters: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export default function Topbar({
@@ -57,6 +58,7 @@ export default function Topbar({
   onOpenLogin,
   activeFilterCount,
   onResetFilters,
+  onOpenCommandPalette,
 }: TopbarProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -170,6 +172,19 @@ export default function Topbar({
                 <Search className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            {onOpenCommandPalette && (
+              <button
+                type="button"
+                onClick={onOpenCommandPalette}
+                title={lang === 'ru' ? 'Быстрый переход (Ctrl+K)' : 'Hızlı Komut Paleti (Ctrl+K)'}
+                className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100/90 hover:bg-emerald-50 dark:bg-slate-800/90 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer shrink-0"
+              >
+                <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-emerald-700 dark:text-emerald-300">
+                  Ctrl+K
+                </span>
+              </button>
+            )}
 
             {activeFilterCount > 0 && (
               <button
