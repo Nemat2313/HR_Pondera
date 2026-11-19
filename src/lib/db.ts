@@ -192,6 +192,7 @@ export function resetDb() {
   delete gState.__ponderaAiTicketTablesEnsured;
   delete gState.__ponderaQuotaTablesEnsured;
   delete gState.__ponderaCampTablesEnsured;
+  delete gState.__ponderaInvAppsEnsured;
   delete gState.__ponderaOrgJobLevelsEnsured;
   delete gState.__ponderaEmployeeMatchIndex;
   delete gState.__ponderaStatusPdfCache;

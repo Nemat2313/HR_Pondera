@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
+import InvitationApplicationsTab from './InvitationApplicationsTab';
 
 interface CandidateMatch {
   sicil_no: string;
@@ -117,6 +118,7 @@ export default function InvitationsTrackingView() {
 
   // Collapsible top explanation (hidden by default)
   const [showInfo, setShowInfo] = useState(false);
+  const [activeSection, setActiveSection] = useState<'applications' | 'mvd_pdfs'>('applications');
 
   // Table Filters
   const [search, setSearch] = useState('');
@@ -554,7 +556,7 @@ export default function InvitationsTrackingView() {
       />
 
       {/* Top Header Banner (Compact with collapsible explanation) */}
-      <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-sky-50/90 via-white to-indigo-50/60 dark:from-slate-900 dark:via-sky-950/80 dark:to-slate-900 border border-sky-200/80 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xs space-y-3">
+      <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-100/85 via-emerald-50/45 to-white dark:from-slate-900 dark:via-[#14233E] dark:to-slate-900 border border-emerald-200/80 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-sky-100 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/30 flex items-center justify-center shrink-0">
@@ -706,7 +708,49 @@ export default function InvitationsTrackingView() {
             </button>
           </div>
         )}
+
+        {/* 2-Tab Main Switcher: ПРИГЛАШЕНИЯ Applications vs Incoming MVD PDFs */}
+        <div className="pt-2 border-t border-emerald-200/60 dark:border-slate-800 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveSection('applications')}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+              activeSection === 'applications'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-white/90 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>
+              {lang === 'ru'
+                ? '1. Поданные заявки (ПРИГЛАШЕНИЯ — Excel & Ввод)'
+                : '1. Başvurulan Davetiyeler & Bekleme Takibi (ПРИГЛАШЕНИЯ)'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection('mvd_pdfs')}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+              activeSection === 'mvd_pdfs'
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                : 'bg-white/90 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>
+              {lang === 'ru'
+                ? `2. Входящие PDF МВД (${summary.total})`
+                : `2. Gelen MVD Davetiyeleri & PDF Arşivi (${summary.total})`}
+            </span>
+          </button>
+        </div>
       </div>
+
+      {activeSection === 'applications' ? (
+        <InvitationApplicationsTab onSyncedWithMvd={() => fetchInvitations(false)} />
+      ) : (
+        <>
 
       {/* 4 KPI Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -1429,6 +1473,8 @@ export default function InvitationsTrackingView() {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

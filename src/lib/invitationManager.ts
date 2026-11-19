@@ -5,6 +5,10 @@ import { getDb } from '@/lib/db';
 import { getSmtpConfig, sendCustomExecutiveEmail } from '@/lib/emailNotifier';
 import { sendTelegramMessage } from '@/lib/telegramNotifier';
 import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  findApplicationMatchForMvdPdf,
+  syncApplicationsWithPersonnelAndMvd,
+} from '@/lib/invitationApplicationsManager';
 
 export interface MvdInvitationRecord {
   id: number;
@@ -586,6 +590,51 @@ export function matchInvitationAgainstPersonnel(
     // ignore if zup_official_personnel table not yet initialized
   }
 
+  // 3. Also check ПРИГЛАШЕНИЯ Master Application List (invitation_applications)
+  const appMatch = findApplicationMatchForMvdPdf(fields, db);
+  if (appMatch) {
+    let empRow: any = null;
+    try {
+      if (appMatch.sicil_no) {
+        empRow = db
+          .prepare('SELECT sicil_no, ad_soyad, tam_adi_kiril, uyruk, genel_durum, region, proje_adi FROM personnel WHERE sicil_no = ? LIMIT 1')
+          .get(appMatch.sicil_no);
+      }
+      if (!empRow && appMatch.passport_no) {
+        empRow = db
+          .prepare("SELECT sicil_no, ad_soyad, tam_adi_kiril, uyruk, genel_durum, region, proje_adi FROM personnel WHERE UPPER(REPLACE(pasaport_no, ' ', '')) = ? LIMIT 1")
+          .get(appMatch.passport_no.replace(/\s+/g, '').toUpperCase());
+      }
+    } catch {}
+
+    const resolvedSicil = String(empRow?.sicil_no || appMatch.sicil_no || '').trim();
+    const key = resolvedSicil || `APP_${appMatch.passport_no}`;
+    const candidateFromApp: InvitationCandidateMatch = {
+      sicil_no: resolvedSicil,
+      ad_soyad: String(empRow?.ad_soyad || appMatch.fio_latin || appMatch.fio_kiril || '').trim(),
+      tam_adi_kiril: String(empRow?.tam_adi_kiril || appMatch.fio_kiril || '').trim(),
+      uyruk: String(empRow?.uyruk || appMatch.citizenship || '').trim(),
+      dogum_tarihi: appMatch.birth_date || invDob,
+      pasaport_no: appMatch.passport_no,
+      pasaport_verilis: appMatch.passport_issue_date || invPassIssue,
+      dogum_yeri: '',
+      genel_durum: String(empRow?.genel_durum || 'Davetiye Başvurusu').trim(),
+      region: empRow
+        ? resolveEffectiveRegion(empRow.region, empRow.proje_adi, appMatch.destination_city || '')
+        : appMatch.destination_city || '',
+      proje_adi: String(empRow?.proje_adi || appMatch.destination_city || '').trim(),
+      score: appMatch.score + 30,
+      reasons: [
+        `ПРИГЛАШЕНИЯ Başvuru${appMatch.opis_no ? ` (Опись ${appMatch.opis_no})` : ''}`,
+        ...appMatch.reasons,
+      ],
+    };
+    const existing = scoredMap.get(key);
+    if (!existing || candidateFromApp.score > existing.score) {
+      scoredMap.set(key, candidateFromApp);
+    }
+  }
+
   const scored = Array.from(scoredMap.values());
   scored.sort((a, b) => b.score - a.score);
   const topCandidates = scored.slice(0, 6);
@@ -1048,6 +1097,7 @@ export function rematchAllInvitationsInDb(dbInstance?: any): {
     if (res.matched_sicil_no) matched++;
   }
 
+  syncApplicationsWithPersonnelAndMvd(db);
   return { total: rows.length, matched };
 }
 
