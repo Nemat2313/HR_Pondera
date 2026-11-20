@@ -732,8 +732,15 @@ export function upsertParsedInvitationToDb(
     pdf_size_bytes?: number;
     fields: Record<string, any>;
   },
-  dbInstance?: any
-): { saved: boolean; invitation_no: string; matched_sicil_no: string; pdf_filename: string } {
+  dbInstance?: any,
+  options?: { skipIfExists?: boolean }
+): {
+  saved: boolean;
+  skippedDuplicate?: boolean;
+  invitation_no: string;
+  matched_sicil_no: string;
+  pdf_filename: string;
+} {
   const db = dbInstance || getDb();
   ensureInvitationsTables(db);
 
@@ -746,10 +753,48 @@ export function upsertParsedInvitationToDb(
   const natTr = NAT_RU_TO_DB[natRu]?.tr || natRu || 'Bilinmiyor';
   const last3 = String(f.passport_last3 || '').trim();
 
-  // Check if record already exists and was manually linked
+  // Check if record already exists (by invitation_no or non-empty petition_no)
   const existing = db
-    .prepare('SELECT * FROM mvd_invitations WHERE invitation_no = ?')
-    .get(invitationNo) as MvdInvitationRecord | undefined;
+    .prepare(
+      `SELECT * FROM mvd_invitations
+       WHERE invitation_no = ? OR (? != '' AND petition_no = ?)
+       LIMIT 1`
+    )
+    .get(invitationNo, petitionNo, petitionNo) as MvdInvitationRecord | undefined;
+
+  if (options?.skipIfExists && existing) {
+    // Duplicate invitation: do NOT re-process, overwrite timestamps, notifications, or manual link.
+    // Only backfill the PDF file on disk if the existing archived PDF is missing.
+    if (item.pdf_base64) {
+      const uploadDir = getInvitationsUploadDir();
+      const existingFile = existing.pdf_filename ? path.basename(existing.pdf_filename) : '';
+      const existingPath = existingFile ? path.join(uploadDir, existingFile) : '';
+      if (!existingPath || !fs.existsSync(existingPath)) {
+        try {
+          const buf = Buffer.from(item.pdf_base64, 'base64');
+          const fallbackName =
+            existingFile ||
+            buildInvitationPdfFilename(
+              existing.matched_sicil_no || '',
+              existing.matched_name || '',
+              existing.invitation_no,
+              existing.passport_last3 || last3
+            );
+          fs.writeFileSync(path.join(uploadDir, fallbackName), buf);
+          db.prepare(
+            'UPDATE mvd_invitations SET pdf_filename = ?, pdf_size_bytes = ? WHERE id = ?'
+          ).run(fallbackName, buf.length, existing.id);
+        } catch {}
+      }
+    }
+    return {
+      saved: false,
+      skippedDuplicate: true,
+      invitation_no: existing.invitation_no,
+      matched_sicil_no: existing.matched_sicil_no || '',
+      pdf_filename: existing.pdf_filename || '',
+    };
+  }
 
   const matchRes = matchInvitationAgainstPersonnel(
     {
@@ -810,12 +855,12 @@ export function upsertParsedInvitationToDb(
 
   const nowStr = new Date().toISOString();
   const recIso =
-    item.email_received_iso ||
     existing?.email_received_iso ||
+    item.email_received_iso ||
     new Date().toISOString().slice(0, 10);
   const recDisplay =
-    item.email_received_display ||
     existing?.email_received_display ||
+    item.email_received_display ||
     new Date().toLocaleDateString('tr-TR');
 
   db.prepare(`
@@ -937,6 +982,7 @@ export function syncZohoInvitationsFromImap(
   message: string;
   scannedEmails: number;
   foundInvitations: number;
+  skippedDuplicates: number;
   matchedCount: number;
   savedItems: Array<{ invitation_no: string; matched_sicil_no: string; pdf_filename: string }>;
 } {
@@ -950,6 +996,7 @@ export function syncZohoInvitationsFromImap(
       message: 'Zoho e-posta (ikbildirim@pondera.ru) şifresi henüz tanımlı değil.',
       scannedEmails: 0,
       foundInvitations: 0,
+      skippedDuplicates: 0,
       matchedCount: 0,
       savedItems: [],
     };
@@ -970,6 +1017,7 @@ export function syncZohoInvitationsFromImap(
       message: pyRes?.message || 'Zoho IMAP posta kutusu taranamadı.',
       scannedEmails: 0,
       foundInvitations: 0,
+      skippedDuplicates: 0,
       matchedCount: 0,
       savedItems: [],
     };
@@ -978,13 +1026,22 @@ export function syncZohoInvitationsFromImap(
   const items = Array.isArray(pyRes.items) ? pyRes.items : [];
   const savedItems: Array<{ invitation_no: string; matched_sicil_no: string; pdf_filename: string }> = [];
   let matchedCount = 0;
+  let skippedDuplicates = 0;
 
   for (const item of items) {
-    const res = upsertParsedInvitationToDb(item, db);
-    if (res.saved) {
+    const res = upsertParsedInvitationToDb(item, db, { skipIfExists: true });
+    if (res.skippedDuplicate) {
+      skippedDuplicates++;
+    } else if (res.saved) {
       savedItems.push(res);
       if (res.matched_sicil_no) matchedCount++;
     }
+  }
+
+  if (savedItems.length > 0) {
+    try {
+      syncApplicationsWithPersonnelAndMvd(db);
+    } catch {}
   }
 
   db.prepare(`
@@ -992,11 +1049,17 @@ export function syncZohoInvitationsFromImap(
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(new Date().toISOString());
 
+  const summaryMessage =
+    skippedDuplicates > 0
+      ? `${pyRes.scanned_emails || 0} e-posta tarandı: ${savedItems.length} yeni MVD davetiyesi kaydedildi (${matchedCount} sicil eşleşti), ${skippedDuplicates} mükerrer davetiye atlandı.`
+      : `${pyRes.scanned_emails || 0} e-posta tarandı, ${savedItems.length} yeni MVD davetiyesi (PDF) kaydedildi (${matchedCount} sicil eşleşti).`;
+
   return {
     success: true,
-    message: `${pyRes.scanned_emails || 0} e-posta tarandı, ${savedItems.length} MVD davetiyesi (PDF) kaydedildi (${matchedCount} sicil eşleşti).`,
+    message: summaryMessage,
     scannedEmails: Number(pyRes.scanned_emails || 0),
     foundInvitations: savedItems.length,
+    skippedDuplicates,
     matchedCount,
     savedItems,
   };
@@ -1008,6 +1071,7 @@ export function parseAndSaveUploadedInvitationPdf(
   dbInstance?: any
 ): {
   success: boolean;
+  skippedDuplicate?: boolean;
   message: string;
   invitation_no?: string;
   matched_sicil_no?: string;
@@ -1037,8 +1101,24 @@ export function parseAndSaveUploadedInvitationPdf(
       pdf_size_bytes: pyRes.pdf_size_bytes,
       fields: pyRes.fields,
     },
-    db
+    db,
+    { skipIfExists: true }
   );
+
+  if (saved.skippedDuplicate) {
+    return {
+      success: true,
+      skippedDuplicate: true,
+      message: `Bu davetiye (${saved.invitation_no}) daha önce işleme alınmış; mükerrer kayıt atlandı (${saved.pdf_filename}).`,
+      invitation_no: saved.invitation_no,
+      matched_sicil_no: saved.matched_sicil_no,
+      pdf_filename: saved.pdf_filename,
+    };
+  }
+
+  try {
+    syncApplicationsWithPersonnelAndMvd(db);
+  } catch {}
 
   return {
     success: true,
