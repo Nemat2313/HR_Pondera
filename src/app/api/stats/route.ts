@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     ensureInterSiteTransfersSynced(db);
 
     // Auto-backfill missing personnel.cinsiyet from 1C ZUP (zup_official_personnel.gender_ru)
-    // when an eBA upload omits the Cinsiyet column (prevents Erkek: 0 / Kadın: 0).
+    // in JS (SQLite LOWER() is ASCII-only and does not lowercase Cyrillic 'Мужской'/'Женский').
     try {
       const gBackfill = globalThis as unknown as { __ponderaGenderBackfillSig?: string };
       const pCountRow = db
@@ -67,7 +67,7 @@ export async function GET(request: Request) {
           "SELECT COUNT(*) as totalCnt, SUM(CASE WHEN COALESCE(TRIM(cinsiyet), '') != '' THEN 1 ELSE 0 END) as withGender FROM personnel"
         )
         .get() as { totalCnt: number; withGender: number };
-      const sigKey = `${pCountRow?.totalCnt || 0}:${pCountRow?.withGender || 0}`;
+      const sigKey = `jsv2:${pCountRow?.totalCnt || 0}:${pCountRow?.withGender || 0}`;
       if (
         pCountRow &&
         pCountRow.totalCnt > 0 &&
@@ -79,24 +79,66 @@ export async function GET(request: Request) {
           .prepare("SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name='zup_official_personnel'")
           .get() as { c: number };
         if (hasZup && hasZup.c > 0) {
-          db.exec(`
-            UPDATE personnel
-            SET cinsiyet = (
-              SELECT CASE
-                WHEN LOWER(TRIM(z.gender_ru)) LIKE 'муж%' THEN 'Erkek'
-                WHEN LOWER(TRIM(z.gender_ru)) LIKE 'жен%' THEN 'Kadin'
-                ELSE ''
-              END
-              FROM zup_official_personnel z
-              WHERE COALESCE(TRIM(z.gender_ru), '') != ''
-                AND (
-                  (COALESCE(TRIM(personnel.sicil_no), '') != '' AND (z.norm_sicil = LTRIM(TRIM(personnel.sicil_no), '0') OR z.tabel_no = TRIM(personnel.sicil_no)))
-                  OR (COALESCE(TRIM(personnel.tam_adi_kiril), '') != '' AND LOWER(TRIM(z.fio_kiril)) = LOWER(TRIM(personnel.tam_adi_kiril)))
-                )
-              LIMIT 1
+          const zRows = db
+            .prepare(
+              "SELECT tabel_no, norm_sicil, fio_kiril, doc_no, gender_ru FROM zup_official_personnel WHERE COALESCE(TRIM(gender_ru), '') != ''"
             )
-            WHERE COALESCE(TRIM(cinsiyet), '') = '';
-          `);
+            .all() as Array<{
+            tabel_no?: string;
+            norm_sicil?: string;
+            fio_kiril?: string;
+            doc_no?: string;
+            gender_ru?: string;
+          }>;
+          const bySicil = new Map<string, string>();
+          const byFio = new Map<string, string>();
+          const byPass = new Map<string, string>();
+          for (const zr of zRows) {
+            const gLow = String(zr.gender_ru || '').trim().toLowerCase();
+            const normGender = gLow.startsWith('муж') || gLow.startsWith('m') || gLow.startsWith('erk')
+              ? 'Erkek'
+              : gLow.startsWith('жен') || gLow.startsWith('f') || gLow.startsWith('kad')
+              ? 'Kadin'
+              : '';
+            if (!normGender) continue;
+            const s1 = String(zr.tabel_no || '').trim();
+            const s2 = String(zr.norm_sicil || '').trim().replace(/^0+/, '');
+            if (s1) bySicil.set(s1, normGender);
+            if (s2) bySicil.set(s2, normGender);
+            const fio = String(zr.fio_kiril || '').replace(/\b\d{5,8}\b/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (fio) byFio.set(fio, normGender);
+            const pDigits = String(zr.doc_no || '').replace(/\D/g, '');
+            if (pDigits.length >= 5) byPass.set(pDigits, normGender);
+          }
+          const emptyRows = db
+            .prepare(
+              "SELECT id, sicil_no, tam_adi_kiril, pasaport_no FROM personnel WHERE COALESCE(TRIM(cinsiyet), '') = ''"
+            )
+            .all() as Array<{ id: number; sicil_no?: string; tam_adi_kiril?: string; pasaport_no?: string }>;
+          const updStmt = db.prepare('UPDATE personnel SET cinsiyet = ? WHERE id = ?');
+          db.exec('BEGIN');
+          try {
+            for (const pr of emptyRows) {
+              const sRaw = String(pr.sicil_no || '').trim();
+              const sNorm = sRaw.replace(/^0+/, '');
+              const fio = String(pr.tam_adi_kiril || '').replace(/\s+/g, ' ').trim().toLowerCase();
+              const pDigits = String(pr.pasaport_no || '').replace(/\D/g, '');
+              const found =
+                (sRaw && bySicil.get(sRaw)) ||
+                (sNorm && bySicil.get(sNorm)) ||
+                (pDigits.length >= 5 && byPass.get(pDigits)) ||
+                (fio && byFio.get(fio)) ||
+                '';
+              if (found) {
+                updStmt.run(found, pr.id);
+              }
+            }
+            db.exec('COMMIT');
+          } catch {
+            try {
+              db.exec('ROLLBACK');
+            } catch {}
+          }
         }
       }
     } catch {}
@@ -112,7 +154,7 @@ export async function GET(request: Request) {
       .all() as { key: string; value: string }[];
     const sysStampSig = sysStampRows.map((r) => `${r.key}=${r.value}`).join('|');
     const jobLevelsRev = getOrgJobLevelsRevision(db);
-    const statsCacheKey = `v5:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const statsCacheKey = `v6:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
     const gStats = globalThis as unknown as {
       __ponderaStatsCache?: Map<string, any>;
     };
