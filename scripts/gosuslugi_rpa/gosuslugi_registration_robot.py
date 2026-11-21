@@ -561,8 +561,39 @@ class GosuslugiRegistrationRobot:
                 if self.click_text_button(["Верно", "Продолжить"]):
                     continue
 
-            # 9) Legal address confirmation
+            # 9) Legal address confirmation ('Проверьте юридический адрес организации')
             if "юридический адрес" in h_low:
+                # If Gosuslugi says 'Необходимо указать квартиру' (empty Квартира), check 'Нет квартиры'
+                try:
+                    self.page.evaluate(
+                        """() => {
+                            const clickIfUnchecked = (labelTxt) => {
+                                const cbs = Array.from(document.querySelectorAll('lib-checkbox'));
+                                for (const cb of cbs) {
+                                    if ((cb.innerText || '').toLowerCase().includes(labelTxt)) {
+                                        const inp = cb.querySelector("input[type='checkbox']");
+                                        if (!inp || !inp.checked) {
+                                            const lbl = cb.querySelector('label.check, label') || cb;
+                                            lbl.click();
+                                        }
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            };
+                            const aptInp = document.querySelector("input#apartment, input[formcontrolname='apartment'], input[name='apartment']");
+                            if (!aptInp || !(aptInp.value || '').trim()) {
+                                clickIfUnchecked('нет квартиры');
+                            }
+                            const houseInp = document.querySelector("input#house, input[formcontrolname='house'], input[name='house']");
+                            if (houseInp && !(houseInp.value || '').trim()) {
+                                clickIfUnchecked('нет дома');
+                            }
+                        }"""
+                    )
+                    self.page.wait_for_timeout(350)
+                except Exception:
+                    pass
                 self.click_continue()
                 continue
 
