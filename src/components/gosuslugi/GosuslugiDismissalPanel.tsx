@@ -55,6 +55,26 @@ interface BridgeStatus {
   fatal_error?: string | null;
   completed_codes?: string[];
   error_codes?: string[];
+  submissions?:
+    | Array<{
+        sicil?: string;
+        sicil_no?: string;
+        notification_type?: string;
+        application_no?: string;
+        gosuslugi_status?: string;
+        pdf_filename?: string;
+      }>
+    | Record<
+        string,
+        {
+          sicil?: string;
+          sicil_no?: string;
+          notification_type?: string;
+          application_no?: string;
+          gosuslugi_status?: string;
+          pdf_filename?: string;
+        }
+      >;
   logs: Array<{ time: string; text: string }>;
 }
 
@@ -140,11 +160,71 @@ function parseStrictDateRu(val: string | undefined | null): {
   return { valid: true, empty: false, ts: d.getTime() };
 }
 
+export function inferWorkerDocumentType(
+  w: GosuslugiDismissalWorkerRecord
+): 'PATENT' | 'RNR' | 'NO_DOC' {
+  if (w.documentType === 'PATENT' || w.documentType === 'RNR' || w.documentType === 'NO_DOC') {
+    return w.documentType;
+  }
+  const cat = String(w.permitCategory || '').toLowerCase();
+  if (
+    cat.includes('вкс') ||
+    cat.includes('квот') ||
+    cat.includes('виз') ||
+    cat.includes('рнр') ||
+    cat.includes('vks') ||
+    cat.includes('quota') ||
+    cat.includes('visa')
+  ) {
+    return 'RNR';
+  }
+  if (cat.includes('патент') || cat.includes('patent')) return 'PATENT';
+  if (
+    cat.includes('еаэс') ||
+    cat.includes('eaes') ||
+    cat.includes('внж') ||
+    cat.includes('рвп') ||
+    cat.includes('без')
+  ) {
+    return 'NO_DOC';
+  }
+
+  const b1 = String(w.blankSeries || '').trim().toUpperCase();
+  if (b1 === 'ПР' || b1 === 'PR') return 'PATENT';
+  if (['ВВ', 'РВ', 'РП', 'КС', 'ВИ', 'BB', 'RV', 'RP'].includes(b1)) return 'RNR';
+
+  const cit = String(w.citizenship || '').toUpperCase();
+  if (
+    cit.includes('КЫРГЫЗ') ||
+    cit.includes('КИРГИЗ') ||
+    cit.includes('КАЗАХ') ||
+    cit.includes('АРМЕН') ||
+    cit.includes('БЕЛАРУС')
+  ) {
+    return 'NO_DOC';
+  }
+  if (
+    cit.includes('ИНДИ') ||
+    cit.includes('ТУРЦ') ||
+    cit.includes('ВЬЕТНАМ') ||
+    cit.includes('ТУРКМЕН') ||
+    cit.includes('КИТА') ||
+    cit.includes('ПАКИСТАН') ||
+    cit.includes('БАНГЛАДЕШ') ||
+    cit.includes('ФИЛИППИН')
+  ) {
+    return 'RNR';
+  }
+  return w.patentNumber && w.patentNumber.trim() ? 'PATENT' : 'NO_DOC';
+}
+
 export function validateDismissalWorkerRecord(
   w: GosuslugiDismissalWorkerRecord,
-  lang: 'ru' | 'tr' = 'ru'
+  lang: 'ru' | 'tr' = 'ru',
+  notificationMode: 'dismissal' | 'hiring' = 'dismissal'
 ): DismissalValidationResult {
   const issues: DismissalValidationIssue[] = [];
+  const docType = inferWorkerDocumentType(w);
   const addIssue = (field: DismissalValidationIssue['field'], ru: string, tr: string) => {
     issues.push({ field, ru, tr });
   };
@@ -188,45 +268,61 @@ export function validateDismissalWorkerRecord(
     );
   }
 
-  // 5. Patent / RNR
-  if (!w.patentSeries || !w.patentSeries.trim()) {
-    addIssue('patent', 'Отсутствует серия патента/РНР', 'Patent/Çalışma izni seri no eksik');
-  }
-  if (!w.patentNumber || !w.patentNumber.trim()) {
-    addIssue('patent', 'Отсутствует номер патента/РНР', 'Patent/Çalışma izni numarası eksik');
-  }
-  if (!w.blankSeries || !w.blankSeries.trim()) {
-    addIssue('patent', 'Отсутствует серия бланка (СерийныйНомер1)', 'Бланк seri no (СерийныйНомер1) eksik');
-  }
-  if (!w.blankNumber || !w.blankNumber.trim()) {
-    addIssue('patent', 'Отсутствует номер бланка (СерийныйНомер2)', 'Бланк numarası (СерийныйНомер2) eksik');
+  // 5. Patent / RNR (skipped for EAES / NO_DOC citizens)
+  if (docType !== 'NO_DOC') {
+    const docLabelRu = docType === 'RNR' ? 'РНР (виза/квота)' : 'патента';
+    const docLabelTr = docType === 'RNR' ? 'Çalışma İzni (RNR/Vize)' : 'Patent';
+    if (!w.patentSeries || !w.patentSeries.trim()) {
+      addIssue('patent', `Отсутствует серия ${docLabelRu}`, `${docLabelTr} seri no eksik`);
+    }
+    if (!w.patentNumber || !w.patentNumber.trim()) {
+      addIssue('patent', `Отсутствует номер ${docLabelRu}`, `${docLabelTr} numarası eksik`);
+    }
+    if (!w.blankSeries || !w.blankSeries.trim()) {
+      addIssue('patent', 'Отсутствует серия бланка (СерийныйНомер1)', 'Бланк seri no (СерийныйНомер1) eksik');
+    }
+    if (!w.blankNumber || !w.blankNumber.trim()) {
+      addIssue('patent', 'Отсутствует номер бланка (СерийныйНомер2)', 'Бланк numarası (СерийныйНомер2) eksik');
+    }
   }
 
-  // 6. Dismissal Date & Hire Date
+  // 6. Hire Date & Dismissal Date
   const dDismiss = parseStrictDateRu(w.dismissalDate);
   const dHire = parseStrictDateRu(w.hireDate);
-  if (dDismiss.empty) {
-    addIssue('dates', 'Отсутствует дата увольнения (ДатаУволь)', 'İşten çıkış tarihi (ДатаУволь) eksik');
-  } else if (!dDismiss.valid) {
-    addIssue(
-      'dates',
-      `Некорректная дата увольнения (${w.dismissalDate})`,
-      `Geçersiz işten çıkış tarihi (${w.dismissalDate})`
-    );
-  }
-  if (!dHire.empty && !dHire.valid) {
-    addIssue(
-      'dates',
-      `Некорректная дата приема (${w.hireDate})`,
-      `Geçersiz işe giriş tarihi (${w.hireDate})`
-    );
-  }
-  if (dHire.valid && dDismiss.valid && dDismiss.ts < dHire.ts) {
-    addIssue(
-      'dates',
-      `Дата увольнения (${w.dismissalDate}) раньше даты приема (${w.hireDate})`,
-      `Çıkış tarihi (${w.dismissalDate}) giriş tarihinden (${w.hireDate}) önce olamaz`
-    );
+  if (notificationMode === 'hiring') {
+    if (dHire.empty) {
+      addIssue('dates', 'Отсутствует дата приема (ДатаПриема)', 'İşe giriş tarihi (ДатаПриема) eksik');
+    } else if (!dHire.valid) {
+      addIssue(
+        'dates',
+        `Некорректная дата приема (${w.hireDate})`,
+        `Geçersiz işe giriş tarihi (${w.hireDate})`
+      );
+    }
+  } else {
+    if (dDismiss.empty) {
+      addIssue('dates', 'Отсутствует дата увольнения (ДатаУволь)', 'İşten çıkış tarihi (ДатаУволь) eksik');
+    } else if (!dDismiss.valid) {
+      addIssue(
+        'dates',
+        `Некорректная дата увольнения (${w.dismissalDate})`,
+        `Geçersiz işten çıkış tarihi (${w.dismissalDate})`
+      );
+    }
+    if (!dHire.empty && !dHire.valid) {
+      addIssue(
+        'dates',
+        `Некорректная дата приема (${w.hireDate})`,
+        `Geçersiz işe giriş tarihi (${w.hireDate})`
+      );
+    }
+    if (dHire.valid && dDismiss.valid && dDismiss.ts < dHire.ts) {
+      addIssue(
+        'dates',
+        `Дата увольнения (${w.dismissalDate}) раньше даты приема (${w.hireDate})`,
+        `Çıkış tarihi (${w.dismissalDate}) giriş tarihinden (${w.hireDate}) önce olamaz`
+      );
+    }
   }
 
   // 7. Position
@@ -251,6 +347,7 @@ export function validateDismissalWorkerRecord(
 }
 
 interface GosuslugiDismissalPanelProps {
+  notificationMode?: 'dismissal' | 'hiring';
   activeBridgeUrl: string;
   bridgeStatus: BridgeStatus;
   onOpenChrome: () => Promise<void>;
@@ -259,12 +356,14 @@ interface GosuslugiDismissalPanelProps {
 }
 
 export default function GosuslugiDismissalPanel({
+  notificationMode = 'dismissal',
   activeBridgeUrl,
   bridgeStatus,
   onOpenChrome,
   isLaunchingChrome,
   onShowAgentGuide,
 }: GosuslugiDismissalPanelProps) {
+  const isHiring = notificationMode === 'hiring';
   const { user, showPermissionDenied } = useAuth();
   const { lang } = useLanguage();
 
@@ -302,7 +401,7 @@ export default function GosuslugiDismissalPanel({
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/gosuslugi/zup-candidates?mode=dismissal&metaOnly=true')
+    fetch(`/api/gosuslugi/zup-candidates?mode=${notificationMode}&metaOnly=true`)
       .then((r) => r.json())
       .then((j) => {
         if (cancelled || !j?.success || !j?.metadata) return;
@@ -367,7 +466,7 @@ export default function GosuslugiDismissalPanel({
     refTs: number
   ): boolean => {
     if (period === 'all' || !refTs) return true;
-    const parsed = parseStrictDateRu(w.dismissalDate);
+    const parsed = parseStrictDateRu(isHiring ? w.hireDate : w.dismissalDate);
     if (!parsed.valid) return false;
     const daysMap: Record<Exclude<DismissalPeriodFilter, 'all'>, number> = {
       '1d': 1,
@@ -380,45 +479,77 @@ export default function GosuslugiDismissalPanel({
     return diff >= -86400 * 1000 && diff <= maxDiffMs;
   };
 
-  // Sync live status from bridgeStatus
+  // Sync live status & instant Gosuslugi MVD response from bridgeStatus
   const syncedWorkers = useMemo(() => {
+    const rawSubs = bridgeStatus.submissions;
+    const subs = Array.isArray(rawSubs)
+      ? rawSubs
+      : rawSubs && typeof rawSubs === 'object'
+      ? Object.values(rawSubs)
+      : [];
+    const subBySicil = new Map<string, { application_no?: string; gosuslugi_status?: string }>();
+    for (const s of subs) {
+      const sType = String(s.notification_type || '').toLowerCase();
+      if (sType && sType !== notificationMode) continue;
+      const k = String(s.sicil || s.sicil_no || '').trim();
+      if (k) subBySicil.set(k, s);
+    }
+
     return workers.map((w) => {
       const codeKey = w.code || w.sicil;
-      if (bridgeStatus.completed_codes && codeKey && bridgeStatus.completed_codes.includes(codeKey)) {
-        return { ...w, status: 'success' as const, alreadyNotified: true };
+      const liveSub = subBySicil.get(w.sicil) || subBySicil.get(codeKey);
+      const livePatch = liveSub
+        ? {
+            applicationNo: liveSub.application_no || w.applicationNo,
+            gosuslugiStatus: liveSub.gosuslugi_status || w.gosuslugiStatus,
+            alreadyNotified: true,
+          }
+        : {};
+      if (
+        bridgeStatus.mode === notificationMode &&
+        bridgeStatus.completed_codes &&
+        codeKey &&
+        bridgeStatus.completed_codes.includes(codeKey)
+      ) {
+        return { ...w, ...livePatch, status: 'success' as const, alreadyNotified: true };
       }
-      if (bridgeStatus.error_codes && codeKey && bridgeStatus.error_codes.includes(codeKey)) {
-        return { ...w, status: 'error' as const };
+      if (
+        bridgeStatus.mode === notificationMode &&
+        bridgeStatus.error_codes &&
+        codeKey &&
+        bridgeStatus.error_codes.includes(codeKey)
+      ) {
+        return { ...w, ...livePatch, status: 'error' as const };
       }
       const isCurrent =
         bridgeStatus.running &&
-        bridgeStatus.mode === 'dismissal' &&
+        bridgeStatus.mode === notificationMode &&
         ((bridgeStatus.active_worker_code && codeKey === bridgeStatus.active_worker_code) ||
           (bridgeStatus.active_worker_name &&
             `${w.lastName} ${w.firstName}`
               .toLowerCase()
               .includes(bridgeStatus.active_worker_name.toLowerCase())));
       if (isCurrent) {
-        return { ...w, status: 'processing' as const };
+        return { ...w, ...livePatch, status: 'processing' as const };
       }
-      return w;
+      return liveSub ? { ...w, ...livePatch } : w;
     });
-  }, [workers, bridgeStatus]);
+  }, [workers, bridgeStatus, notificationMode]);
 
   const validationMap = useMemo(() => {
     const map: Record<string, DismissalValidationResult> = {};
     for (const w of syncedWorkers) {
-      map[w.id] = validateDismissalWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr');
+      map[w.id] = validateDismissalWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr', notificationMode);
     }
     return map;
-  }, [syncedWorkers, lang]);
+  }, [syncedWorkers, lang, notificationMode]);
 
   const applyInitialValidationSelection = (list: GosuslugiDismissalWorkerRecord[]) => {
     let validCnt = 0;
     let invalidCnt = 0;
     let notifiedCnt = 0;
     const processed = list.map((w) => {
-      const v = validateDismissalWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr');
+      const v = validateDismissalWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr', notificationMode);
       if (w.alreadyNotified) {
         notifiedCnt++;
       }
@@ -462,8 +593,8 @@ export default function GosuslugiDismissalPanel({
     showNotice(
       processed.length > 0 ? 'success' : 'info',
       lang === 'ru'
-        ? `${periodLabelsRu[period]} (база ${refLabel}): найдено ${processed.length} уволенных (${validCnt} готовы, ${notifiedCnt} уже подано, ${invalidCnt} с пропусками).`
-        : `${periodLabelsTr[period]} (Baz: ${refLabel}): ${processed.length} işten çıkan personel listelendi (${validCnt} gönderime hazır, ${notifiedCnt} daha önce bildirilmiş, ${invalidCnt} eksik verili).`
+        ? `${periodLabelsRu[period]} (база ${refLabel}): найдено ${processed.length} ${isHiring ? 'принятых' : 'уволенных'} (${validCnt} готовы, ${notifiedCnt} уже подано, ${invalidCnt} с пропусками).`
+        : `${periodLabelsTr[period]} (Baz: ${refLabel}): ${processed.length} ${isHiring ? 'işe alınan' : 'işten çıkan'} personel listelendi (${validCnt} gönderime hazır, ${notifiedCnt} daha önce bildirilmiş, ${invalidCnt} eksik verili).`
     );
   };
 
@@ -474,21 +605,21 @@ export default function GosuslugiDismissalPanel({
     }
   };
 
-  // Load officially dismissed foreign employees from 1C ZUP + enrich missing permit/blank fields from eBA
+  // Load officially hired / dismissed foreign employees from 1C ZUP + enrich missing permit/blank fields from eBA
   const handleLoadFromDatabase = async (overridePeriod?: DismissalPeriodFilter) => {
     let targetPeriod = overridePeriod || exitPeriod;
     if (overridePeriod) setExitPeriod(overridePeriod);
     setIsLoadingDb(true);
     try {
-      const res = await fetch('/api/gosuslugi/zup-candidates?mode=dismissal');
+      const res = await fetch(`/api/gosuslugi/zup-candidates?mode=${notificationMode}`);
       const json = await res.json();
 
       if (!json.success || !Array.isArray(json.data) || json.data.length === 0) {
         showNotice(
           'info',
           lang === 'ru'
-            ? 'В списке 1С ЗУП не найдено уволенных иностранных сотрудников за 2026 г.'
-            : '1C ZUP resmi listesinde 2026 yılına ait işten ayrılan yabancı personel bulunamadı.'
+            ? `В списке 1С ЗУП не найдено ${isHiring ? 'принятых' : 'уволенных'} иностранных сотрудников за 2026 г.`
+            : `1C ZUP resmi listesinde 2026 yılına ait ${isHiring ? 'işe alınan' : 'işten ayrılan'} yabancı personel bulunamadı.`
         );
         return;
       }
@@ -558,7 +689,11 @@ export default function GosuslugiDismissalPanel({
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const sheetName = wb.SheetNames.includes('Лист2')
+        const sheetName = isHiring
+          ? wb.SheetNames.includes('Sheet1')
+            ? 'Sheet1'
+            : wb.SheetNames[0]
+          : wb.SheetNames.includes('Лист2')
           ? 'Лист2'
           : wb.SheetNames.includes('Sheet1')
           ? 'Sheet1'
@@ -604,10 +739,11 @@ export default function GosuslugiDismissalPanel({
         const idxPatentSeries = findCol(['Серия', 'Çalışma Kart Seri No'], 14);
         const idxPatentNumber = findCol(['Номер', 'Çalışma Kart No'], 15);
         const idxPatentIssueDate = findCol(['ДатаВыдачиВКС', 'Çalışma Kart Alış Tarihi'], 16);
-        const idxBlank1 = findCol(['СерийныйНомер1', 'Patent Form Seri No'], 17);
-        const idxBlank2 = findCol(['СерийныйНомер2', 'Patent Form No'], 18);
-        const idxPosition = findCol(['Должность', 'Resmi Görevi', 'Görevi'], 19);
-        const idxVoluntary = findCol(['УвПоСобствЖел'], 20);
+        const idxPatentExpiryDate = findCol(['ДатаОкончанияВКС', 'Дата окончания', 'Bitiş Tarihi'], -1);
+        const idxBlank1 = findCol(['СерийныйНомер1', 'Patent Form Seri No'], idxPatentExpiryDate === 17 ? 18 : 17);
+        const idxBlank2 = findCol(['СерийныйНомер2', 'Patent Form No'], idxPatentExpiryDate === 17 ? 19 : 18);
+        const idxPosition = findCol(['Должность', 'Resmi Görevi', 'Görevi'], idxPatentExpiryDate === 17 ? 20 : 19);
+        const idxVoluntary = findCol(['УвПоСобствЖел'], idxPatentExpiryDate === 17 ? 21 : 20);
         const idxPatentRegion = findCol(['РегионПатента', 'Регион патента', 'Patent Bölgesi (Kısa)', 'Patent Bölgesi'], 21);
         const idxPatentRegionFull = findCol(['РегионПатентаПолный', 'Регион патента (полное)', 'Patent Bölgesi (Tam Adı)'], 22);
         const idxWorkAddress = findCol(['АдресРаботы', 'Адрес работы', 'Çalışma Adresi', 'WORK_ADDRESS'], 23);
@@ -652,6 +788,7 @@ export default function GosuslugiDismissalPanel({
             patentSeries: getVal(r, idxPatentSeries),
             patentNumber: getVal(r, idxPatentNumber),
             patentIssueDate: formatDateRu(r[idxPatentIssueDate]),
+            patentExpiryDate: idxPatentExpiryDate >= 0 ? formatDateRu(r[idxPatentExpiryDate]) : '',
             blankSeries: getVal(r, idxBlank1),
             blankNumber: getVal(r, idxBlank2),
             position: getVal(r, idxPosition) || 'Монтажник',
@@ -768,9 +905,9 @@ export default function GosuslugiDismissalPanel({
     setWorkers((prev) =>
       prev.map((w) => {
         if (w.id !== id) return w;
-        const wasValid = validateDismissalWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr').isValid;
+        const wasValid = validateDismissalWorkerRecord(w, lang === 'ru' ? 'ru' : 'tr', notificationMode).isValid;
         const updated = { ...w, [field]: val };
-        const nowValid = validateDismissalWorkerRecord(updated, lang === 'ru' ? 'ru' : 'tr').isValid;
+        const nowValid = validateDismissalWorkerRecord(updated, lang === 'ru' ? 'ru' : 'tr', notificationMode).isValid;
         return {
           ...updated,
           selected: !nowValid ? false : !wasValid && nowValid ? true : updated.selected,
@@ -824,8 +961,11 @@ export default function GosuslugiDismissalPanel({
       Серия: w.patentSeries,
       Номер: w.patentNumber,
       ДатаВыдачиВКС: w.patentIssueDate,
+      ДатаОкончанияВКС: w.patentExpiryDate || '',
       СерийныйНомер1: w.blankSeries,
       СерийныйНомер2: w.blankNumber,
+      ТипДокумента: inferWorkerDocumentType(w),
+      КатегорияРазрешения: w.permitCategory || '',
       Должность: w.position,
       УвПоСобствЖел: w.voluntaryResignation || defaultVoluntary,
       РегионПатента: (w.patentRegion || '').trim() || patentRegion,
@@ -837,8 +977,8 @@ export default function GosuslugiDismissalPanel({
   const handleStartRobot = async (limit: number = 0, singleWorker?: GosuslugiDismissalWorkerRecord) => {
     if (user?.role === 'viewer') {
       showPermissionDenied({
-        actionLabelTr: 'Gosuslugi İşten Çıkış Robotu Çalıştırma',
-        actionLabelRu: 'Запуск робота увольнений Госуслуги',
+        actionLabelTr: isHiring ? 'Gosuslugi İşe Alım Robotu Çalıştırma' : 'Gosuslugi İşten Çıkış Robotu Çalıştırma',
+        actionLabelRu: isHiring ? 'Запуск робота приема на работу Госуслуги' : 'Запуск робота увольнений Госуслуги',
       });
       return;
     }
@@ -864,8 +1004,8 @@ export default function GosuslugiDismissalPanel({
       showNotice(
         'error',
         lang === 'ru'
-          ? 'Выберите хотя бы одного сотрудника без ошибок для отправки уведомления об увольнении!'
-          : 'İşten çıkış bildirimi göndermek için hatasız en az bir personel seçin!'
+          ? `Выберите хотя бы одного сотрудника без ошибок для отправки уведомления о ${isHiring ? 'приеме на работу' : 'увольнении'}!`
+          : `${isHiring ? 'İşe alım' : 'İşten çıkış'} bildirimi göndermek için hatasız en az bir personel seçin!`
       );
       return;
     }
@@ -877,7 +1017,7 @@ export default function GosuslugiDismissalPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: 'dismissal',
+          mode: notificationMode,
           limit: limit > 0 ? limit : payloadRecords.length,
           sheet: 'Sheet1',
           records: payloadRecords,
@@ -898,8 +1038,8 @@ export default function GosuslugiDismissalPanel({
         showNotice(
           'success',
           lang === 'ru'
-            ? `Робот Госуслуги (Увольнение / 600585/1) запущен для ${payloadRecords.length} чел.!`
-            : `Gosuslugi İşten Çıkış Robotu (600585/1) ${payloadRecords.length} kişi için başlatıldı!`
+            ? `Робот Госуслуги (${isHiring ? 'Прием на работу' : 'Увольнение'} / 600585/1) запущен для ${payloadRecords.length} чел.!`
+            : `Gosuslugi ${isHiring ? 'İşe Alım' : 'İşten Çıkış'} Robotu (600585/1) ${payloadRecords.length} kişi için başlatıldı!`
         );
       } else {
         const err = await res.json().catch(() => ({}));
@@ -1023,7 +1163,11 @@ export default function GosuslugiDismissalPanel({
                 <Database className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300" />
               )}
               <span>
-                {lang === 'ru'
+                {isHiring
+                  ? lang === 'ru'
+                    ? 'Загрузить принятых (1С ЗУП)'
+                    : "DB'den İşe Alınanları Yükle (1C ZUP)"
+                  : lang === 'ru'
                   ? 'Загрузить уволенных (1С ЗУП)'
                   : "DB'den İşten Çıkanları Yükle (1C ZUP)"}
               </span>
@@ -1041,8 +1185,8 @@ export default function GosuslugiDismissalPanel({
               onClick={() => {
                 if (user?.role === 'viewer') {
                   showPermissionDenied({
-                    actionLabelTr: 'İşten Çıkış Excel Yükleme',
-                    actionLabelRu: 'Загрузка Excel увольнений',
+                    actionLabelTr: isHiring ? 'İşe Alım Excel Yükleme' : 'İşten Çıkış Excel Yükleme',
+                    actionLabelRu: isHiring ? 'Загрузка Excel приема' : 'Загрузка Excel увольнений',
                   });
                   return;
                 }
@@ -1051,7 +1195,15 @@ export default function GosuslugiDismissalPanel({
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition-all cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>{lang === 'ru' ? 'Импорт Excel (Увольнения)' : 'Excel Yükle (Çıkış)'}</span>
+              <span>
+                {isHiring
+                  ? lang === 'ru'
+                    ? 'Импорт Excel (GosUsluga / Прием)'
+                    : 'Excel Yükle (İşe Alım)'
+                  : lang === 'ru'
+                  ? 'Импорт Excel (Увольнения)'
+                  : 'Excel Yükle (Çıkış)'}
+              </span>
             </button>
 
             {/* Export Excel */}
@@ -1178,7 +1330,13 @@ export default function GosuslugiDismissalPanel({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-rose-800 dark:text-rose-300">
               <Calendar className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-              {lang === 'ru' ? 'Период увольнения (БД):' : 'Çıkış Tarihi Periyodu (DB):'}
+              {isHiring
+                ? lang === 'ru'
+                  ? 'Период приема на работу (БД):'
+                  : 'İşe Giriş Tarihi Periyodu (DB):'
+                : lang === 'ru'
+                ? 'Период увольнения (БД):'
+                : 'Çıkış Tarihi Periyodu (DB):'}
             </span>
             {(
               [

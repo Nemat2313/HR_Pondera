@@ -865,7 +865,7 @@ def run_robot_worker(
     auto_update_scripts_from_server()
     RPAState.add_log(f"=== Запуск робота Playwright Gosuslugi (Режим: {mode.upper()}) ===")
 
-    if mode == "dismissal":
+    if mode in ("dismissal", "hiring"):
         script_name = "gosuslugi_dismissal_robot.py"
     elif mode in ("check_status", "check_status_fast", "check_status_single"):
         script_name = "gosuslugi_status_checker.py"
@@ -874,6 +874,10 @@ def run_robot_worker(
 
     script_path = os.path.join(CURRENT_DIR, script_name)
     cmd = [sys.executable, script_path]
+    if mode == "hiring":
+        cmd.extend(["--notification-type", "hiring"])
+    elif mode == "dismissal":
+        cmd.extend(["--notification-type", "dismissal"])
 
     if mode == "check_status_fast":
         cmd.extend(["--status-only", "--single-search", "--search-scope", "pending_only", "--max-pages", "60"])
@@ -915,6 +919,7 @@ def run_robot_worker(
                 for marker in [
                     "Starting Gosuslugi VKS for: ",
                     "Starting Gosuslugi Dismissal for: ",
+                    "Starting Gosuslugi Hiring for: ",
                     "Checking Gosuslugi Status for: ",
                 ]:
                     if marker in clean_line:
@@ -1276,6 +1281,9 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             if mode == "dismissal":
                 queue_filename = "active_dismissal_queue.json"
                 cfg_filename = "active_dismissal_config.json"
+            elif mode == "hiring":
+                queue_filename = "active_hiring_queue.json"
+                cfg_filename = "active_hiring_config.json"
             elif mode in ("check_status", "check_status_single"):
                 queue_filename = "active_status_check_queue.json"
                 cfg_filename = "active_status_check_config.json"

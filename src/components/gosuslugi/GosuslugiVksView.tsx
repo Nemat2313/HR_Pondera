@@ -4544,11 +4544,11 @@ export default function GosuslugiVksView() {
             <span
               className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
                 serviceTab === 'hiring'
-                  ? 'bg-amber-50 dark:bg-amber-950/90 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-800 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
                   : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
               }`}
             >
-              {lang === 'ru' ? 'В работе' : 'İşlemde'}
+              600585/1
             </span>
           </button>
 
@@ -4586,27 +4586,17 @@ export default function GosuslugiVksView() {
           </button>
         </div>
 
-        {/* TAB 2: HIRING NOTIFICATION (CONNECTED TO TAB BAR) */}
+        {/* TAB 2: HIRING NOTIFICATION (UNIFIED PATENT + VISA/RNR + EAES — GOSUSLUGI 600585/1) */}
         {serviceTab === 'hiring' && (
-          <div className="p-12 bg-white dark:bg-[#111F38] rounded-b-2xl border border-slate-300/80 dark:border-slate-800 text-center space-y-4 shadow-xs">
-            <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-xs">
-              <Clock className="w-8 h-8 animate-pulse" />
-            </div>
-            <div className="max-w-lg mx-auto space-y-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800">
-                {lang === 'ru' ? 'Модуль в процессе настройки' : 'Modül Hazırlanıyor (İşlemde)'}
-              </span>
-              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                {lang === 'ru'
-                  ? 'Уведомление МВД о заключении трудового договора (Прием на работу)'
-                  : 'Gosuslugi MVD İşe Alım Bildirimi (Sözleşme İmzalama)'}
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                {lang === 'ru'
-                  ? 'Автоматическое заполнение формы Госуслуг 600585/1 («О заключении трудового договора с иностранным гражданином») в данный момент находится в разработке. Используйте вкладки «1. ВКС — Выплата ЗП» или «3. Увольнение».'
-                  : 'Yabancı personelin işe giriş / iş sözleşmesi bildirimi (Gosuslugi 600585/1 — О заключении трудового договора) otomasyon modülü şu anda işlemde. Aktif bildirimler için «1. VKS Maaş Bildirimi» veya «3. İşten Çıkış Bildirimi» sekmelerini kullanabilirsiniz.'}
-              </p>
-            </div>
+          <div className="mt-0">
+            <GosuslugiDismissalPanel
+              notificationMode="hiring"
+              activeBridgeUrl={activeBridgeUrl}
+              bridgeStatus={bridgeStatus}
+              onOpenChrome={handleOpenChrome}
+              isLaunchingChrome={isLaunchingChrome}
+              onShowAgentGuide={() => setShowAgentGuide(true)}
+            />
           </div>
         )}
       </div>
@@ -4615,6 +4605,7 @@ export default function GosuslugiVksView() {
       {serviceTab === 'dismissal' && (
         <div className="-mt-4">
           <GosuslugiDismissalPanel
+            notificationMode="dismissal"
             activeBridgeUrl={activeBridgeUrl}
             bridgeStatus={bridgeStatus}
             onOpenChrome={handleOpenChrome}

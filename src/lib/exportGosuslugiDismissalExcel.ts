@@ -22,8 +22,10 @@ export interface GosuslugiDismissalWorkerRecord {
   patentSeries: string;
   patentNumber: string;
   patentIssueDate: string;
+  patentExpiryDate?: string;
   blankSeries: string;
   blankNumber: string;
+  documentType?: 'PATENT' | 'RNR' | 'NO_DOC';
   position: string;
   voluntaryResignation: string; // "Да" or "Нет"
   patentRegion?: string;
