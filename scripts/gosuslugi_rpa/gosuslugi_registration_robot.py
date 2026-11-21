@@ -20,6 +20,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from playwright.sync_api import Page, sync_playwright
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -314,9 +321,17 @@ class GosuslugiRegistrationRobot:
         self.check_mvd_unavailable_and_pause()
 
         # Draft modal / Start button
-        if self.page.locator("span:has-text('Создать новое заявление'):visible, button:has-text('Начать заново'):visible").count() > 0:
-            self.click_text_button(["Создать новое заявление", "Начать заново"])
-            self.page.wait_for_timeout(800)
+        if (
+            self.page.locator(
+                "button:has-text('Создать заявление'):visible, "
+                "span:has-text('Создать заявление'):visible, "
+                "span:has-text('Создать новое заявление'):visible, "
+                "button:has-text('Начать заново'):visible"
+            ).count()
+            > 0
+        ):
+            self.click_text_button(["Создать заявление", "Создать новое заявление", "Начать заново"])
+            self.page.wait_for_timeout(1000)
         self.click_text_button(["Начать"])
         self.page.wait_for_timeout(1000)
 

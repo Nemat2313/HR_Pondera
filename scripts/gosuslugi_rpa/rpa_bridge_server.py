@@ -901,12 +901,16 @@ def run_robot_worker(
         cmd.extend(["--limit", str(limit)])
 
     try:
+        sub_env = os.environ.copy()
+        sub_env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             encoding="utf-8",
+            errors="replace",
+            env=sub_env,
             bufsize=1,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         )
