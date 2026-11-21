@@ -264,7 +264,15 @@ export default function Sidebar({
           ],
         },
       ]
-      : navGroups;
+      : navGroups.map((group) => ({
+          ...group,
+          items: group.items.filter((item) => {
+            if (item.id === 'settings') {
+              return user?.role === 'admin';
+            }
+            return true;
+          }),
+        }));
 
   const handleSelectTab = (id: string) => {
     setActiveTab(id);

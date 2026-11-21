@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { getDb } from '@/lib/db';
-import { getSessionUserFromRequest } from '@/lib/auth';
+import { getSessionUserFromRequest, resolveRequestRlsScope } from '@/lib/auth';
 import {
   computeZupVsRealReconciliation,
   extractZupReportDate,
+  filterZupReconciliationByScope,
   parseZupWorksheetRows,
   saveZupRecordsToDb,
 } from '@/lib/zupReconciliation';
@@ -19,12 +20,14 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const db = getDb();
     checkAndImportZupAutoFolder(db);
-    const data = computeZupVsRealReconciliation(db);
-    return NextResponse.json(data);
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
+    const fullData = computeZupVsRealReconciliation(db);
+    const scopedData = filterZupReconciliationByScope(fullData, scopeType, scopeVal);
+    return NextResponse.json(scopedData);
   } catch (err: any) {
     return NextResponse.json(
       {

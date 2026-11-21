@@ -178,7 +178,7 @@ export default function SettingsView({
 }: SettingsViewProps) {
   const { user } = useAuth();
   const { lang } = useLanguage();
-  const isAdmin = !user || user.role === 'admin';
+  const isAdmin = user?.role === 'admin';
 
   const [activeSubTab, setActiveSubTab] = useState<
     'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings'
@@ -485,6 +485,26 @@ export default function SettingsView({
       setSendingReleaseMode('none');
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="p-6 sm:p-10 max-w-2xl mx-auto">
+        <div className="p-8 rounded-2xl bg-white dark:bg-[#131C31] border border-rose-200 dark:border-rose-900/60 shadow-sm text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            {lang === 'ru' ? 'Доступ ограничен (Только Администратор)' : 'Erişim Kısıtlı (Sadece Sistem Yöneticisi)'}
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {lang === 'ru'
+              ? 'Раздел «Настройки системы, RLS и управление пользователями» доступен исключительно администратору системы.'
+              : '«Ayarlar & Yönetim» (Kullanıcı/RLS, Veritabanı, Mail ve AI Ayarları) yalnızca Sistem Yöneticisi (Admin) yetkisine açıktır.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-7 space-y-5 max-w-[1440px] mx-auto">

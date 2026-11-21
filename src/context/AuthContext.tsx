@@ -42,10 +42,12 @@ export interface PermissionDeniedOptions {
 interface AuthContextType {
   user: User | null;
   isAdmin: boolean;
+  canReturnToAdmin: boolean;
   loading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   switchUser: (targetUser: User) => void;
+  returnToAdmin: () => void;
   getAuthHeaders: () => Record<string, string>;
   showPermissionDenied: (opts?: PermissionDeniedOptions) => void;
   showSalaryPdfPermissionDenied: () => void;
@@ -56,6 +58,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { lang } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
+  const [adminOrigin, setAdminOrigin] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [permModal, setPermModal] = useState<PermissionDeniedOptions | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
@@ -84,6 +87,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(JSON.parse(stored));
       } else {
         setUser(null);
+      }
+      const origAdmin = sessionStorage.getItem('pondera_admin_impersonator');
+      if (origAdmin) {
+        setAdminOrigin(JSON.parse(origAdmin));
       }
     } catch {
       setUser(null);
@@ -147,9 +154,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           sessionStorage.removeItem('pondera_active_tab');
           sessionStorage.removeItem('pondera_settings_subtab');
+          sessionStorage.removeItem('pondera_admin_impersonator');
         } catch {
           // ignore
         }
+        setAdminOrigin(null);
         setUser(data.user);
         localStorage.setItem('pondera_hr_user', JSON.stringify(data.user));
         return { success: true };
@@ -163,10 +172,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setUser(null);
+    setAdminOrigin(null);
     localStorage.removeItem('pondera_hr_user');
     try {
       sessionStorage.removeItem('pondera_active_tab');
       sessionStorage.removeItem('pondera_settings_subtab');
+      sessionStorage.removeItem('pondera_admin_impersonator');
     } catch {
       // ignore
     }
@@ -174,14 +185,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const switchUser = (targetUser: User) => {
+    // Only an active Admin (or an Admin currently previewing another account) may switch accounts
+    if (user?.role !== 'admin' && !adminOrigin) {
+      return;
+    }
     try {
       sessionStorage.removeItem('pondera_active_tab');
       sessionStorage.removeItem('pondera_settings_subtab');
+      if (user?.role === 'admin' && targetUser.role !== 'admin') {
+        sessionStorage.setItem('pondera_admin_impersonator', JSON.stringify(user));
+        setAdminOrigin(user);
+      } else if (targetUser.role === 'admin') {
+        sessionStorage.removeItem('pondera_admin_impersonator');
+        setAdminOrigin(null);
+      }
     } catch {
       // ignore
     }
     setUser(targetUser);
     localStorage.setItem('pondera_hr_user', JSON.stringify(targetUser));
+  };
+
+  const returnToAdmin = () => {
+    if (!adminOrigin) return;
+    try {
+      sessionStorage.removeItem('pondera_active_tab');
+      sessionStorage.removeItem('pondera_settings_subtab');
+      sessionStorage.removeItem('pondera_admin_impersonator');
+    } catch {
+      // ignore
+    }
+    const orig = adminOrigin;
+    setAdminOrigin(null);
+    setUser(orig);
+    localStorage.setItem('pondera_hr_user', JSON.stringify(orig));
   };
 
   const getAuthHeaders = (): Record<string, string> => {
@@ -194,16 +231,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isAdmin = user?.role === 'admin';
+  const canReturnToAdmin = Boolean(adminOrigin && user?.role !== 'admin');
 
   return (
     <AuthContext.Provider
       value={{
         user,
         isAdmin,
+        canReturnToAdmin,
         loading,
         login,
         logout,
         switchUser,
+        returnToAdmin,
         getAuthHeaders,
         showPermissionDenied,
         showSalaryPdfPermissionDenied,

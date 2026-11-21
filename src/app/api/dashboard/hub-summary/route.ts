@@ -7,7 +7,10 @@ import {
   DOC_SCAN_DEFINITIONS,
   getStatutoryRequiredIndices,
 } from '@/lib/documentScanDefinitions';
-import { computeZupVsRealReconciliation } from '@/lib/zupReconciliation';
+import {
+  computeZupVsRealReconciliation,
+  filterZupReconciliationByScope,
+} from '@/lib/zupReconciliation';
 import { buildEffectiveRegionSqlCondition, matchesEffectiveRegion } from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
@@ -332,29 +335,46 @@ export async function GET(request: Request) {
       .sort((a, b) => b.missingCount - a.missingCount)
       .slice(0, 4);
 
-    // 4) 1C ZUP Official vs Real Summary
+    // 4) 1C ZUP Official vs Real Summary (strictly scoped to RLS region/project or active filter)
     let zupSummary = {
-      zupTotal: 4560,
+      zupTotal: 0,
       realActive: activeScansPool.length,
-      matchedActiveBoth: 4525,
-      realOnlyNotInZup: 841,
-      zupActiveButRealExited: 35,
-      transferPermitCheckCount: 23,
-      officialMatchPct: 84.3,
+      matchedActiveBoth: 0,
+      realOnlyNotInZup: 0,
+      zupActiveButRealExited: 0,
+      transferPermitCheckCount: 0,
+      officialMatchPct: 0,
     };
     try {
       const zupFull = computeZupVsRealReconciliation(db);
-      if (zupFull?.kpis) {
-        const k = zupFull.kpis;
-        const realAct = k.realActiveCount || 1;
+      const effZupScopeType: 'all' | 'region' | 'project' =
+        scopeType !== 'all'
+          ? scopeType
+          : filterProject !== 'all'
+          ? 'project'
+          : filterRegion !== 'all'
+          ? 'region'
+          : 'all';
+      const effZupScopeVal =
+        scopeType !== 'all'
+          ? scopeVal
+          : filterProject !== 'all'
+          ? filterProject
+          : filterRegion !== 'all'
+          ? filterRegion
+          : 'all';
+      const zupScoped = filterZupReconciliationByScope(zupFull, effZupScopeType, effZupScopeVal);
+      if (zupScoped?.summary) {
+        const s = zupScoped.summary;
+        const realAct = s.realActiveTotal || 1;
         zupSummary = {
-          zupTotal: k.zupTotalCount,
-          realActive: k.realActiveCount,
-          matchedActiveBoth: k.matchedActiveBoth,
-          realOnlyNotInZup: k.realOnlyNotInZup,
-          zupActiveButRealExited: k.zupActiveButRealExited,
-          transferPermitCheckCount: k.zupTransferPermitCheckCount || 0,
-          officialMatchPct: Math.round((k.matchedActiveBoth / realAct) * 1000) / 10,
+          zupTotal: s.zupOfficialTotal || 0,
+          realActive: s.realActiveTotal || 0,
+          matchedActiveBoth: s.matchedActiveBoth || 0,
+          realOnlyNotInZup: s.realActiveNotInZupTotal || 0,
+          zupActiveButRealExited: s.zupActiveButRealExited || 0,
+          transferPermitCheckCount: s.zupTransferPermitCheckCount || 0,
+          officialMatchPct: Math.round(((s.matchedActiveBoth || 0) / realAct) * 1000) / 10,
         };
       }
     } catch {}

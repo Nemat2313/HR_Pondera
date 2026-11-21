@@ -145,13 +145,13 @@ interface PermitComparison {
 interface AuditRecord {
   id: string;
   category:
-    | 'ZUP_ACTIVE_REAL_EXIT'
-    | 'SITE_TRANSFER_PERMIT_CHECK'
-    | 'REAL_ACTIVE_NO_ZUP_MAIN'
-    | 'REAL_ACTIVE_NO_ZUP_SUBCON'
-    | 'ZUP_ONLY_NO_EBA'
-    | 'DATA_DIFF'
-    | 'FULL_MATCH';
+  | 'ZUP_ACTIVE_REAL_EXIT'
+  | 'SITE_TRANSFER_PERMIT_CHECK'
+  | 'REAL_ACTIVE_NO_ZUP_MAIN'
+  | 'REAL_ACTIVE_NO_ZUP_SUBCON'
+  | 'ZUP_ONLY_NO_EBA'
+  | 'DATA_DIFF'
+  | 'FULL_MATCH';
   risk: 'Kritik' | 'Orta' | 'Dusuk';
   matchMethod: string;
   diffFlags: string[];
@@ -212,7 +212,7 @@ type FilterCategory =
 
 export default function OfficialVsRealView() {
   const { lang } = useLanguage();
-  const { user, showPermissionDenied } = useAuth();
+  const { user, getAuthHeaders, showPermissionDenied } = useAuth();
   const [data, setData] = useState<ZupReconciliationResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [uploading, setUploading] = useState<boolean>(false);
@@ -245,7 +245,10 @@ export default function OfficialVsRealView() {
   const fetchReconciliation = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/zup', { cache: 'no-store' });
+      const res = await fetch('/api/zup', {
+        cache: 'no-store',
+        headers: getAuthHeaders(),
+      });
       const json = await res.json();
       if (json?.success) {
         setData(json);
@@ -259,7 +262,7 @@ export default function OfficialVsRealView() {
 
   useEffect(() => {
     fetchReconciliation();
-  }, []);
+  }, [user?.id, user?.scope_type, user?.scope_value]);
 
   const handleUploadZupExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -670,109 +673,109 @@ export default function OfficialVsRealView() {
     count: number;
     tone: 'rose' | 'amber' | 'indigo' | 'cyan' | 'emerald' | 'slate';
   }[] = [
-    {
-      id: 'ZUP_ACTIVE_REAL_EXIT',
-      titleTr: "1C ZUP'ta Aktif / Real'de Çıkış",
-      titleRu: 'В 1С ЗУП Активен / В eBA Уволен',
-      subTr: 'Transfer hariç gerçek çıkış (Resmi düşülmeli)',
-      subRu: 'Уволен на объекте (кроме перевода)',
-      count: dc.statusExitInReal,
-      tone: 'rose',
-    },
-    {
-      id: 'SITE_TRANSFER_PERMIT_CHECK',
-      titleTr: 'Şirket İçi Şantiye Transferi',
-      titleRu: 'Перевод между объектами',
-      subTr: 'ZUP çıkış gerekmez, izin bölgesi kontrolü',
-      subRu: 'Проверка региона разрешения на работу',
-      count: dc.siteTransferPermitCheck ?? summary.zupTransferPermitCheckCount ?? 0,
-      tone: 'indigo',
-    },
-    {
-      id: 'REAL_ACTIVE_NO_ZUP_MAIN',
-      titleTr: "Real'de Aktif / 1C ZUP'ta Yok",
-      titleRu: 'В eBA Активен / Нет в 1С ЗУП',
-      subTr: `${summary.realActiveNotInZupRecentHire} kişi ${metadata.zupDate.slice(0, 5)} sonrası yeni giriş`,
-      subRu: `${summary.realActiveNotInZupRecentHire} чел. приняты после ${metadata.zupDate.slice(0, 5)}`,
-      count: summary.realActiveNotInZupTotal,
-      tone: 'amber',
-    },
-    {
-      id: 'ZUP_ONLY_NO_EBA',
-      titleTr: "Sadece 1C ZUP'ta Var (eBA Yok)",
-      titleRu: 'Только в 1С ЗУП (Нет в eBA)',
-      subTr: "eBA sisteminde hiç kaydı bulunmayanlar",
-      subRu: 'Отсутствуют в базе данных eBA',
-      count: dc.zupOnlyNoEba,
-      tone: 'rose',
-    },
-    {
-      id: 'PASSPORT_DIFF',
-      titleTr: 'Pasaport Numarası Farklı',
-      titleRu: 'Расхождение № паспорта',
-      subTr:
-        metadata.hasZupPassportColumn === false
-          ? 'Mevcut ZUP raporunda Pasaport sütunu yok'
-          : 'ZUP ve eBA pasaport no uyuşmayanlar',
-      subRu:
-        metadata.hasZupPassportColumn === false
-          ? 'В текущей выгрузке ЗУП нет столбца Паспорт'
-          : 'Номера паспортов в ЗУП и eBA не совпадают',
-      count: dc.passportMismatch,
-      tone: 'amber',
-    },
-    {
-      id: 'PERMIT_DIFF',
-      titleTr: 'Çalışma / Vergi Statüsü Farklı',
-      titleRu: 'Разный статус (ВКС/Патент/РНР)',
-      subTr: 'VKS, Patent, RNR veya Rezident farkı',
-      subRu: 'Несовпадение статуса налогоплательщика',
-      count: dc.permitStatusMismatch,
-      tone: 'amber',
-    },
-    {
-      id: 'INN_DIFF',
-      titleTr: 'İNN Numarası Uyuşmazlığı',
-      titleRu: 'Несовпадение ИНН',
-      subTr:
-        metadata.hasZupInnColumn === false
-          ? 'Mevcut ZUP raporunda İNN sütunu yok'
-          : `+${dc.missingInnInEba} kişide eBA İNN alanı boş`,
-      subRu:
-        metadata.hasZupInnColumn === false
-          ? 'В текущей выгрузке ЗУП нет столбца ИНН'
-          : `+у ${dc.missingInnInEba} чел. пустой ИНН в eBA`,
-      count: dc.innMismatch,
-      tone: 'amber',
-    },
-    {
-      id: 'SICIL_FORMAT',
-      titleTr: 'Sicil No Yazım / Format Farkı',
-      titleRu: 'Формат табельного номера',
-      subTr: 'Nokta veya harf eki farkı (922844. / 911615а)',
-      subRu: 'Точка или буква в таб. номере ЗУП',
-      count: dc.sicilFormatDiff,
-      tone: 'indigo',
-    },
-    {
-      id: 'DOB_KIRIL_DIFF',
-      titleTr: 'Doğum Tarihi / Kiril İsim Farkı',
-      titleRu: 'Дата рождения / ФИО (кир.)',
-      subTr: `${dc.birthDateMismatch} doğum tarihi • ${dc.kirilNameDiff} Kiril yazım`,
-      subRu: `${dc.birthDateMismatch} дат рожд. • ${dc.kirilNameDiff} ФИО`,
-      count: dc.birthDateMismatch + dc.kirilNameDiff,
-      tone: 'cyan',
-    },
-    {
-      id: 'FULL_MATCH',
-      titleTr: '%100 Tam Uyumlu Personel',
-      titleRu: '100% Полное совпадение',
-      subTr: 'Sicil, durum ve kimlik verileri tam eşleşen',
-      subRu: 'Все реквизиты полностью совпадают',
-      count: summary.matchedActiveBoth - summary.totalMatchedWithDataDiff,
-      tone: 'emerald',
-    },
-  ];
+      {
+        id: 'ZUP_ACTIVE_REAL_EXIT',
+        titleTr: "1C ZUP'ta Aktif / Real'de Çıkış",
+        titleRu: 'В 1С ЗУП Активен / В eBA Уволен',
+        subTr: 'Transfer hariç gerçek çıkış (Resmi düşülmeli)',
+        subRu: 'Уволен на объекте (кроме перевода)',
+        count: dc.statusExitInReal,
+        tone: 'rose',
+      },
+      {
+        id: 'SITE_TRANSFER_PERMIT_CHECK',
+        titleTr: 'Şirket İçi Şantiye Transferi',
+        titleRu: 'Перевод между объектами',
+        subTr: 'ZUP çıkış gerekmez, izin bölgesi kontrolü',
+        subRu: 'Проверка региона разрешения на работу',
+        count: dc.siteTransferPermitCheck ?? summary.zupTransferPermitCheckCount ?? 0,
+        tone: 'indigo',
+      },
+      {
+        id: 'REAL_ACTIVE_NO_ZUP_MAIN',
+        titleTr: "Real'de Aktif / 1C ZUP'ta Yok",
+        titleRu: 'В eBA Активен / Нет в 1С ЗУП',
+        subTr: `${summary.realActiveNotInZupRecentHire} kişi ${metadata.zupDate.slice(0, 5)} sonrası yeni giriş`,
+        subRu: `${summary.realActiveNotInZupRecentHire} чел. приняты после ${metadata.zupDate.slice(0, 5)}`,
+        count: summary.realActiveNotInZupTotal,
+        tone: 'amber',
+      },
+      {
+        id: 'ZUP_ONLY_NO_EBA',
+        titleTr: "Sadece 1C ZUP'ta Var (eBA Yok)",
+        titleRu: 'Только в 1С ЗУП (Нет в eBA)',
+        subTr: "eBA sisteminde hiç kaydı bulunmayanlar",
+        subRu: 'Отсутствуют в базе данных eBA',
+        count: dc.zupOnlyNoEba,
+        tone: 'rose',
+      },
+      {
+        id: 'PASSPORT_DIFF',
+        titleTr: 'Pasaport Numarası Farklı',
+        titleRu: 'Расхождение № паспорта',
+        subTr:
+          metadata.hasZupPassportColumn === false
+            ? 'Mevcut ZUP raporunda Pasaport sütunu yok'
+            : 'ZUP ve eBA pasaport no uyuşmayanlar',
+        subRu:
+          metadata.hasZupPassportColumn === false
+            ? 'В текущей выгрузке ЗУП нет столбца Паспорт'
+            : 'Номера паспортов в ЗУП и eBA не совпадают',
+        count: dc.passportMismatch,
+        tone: 'amber',
+      },
+      {
+        id: 'PERMIT_DIFF',
+        titleTr: 'Çalışma / Vergi Statüsü Farklı',
+        titleRu: 'Разный статус (ВКС/Патент/РНР)',
+        subTr: 'VKS, Patent, RNR veya Rezident farkı',
+        subRu: 'Несовпадение статуса налогоплательщика',
+        count: dc.permitStatusMismatch,
+        tone: 'amber',
+      },
+      {
+        id: 'INN_DIFF',
+        titleTr: 'İNN Numarası Uyuşmazlığı',
+        titleRu: 'Несовпадение ИНН',
+        subTr:
+          metadata.hasZupInnColumn === false
+            ? 'Mevcut ZUP raporunda İNN sütunu yok'
+            : `+${dc.missingInnInEba} kişide eBA İNN alanı boş`,
+        subRu:
+          metadata.hasZupInnColumn === false
+            ? 'В текущей выгрузке ЗУП нет столбца ИНН'
+            : `+у ${dc.missingInnInEba} чел. пустой ИНН в eBA`,
+        count: dc.innMismatch,
+        tone: 'amber',
+      },
+      {
+        id: 'SICIL_FORMAT',
+        titleTr: 'Sicil No Yazım / Format Farkı',
+        titleRu: 'Формат табельного номера',
+        subTr: 'Nokta veya harf eki farkı (922844. / 911615а)',
+        subRu: 'Точка или буква в таб. номере ЗУП',
+        count: dc.sicilFormatDiff,
+        tone: 'indigo',
+      },
+      {
+        id: 'DOB_KIRIL_DIFF',
+        titleTr: 'Doğum Tarihi / Kiril İsim Farkı',
+        titleRu: 'Дата рождения / ФИО (кир.)',
+        subTr: `${dc.birthDateMismatch} doğum tarihi • ${dc.kirilNameDiff} Kiril yazım`,
+        subRu: `${dc.birthDateMismatch} дат рожд. • ${dc.kirilNameDiff} ФИО`,
+        count: dc.birthDateMismatch + dc.kirilNameDiff,
+        tone: 'cyan',
+      },
+      {
+        id: 'FULL_MATCH',
+        titleTr: '%100 Tam Uyumlu Personel',
+        titleRu: '100% Полное совпадение',
+        subTr: 'Sicil, durum ve kimlik verileri tam eşleşen',
+        subRu: 'Все реквизиты полностью совпадают',
+        count: summary.matchedActiveBoth - summary.totalMatchedWithDataDiff,
+        tone: 'emerald',
+      },
+    ];
 
   return (
     <div className="p-3 sm:p-4 lg:p-5 space-y-4 font-normal max-w-[1440px] mx-auto">
@@ -871,8 +874,8 @@ export default function OfficialVsRealView() {
                     ? 'Загрузка...'
                     : 'Yükleniyor...'
                   : lang === 'ru'
-                  ? 'Загрузить 1С ЗУП (.xlsx)'
-                  : '1C ZUP Listesi Yükle (.xlsx)'}
+                    ? 'Загрузить 1С ЗУП (.xlsx)'
+                    : '1C ZUP Listesi Yükle (.xlsx)'}
               </span>
             </button>
 
@@ -934,13 +937,12 @@ export default function OfficialVsRealView() {
         {/* Status / Notification Feedback Banner */}
         {bannerMessage && (
           <div
-            className={`px-3.5 py-2 rounded-xl text-xs flex items-center justify-between border ${
-              bannerMessage.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
-                : bannerMessage.type === 'error'
+            className={`px-3.5 py-2 rounded-xl text-xs flex items-center justify-between border ${bannerMessage.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
+              : bannerMessage.type === 'error'
                 ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 border-rose-200 dark:border-rose-800'
                 : 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200 border-indigo-200 dark:border-indigo-800'
-            }`}
+              }`}
           >
             <span>{bannerMessage.text}</span>
             <button
@@ -1590,11 +1592,10 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('FULL_MATCH');
                     scrollToTable();
                   }}
-                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                    selectedFilter === 'FULL_MATCH'
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-white dark:bg-[#131C31] border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400'
-                  }`}
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${selectedFilter === 'FULL_MATCH'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white dark:bg-[#131C31] border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400'
+                    }`}
                 >
                   <div className="text-[10px] opacity-85 truncate">İkisinde Mevcut</div>
                   <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
@@ -1610,11 +1611,10 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('SITE_TRANSFER_PERMIT_CHECK');
                     scrollToTable();
                   }}
-                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                    selectedFilter === 'SITE_TRANSFER_PERMIT_CHECK'
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white dark:bg-[#131C31] border-indigo-200 dark:border-indigo-900/60 hover:border-indigo-400'
-                  }`}
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${selectedFilter === 'SITE_TRANSFER_PERMIT_CHECK'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white dark:bg-[#131C31] border-indigo-200 dark:border-indigo-900/60 hover:border-indigo-400'
+                    }`}
                 >
                   <div className="text-[10px] opacity-85 truncate">Şantiye Transferi</div>
                   <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
@@ -1630,11 +1630,10 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('ZUP_ACTIVE_REAL_EXIT');
                     scrollToTable();
                   }}
-                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                    selectedFilter === 'ZUP_ACTIVE_REAL_EXIT'
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-white dark:bg-[#131C31] border-rose-200 dark:border-rose-900/60 hover:border-rose-400'
-                  }`}
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${selectedFilter === 'ZUP_ACTIVE_REAL_EXIT'
+                    ? 'bg-rose-600 text-white border-rose-600'
+                    : 'bg-white dark:bg-[#131C31] border-rose-200 dark:border-rose-900/60 hover:border-rose-400'
+                    }`}
                 >
                   <div className="text-[10px] opacity-85 truncate">ZUP Var / Real Çıkış</div>
                   <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
@@ -1650,11 +1649,10 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('REAL_ACTIVE_NO_ZUP_MAIN');
                     scrollToTable();
                   }}
-                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                    selectedFilter === 'REAL_ACTIVE_NO_ZUP_MAIN'
-                      ? 'bg-amber-600 text-white border-amber-600'
-                      : 'bg-white dark:bg-[#131C31] border-amber-200 dark:border-amber-900/60 hover:border-amber-400'
-                  }`}
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${selectedFilter === 'REAL_ACTIVE_NO_ZUP_MAIN'
+                    ? 'bg-amber-600 text-white border-amber-600'
+                    : 'bg-white dark:bg-[#131C31] border-amber-200 dark:border-amber-900/60 hover:border-amber-400'
+                    }`}
                 >
                   <div className="text-[10px] opacity-85 truncate">Real Var / ZUP Yok</div>
                   <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
@@ -1670,11 +1668,10 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('ZUP_ONLY_NO_EBA');
                     scrollToTable();
                   }}
-                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                    selectedFilter === 'ZUP_ONLY_NO_EBA'
-                      ? 'bg-purple-600 text-white border-purple-600'
-                      : 'bg-white dark:bg-[#131C31] border-purple-200 dark:border-purple-900/60 hover:border-purple-400'
-                  }`}
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${selectedFilter === 'ZUP_ONLY_NO_EBA'
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-white dark:bg-[#131C31] border-purple-200 dark:border-purple-900/60 hover:border-purple-400'
+                    }`}
                 >
                   <div className="text-[10px] opacity-85 truncate">Sadece ZUP&apos;ta Var</div>
                   <div className="text-sm font-semibold mt-0.5 flex items-baseline justify-between">
@@ -1713,12 +1710,12 @@ export default function OfficialVsRealView() {
                         ps.key === 'VKS'
                           ? 'VKS (BKC)'
                           : ps.key === 'PATENT'
-                          ? 'Patent'
-                          : ps.key === 'QUOTA_RNR' || ps.key === 'RNR_QUOTA'
-                          ? 'Kota / RNR'
-                          : ps.key === 'RESIDENT'
-                          ? 'Rezident / RF'
-                          : 'EAES',
+                            ? 'Patent'
+                            : ps.key === 'QUOTA_RNR' || ps.key === 'RNR_QUOTA'
+                              ? 'Kota / RNR'
+                              : ps.key === 'RESIDENT'
+                                ? 'Rezident / RF'
+                                : 'EAES',
                       zupCount: ps.zupCount,
                       realActiveCount: ps.realActiveCount,
                       zupTransferCount: ps.zupTransferCount || 0,
@@ -1781,12 +1778,12 @@ export default function OfficialVsRealView() {
                     ps.key === 'VKS'
                       ? 'VKS'
                       : ps.key === 'PATENT'
-                      ? 'Patent'
-                      : ps.key === 'QUOTA_RNR' || ps.key === 'RNR_QUOTA'
-                      ? 'Kota/RNR'
-                      : ps.key === 'RESIDENT'
-                      ? 'Rezident'
-                      : 'EAES';
+                        ? 'Patent'
+                        : ps.key === 'QUOTA_RNR' || ps.key === 'RNR_QUOTA'
+                          ? 'Kota/RNR'
+                          : ps.key === 'RESIDENT'
+                            ? 'Rezident'
+                            : 'EAES';
                   return (
                     <button
                       key={ps.key}
@@ -1796,11 +1793,10 @@ export default function OfficialVsRealView() {
                         setSelectedFilter('ALL');
                         scrollToTable();
                       }}
-                      className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer ${
-                        isPermitSelected
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                          : 'bg-white dark:bg-[#131C31] border-slate-200 dark:border-slate-800 hover:border-indigo-400'
-                      }`}
+                      className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer ${isPermitSelected
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-white dark:bg-[#131C31] border-slate-200 dark:border-slate-800 hover:border-indigo-400'
+                        }`}
                     >
                       <div className="text-[10.5px] truncate">{shortLabel}</div>
                       <div className="text-[10px] opacity-85">
@@ -1880,11 +1876,10 @@ export default function OfficialVsRealView() {
                           setSelectedProject('ALL');
                           setSelectedRegion(isSelected ? 'ALL' : reg.region);
                         }}
-                        className={`cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                        }`}
+                        className={`cursor-pointer transition-colors ${isSelected
+                          ? 'bg-indigo-50/80 dark:bg-indigo-950/50'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                          }`}
                       >
                         <td className="py-2.5 pr-3 text-slate-900 dark:text-white">
                           <div className="flex items-center gap-1.5">
@@ -1910,8 +1905,8 @@ export default function OfficialVsRealView() {
                                       ? 'Скрыть'
                                       : 'Şantiyeleri Kapat'
                                     : lang === 'ru'
-                                    ? `${reg.projects?.length} объекта`
-                                    : `${reg.projects?.length} Şantiye Aç`}
+                                      ? `${reg.projects?.length} объекта`
+                                      : `${reg.projects?.length} Şantiye Aç`}
                                 </span>
                                 {isExpanded ? (
                                   <ChevronUp className="w-2.5 h-2.5" />
@@ -1932,13 +1927,12 @@ export default function OfficialVsRealView() {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                               <div
-                                className={`h-full rounded-full ${
-                                  reg.officialRatePct >= 90
-                                    ? 'bg-emerald-500'
-                                    : reg.officialRatePct >= 75
+                                className={`h-full rounded-full ${reg.officialRatePct >= 90
+                                  ? 'bg-emerald-500'
+                                  : reg.officialRatePct >= 75
                                     ? 'bg-indigo-500'
                                     : 'bg-amber-500'
-                                }`}
+                                  }`}
                                 style={{ width: `${Math.min(100, reg.officialRatePct)}%` }}
                               />
                             </div>
@@ -1993,11 +1987,10 @@ export default function OfficialVsRealView() {
                                 setSelectedProject(isProjSelected ? 'ALL' : proj.project);
                                 scrollToTable();
                               }}
-                              className={`cursor-pointer transition-colors text-[11px] ${
-                                isProjSelected
-                                  ? 'bg-indigo-100/70 dark:bg-indigo-900/40'
-                                  : 'bg-slate-50/70 dark:bg-slate-900/40 hover:bg-indigo-50/40 dark:hover:bg-slate-800/60'
-                              }`}
+                              className={`cursor-pointer transition-colors text-[11px] ${isProjSelected
+                                ? 'bg-indigo-100/70 dark:bg-indigo-900/40'
+                                : 'bg-slate-50/70 dark:bg-slate-900/40 hover:bg-indigo-50/40 dark:hover:bg-slate-800/60'
+                                }`}
                             >
                               <td className="py-2 pl-6 pr-3 text-slate-700 dark:text-slate-300">
                                 <div className="flex items-center gap-1.5">
@@ -2090,11 +2083,10 @@ export default function OfficialVsRealView() {
                     setSelectedFilter('ALL');
                     scrollToTable();
                   }}
-                  className={`p-2.5 rounded-2xl border space-y-1.5 cursor-pointer transition-all ${
-                    isSelectedPermit
-                      ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50'
-                      : 'bg-slate-50/80 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
-                  }`}
+                  className={`p-2.5 rounded-2xl border space-y-1.5 cursor-pointer transition-all ${isSelectedPermit
+                    ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50'
+                    : 'bg-slate-50/80 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
+                    }`}
                 >
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-900 dark:text-white">
@@ -2109,13 +2101,12 @@ export default function OfficialVsRealView() {
                         eBA Real: <strong>{ps.realActiveCount.toLocaleString('tr-TR')}</strong>
                       </span>
                       <span
-                        className={`px-1.5 py-0.2 rounded text-[10px] ${
-                          ps.diff === 0
-                            ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                            : ps.diff > 0
+                        className={`px-1.5 py-0.2 rounded text-[10px] ${ps.diff === 0
+                          ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                          : ps.diff > 0
                             ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
                             : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                        }`}
+                          }`}
                       >
                         {ps.diff > 0 ? `+${ps.diff}` : ps.diff}
                       </span>
@@ -2170,22 +2161,20 @@ export default function OfficialVsRealView() {
             <button
               type="button"
               onClick={() => setSelectedFilter('ALL_DIFFS')}
-              className={`px-2.5 py-1 rounded-lg text-xs cursor-pointer transition-all ${
-                selectedFilter === 'ALL_DIFFS'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white dark:bg-[#131C31] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
-              }`}
+              className={`px-2.5 py-1 rounded-lg text-xs cursor-pointer transition-all ${selectedFilter === 'ALL_DIFFS'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white dark:bg-[#131C31] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
+                }`}
             >
               {lang === 'ru' ? 'Все расхождения' : 'Tüm Farkları Göster'}
             </button>
             <button
               type="button"
               onClick={() => setSelectedFilter('ALL')}
-              className={`px-2.5 py-1 rounded-lg text-xs cursor-pointer transition-all ${
-                selectedFilter === 'ALL'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white dark:bg-[#131C31] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
-              }`}
+              className={`px-2.5 py-1 rounded-lg text-xs cursor-pointer transition-all ${selectedFilter === 'ALL'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white dark:bg-[#131C31] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
+                }`}
             >
               {lang === 'ru' ? 'Весь список' : 'Tüm Kayıtlar'}
             </button>
@@ -2234,25 +2223,22 @@ export default function OfficialVsRealView() {
               >
                 <div className="flex items-start justify-between gap-1">
                   <span
-                    className={`text-[11.5px] leading-snug ${
-                      active ? 'text-white' : 'text-slate-800 dark:text-slate-100'
-                    }`}
+                    className={`text-[11.5px] leading-snug ${active ? 'text-white' : 'text-slate-800 dark:text-slate-100'
+                      }`}
                   >
                     {lang === 'ru' ? fc.titleRu : fc.titleTr}
                   </span>
                 </div>
                 <div className="flex items-baseline justify-between gap-2 pt-1">
                   <span
-                    className={`text-xl ${
-                      active ? 'text-white' : badgeTone[fc.tone]
-                    }`}
+                    className={`text-xl ${active ? 'text-white' : badgeTone[fc.tone]
+                      }`}
                   >
                     {fc.count.toLocaleString('tr-TR')}
                   </span>
                   <span
-                    className={`text-[10px] truncate ${
-                      active ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'
-                    }`}
+                    className={`text-[10px] truncate ${active ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'
+                      }`}
                   >
                     {lang === 'ru' ? fc.subRu : fc.subTr}
                   </span>
@@ -2375,11 +2361,10 @@ export default function OfficialVsRealView() {
                           eBA: <span className="font-mono">{row.sicil_no}</span>
                         </div>
                         <div
-                          className={`text-[11px] font-mono ${
-                            hasSicilDiff
-                              ? 'text-amber-600 dark:text-amber-400'
-                              : 'text-slate-500 dark:text-slate-400'
-                          }`}
+                          className={`text-[11px] font-mono ${hasSicilDiff
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-slate-500 dark:text-slate-400'
+                            }`}
                         >
                           ZUP: {row.zup_tabel_no}
                         </div>
@@ -2416,21 +2401,19 @@ export default function OfficialVsRealView() {
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         <div className="flex flex-col gap-1">
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] border w-fit ${
-                              row.eba_status === 'Mevcut' || row.eba_status === 'Mevcut (Aktif)'
-                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                : 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                            }`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] border w-fit ${row.eba_status === 'Mevcut' || row.eba_status === 'Mevcut (Aktif)'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                              : 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                              }`}
                           >
                             eBA: {row.eba_status}
                             {row.eba_exit_date && row.eba_exit_date !== '—' ? ` (${row.eba_exit_date})` : ''}
                           </span>
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] border w-fit ${
-                              row.zup_status.includes('Aktif')
-                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
-                                : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                            }`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] border w-fit ${row.zup_status.includes('Aktif')
+                              ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                              : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                              }`}
                           >
                             ZUP: {row.zup_status}
                           </span>
@@ -2443,11 +2426,10 @@ export default function OfficialVsRealView() {
                           eBA: <span className="font-mono">{row.eba_permit}</span>
                         </div>
                         <div
-                          className={`text-[11px] ${
-                            hasPermitDiff
-                              ? 'text-amber-600 dark:text-amber-400'
-                              : 'text-slate-500 dark:text-slate-400'
-                          }`}
+                          className={`text-[11px] ${hasPermitDiff
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-slate-500 dark:text-slate-400'
+                            }`}
                         >
                           ZUP: <span className="font-mono">{row.zup_permit}</span>
                         </div>
@@ -2481,13 +2463,12 @@ export default function OfficialVsRealView() {
                           {(lang === 'ru' ? row.diffDetailsRu : row.diffDetailsTr).map((msg, i) => (
                             <div
                               key={i}
-                              className={`text-[11px] leading-snug px-2 py-0.5 rounded border ${
-                                row.risk === 'Kritik'
-                                  ? 'bg-rose-50/80 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200/70 dark:border-rose-800/60'
-                                  : row.risk === 'Orta'
+                              className={`text-[11px] leading-snug px-2 py-0.5 rounded border ${row.risk === 'Kritik'
+                                ? 'bg-rose-50/80 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200/70 dark:border-rose-800/60'
+                                : row.risk === 'Orta'
                                   ? 'bg-amber-50/80 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200/70 dark:border-amber-800/60'
                                   : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200/70 dark:border-slate-700/60'
-                              }`}
+                                }`}
                             >
                               {msg}
                             </div>
@@ -2506,12 +2487,10 @@ export default function OfficialVsRealView() {
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-slate-500 dark:text-slate-400">
           <div>
             {lang === 'ru'
-              ? `Показано ${(page - 1) * pageSize + (paginatedRecords.length ? 1 : 0)}–${
-                  (page - 1) * pageSize + paginatedRecords.length
-                } из ${filteredRecords.length}`
-              : `Toplam ${filteredRecords.length.toLocaleString('tr-TR')} kayıttan ${
-                  (page - 1) * pageSize + (paginatedRecords.length ? 1 : 0)
-                }–${(page - 1) * pageSize + paginatedRecords.length} arası gösteriliyor`}
+              ? `Показано ${(page - 1) * pageSize + (paginatedRecords.length ? 1 : 0)}–${(page - 1) * pageSize + paginatedRecords.length
+              } из ${filteredRecords.length}`
+              : `Toplam ${filteredRecords.length.toLocaleString('tr-TR')} kayıttan ${(page - 1) * pageSize + (paginatedRecords.length ? 1 : 0)
+              }–${(page - 1) * pageSize + paginatedRecords.length} arası gösteriliyor`}
           </div>
           <div className="flex items-center gap-1.5">
             <button

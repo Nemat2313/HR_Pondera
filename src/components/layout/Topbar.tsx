@@ -60,7 +60,7 @@ export default function Topbar({
   onResetFilters,
   onOpenCommandPalette,
 }: TopbarProps) {
-  const { user, logout, getAuthHeaders } = useAuth();
+  const { user, logout, getAuthHeaders, canReturnToAdmin, returnToAdmin } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { lang, setLang, t } = useLanguage();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -384,6 +384,21 @@ export default function Topbar({
               </div>
             )}
           </div>
+        )}
+
+        {/* Admin Impersonation Return Button (only visible when Admin clicked "Geçiş Yap") */}
+        {canReturnToAdmin && (
+          <button
+            type="button"
+            onClick={returnToAdmin}
+            title={lang === 'ru' ? 'Вернуться в режим Администратора' : 'Admin Oturumuna Geri Dön'}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 border border-amber-300 dark:border-amber-500/40 text-amber-950 dark:text-amber-200 text-xs font-bold shadow-2xs transition-colors shrink-0 cursor-pointer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300" />
+            <span className="hidden sm:inline">
+              {lang === 'ru' ? 'Вернуться к Админу' : "Admin'e Dön"}
+            </span>
+          </button>
         )}
 
         {/* User Profile Menu */}

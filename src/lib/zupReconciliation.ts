@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { classifyWorkPermitFromRow, buildNormalizedDateSql } from '@/lib/workPermits';
-import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import { resolveEffectiveRegion, matchesEffectiveRegion } from '@/lib/regionSiteHelper';
 import { formatSystemTimestampToMsk, getCurrentMskTimestamp } from '@/lib/interSiteTransfers';
 
 export interface ZupOfficialRecord {
@@ -1645,4 +1645,193 @@ export function computeZupVsRealReconciliation(db: any) {
 
   gCache.__ponderaZupReconciliationCache = { key: cacheKey, data: result };
   return result;
+}
+
+/**
+ * Filters a computed ZUP vs Real reconciliation payload to a specific RLS region/site or project.
+ * Recomputes summary counters, byRegion, and records strictly for the assigned scope.
+ */
+export function filterZupReconciliationByScope(
+  data: any,
+  scopeType: 'all' | 'region' | 'project',
+  scopeVal: string
+): any {
+  if (!data || scopeType === 'all' || !scopeVal || scopeVal === 'all') {
+    return data;
+  }
+
+  const targetLower = scopeVal.trim().toLowerCase();
+  const matchesRec = (r: any): boolean => {
+    const rawReg = String(r?.region || '').trim();
+    const rawPrj = String(r?.project || r?.proje_adi || '').trim();
+    if (scopeType === 'project') {
+      return rawPrj.toLowerCase() === targetLower;
+    }
+    return (
+      rawReg.toLowerCase() === targetLower ||
+      rawPrj.toLowerCase() === targetLower ||
+      matchesEffectiveRegion(rawReg, rawPrj, scopeVal)
+    );
+  };
+
+  const allRecs: any[] = Array.isArray(data.records) ? data.records : [];
+  const records = allRecs.filter(matchesRec);
+
+  const byRegion: any[] = (Array.isArray(data.byRegion) ? data.byRegion : [])
+    .map((regRow: any) => {
+      const regName = String(regRow?.region || '').trim();
+      if (scopeType === 'region') {
+        if (
+          regName.toLowerCase() === targetLower ||
+          matchesEffectiveRegion(regName, regName, scopeVal)
+        ) {
+          return regRow;
+        }
+        const matchingProjects = (regRow.projects || []).filter(
+          (p: any) => String(p?.project || '').trim().toLowerCase() === targetLower
+        );
+        if (matchingProjects.length === 0) return null;
+        const sumReal = matchingProjects.reduce((s: number, p: any) => s + (p.realActive || 0), 0);
+        const sumZup = matchingProjects.reduce((s: number, p: any) => s + (p.inZupOfficial || 0), 0);
+        return {
+          ...regRow,
+          region: scopeVal,
+          realActive: sumReal,
+          inZupOfficial: sumZup,
+          missingMainFirm: matchingProjects.reduce((s: number, p: any) => s + (p.missingMainFirm || 0), 0),
+          missingSubcon: matchingProjects.reduce((s: number, p: any) => s + (p.missingSubcon || 0), 0),
+          zupActiveRealExit: matchingProjects.reduce((s: number, p: any) => s + (p.zupActiveRealExit || 0), 0),
+          transferCount: matchingProjects.reduce((s: number, p: any) => s + (p.transferCount || 0), 0),
+          officialRatePct: sumReal > 0 ? Math.round((sumZup / sumReal) * 100) : 0,
+          projects: matchingProjects,
+        };
+      }
+      const matchingProjects = (regRow.projects || []).filter(
+        (p: any) => String(p?.project || '').trim().toLowerCase() === targetLower
+      );
+      if (matchingProjects.length === 0) return null;
+      const sumReal = matchingProjects.reduce((s: number, p: any) => s + (p.realActive || 0), 0);
+      const sumZup = matchingProjects.reduce((s: number, p: any) => s + (p.inZupOfficial || 0), 0);
+      return {
+        ...regRow,
+        realActive: sumReal,
+        inZupOfficial: sumZup,
+        missingMainFirm: matchingProjects.reduce((s: number, p: any) => s + (p.missingMainFirm || 0), 0),
+        missingSubcon: matchingProjects.reduce((s: number, p: any) => s + (p.missingSubcon || 0), 0),
+        zupActiveRealExit: matchingProjects.reduce((s: number, p: any) => s + (p.zupActiveRealExit || 0), 0),
+        transferCount: matchingProjects.reduce((s: number, p: any) => s + (p.transferCount || 0), 0),
+        officialRatePct: sumReal > 0 ? Math.round((sumZup / sumReal) * 100) : 0,
+        projects: matchingProjects,
+      };
+    })
+    .filter(Boolean);
+
+  let realActiveTotal = 0;
+  let realActiveMainFirm = 0;
+  let realActiveSubcon = 0;
+  let matchedActiveBoth = 0;
+  let matchedActiveMainFirm = 0;
+  let realActiveNotInZupTotal = 0;
+  let realActiveNotInZupMainFirm = 0;
+  let realActiveNotInZupSubcon = 0;
+  let zupActiveButRealExited = 0;
+  let zupTransferPermitCheckCount = 0;
+  let zupOnlyNotInRealDB = 0;
+  let totalMatchedWithDataDiff = 0;
+  let diffPassportCount = 0;
+  let diffPermitStatusCount = 0;
+  let diffInnCount = 0;
+  let missingInnInEbaCount = 0;
+  let diffSicilFormatCount = 0;
+  let diffBirthDateCount = 0;
+  let diffKirilNameCount = 0;
+  let diffHireDateCount = 0;
+
+  for (const r of records) {
+    const st = String(r.status || '');
+    const flags: string[] = Array.isArray(r.diffFlags) ? r.diffFlags : [];
+    const isMain = Boolean(r.isMainFirm);
+    if (st === 'MATCHED_ACTIVE' || st === 'MATCHED_WITH_DIFF') {
+      realActiveTotal++;
+      matchedActiveBoth++;
+      if (isMain) {
+        realActiveMainFirm++;
+        matchedActiveMainFirm++;
+      } else {
+        realActiveSubcon++;
+      }
+      if (st === 'MATCHED_WITH_DIFF' || flags.length > 0) totalMatchedWithDataDiff++;
+      if (flags.includes('SITE_TRANSFER_PERMIT_CHECK')) zupTransferPermitCheckCount++;
+      if (flags.includes('PASSPORT_DIFF')) diffPassportCount++;
+      if (flags.includes('PERMIT_STATUS_DIFF')) diffPermitStatusCount++;
+      if (flags.includes('INN_DIFF')) diffInnCount++;
+      if (flags.includes('INN_MISSING_IN_EBA')) missingInnInEbaCount++;
+      if (flags.includes('SICIL_FORMAT')) diffSicilFormatCount++;
+      if (flags.includes('DOB_DIFF')) diffBirthDateCount++;
+      if (flags.includes('KIRIL_NAME_DIFF')) diffKirilNameCount++;
+      if (flags.includes('HIRE_DATE_DIFF')) diffHireDateCount++;
+    } else if (st === 'REAL_ONLY_MAIN' || st === 'REAL_ONLY_SUBCON') {
+      realActiveTotal++;
+      realActiveNotInZupTotal++;
+      if (st === 'REAL_ONLY_MAIN' || isMain) {
+        realActiveMainFirm++;
+        realActiveNotInZupMainFirm++;
+      } else {
+        realActiveSubcon++;
+        realActiveNotInZupSubcon++;
+      }
+    } else if (st === 'ZUP_ACTIVE_REAL_EXIT') {
+      zupActiveButRealExited++;
+    } else if (st === 'ZUP_ONLY') {
+      zupOnlyNotInRealDB++;
+    }
+  }
+
+  const zupOfficialTotal = matchedActiveBoth + zupActiveButRealExited + zupOnlyNotInRealDB;
+  const matchedActiveRateAll =
+    realActiveTotal > 0 ? Math.round((matchedActiveBoth / realActiveTotal) * 1000) / 10 : 0;
+  const matchedActiveRateMainFirm =
+    realActiveMainFirm > 0
+      ? Math.round((matchedActiveMainFirm / realActiveMainFirm) * 1000) / 10
+      : 0;
+
+  return {
+    ...data,
+    summary: {
+      ...(data.summary || {}),
+      realActiveTotal,
+      realActiveMainFirm,
+      realActiveSubcon,
+      zupOfficialTotal,
+      matchedActiveBoth,
+      matchedActiveMainFirm,
+      matchedActiveRateAll,
+      matchedActiveRateMainFirm,
+      realActiveNotInZupTotal,
+      realActiveNotInZupMainFirm,
+      realActiveNotInZupSubcon,
+      zupActiveButRealExited,
+      zupTransferPermitCheckCount,
+      zupOnlyNotInRealDB,
+      totalMatchedWithDataDiff,
+      discrepancyCounts: {
+        ...(data.summary?.discrepancyCounts || {}),
+        statusExitInReal: zupActiveButRealExited,
+        siteTransferPermitCheck: zupTransferPermitCheckCount,
+        missingInZupMainFirm: realActiveNotInZupMainFirm,
+        missingInZupSubcon: realActiveNotInZupSubcon,
+        zupOnlyNoEba: zupOnlyNotInRealDB,
+        passportMismatch: diffPassportCount,
+        permitStatusMismatch: diffPermitStatusCount,
+        innMismatch: diffInnCount,
+        missingInnInEba: missingInnInEbaCount,
+        sicilFormatDiff: diffSicilFormatCount,
+        birthDateMismatch: diffBirthDateCount,
+        kirilNameDiff: diffKirilNameCount,
+        hireDateDiff: diffHireDateCount,
+      },
+    },
+    byRegion,
+    records,
+  };
 }

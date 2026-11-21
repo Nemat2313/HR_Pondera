@@ -13,8 +13,15 @@ const DEFAULT_USERS_LIST = [
   { id: 5, name: 'DGP-02 Proje Yönetimi', email: 'dgp02@pondera.com', role: 'user', scope_type: 'project', scope_value: 'TOBOLSK DGP-2 PROJESİ', created_at: '2026-10-08 19:00:00' },
 ];
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const sessionUser = getSessionUserFromRequest(request);
+    if (!sessionUser || sessionUser.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, message: 'Kullanıcı listesini görüntülemek için Yönetici (Admin) yetkisi gereklidir.' },
+        { status: 403 }
+      );
+    }
     const db = getDb();
     const stmt = db.prepare('SELECT id, name, email, role, scope_type, scope_value, created_at FROM users ORDER BY id ASC');
     const users = stmt.all();

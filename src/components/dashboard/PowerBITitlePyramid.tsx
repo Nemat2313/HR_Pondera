@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Award, ChevronRight, FileSpreadsheet, Crown, ChevronDown, Network, ArrowUpRight, Loader2, Users } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface PreviewPerson {
   id?: number;
@@ -109,21 +110,34 @@ export default function PowerBITitlePyramid({
   ];
 
   const { lang, t } = useLanguage();
+  const { user, getAuthHeaders } = useAuth();
   const [hoveredLevel, setHoveredLevel] = useState<string | null>(null);
   const [previewCache, setPreviewCache] = useState<
     Record<string, { loading: boolean; items: PreviewPerson[] }>
   >({});
   const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const openLevelHover = (levelKey: string) => {
+  useEffect(() => {
+    setPreviewCache({});
+    setHoveredLevel(null);
+  }, [user?.id, user?.scope_type, user?.scope_value]);
+
+  const openLevelHover = (levelKey: string, tierCount?: number) => {
     if (hoverCloseTimer.current) {
       clearTimeout(hoverCloseTimer.current);
       hoverCloseTimer.current = null;
     }
     setHoveredLevel(levelKey);
+    if (tierCount === 0) {
+      setPreviewCache((prev) => ({ ...prev, [levelKey]: { loading: false, items: [] } }));
+      return;
+    }
     if (!previewCache[levelKey]) {
       setPreviewCache((prev) => ({ ...prev, [levelKey]: { loading: true, items: [] } }));
-      fetch(`/api/personnel?title=${encodeURIComponent(levelKey)}&limit=8&includeExits=false`)
+      fetch(`/api/personnel?title=${encodeURIComponent(levelKey)}&limit=8&includeExits=false`, {
+        headers: getAuthHeaders(),
+        cache: 'no-store',
+      })
         .then((res) => (res.ok ? res.json() : null))
         .then((json) => {
           const rows: PreviewPerson[] = Array.isArray(json?.data)
@@ -229,7 +243,7 @@ export default function PowerBITitlePyramid({
           return (
             <div
               key={idx}
-              onMouseEnter={() => openLevelHover(levelKey)}
+              onMouseEnter={() => openLevelHover(levelKey, item.count)}
               onMouseLeave={scheduleCloseHover}
               onClick={() => onSelectTitle && onSelectTitle(item.title)}
               className={`relative transition-all duration-300 cursor-pointer ${tierWidth} ${
@@ -269,7 +283,7 @@ export default function PowerBITitlePyramid({
               {/* Hover Preview Popover: Opens to the right of the pyramid, compact, no '-' line */}
               {isHovered && (
                 <div
-                  onMouseEnter={() => openLevelHover(levelKey)}
+                  onMouseEnter={() => openLevelHover(levelKey, item.count)}
                   onMouseLeave={scheduleCloseHover}
                   onClick={(e) => e.stopPropagation()}
                   className={`absolute left-1/2 -translate-x-1/2 lg:left-full lg:translate-x-0 lg:ml-3 lg:top-1/2 lg:-translate-y-1/2 ${

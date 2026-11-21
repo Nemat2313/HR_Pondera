@@ -81,6 +81,10 @@ export default function UserManagementView() {
   };
 
   useEffect(() => {
+    if (currentUser?.role !== 'admin') {
+      setLoading(false);
+      return;
+    }
     fetchUsers();
     fetch('/api/filters')
       .then((res) => res.json())
@@ -97,7 +101,7 @@ export default function UserManagementView() {
         }
       })
       .catch(() => { });
-  }, []);
+  }, [currentUser?.role]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,6 +229,26 @@ export default function UserManagementView() {
       }
     } catch { }
   };
+
+  if (currentUser?.role !== 'admin') {
+    return (
+      <div className="p-6 sm:p-10 max-w-2xl mx-auto">
+        <div className="p-8 rounded-2xl bg-white dark:bg-[#131C31] border border-rose-200 dark:border-rose-900/60 shadow-sm text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400 mx-auto">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            {lang === 'ru' ? 'Доступ ограничен (Только Администратор)' : 'Erişim Kısıtlı (Sadece Admin)'}
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {lang === 'ru'
+              ? 'Просмотр списка пользователей, редактирование прав и переключение аккаунтов доступны только Администратору.'
+              : 'Kullanıcı listesi, yetki düzenleme ve «Geçiş Yap» işlevi yalnızca Sistem Yöneticisi (Admin) için kullanılabilir.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
