@@ -1734,6 +1734,7 @@ export function filterZupReconciliationByScope(
   let realActiveNotInZupTotal = 0;
   let realActiveNotInZupMainFirm = 0;
   let realActiveNotInZupSubcon = 0;
+  let realActiveNotInZupRecentHire = 0;
   let zupActiveButRealExited = 0;
   let zupTransferPermitCheckCount = 0;
   let zupOnlyNotInRealDB = 0;
@@ -1747,53 +1748,109 @@ export function filterZupReconciliationByScope(
   let diffKirilNameCount = 0;
   let diffHireDateCount = 0;
 
+  const permitMap: Record<
+    string,
+    {
+      zupCount: number;
+      zupActiveMatched: number;
+      zupTransferCount: number;
+      zupRealExitedCount: number;
+      realActiveCount: number;
+      realOnlyMainCount: number;
+      realOnlySubconCount: number;
+    }
+  > = {
+    VKS: { zupCount: 0, zupActiveMatched: 0, zupTransferCount: 0, zupRealExitedCount: 0, realActiveCount: 0, realOnlyMainCount: 0, realOnlySubconCount: 0 },
+    PATENT: { zupCount: 0, zupActiveMatched: 0, zupTransferCount: 0, zupRealExitedCount: 0, realActiveCount: 0, realOnlyMainCount: 0, realOnlySubconCount: 0 },
+    QUOTA_RNR: { zupCount: 0, zupActiveMatched: 0, zupTransferCount: 0, zupRealExitedCount: 0, realActiveCount: 0, realOnlyMainCount: 0, realOnlySubconCount: 0 },
+    RESIDENT: { zupCount: 0, zupActiveMatched: 0, zupTransferCount: 0, zupRealExitedCount: 0, realActiveCount: 0, realOnlyMainCount: 0, realOnlySubconCount: 0 },
+    EAES: { zupCount: 0, zupActiveMatched: 0, zupTransferCount: 0, zupRealExitedCount: 0, realActiveCount: 0, realOnlyMainCount: 0, realOnlySubconCount: 0 },
+  };
+  const toPermitBucket = (val: any): string => {
+    const p = String(val || '').trim();
+    if (p === 'RF_CITIZEN' || p === 'VNJ_RVP' || p === 'RESIDENT') return 'RESIDENT';
+    if (p === 'VKS' || p === 'PATENT' || p === 'EAES') return p;
+    return 'QUOTA_RNR';
+  };
+
   for (const r of records) {
-    const st = String(r.status || '');
+    const cat = String(r.category || '');
     const flags: string[] = Array.isArray(r.diffFlags) ? r.diffFlags : [];
-    const isMain = Boolean(r.isMainFirm);
-    if (st === 'MATCHED_ACTIVE' || st === 'MATCHED_WITH_DIFF') {
+    const ebaBucket = toPermitBucket(r.eba_permit);
+    const zupBucket = toPermitBucket(r.zup_permit);
+
+    if (cat === 'FULL_MATCH' || cat === 'DATA_DIFF') {
       realActiveTotal++;
+      realActiveMainFirm++;
       matchedActiveBoth++;
-      if (isMain) {
-        realActiveMainFirm++;
-        matchedActiveMainFirm++;
-      } else {
-        realActiveSubcon++;
-      }
-      if (st === 'MATCHED_WITH_DIFF' || flags.length > 0) totalMatchedWithDataDiff++;
-      if (flags.includes('SITE_TRANSFER_PERMIT_CHECK')) zupTransferPermitCheckCount++;
+      matchedActiveMainFirm++;
+      permitMap[ebaBucket].realActiveCount++;
+      permitMap[zupBucket].zupCount++;
+      permitMap[zupBucket].zupActiveMatched++;
+      if (cat === 'DATA_DIFF' || flags.length > 0) totalMatchedWithDataDiff++;
       if (flags.includes('PASSPORT_DIFF')) diffPassportCount++;
-      if (flags.includes('PERMIT_STATUS_DIFF')) diffPermitStatusCount++;
+      if (flags.includes('PERMIT_DIFF') || flags.includes('PERMIT_STATUS_DIFF')) diffPermitStatusCount++;
       if (flags.includes('INN_DIFF')) diffInnCount++;
-      if (flags.includes('INN_MISSING_IN_EBA')) missingInnInEbaCount++;
+      if (flags.includes('INN_MISSING_EBA') || flags.includes('INN_MISSING_IN_EBA')) missingInnInEbaCount++;
       if (flags.includes('SICIL_FORMAT')) diffSicilFormatCount++;
       if (flags.includes('DOB_DIFF')) diffBirthDateCount++;
-      if (flags.includes('KIRIL_NAME_DIFF')) diffKirilNameCount++;
+      if (flags.includes('KIRIL_DIFF') || flags.includes('KIRIL_NAME_DIFF')) diffKirilNameCount++;
       if (flags.includes('HIRE_DATE_DIFF')) diffHireDateCount++;
-    } else if (st === 'REAL_ONLY_MAIN' || st === 'REAL_ONLY_SUBCON') {
+    } else if (cat === 'SITE_TRANSFER_PERMIT_CHECK') {
+      zupTransferPermitCheckCount++;
+      permitMap[zupBucket].zupCount++;
+      permitMap[zupBucket].zupTransferCount++;
+      if (flags.length > 0) totalMatchedWithDataDiff++;
+    } else if (cat === 'REAL_ACTIVE_NO_ZUP_MAIN' || cat === 'REAL_ACTIVE_NO_ZUP_SUBCON') {
       realActiveTotal++;
       realActiveNotInZupTotal++;
-      if (st === 'REAL_ONLY_MAIN' || isMain) {
+      permitMap[ebaBucket].realActiveCount++;
+      if (flags.includes('RECENT_HIRE_AFTER_ZUP')) realActiveNotInZupRecentHire++;
+      if (cat === 'REAL_ACTIVE_NO_ZUP_MAIN') {
         realActiveMainFirm++;
         realActiveNotInZupMainFirm++;
+        permitMap[ebaBucket].realOnlyMainCount++;
       } else {
         realActiveSubcon++;
         realActiveNotInZupSubcon++;
+        permitMap[ebaBucket].realOnlySubconCount++;
       }
-    } else if (st === 'ZUP_ACTIVE_REAL_EXIT') {
+    } else if (cat === 'ZUP_ACTIVE_REAL_EXIT') {
       zupActiveButRealExited++;
-    } else if (st === 'ZUP_ONLY') {
+      permitMap[zupBucket].zupCount++;
+      permitMap[zupBucket].zupRealExitedCount++;
+    } else if (cat === 'ZUP_ONLY_NO_EBA') {
       zupOnlyNotInRealDB++;
+      permitMap[zupBucket].zupCount++;
     }
   }
 
-  const zupOfficialTotal = matchedActiveBoth + zupActiveButRealExited + zupOnlyNotInRealDB;
+  const zupOfficialTotal =
+    matchedActiveBoth + zupTransferPermitCheckCount + zupActiveButRealExited + zupOnlyNotInRealDB;
   const matchedActiveRateAll =
-    realActiveTotal > 0 ? Math.round((matchedActiveBoth / realActiveTotal) * 1000) / 10 : 0;
+    realActiveTotal > 0 ? Number(((matchedActiveBoth / realActiveTotal) * 100).toFixed(1)) : 0;
   const matchedActiveRateMainFirm =
     realActiveMainFirm > 0
-      ? Math.round((matchedActiveMainFirm / realActiveMainFirm) * 1000) / 10
+      ? Number(((matchedActiveMainFirm / realActiveMainFirm) * 100).toFixed(1))
       : 0;
+
+  const byPermitStatus = Array.isArray(data.byPermitStatus)
+    ? data.byPermitStatus.map((row: any) => {
+        const b = permitMap[row.key];
+        if (!b) return row;
+        return {
+          ...row,
+          zupCount: b.zupCount,
+          zupActiveMatched: b.zupActiveMatched,
+          zupTransferCount: b.zupTransferCount,
+          zupRealExitedCount: b.zupRealExitedCount,
+          realActiveCount: b.realActiveCount,
+          realOnlyMainCount: b.realOnlyMainCount,
+          realOnlySubconCount: b.realOnlySubconCount,
+          diff: b.realActiveCount - b.zupCount,
+        };
+      })
+    : [];
 
   return {
     ...data,
@@ -1810,6 +1867,7 @@ export function filterZupReconciliationByScope(
       realActiveNotInZupTotal,
       realActiveNotInZupMainFirm,
       realActiveNotInZupSubcon,
+      realActiveNotInZupRecentHire,
       zupActiveButRealExited,
       zupTransferPermitCheckCount,
       zupOnlyNotInRealDB,
@@ -1832,6 +1890,7 @@ export function filterZupReconciliationByScope(
       },
     },
     byRegion,
+    byPermitStatus,
     records,
   };
 }
