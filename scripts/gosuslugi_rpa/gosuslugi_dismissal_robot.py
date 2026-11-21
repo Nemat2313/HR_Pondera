@@ -450,6 +450,7 @@ class GosuslugiDismissalBot:
         match_keywords: List[str],
         step_label: str = "Lookup",
         click_continue_after: bool = True,
+        max_attempts: int = 6,
     ) -> bool:
         """
         Battle-tested Gosuslugi lookup selection (ported directly from VKS Step 12 MVD selector):
@@ -464,7 +465,7 @@ class GosuslugiDismissalBot:
         self.enable_background_focus_emulation()
         keywords_up = [str(k).strip().upper() for k in match_keywords if str(k).strip()]
 
-        for attempt in range(1, 7):
+        for attempt in range(1, max_attempts + 1):
             self.check_and_handle_error_modal()
 
             # Verify the target input actually exists on the current screen before doing anything
@@ -512,7 +513,7 @@ class GosuslugiDismissalBot:
                 return True
 
             logger.info(
-                f"{step_label} (Попытка {attempt}/6): Вводим «{type_text}» для выбора из выпадающего списка..."
+                f"{step_label} (Попытка {attempt}/{max_attempts}): Вводим «{type_text}» для выбора из выпадающего списка..."
             )
             try:
                 inp_coords = self.page.evaluate(
@@ -3048,44 +3049,70 @@ class GosuslugiDismissalBot:
         self.page.wait_for_timeout(200)
 
         # 11b. Profession ('Профессия')
-        # Check 'Нет подходящей профессии' (input#cb16_) to unlock input#si16 and type the exact position from Excel immediately
+        # Strategy: FIRST search official Gosuslugi profession dictionary (#dic16) for exact/matching profession.
+        # ONLY if not found in the official dictionary, check 'Нет подходящей профессии' (#cb16_ -> 'Да' in PDF)
+        # and type the exact position from Excel into #si16.
+        matched_official_prof = False
         try:
+            # Ensure 'Нет подходящей профессии' is initially unchecked so #dic16 is enabled
             self.page.evaluate(
                 """() => {
                     const cb = document.querySelector("input#cb16_");
                     const libCb = cb ? cb.closest("lib-checkbox") : Array.from(document.querySelectorAll("lib-checkbox")).find(el => (el.innerText || "").includes("Нет подходящей профессии"));
                     if (libCb) {
                         const inp = libCb.querySelector("input[type='checkbox']");
-                        if (!inp || !inp.checked) {
+                        if (inp && inp.checked) {
                             const lbl = libCb.querySelector("label.check") || libCb;
                             lbl.click();
                         }
                     }
                 }"""
             )
-            self.page.wait_for_timeout(300)
+            self.page.wait_for_timeout(200)
         except Exception:
             pass
 
-        if self.page.locator("input#si16:visible, input[name='si16']:visible").count() > 0:
-            self.type_masked_input("input#si16:visible, input[name='si16']:visible", pos_str)
-        else:
-            # Fallback if #si16 didn't appear: use #dic16 lookup
-            ok_prof = self.select_lookup_option_mvd_style(
-                input_selector="input#dic16, input#dic16_prof, input[id*='dic16'], lib-lookup input.search-input",
-                type_text=pos_str,
-                match_keywords=[pos_str, pos_str.split()[0] if pos_str.split() else "Монтажник"],
-                step_label=f"Step 11 (Профессия: {pos_str})",
-                click_continue_after=False,
-            )
-            if not ok_prof:
-                self.select_lookup_option_mvd_style(
-                    input_selector="input#dic16, input#dic16_prof, input[id*='dic16'], lib-lookup input.search-input",
-                    type_text="Монтажник",
-                    match_keywords=["МОНТАЖНИК"],
-                    step_label="Step 11 (Профессия fallback: Монтажник)",
+        if self.page.locator("input#dic16:visible, input#dic16_prof:visible, input[id*='dic16']:visible").count() > 0:
+            try:
+                pos_words = [w for w in re.split(r"\s+", pos_str) if len(w) >= 3]
+                match_kws = [pos_str]
+                if len(pos_words) >= 2:
+                    match_kws.append(" ".join(pos_words[:2]))
+                matched_official_prof = self.select_lookup_option_mvd_style(
+                    input_selector="input#dic16, input#dic16_prof, input[id*='dic16']",
+                    type_text=pos_str,
+                    match_keywords=match_kws,
+                    step_label=f"Step 11 (Профессия по справочнику: {pos_str})",
                     click_continue_after=False,
+                    max_attempts=2,
                 )
+            except Exception as e:
+                logger.debug(f"Step 11 official profession lookup note: {e}")
+
+        if not matched_official_prof:
+            logger.info(
+                f"Step 11: Профессия «{pos_str}» не найдена в справочнике -> отмечаем «Нет подходящей профессии» и вводим вручную..."
+            )
+            try:
+                self.page.evaluate(
+                    """() => {
+                        const cb = document.querySelector("input#cb16_");
+                        const libCb = cb ? cb.closest("lib-checkbox") : Array.from(document.querySelectorAll("lib-checkbox")).find(el => (el.innerText || "").includes("Нет подходящей профессии"));
+                        if (libCb) {
+                            const inp = libCb.querySelector("input[type='checkbox']");
+                            if (!inp || !inp.checked) {
+                                const lbl = libCb.querySelector("label.check") || libCb;
+                                lbl.click();
+                            }
+                        }
+                    }"""
+                )
+                self.page.wait_for_timeout(300)
+            except Exception:
+                pass
+
+            if self.page.locator("input#si16:visible, input[name='si16']:visible").count() > 0:
+                self.type_masked_input("input#si16:visible, input[name='si16']:visible", pos_str)
 
         # 11c & 11d: Dates & Contract flags (Hiring vs Dismissal)
         if is_hiring:
@@ -3207,6 +3234,21 @@ class GosuslugiDismissalBot:
         def _fill_work_address_if_visible() -> bool:
             if self.page.locator("epgu-constructor-address-input textarea:visible, lib-dadata-widget textarea:visible, textarea.search-input:visible").count() > 0:
                 self.select_dadata_work_address(work_addr)
+                # Extract real house/building and apartment/office numbers from work_addr if present
+                m_house = re.search(
+                    r"(?:д\.|дом|зд\.|здание|стр\.|строение|соор\.|сооружение|вл\.|владение)\s*([0-9]+[А-Яа-яA-Za-z0-9/\-]*)",
+                    work_addr,
+                    flags=re.IGNORECASE,
+                )
+                m_apt = re.search(
+                    r"(?:кв\.|квартира|оф\.|офис|пом\.|помещ\.|помещение|ком\.|комната|каб\.)\s*([0-9]+[А-Яа-яA-Za-z0-9/\-]*)",
+                    work_addr,
+                    flags=re.IGNORECASE,
+                )
+                parsed_house = m_house.group(1).strip() if m_house else ""
+                parsed_apt = m_apt.group(1).strip() if m_apt else ""
+
+                # Open 'Уточнить адрес' if index/house/apartment fields are collapsed
                 try:
                     if self.page.locator("input#index:visible").count() == 0:
                         clarify_btn = self.page.locator(
@@ -3219,9 +3261,41 @@ class GosuslugiDismissalBot:
                             self.page.wait_for_timeout(700)
                 except Exception:
                     pass
+
                 self.fill_postal_code_strict(postal_code)
-                self.set_address_checkbox("Нет дома", "houseCheckbox", True)
-                self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+
+                # Smart House handling: keep DaData house or fill real house number; ONLY check 'Нет дома' if address has NO house!
+                house_inp = self.page.locator("input#house:visible, input[formcontrolname='house']:visible, input[name='house']:visible").first
+                cur_house = ""
+                if house_inp.count() > 0:
+                    try:
+                        cur_house = (house_inp.input_value() or "").strip()
+                    except Exception:
+                        cur_house = ""
+                if cur_house:
+                    self.set_address_checkbox("Нет дома", "houseCheckbox", False)
+                elif parsed_house and house_inp.count() > 0:
+                    self.set_address_checkbox("Нет дома", "houseCheckbox", False)
+                    self.type_masked_input("input#house:visible, input[formcontrolname='house']:visible, input[name='house']:visible", parsed_house)
+                else:
+                    self.set_address_checkbox("Нет дома", "houseCheckbox", True)
+
+                # Smart Apartment/Office handling: keep DaData apt or fill real apt/office number; ONLY check 'Нет квартиры' if address has NO apt/office!
+                apt_inp = self.page.locator("input#apartment:visible, input[formcontrolname='apartment']:visible, input[name='apartment']:visible").first
+                cur_apt = ""
+                if apt_inp.count() > 0:
+                    try:
+                        cur_apt = (apt_inp.input_value() or "").strip()
+                    except Exception:
+                        cur_apt = ""
+                if cur_apt:
+                    self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", False)
+                elif parsed_apt and apt_inp.count() > 0:
+                    self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", False)
+                    self.type_masked_input("input#apartment:visible, input[formcontrolname='apartment']:visible, input[name='apartment']:visible", parsed_apt)
+                else:
+                    self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+
                 return True
             return False
 
