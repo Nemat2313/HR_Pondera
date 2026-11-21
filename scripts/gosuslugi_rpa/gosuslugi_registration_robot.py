@@ -489,8 +489,8 @@ class GosuslugiRegistrationRobot:
                         };
                     }"""
                 )
-                heading = str(info.get("h") or "")
-                body_text = str(info.get("b") or "")
+                heading = re.sub(r"\s+", " ", str(info.get("h") or "")).strip()
+                body_text = re.sub(r"\s+", " ", str(info.get("b") or "")).strip()
             except Exception:
                 self.page.wait_for_timeout(500)
                 continue
@@ -509,41 +509,49 @@ class GosuslugiRegistrationRobot:
                 logger.info(f"SUCCESS: Registration submitted! Application № {app_no}")
                 break
 
-            # 1) Service type selection ('Уведомление о прибытии')
-            if "уведомления о прибытии и убытии" in b_low and "уведомление о прибытии" in b_low and not filled_flags.get("q_type"):
-                if self.click_text_button(["Уведомление о прибытии", "О прибытии"]):
-                    filled_flags["q_type"] = True
+            # 0) Landing screen ('Уведомления о прибытии и убытии иностранцев' -> 'Начать')
+            if "уведомления о прибытии и убытии" in h_low:
+                if self.click_text_button(["Начать"]):
                     continue
 
-            # 2) 'Кого хотите поставить на учёт?'
+            # 1) 'Что нужно сделать?' -> 'Поставить иностранца на учёт'
+            if "что нужно сделать" in h_low:
+                if self.click_text_button(["Поставить иностранца на учёт", "Поставить иностранца на учет"]):
+                    continue
+
+            # 2) 'Кого хотите поставить на учёт?' -> 'Совершеннолетнего иностранца'
             if "кого хотите поставить на учёт" in h_low or "кого хотите поставить на учет" in h_low:
-                self.click_text_button(["Взрослого", "Иностранного гражданина", "Патент"])
-                self.click_text_button(["Перейти к уведомлению", "Продолжить"])
+                self.click_text_button(["Совершеннолетнего иностранца"])
                 continue
 
-            # 3) 'Какой документ даёт право находиться в России?'
+            # 3) 'У иностранца или члена его семьи есть трудовой договор в России?' -> 'Да'
+            if "трудовой договор в россии" in h_low:
+                self.click_text_button(["Да"])
+                continue
+
+            # 4) 'Какой документ подтверждает право пребывания или проживания иностранца в России?'
             if "какой документ" in h_low and "россии" in h_low:
                 if permit_type == "VISA":
                     self.click_text_button(["Виза"])
-                elif permit_type == "PATENT":
-                    self.click_text_button(["Патент", "Документ не нужен"])
-                elif permit_type in ("RVP", "VNJ"):
-                    self.click_text_button(["ВНЖ", "РВП"])
+                elif permit_type == "VNJ":
+                    self.click_text_button(["Вид на жительство"])
+                elif permit_type == "RVP":
+                    self.click_text_button(["Разрешение на временное проживание"])
                 else:
                     self.click_text_button(["Документ не нужен"])
                 continue
 
-            # 4) 'Уже есть постановка на учёт в России?'
-            if "на учёт в россии" in h_low or "на учет в россии" in h_low:
+            # 5) 'У иностранца до этого был другой адрес постановки на учёт в России?'
+            if "на учёт в россии" in h_low or "на учет в россии" in h_low or "другой адрес постановки" in h_low:
                 self.click_text_button(["Да" if has_prev else "Нет"])
                 continue
 
-            # 5) 'У иностранца есть миграционная карта?'
+            # 6) 'У иностранца есть миграционная карта?'
             if "миграционная карта" in h_low and "есть" in h_low:
                 self.click_text_button(["Да" if has_mk else "Нет"])
                 continue
 
-            # 6) 'Что нужно для подачи уведомления'
+            # 7) 'Что нужно для подачи уведомления'
             if "что нужно для подачи" in h_low:
                 self.click_text_button(["Перейти к заявлению", "Продолжить"])
                 continue
