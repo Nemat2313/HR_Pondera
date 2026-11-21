@@ -55,6 +55,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import GosuslugiDismissalPanel from './GosuslugiDismissalPanel';
+import GosuslugiRegistrationPanel from './GosuslugiRegistrationPanel';
 import VksAddQuarterModal from './VksAddQuarterModal';
 
 export interface GosuslugiSubmissionEntry {
@@ -963,7 +964,7 @@ function isWorkerOkazana(w: { gosuslugiStatus?: string }): boolean {
 export default function GosuslugiVksView() {
   const { user, isAdmin, showPermissionDenied, showSalaryPdfPermissionDenied } = useAuth();
   const { lang } = useLanguage();
-  const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal'>('vks');
+  const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration'>('vks');
 
   const requireWritePermission = (actionLabelTr: string, actionLabelRu?: string): boolean => {
     if (user?.role === 'viewer') {
@@ -4484,8 +4485,8 @@ export default function GosuslugiVksView() {
 
       {/* PAGE-CONNECTED TAB BAR + TOP HEADER SECTION */}
       <div>
-        {/* WINDOWS MULTI-TAB FORM HEADER (3 EQUAL-WIDTH TABS) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 px-1 pt-1 bg-slate-200/80 dark:bg-slate-900/90 rounded-t-2xl border border-b-0 border-slate-300/80 dark:border-slate-800">
+        {/* WINDOWS MULTI-TAB FORM HEADER (4 EQUAL-WIDTH TABS) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 px-1 pt-1 bg-slate-200/80 dark:bg-slate-900/90 rounded-t-2xl border border-b-0 border-slate-300/80 dark:border-slate-800">
           {/* Tab 1: VKS Salary Notification */}
           <button
             type="button"
@@ -4584,7 +4585,52 @@ export default function GosuslugiVksView() {
               600585/1
             </span>
           </button>
+
+          {/* Tab 4: Migration Registration (Registre — 600380/1) */}
+          <button
+            type="button"
+            onClick={() => setServiceTab('registration')}
+            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+              serviceTab === 'registration'
+                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-emerald-600 dark:border-t-emerald-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
+                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
+              <MapPin
+                className={`w-4 h-4 shrink-0 ${
+                  serviceTab === 'registration'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-slate-600'
+                }`}
+              />
+              <span className="truncate">
+                {lang === 'ru' ? '4. Регистрация (Мигр. учёт)' : '4. Registre (Göç Kaydı)'}
+              </span>
+            </span>
+            <span
+              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
+                serviceTab === 'registration'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/90 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/80'
+                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+              }`}
+            >
+              600380/1
+            </span>
+          </button>
         </div>
+
+        {/* TAB 4: MIGRATION REGISTRATION (REGISTRE — GOSUSLUGI 600380/1) */}
+        {serviceTab === 'registration' && (
+          <div className="mt-0">
+            <GosuslugiRegistrationPanel
+              activeBridgeUrl={activeBridgeUrl}
+              bridgeStatus={bridgeStatus}
+              onOpenChrome={handleOpenChrome}
+              isLaunchingChrome={isLaunchingChrome}
+            />
+          </div>
+        )}
 
         {/* TAB 2: HIRING NOTIFICATION (UNIFIED PATENT + VISA/RNR + EAES — GOSUSLUGI 600585/1) */}
         {serviceTab === 'hiring' && (

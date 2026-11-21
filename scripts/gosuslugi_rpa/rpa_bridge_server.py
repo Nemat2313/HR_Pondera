@@ -867,6 +867,8 @@ def run_robot_worker(
 
     if mode in ("dismissal", "hiring"):
         script_name = "gosuslugi_dismissal_robot.py"
+    elif mode == "registration":
+        script_name = "gosuslugi_registration_robot.py"
     elif mode in ("check_status", "check_status_fast", "check_status_single"):
         script_name = "gosuslugi_status_checker.py"
     else:
@@ -1284,6 +1286,9 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             elif mode == "hiring":
                 queue_filename = "active_hiring_queue.json"
                 cfg_filename = "active_hiring_config.json"
+            elif mode == "registration":
+                queue_filename = "active_registration_queue.json"
+                cfg_filename = "active_registration_config.json"
             elif mode in ("check_status", "check_status_single"):
                 queue_filename = "active_status_check_queue.json"
                 cfg_filename = "active_status_check_config.json"
@@ -1360,6 +1365,34 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             t.start()
 
             self._send_json(200, {"success": True, "message": "Robot started"}, ensure_ascii=True)
+
+        elif parsed.path == "/scan-registration-docs":
+            emp_dir = str(payload.get("employee_docs_dir") or "").strip()
+            comp_dir = str(payload.get("company_docs_dir") or "").strip()
+            sicils = payload.get("sicils") if isinstance(payload.get("sicils"), list) else []
+            try:
+                from gosuslugi_registration_robot import scan_registration_docs_for_sicil
+                results = {}
+                for s in sicils:
+                    s_key = str(s or "").strip()
+                    if not s_key:
+                        continue
+                    found = scan_registration_docs_for_sicil(s_key, emp_dir, comp_dir)
+                    results[s_key] = {
+                        k: [os.path.basename(p) for p in v] for k, v in found.items()
+                    }
+                self._send_json(
+                    200,
+                    {
+                        "success": True,
+                        "employee_dir_exists": bool(emp_dir and os.path.isdir(emp_dir)),
+                        "company_dir_exists": bool(comp_dir and os.path.isdir(comp_dir)),
+                        "results": results,
+                    },
+                    ensure_ascii=False,
+                )
+            except Exception as e:
+                self._send_json(500, {"success": False, "message": str(e)}, ensure_ascii=True)
 
         elif parsed.path == "/purge-sicils":
             raw_sicils = payload.get("sicils") if isinstance(payload, dict) else []

@@ -311,10 +311,10 @@ export default function PersonnelListView({
     initialFilter?.type === 'search' && initialFilter.value ? initialFilter.value : ''
   );
   const [filterRegion, setFilterRegion] = useState(
-    user?.scope_type === 'region' && !String(user.scope_value || '').includes(',') ? user.scope_value : 'all'
+    user?.scope_type === 'region' ? user.scope_value : 'all'
   );
   const [filterProject, setFilterProject] = useState(
-    user?.scope_type === 'project' && !String(user.scope_value || '').includes(',') ? user.scope_value : 'all'
+    user?.scope_type === 'project' ? user.scope_value : 'all'
   );
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -440,7 +440,7 @@ export default function PersonnelListView({
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Update filter presets if user RLS changes
@@ -525,7 +525,7 @@ export default function PersonnelListView({
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [user?.id, user?.scope_type, user?.scope_value]);
 
   // Fetch personnel data with RLS parameters (with AbortController to prevent stale unfiltered response overwriting search results)
@@ -571,7 +571,7 @@ export default function PersonnelListView({
           setTotalPages(resData.pagination?.totalPages || 1);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         if (!isCancelled) {
           setLoading(false);
@@ -813,7 +813,7 @@ export default function PersonnelListView({
           XLSX.utils.book_append_sheet(workbook, worksheet, 'Personel Listesi');
           XLSX.writeFile(workbook, `Pondera_Personel_Listesi_${new Date().toISOString().slice(0, 10)}.xlsx`);
         }
-      } catch {}
+      } catch { }
       setIsExporting(false);
     }
   };
@@ -890,11 +890,10 @@ export default function PersonnelListView({
             {/* Kolon Seçici Butonu */}
             <button
               onClick={() => setShowColumnPicker(!showColumnPicker)}
-              className={`flex items-center gap-1 px-2.5 py-1 border rounded-lg text-[11px] font-bold transition-all shadow-2xs cursor-pointer ${
-                showColumnPicker
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
+              className={`flex items-center gap-1 px-2.5 py-1 border rounded-lg text-[11px] font-bold transition-all shadow-2xs cursor-pointer ${showColumnPicker
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
             >
               <Layers className="w-3 h-3" />
               <span>{t('table_column_picker_btn')} ({activeColumnCount}/{totalColumnCount})</span>
@@ -922,13 +921,12 @@ export default function PersonnelListView({
               <button
                 key={group.id}
                 onClick={() => toggleGroup(group.id)}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                  allSelected
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : someSelected
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${allSelected
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : someSelected
                     ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
                     : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                  }`}
                 title={`${translateGroup(group.name)} (${group.columns.length} ${lang === 'ru' ? 'колонок' : 'Kolon'})`}
               >
                 {allSelected ? (
@@ -1033,11 +1031,10 @@ export default function PersonnelListView({
 
                     <div className="flex items-center gap-1">
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                          selectedCount > 0
-                            ? 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300'
-                            : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-                        }`}
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${selectedCount > 0
+                          ? 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                          }`}
                       >
                         {selectedCount}/{group.columns.length}
                       </span>
@@ -1060,11 +1057,10 @@ export default function PersonnelListView({
                         return (
                           <label
                             key={col.key}
-                            className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer select-none transition-colors ${
-                              isChecked
-                                ? 'bg-teal-50 dark:bg-teal-950/60 text-slate-900 dark:text-white font-semibold'
-                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
-                            }`}
+                            className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer select-none transition-colors ${isChecked
+                              ? 'bg-teal-50 dark:bg-teal-950/60 text-slate-900 dark:text-white font-semibold'
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                              }`}
                           >
                             <input
                               type="checkbox"
@@ -1194,11 +1190,10 @@ export default function PersonnelListView({
                 setFilterStatus(e.target.value);
                 setPage(1);
               }}
-              className={`w-full px-2.5 py-1.5 sm:py-2 border rounded-xl text-xs font-semibold focus:outline-none ${
-                filterStatus === 'Mevcut'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
-                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-              }`}
+              className={`w-full px-2.5 py-1.5 sm:py-2 border rounded-xl text-xs font-semibold focus:outline-none ${filterStatus === 'Mevcut'
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                }`}
             >
               <option value="all">{lang === 'ru' ? 'Все статусы' : 'Tüm Durumlar'}</option>
               <option value="Mevcut">{lang === 'ru' ? 'Только в штате (Активные)' : 'Yalnızca Mevcut (Aktif)'}</option>
@@ -1307,14 +1302,14 @@ export default function PersonnelListView({
                   const widthClass = isDate
                     ? 'min-w-[125px] whitespace-nowrap'
                     : isAdSoyad
-                    ? 'min-w-[170px]'
-                    : isDepartman
-                    ? 'min-w-[160px]'
-                    : isProje
-                    ? 'min-w-[140px]'
-                    : isGorev
-                    ? 'min-w-[150px]'
-                    : 'min-w-[100px]';
+                      ? 'min-w-[170px]'
+                      : isDepartman
+                        ? 'min-w-[160px]'
+                        : isProje
+                          ? 'min-w-[140px]'
+                          : isGorev
+                            ? 'min-w-[150px]'
+                            : 'min-w-[100px]';
 
                   return (
                     <th
@@ -1325,9 +1320,8 @@ export default function PersonnelListView({
                       <div className="flex items-center gap-1.5">
                         <span>{translateCol(col.name)}</span>
                         <ArrowUpDown
-                          className={`w-3.5 h-3.5 ${
-                            isSorted ? 'text-teal-600 dark:text-teal-400 stroke-[2.5]' : 'text-slate-400 dark:text-slate-600'
-                          }`}
+                          className={`w-3.5 h-3.5 ${isSorted ? 'text-teal-600 dark:text-teal-400 stroke-[2.5]' : 'text-slate-400 dark:text-slate-600'
+                            }`}
                         />
                       </div>
                     </th>
@@ -1370,13 +1364,12 @@ export default function PersonnelListView({
                         return (
                           <td key={col.key} className="py-1 px-2.5">
                             <span
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                val === 'Mevcut'
-                                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                  : val === 'Cikis'
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${val === 'Mevcut'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                : val === 'Cikis'
                                   ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
                                   : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                              }`}
+                                }`}
                             >
                               {translateVal(val) || '-'}
                             </span>
