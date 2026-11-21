@@ -642,12 +642,80 @@ def try_pop3_fallback(email_addr: str, password: str, max_messages: int):
     return None
 
 
+def extract_petition_no_from_subject(subject: str) -> str:
+    if not subject:
+        return ""
+    m = re.search(r"ходатайств[уао]\s+([0-9A-ZА-Я]{6,14})", subject, re.IGNORECASE)
+    return m.group(1).strip().upper() if m else ""
+
+
+def is_candidate_invitation_header(subject: str, sender: str) -> bool:
+    combined = f"{subject}\n{sender}".lower()
+    if (
+        "ходатайств" in combined
+        or "приглашен" in combined
+        or "invitation@pondera.ru" in combined
+        or "srv_pvm_invitation@mvd.ru" in combined
+        or "@mvd.ru" in combined
+        or "davetiye" in combined
+        or "invitation" in combined
+    ):
+        return True
+    return False
+
+
+def fetch_headers_in_chunks(conn, msg_ids: list, chunk_size: int = 100) -> dict:
+    """Fetches lightweight Subject/From/Message-ID/Date headers in batches without downloading PDFs."""
+    headers_map = {}
+    for idx in range(0, len(msg_ids), chunk_size):
+        chunk = msg_ids[idx : idx + chunk_size]
+        seq_set = b",".join(chunk)
+        try:
+            typ, data = conn.fetch(
+                seq_set, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM MESSAGE-ID DATE)])"
+            )
+            if typ != "OK" or not data:
+                continue
+            for part in data:
+                if isinstance(part, tuple) and len(part) >= 2 and isinstance(part[0], bytes):
+                    m_seq = re.match(rb"^(\d+)\s", part[0])
+                    if m_seq:
+                        headers_map[m_seq.group(1)] = part[1]
+        except Exception:
+            for mid in chunk:
+                try:
+                    typ, data = conn.fetch(
+                        mid, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM MESSAGE-ID DATE)])"
+                    )
+                    if typ == "OK" and data:
+                        for part in data:
+                            if isinstance(part, tuple) and len(part) >= 2:
+                                headers_map[mid] = part[1]
+                                break
+                except Exception:
+                    pass
+    return headers_map
+
+
 def sync_imap_invitations(payload: dict) -> dict:
     imap_host = payload.get("imap_host") or "imappro.zoho.com"
     imap_port = int(payload.get("imap_port") or 993)
     email_addr = (payload.get("email") or "").strip()
     password = payload.get("password") or ""
-    max_messages = int(payload.get("max_messages") or 80)
+    max_messages = int(payload.get("max_messages") or 500)
+    existing_message_ids = set(
+        str(x).strip() for x in (payload.get("existing_message_ids") or []) if str(x).strip()
+    )
+    existing_petition_nos = set(
+        str(x).strip().upper()
+        for x in (payload.get("existing_petition_nos") or [])
+        if str(x).strip()
+    )
+    existing_invitation_nos = set(
+        str(x).strip().upper()
+        for x in (payload.get("existing_invitation_nos") or [])
+        if str(x).strip()
+    )
 
     if not email_addr or not password:
         return {"success": False, "message": "Zoho e-posta veya şifre tanımlı değil."}
@@ -668,14 +736,53 @@ def sync_imap_invitations(payload: dict) -> dict:
 
     items = []
     scanned_count = 0
+    skipped_duplicates_imap = 0
+    seen_petitions_this_run = set(existing_petition_nos)
+    seen_invitations_this_run = set(existing_invitation_nos)
+    seen_msg_ids_this_run = set(existing_message_ids)
+
     try:
         conn.select("INBOX", readonly=True)
         typ, data = conn.search(None, "ALL")
         if typ == "OK" and data and data[0]:
             msg_ids = data[0].split()
             recent_ids = msg_ids[-max_messages:]
+            scanned_count = len(recent_ids)
+
+            # Pass 1: Fetch lightweight headers in chunks (fast even for 500+ emails)
+            headers_map = fetch_headers_in_chunks(conn, recent_ids, chunk_size=100)
+
+            ids_to_fetch = []
             for mid in reversed(recent_ids):
-                scanned_count += 1
+                hdr_bytes = headers_map.get(mid)
+                if hdr_bytes:
+                    hdr_msg = email.message_from_bytes(hdr_bytes)
+                    subj = decode_mime_str(hdr_msg.get("Subject", ""))
+                    sndr = decode_mime_str(hdr_msg.get("From", ""))
+                    mid_hdr = str(hdr_msg.get("Message-ID") or "").strip()
+
+                    if not is_candidate_invitation_header(subj, sndr):
+                        continue
+
+                    if mid_hdr and mid_hdr in seen_msg_ids_this_run:
+                        skipped_duplicates_imap += 1
+                        continue
+
+                    pet_no = extract_petition_no_from_subject(subj)
+                    if pet_no and pet_no in seen_petitions_this_run:
+                        skipped_duplicates_imap += 1
+                        continue
+
+                    if mid_hdr:
+                        seen_msg_ids_this_run.add(mid_hdr)
+                    if pet_no:
+                        seen_petitions_this_run.add(pet_no)
+                    ids_to_fetch.append(mid)
+                else:
+                    ids_to_fetch.append(mid)
+
+            # Pass 2: Download full RFC822 (with PDF) ONLY for genuinely new candidate emails
+            for mid in ids_to_fetch:
                 t_f, msg_data = conn.fetch(mid, "(RFC822)")
                 if t_f != "OK" or not msg_data:
                     continue
@@ -686,11 +793,30 @@ def sync_imap_invitations(payload: dict) -> dict:
                         break
                 if not raw_email:
                     continue
+                before_len = len(items)
                 process_raw_email_bytes(
                     raw_email,
                     f"imap-{mid.decode('utf-8', errors='ignore')}",
                     items,
                 )
+                # Deduplicate newly parsed items against already-seen invitation/petition numbers
+                if len(items) > before_len:
+                    kept = items[:before_len]
+                    for new_it in items[before_len:]:
+                        flds = new_it.get("fields") or {}
+                        inv_no = str(flds.get("invitation_no") or "").strip().upper()
+                        pet_no = str(flds.get("petition_no") or "").strip().upper()
+                        if (inv_no and inv_no in seen_invitations_this_run) or (
+                            pet_no and pet_no in existing_petition_nos
+                        ):
+                            skipped_duplicates_imap += 1
+                            continue
+                        if inv_no:
+                            seen_invitations_this_run.add(inv_no)
+                        if pet_no:
+                            seen_petitions_this_run.add(pet_no)
+                        kept.append(new_it)
+                    items = kept
     finally:
         try:
             conn.logout()
@@ -702,6 +828,7 @@ def sync_imap_invitations(payload: dict) -> dict:
         "connected_host": connected_host,
         "scanned_emails": scanned_count,
         "found_invitations": len(items),
+        "skipped_duplicates_imap": skipped_duplicates_imap,
         "items": items,
     }
 

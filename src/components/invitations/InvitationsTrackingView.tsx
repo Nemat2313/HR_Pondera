@@ -178,7 +178,7 @@ export default function InvitationsTrackingView() {
       const res = await fetch('/api/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync_imap', maxMessages: 80 }),
+        body: JSON.stringify({ action: 'sync_imap', maxMessages: 500 }),
       });
       const json = await res.json();
       if (json?.success) {

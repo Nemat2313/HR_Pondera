@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     // Auto-sync on first visit if never synced from Zoho IMAP yet or if requested
     if (autoSync || !lastSyncRow?.value) {
       try {
-        syncZohoInvitationsFromImap(50, db);
+        syncZohoInvitationsFromImap(300, db);
       } catch {}
     }
 
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     ensureInvitationsTables(db);
 
     if (action === 'sync_imap') {
-      const maxMessages = Number(body?.maxMessages || 80);
+      const maxMessages = Number(body?.maxMessages || 500);
       const res = syncZohoInvitationsFromImap(maxMessages, db);
       return NextResponse.json(res);
     }

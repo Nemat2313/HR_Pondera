@@ -696,8 +696,8 @@ function runPythonInvitationHelper(payload: Record<string, any>): any {
       const res = spawnSync(bin, [scriptPath], {
         input: inputJson,
         encoding: 'utf-8',
-        timeout: 45000,
-        maxBuffer: 25 * 1024 * 1024,
+        timeout: 180000,
+        maxBuffer: 120 * 1024 * 1024,
       });
       if (res.error) {
         lastErr = res.error.message;
@@ -975,7 +975,7 @@ export function upsertParsedInvitationToDb(
 }
 
 export function syncZohoInvitationsFromImap(
-  maxMessages = 80,
+  maxMessages = 500,
   dbInstance?: any
 ): {
   success: boolean;
@@ -1002,6 +1002,29 @@ export function syncZohoInvitationsFromImap(
     };
   }
 
+  // Pass already-archived invitation identifiers so IMAP skips downloading duplicate PDFs
+  const uploadDir = getInvitationsUploadDir();
+  const existingRows = db
+    .prepare('SELECT invitation_no, petition_no, email_message_id, pdf_filename FROM mvd_invitations')
+    .all() as Array<{
+    invitation_no?: string;
+    petition_no?: string;
+    email_message_id?: string;
+    pdf_filename?: string;
+  }>;
+  const existingMessageIds: string[] = [];
+  const existingPetitionNos: string[] = [];
+  const existingInvitationNos: string[] = [];
+  for (const r of existingRows) {
+    const hasPdf = Boolean(
+      r.pdf_filename && fs.existsSync(path.join(uploadDir, path.basename(r.pdf_filename)))
+    );
+    if (!hasPdf) continue;
+    if (r.email_message_id) existingMessageIds.push(String(r.email_message_id).trim());
+    if (r.petition_no) existingPetitionNos.push(String(r.petition_no).trim().toUpperCase());
+    if (r.invitation_no) existingInvitationNos.push(String(r.invitation_no).trim().toUpperCase());
+  }
+
   const pyRes = runPythonInvitationHelper({
     action: 'sync_imap',
     imap_host: smtp.imapHost || 'imappro.zoho.com',
@@ -1009,6 +1032,9 @@ export function syncZohoInvitationsFromImap(
     email: smtp.user,
     password: smtp.pass,
     max_messages: maxMessages,
+    existing_message_ids: existingMessageIds,
+    existing_petition_nos: existingPetitionNos,
+    existing_invitation_nos: existingInvitationNos,
   });
 
   if (!pyRes?.success) {
@@ -1026,7 +1052,7 @@ export function syncZohoInvitationsFromImap(
   const items = Array.isArray(pyRes.items) ? pyRes.items : [];
   const savedItems: Array<{ invitation_no: string; matched_sicil_no: string; pdf_filename: string }> = [];
   let matchedCount = 0;
-  let skippedDuplicates = 0;
+  let skippedDuplicates = Number(pyRes.skipped_duplicates_imap || 0);
 
   for (const item of items) {
     const res = upsertParsedInvitationToDb(item, db, { skipIfExists: true });
@@ -1301,7 +1327,7 @@ export async function sendDailyInvitationsSummaryNotification(options?: {
 
   // Sync latest Zoho IMAP emails before sending notification
   try {
-    syncZohoInvitationsFromImap(50, db);
+    syncZohoInvitationsFromImap(300, db);
   } catch {}
 
   let rows: MvdInvitationRecord[] = [];
