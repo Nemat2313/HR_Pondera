@@ -67,7 +67,7 @@ export async function GET(request: Request) {
           "SELECT COUNT(*) as totalCnt, SUM(CASE WHEN COALESCE(TRIM(cinsiyet), '') != '' THEN 1 ELSE 0 END) as withGender FROM personnel"
         )
         .get() as { totalCnt: number; withGender: number };
-      const sigKey = `jsv2:${pCountRow?.totalCnt || 0}:${pCountRow?.withGender || 0}`;
+      const sigKey = `jsv3:${pCountRow?.totalCnt || 0}:${pCountRow?.withGender || 0}`;
       if (
         pCountRow &&
         pCountRow.totalCnt > 0 &&
@@ -81,20 +81,20 @@ export async function GET(request: Request) {
         if (hasZup && hasZup.c > 0) {
           const zRows = db
             .prepare(
-              "SELECT tabel_no, norm_sicil, fio_kiril, doc_no, gender_ru FROM zup_official_personnel WHERE COALESCE(TRIM(gender_ru), '') != ''"
+              "SELECT tabel_no, norm_sicil, fio_kiril, doc_no, gender FROM zup_official_personnel WHERE COALESCE(TRIM(gender), '') != ''"
             )
             .all() as Array<{
             tabel_no?: string;
             norm_sicil?: string;
             fio_kiril?: string;
             doc_no?: string;
-            gender_ru?: string;
+            gender?: string;
           }>;
           const bySicil = new Map<string, string>();
           const byFio = new Map<string, string>();
           const byPass = new Map<string, string>();
           for (const zr of zRows) {
-            const gLow = String(zr.gender_ru || '').trim().toLowerCase();
+            const gLow = String(zr.gender || '').trim().toLowerCase();
             const normGender = gLow.startsWith('муж') || gLow.startsWith('m') || gLow.startsWith('erk')
               ? 'Erkek'
               : gLow.startsWith('жен') || gLow.startsWith('f') || gLow.startsWith('kad')
@@ -154,7 +154,7 @@ export async function GET(request: Request) {
       .all() as { key: string; value: string }[];
     const sysStampSig = sysStampRows.map((r) => `${r.key}=${r.value}`).join('|');
     const jobLevelsRev = getOrgJobLevelsRevision(db);
-    const statsCacheKey = `v6:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const statsCacheKey = `v7:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
     const gStats = globalThis as unknown as {
       __ponderaStatsCache?: Map<string, any>;
     };
