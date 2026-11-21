@@ -556,13 +556,13 @@ class GosuslugiRegistrationRobot:
                 self.click_text_button(["Перейти к заявлению", "Продолжить"])
                 continue
 
-            # 7) Host / Company confirmation screens ('Проверьте ваши данные', адрес, телефон, почта)
-            if "проверьте" in h_low and ("данные" in h_low or "телефон" in h_low or "почту" in h_low or "постоянной регистрации" in h_low):
-                self.click_text_button(["Верно", "Продолжить"])
-                continue
+            # 8) Host / Company confirmation screens (ANY 'Проверьте ...' screen except legal address -> 'Верно')
+            if "проверьте" in h_low and "юридический адрес" not in h_low:
+                if self.click_text_button(["Верно", "Продолжить"]):
+                    continue
 
-            # 8) Legal address confirmation
-            if "юридический адрес организации" in h_low:
+            # 9) Legal address confirmation
+            if "юридический адрес" in h_low:
                 self.click_continue()
                 continue
 
