@@ -49,7 +49,8 @@ type ActiveAiProviderId =
   | 'gigachat'
   | 'gemini'
   | 'openrouter'
-  | 'ru_docs_ocr';
+  | 'ru_docs_ocr'
+  | 'local_ollama';
 
 interface CandidatePerson {
   personType: 'employee' | 'guest';
@@ -284,6 +285,7 @@ async function prepareFileForAi(
       provider === 'yandex' ||
       provider === 'gigachat' ||
       provider === 'ru_docs_ocr' ||
+      provider === 'local_ollama' ||
       provider === 'deepseek_ocr';
 
     // FAST PATH: Digital e-ticket PDF on DeepSeek / OpenRouter — skip 1.5MB JPEG canvas rendering & upload!
@@ -338,6 +340,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini: 'Google Gemini Flash (Vision & PDF)',
   openrouter: 'OpenRouter',
   ru_docs_ocr: 'RussianDocsOCR + DeepSeek',
+  local_ollama: 'Yerel AI — Ollama / Qwen2.5-VL (Sıfır Dış Veri)',
 };
 
 export default function LiveTicketScannerSystem({
@@ -456,7 +459,7 @@ export default function LiveTicketScannerSystem({
                 setSelectedProvider(configuredActive);
               } else {
                 const firstReady = (
-                  ['deepseek_ocr', 'deepseek', 'yandex', 'gigachat', 'gemini', 'openrouter', 'ru_docs_ocr'] as ActiveAiProviderId[]
+                  ['deepseek_ocr', 'deepseek', 'yandex', 'gigachat', 'gemini', 'openrouter', 'ru_docs_ocr', 'local_ollama'] as ActiveAiProviderId[]
                 ).find((k) => readinessMap[k]);
                 setSelectedProvider(firstReady || configuredActive);
               }
@@ -1436,6 +1439,10 @@ export default function LiveTicketScannerSystem({
                       <option value="ru_docs_ocr">
                         7. RussianDocsOCR (Yerel){' '}
                         {aiStatus?.readiness?.ru_docs_ocr ? '— ✓ Hazır' : '— Kurulu Değil'}
+                      </option>
+                      <option value="local_ollama">
+                        8. Yerel AI — Ollama / Qwen2.5-VL (152-FZ){' '}
+                        {aiStatus?.readiness?.local_ollama ? '— ✓ Yapılandırıldı' : '— Kurulu Değil'}
                       </option>
                     </select>
                     <button
@@ -2744,7 +2751,7 @@ export default function LiveTicketScannerSystem({
       <AiApiKeyGuideModal
         isOpen={guideModalOpen}
         initialProvider={
-          selectedProvider === 'ru_docs_ocr'
+          selectedProvider === 'ru_docs_ocr' || selectedProvider === 'local_ollama'
             ? 'deepseek'
             : (selectedProvider as GuideProviderKey)
         }

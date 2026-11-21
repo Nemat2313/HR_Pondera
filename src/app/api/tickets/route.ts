@@ -180,6 +180,7 @@ export async function GET(request: Request) {
           gemini: hasProviderCredentials('gemini', aiSettings),
           openrouter: hasProviderCredentials('openrouter', aiSettings),
           ru_docs_ocr: hasProviderCredentials('ru_docs_ocr', aiSettings),
+          local_ollama: hasProviderCredentials('local_ollama', aiSettings),
         },
       },
     });

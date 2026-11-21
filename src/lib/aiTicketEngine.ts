@@ -1,6 +1,8 @@
 import https from 'https';
 import tls from 'tls';
 import crypto from 'crypto';
+import os from 'os';
+import fs from 'fs';
 import { getDb } from '@/lib/db';
 import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
 import upcomingTicketsSeed from '@/data/upcomingTicketsSeed.json';
@@ -90,7 +92,25 @@ export type AiProviderId =
   | 'gigachat'
   | 'gemini'
   | 'openrouter'
-  | 'ru_docs_ocr';
+  | 'ru_docs_ocr'
+  | 'local_ollama';
+
+export interface ServerHardwareProfile {
+  platform: string;
+  arch: string;
+  cpuCores: number;
+  cpuModel: string;
+  totalRamGb: number;
+  freeRamGb: number;
+  usedRamGb: number;
+  totalDiskGb: number;
+  freeDiskGb: number;
+  ollamaBaseUrl: string;
+  ollamaReachable: boolean;
+  installedModels: string[];
+  recommendedOption: 'qwen2.5vl:7b' | 'qwen2.5vl:3b' | 'cloud_api';
+  recommendationNote: string;
+}
 
 export interface AiProviderSettingsRow {
   id: number;
@@ -116,6 +136,8 @@ export interface AiProviderSettingsRow {
   openrouter_model: string;
   ru_docs_ocr_url: string;
   ru_docs_ocr_key: string;
+  ollama_base_url: string;
+  ollama_model: string;
   updated_at: string;
 }
 
@@ -237,6 +259,8 @@ export function ensureAiTicketTables() {
       openrouter_model TEXT NOT NULL DEFAULT 'deepseek/deepseek-chat-v3-0324',
       ru_docs_ocr_url TEXT NOT NULL DEFAULT '',
       ru_docs_ocr_key TEXT NOT NULL DEFAULT '',
+      ollama_base_url TEXT NOT NULL DEFAULT 'http://127.0.0.1:11434/v1',
+      ollama_model TEXT NOT NULL DEFAULT 'qwen2.5vl:3b',
       updated_at TEXT NOT NULL DEFAULT ''
     );
 
@@ -575,11 +599,98 @@ export function ensureAiTicketTables() {
     // Non-blocking if read-only fs
   }
 
+  const aiCols = getTableColumnSet(db, 'ai_provider_settings');
+  if (!aiCols.has('ollama_base_url')) {
+    try {
+      db.exec(
+        "ALTER TABLE ai_provider_settings ADD COLUMN ollama_base_url TEXT NOT NULL DEFAULT 'http://127.0.0.1:11434/v1'"
+      );
+    } catch {}
+  }
+  if (!aiCols.has('ollama_model')) {
+    try {
+      db.exec(
+        "ALTER TABLE ai_provider_settings ADD COLUMN ollama_model TEXT NOT NULL DEFAULT 'qwen2.5vl:3b'"
+      );
+    } catch {}
+  }
+
   const verifiedCols = getTableColumnSet(db, 'travel_tickets');
   if (verifiedCols.has('eba_doc_id') && verifiedCols.has('reception_driver_note')) {
     gState.__ponderaAiTicketTablesEnsured = true;
   }
   return db;
+}
+
+export async function getServerHardwareProfile(
+  ollamaBaseUrl?: string
+): Promise<ServerHardwareProfile> {
+  const cpus = os.cpus() || [];
+  const totalRamBytes = os.totalmem();
+  const freeRamBytes = os.freemem();
+  const totalRamGb = Math.round((totalRamBytes / 1024 ** 3) * 10) / 10;
+  const freeRamGb = Math.round((freeRamBytes / 1024 ** 3) * 10) / 10;
+  const usedRamGb = Math.round(((totalRamBytes - freeRamBytes) / 1024 ** 3) * 10) / 10;
+
+  let totalDiskGb = 0;
+  let freeDiskGb = 0;
+  try {
+    const stat = fs.statfsSync(process.cwd());
+    totalDiskGb = Math.round(((stat.blocks * stat.bsize) / 1024 ** 3) * 10) / 10;
+    freeDiskGb = Math.round(((stat.bavail * stat.bsize) / 1024 ** 3) * 10) / 10;
+  } catch {}
+
+  const cleanBase = (ollamaBaseUrl || 'http://127.0.0.1:11434/v1').trim().replace(/\/+$/, '');
+  const ollamaRoot = cleanBase.replace(/\/v1$/i, '');
+  let ollamaReachable = false;
+  let installedModels: string[] = [];
+
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 1500);
+    const resp = await fetch(`${ollamaRoot}/api/tags`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (resp.ok) {
+      ollamaReachable = true;
+      const json = await resp.json().catch(() => ({}));
+      if (Array.isArray(json?.models)) {
+        installedModels = json.models
+          .map((m: any) => String(m?.name || m?.model || '').trim())
+          .filter(Boolean);
+      }
+    }
+  } catch {}
+
+  let recommendedOption: 'qwen2.5vl:7b' | 'qwen2.5vl:3b' | 'cloud_api' = 'cloud_api';
+  let recommendationNote =
+    'Sunucu RAM miktarı 8 GB altında olduğu için yerel VLM yerine Rusya içi 152-FZ uyumlu Beorg API / Yandex Vision OCR veya SiliconFlow DeepSeek-VL2 önerilir.';
+
+  if (totalRamGb >= 14 && (freeDiskGb === 0 || freeDiskGb >= 10)) {
+    recommendedOption = 'qwen2.5vl:7b';
+    recommendationNote =
+      'Sunucuda 16 GB+ RAM mevcut — sıfır dış veri çıkışlı en yüksek doğruluklu Yerel AI (Ollama + qwen2.5vl:7b) doğrudan kurulabilir.';
+  } else if (totalRamGb >= 7 && (freeDiskGb === 0 || freeDiskGb >= 6)) {
+    recommendedOption = 'qwen2.5vl:3b';
+    recommendationNote =
+      'Sunucuda 8 GB+ RAM mevcut — sıfır dış veri çıkışlı hızlı Yerel AI (Ollama + qwen2.5vl:3b) doğrudan kurulabilir.';
+  }
+
+  return {
+    platform: os.platform(),
+    arch: os.arch(),
+    cpuCores: cpus.length,
+    cpuModel: cpus[0]?.model ? String(cpus[0].model).trim() : 'CPU',
+    totalRamGb,
+    freeRamGb,
+    usedRamGb,
+    totalDiskGb,
+    freeDiskGb,
+    ollamaBaseUrl: cleanBase,
+    ollamaReachable,
+    installedModels,
+    recommendedOption,
+    recommendationNote,
+  };
 }
 
 export function getAiProviderSettings(): AiProviderSettingsRow {
@@ -612,6 +723,8 @@ export function getAiProviderSettings(): AiProviderSettingsRow {
       openrouter_model: 'deepseek/deepseek-chat-v3-0324',
       ru_docs_ocr_url: '',
       ru_docs_ocr_key: '',
+      ollama_base_url: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
+      ollama_model: process.env.OLLAMA_MODEL || 'qwen2.5vl:3b',
       updated_at: '',
     }
   );
@@ -2704,6 +2817,26 @@ async function executeSingleProviderTicketParse(
     };
   }
 
+  if (provider === 'local_ollama') {
+    const baseUrl = (settings.ollama_base_url || 'http://127.0.0.1:11434/v1').trim();
+    const model = (settings.ollama_model || 'qwen2.5vl:3b').trim();
+    if (!baseUrl) {
+      throw new Error('Yerel Ollama sunucu adresi (URL) girilmedi.');
+    }
+    const raw = await callOpenAiCompatibleVisionOrText({
+      baseUrl,
+      apiKey: 'ollama',
+      model,
+      systemPrompt: HUMAN_TICKET_SYSTEM_PROMPT,
+      userInstruction: baseUserInstruction,
+      imagesDataUrls: images,
+    });
+    return {
+      parsed: extractJsonFromModelOutput(raw),
+      providerLabel: `Yerel AI — Ollama (${model})`,
+    };
+  }
+
   throw new Error(`Bilinmeyen AI sağlayıcısı: ${provider}`);
 }
 
@@ -2720,6 +2853,7 @@ export async function parseTicketDocument(input: TicketParseInput) {
     gemini: 'Google Gemini',
     openrouter: 'OpenRouter',
     ru_docs_ocr: 'RussianDocsOCR',
+    local_ollama: 'Yerel AI (Ollama / Qwen2.5-VL)',
   };
 
   // Strict single-provider execution: NEVER auto-switch to another AI provider behind the user's back
@@ -2749,6 +2883,8 @@ export function hasProviderCredentials(
       return Boolean(s.openrouter_api_key.trim());
     case 'ru_docs_ocr':
       return Boolean(s.ru_docs_ocr_url.trim());
+    case 'local_ollama':
+      return Boolean((s.ollama_base_url || '').trim() && (s.ollama_model || '').trim());
     default:
       return false;
   }
@@ -3036,6 +3172,36 @@ export async function testAiProviderConnection(
       };
     }
 
+    if (provider === 'local_ollama') {
+      const base = (s.ollama_base_url || 'http://127.0.0.1:11434/v1').trim().replace(/\/+$/, '');
+      const root = base.replace(/\/v1$/i, '');
+      const targetModel = (s.ollama_model || 'qwen2.5vl:3b').trim();
+      const res = await fetch(`${root}/api/tags`);
+      if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
+      const json = await res.json().catch(() => ({}));
+      const models: string[] = Array.isArray(json?.models)
+        ? json.models.map((m: any) => String(m?.name || m?.model || '').trim()).filter(Boolean)
+        : [];
+      const hasTarget = models.some(
+        (m) => m.toLowerCase() === targetModel.toLowerCase() || m.toLowerCase().startsWith(`${targetModel.toLowerCase()}:`)
+      );
+      if (!hasTarget) {
+        return {
+          ok: false,
+          latencyMs: Date.now() - start,
+          message: `Ollama çalışıyor ancak "${targetModel}" modeli henüz indirilmemiş. Sunucuda çalıştırın: ollama pull ${targetModel}`,
+          availableVisionModels: models,
+        };
+      }
+      return {
+        ok: true,
+        latencyMs: Date.now() - start,
+        message: `Yerel Ollama sunucusu aktif! "${targetModel}" modeli hazır (Sıfır dış veri çıkışı).`,
+        resolvedModel: targetModel,
+        availableVisionModels: models,
+      };
+    }
+
     return { ok: false, latencyMs: 0, message: 'Bilinmeyen sağlayıcı.' };
   } catch (err: any) {
     const providerLabels: Record<AiProviderId, string> = {
@@ -3046,6 +3212,7 @@ export async function testAiProviderConnection(
       gemini: 'Google Gemini',
       openrouter: 'OpenRouter',
       ru_docs_ocr: 'RussianDocsOCR',
+      local_ollama: 'Yerel AI (Ollama / Qwen2.5-VL)',
     };
     const humanized = humanizeProviderApiError(err, providerLabels[provider] || provider);
     return {

@@ -5,6 +5,7 @@ import {
   AiProviderSettingsRow,
   ensureAiTicketTables,
   getAiProviderSettings,
+  getServerHardwareProfile,
   hasProviderCredentials,
   maskSecretKey,
   normalizeSecretKeyInput,
@@ -58,6 +59,10 @@ function formatSettingsResponse(s: AiProviderSettingsRow) {
     ruDocsOcrKey: maskSecretKey(s.ru_docs_ocr_key),
     hasRuDocsOcr: Boolean(s.ru_docs_ocr_url && s.ru_docs_ocr_url.trim().length > 0),
 
+    ollamaBaseUrl: s.ollama_base_url || 'http://127.0.0.1:11434/v1',
+    ollamaModel: s.ollama_model || 'qwen2.5vl:3b',
+    hasLocalOllama: Boolean(s.ollama_base_url && s.ollama_base_url.trim().length > 0),
+
     updatedAt: s.updated_at || '',
     providerReadiness: {
       deepseek: hasProviderCredentials('deepseek', s),
@@ -67,6 +72,7 @@ function formatSettingsResponse(s: AiProviderSettingsRow) {
       gemini: hasProviderCredentials('gemini', s),
       openrouter: hasProviderCredentials('openrouter', s),
       ru_docs_ocr: hasProviderCredentials('ru_docs_ocr', s),
+      local_ollama: hasProviderCredentials('local_ollama', s),
     },
   };
 }
@@ -74,9 +80,11 @@ function formatSettingsResponse(s: AiProviderSettingsRow) {
 export async function GET() {
   try {
     const current = getAiProviderSettings();
+    const serverResources = await getServerHardwareProfile(current.ollama_base_url);
     return NextResponse.json({
       success: true,
       settings: formatSettingsResponse(current),
+      serverResources,
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -188,6 +196,12 @@ export async function POST(request: Request) {
       ).trim(),
       ru_docs_ocr_url: String(incoming.ruDocsOcrUrl ?? current.ru_docs_ocr_url ?? '').trim(),
       ru_docs_ocr_key: resolveSecret(incoming.ruDocsOcrKey, current.ru_docs_ocr_key),
+      ollama_base_url: String(
+        incoming.ollamaBaseUrl ?? current.ollama_base_url ?? 'http://127.0.0.1:11434/v1'
+      ).trim(),
+      ollama_model: String(
+        incoming.ollamaModel ?? current.ollama_model ?? 'qwen2.5vl:3b'
+      ).trim(),
       updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
 
@@ -216,6 +230,8 @@ export async function POST(request: Request) {
           openrouter_model = ?,
           ru_docs_ocr_url = ?,
           ru_docs_ocr_key = ?,
+          ollama_base_url = ?,
+          ollama_model = ?,
           updated_at = ?
          WHERE id = 1`
       ).run(
@@ -241,6 +257,8 @@ export async function POST(request: Request) {
         rowToSave.openrouter_model,
         rowToSave.ru_docs_ocr_url,
         rowToSave.ru_docs_ocr_key,
+        rowToSave.ollama_base_url,
+        rowToSave.ollama_model,
         rowToSave.updated_at
       );
     };

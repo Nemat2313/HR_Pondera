@@ -30,7 +30,25 @@ export type ProviderKey =
   | 'gigachat'
   | 'gemini'
   | 'openrouter'
-  | 'ru_docs_ocr';
+  | 'ru_docs_ocr'
+  | 'local_ollama';
+
+interface ServerHardwareResources {
+  platform: string;
+  arch: string;
+  cpuCores: number;
+  cpuModel: string;
+  totalRamGb: number;
+  freeRamGb: number;
+  usedRamGb: number;
+  totalDiskGb: number;
+  freeDiskGb: number;
+  ollamaBaseUrl: string;
+  ollamaReachable: boolean;
+  installedModels: string[];
+  recommendedOption: 'qwen2.5vl:7b' | 'qwen2.5vl:3b' | 'cloud_api';
+  recommendationNote: string;
+}
 
 interface AiSettingsFormState {
   activeProvider: ProviderKey;
@@ -70,6 +88,10 @@ interface AiSettingsFormState {
   ruDocsOcrKey: string;
   hasRuDocsOcr?: boolean;
 
+  ollamaBaseUrl: string;
+  ollamaModel: string;
+  hasLocalOllama?: boolean;
+
   updatedAt?: string;
   providerReadiness?: Record<string, boolean>;
 }
@@ -97,6 +119,8 @@ const DEFAULT_FORM: AiSettingsFormState = {
   openrouterApiKey: '',
   ruDocsOcrUrl: '',
   ruDocsOcrKey: '',
+  ollamaBaseUrl: 'http://127.0.0.1:11434/v1',
+  ollamaModel: 'qwen2.5vl:3b',
 };
 
 export default function AISettingsTab() {
@@ -119,6 +143,7 @@ export default function AISettingsTab() {
     Record<string, { ok: boolean; latencyMs: number; message: string }>
   >({});
   const [discoveredVisionModels, setDiscoveredVisionModels] = useState<string[]>([]);
+  const [serverResources, setServerResources] = useState<ServerHardwareResources | null>(null);
 
   useEffect(() => {
     fetch('/api/settings/ai')
@@ -126,6 +151,9 @@ export default function AISettingsTab() {
       .then((json) => {
         if (json?.success && json.settings) {
           setForm((prev) => ({ ...prev, ...json.settings }));
+        }
+        if (json?.serverResources) {
+          setServerResources(json.serverResources);
         }
       })
       .catch(() => {})
@@ -286,6 +314,11 @@ export default function AISettingsTab() {
       id: 'ru_docs_ocr',
       label: 'RussianDocsOCR (Kendi Sunucunuzdaki Yerel OCR + DeepSeek)',
       tag: 'On-Premise',
+    },
+    {
+      id: 'local_ollama',
+      label: 'Yerel AI — Ollama / Qwen2.5-VL (Sıfır Dış Veri, Ücretsiz, 152-FZ)',
+      tag: 'On-Premise VLM',
     },
   ];
 
@@ -1293,6 +1326,125 @@ export default function AISettingsTab() {
               }`}
             >
               {testResults.ru_docs_ocr.message}
+            </div>
+          )}
+        </div>
+
+        {/* CARD 7: LOCAL OLLAMA / QWEN2.5-VL (ZERO EXTERNAL DATA, FREE, 152-FZ) */}
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#131C31] border border-emerald-200 dark:border-emerald-800/60 space-y-3.5">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Server className="w-4 h-4 text-emerald-600" />
+                <span className="text-sm font-bold text-slate-900 dark:text-white">
+                  7. Yerel AI — Ollama / Qwen2.5-VL (Sıfır Dış Veri, 152-FZ Uyumlu)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Pasaport, vize, patent ve biletleri kendi sunucunuzda ücretsiz okur; hiçbir evrak dış buluta gönderilmez.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleTestProvider('local_ollama')}
+              disabled={testingProvider === 'local_ollama'}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/40 cursor-pointer flex items-center gap-1.5 shrink-0"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Ollama Test</span>
+            </button>
+          </div>
+
+          {serverResources && (
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 space-y-2 text-[11px]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-slate-700 dark:text-slate-200">
+                  Canlı Sunucu Donanım Analizi ({serverResources.platform}/{serverResources.arch})
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    serverResources.ollamaReachable
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200'
+                  }`}
+                >
+                  {serverResources.ollamaReachable
+                    ? `Ollama Aktif (${serverResources.installedModels.length} model)`
+                    : 'Ollama Kurulu / Aktif Değil'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                  <div className="text-[10px] text-slate-500">CPU Çekirdek</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-100">
+                    {serverResources.cpuCores} vCPU
+                  </div>
+                </div>
+                <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                  <div className="text-[10px] text-slate-500">Toplam / Boş RAM</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-100">
+                    {serverResources.totalRamGb} GB / {serverResources.freeRamGb} GB
+                  </div>
+                </div>
+                <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                  <div className="text-[10px] text-slate-500">Boş Disk</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-100">
+                    {serverResources.freeDiskGb} GB / {serverResources.totalDiskGb} GB
+                  </div>
+                </div>
+                <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                  <div className="text-[10px] text-slate-500">Önerilen Seçenek</div>
+                  <div className="font-bold text-emerald-700 dark:text-emerald-300">
+                    {serverResources.recommendedOption === 'cloud_api'
+                      ? 'Bulut API (Beorg/Yandex)'
+                      : serverResources.recommendedOption}
+                  </div>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                {serverResources.recommendationNote}
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                Ollama OpenAI-Uyumlu Adres (Base URL)
+              </label>
+              <input
+                type="text"
+                value={form.ollamaBaseUrl}
+                onChange={(e) => setForm((p) => ({ ...p, ollamaBaseUrl: e.target.value }))}
+                placeholder="http://127.0.0.1:11434/v1"
+                className="w-full px-3 py-1.5 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                Yerel Vision Modeli
+              </label>
+              <select
+                value={form.ollamaModel}
+                onChange={(e) => setForm((p) => ({ ...p, ollamaModel: e.target.value }))}
+                className="w-full px-3 py-1.5 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+              >
+                <option value="qwen2.5vl:3b">qwen2.5vl:3b (Hızlı — 8 GB+ RAM, ~2.5 GB Disk)</option>
+                <option value="qwen2.5vl:7b">qwen2.5vl:7b (En Yüksek Kalite — 16 GB+ RAM, ~5.5 GB Disk)</option>
+                <option value="llama3.2-vision:11b">llama3.2-vision:11b (Meta Vision — 16 GB+ RAM)</option>
+              </select>
+            </div>
+          </div>
+
+          {testResults.local_ollama && (
+            <div
+              className={`p-2.5 rounded-lg text-[11px] ${
+                testResults.local_ollama.ok
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
+                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200'
+              }`}
+            >
+              {testResults.local_ollama.message}
             </div>
           )}
         </div>
