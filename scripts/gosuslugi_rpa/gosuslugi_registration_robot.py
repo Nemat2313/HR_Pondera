@@ -298,6 +298,45 @@ class GosuslugiRegistrationRobot:
         return False
 
     def click_continue(self) -> bool:
+        """Waits briefly for 'Продолжить' to become enabled, then clicks via JS + physical mouse coordinates."""
+        self.wait_if_paused()
+        self.check_mvd_unavailable_and_pause()
+        for _ in range(6):
+            try:
+                coords = self.page.evaluate(
+                    """() => {
+                        const targets = ['продолжить', 'далее', 'перейти к заявлению', 'перейти к уведомлению'];
+                        const btns = Array.from(document.querySelectorAll('button, lib-button button'));
+                        for (const b of btns) {
+                            const r = b.getBoundingClientRect();
+                            if (r.width < 20 || r.height < 16) continue;
+                            const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                            if (!targets.some(kw => t === kw || t.includes(kw))) continue;
+                            const wrap = b.closest('lib-button, epgu-cf-ui-button');
+                            const st = window.getComputedStyle(b);
+                            const disabled = !!(
+                                b.disabled ||
+                                b.getAttribute('disabled') !== null ||
+                                (b.className || '').includes('disabled') ||
+                                st.pointerEvents === 'none' ||
+                                (wrap && ((wrap.className || '').includes('disabled') || wrap.getAttribute('disabled') !== null))
+                            );
+                            if (disabled) continue;
+                            b.scrollIntoView({ behavior: 'instant', block: 'center' });
+                            const r2 = b.getBoundingClientRect();
+                            b.click();
+                            return { x: r2.left + r2.width / 2, y: r2.top + r2.height / 2, t };
+                        }
+                        return null;
+                    }"""
+                )
+                if coords and coords.get("x") and coords.get("y"):
+                    self.page.mouse.click(float(coords["x"]), float(coords["y"]))
+                    self.page.wait_for_timeout(700)
+                    return True
+            except Exception:
+                pass
+            self.page.wait_for_timeout(300)
         return self.click_text_button(["Продолжить", "Далее", "Перейти к заявлению", "Перейти к уведомлению"])
 
     def fill_input_by_selector(self, selector: str, value: str, delay: int = 35) -> bool:
@@ -766,6 +805,16 @@ class GosuslugiRegistrationRobot:
                         pass
                     self.wait_if_paused()
                 continue
+
+            # Fallback: if we already filled this screen and blue 'Продолжить' is enabled, click it!
+            if (
+                ("адрес" in h_low and (filled_flags.get("reg_addr") or filled_flags.get("prev_addr")))
+                or ("удостоверяющего личность" in h_low and filled_flags.get("passport_info"))
+                or ("данные миграционной карты" in h_low and filled_flags.get("mk_info"))
+                or (("по месту учёта" in h_low or "по месту учета" in h_low) and filled_flags.get("stay_dates"))
+            ):
+                if self.click_continue():
+                    continue
 
             self.page.wait_for_timeout(700)
 
