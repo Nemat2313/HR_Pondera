@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { resolveRequestRlsScope } from '@/lib/auth';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
 import { normalizeRawRecordDates, formatKnownDateToDdMmYyyy } from '@/lib/dateFormatter';
@@ -92,11 +93,8 @@ export async function GET(request: Request) {
     const filterGuncelDurum = searchParams.get('guncelDurum') || 'all';
     const filterSearch = searchParams.get('search')?.trim().toLowerCase() || '';
 
-    // RLS Scope
-    const headerScopeType = request.headers.get('x-user-scope-type');
-    const headerScopeVal = request.headers.get('x-user-scope-value');
-    const scopeType = headerScopeType || searchParams.get('userScopeType') || 'all';
-    const scopeVal = headerScopeVal || searchParams.get('userScopeValue') || 'all';
+    // RLS Scope (cookie-enforced for non-admin, header-previewable for admin)
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
 
     const db = getDb();
 

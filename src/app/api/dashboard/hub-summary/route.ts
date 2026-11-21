@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { resolveRequestRlsScope } from '@/lib/auth';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
 import { getDocumentScansDataset } from '@/lib/documentScansServer';
 import {
@@ -49,10 +50,7 @@ export async function GET(request: Request) {
     const filterProject = searchParams.get('project') || 'all';
     const firmType = searchParams.get('firmType') || 'all';
 
-    const headerScopeType = request.headers.get('x-user-scope-type');
-    const headerScopeVal = request.headers.get('x-user-scope-value');
-    const scopeType = headerScopeType || searchParams.get('userScopeType') || 'all';
-    const scopeVal = headerScopeVal || searchParams.get('userScopeValue') || 'all';
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
 
     const cacheKey = `hub:${scopeType}:${scopeVal}:${filterRegion}:${filterProject}:${firmType}`;
     const g = globalThis as unknown as {

@@ -10,11 +10,13 @@ const DEFAULT_ADMIN_SCRYPT_HASH =
 export const INITIAL_ADMIN_PASSWORD_HASH =
   (process.env.ADMIN_PASSWORD_HASH || '').trim() || DEFAULT_ADMIN_SCRYPT_HASH;
 
+export type UserRole = 'admin' | 'hr_specialist' | 'user' | 'viewer' | 'idari_isler';
+
 export interface SessionUser {
   id: number;
   name: string;
   email: string;
-  role: 'admin' | 'user' | 'viewer' | 'idari_isler';
+  role: UserRole;
   scope_type: 'all' | 'region' | 'project';
   scope_value: string;
   exp?: number;
@@ -154,6 +156,54 @@ export function getSessionUserFromRequest(request: Request): SessionUser | null 
   const cookieHeader = request.headers.get('cookie');
   const token = parseCookieValue(cookieHeader, SESSION_COOKIE_NAME);
   return verifySessionToken(token);
+}
+
+/**
+ * Resolves the effective RLS scope for any API route:
+ * - For authenticated non-admin users, ALWAYS enforces the signed HttpOnly session cookie scope (prevents spoofing).
+ * - For Admin users (e.g., when previewing another site user via "Geçiş Yap") or unauthenticated internal calls,
+ *   honors x-user-scope-type / x-user-scope-value headers or query params.
+ */
+export function resolveRequestRlsScope(request: Request): {
+  scopeType: 'all' | 'region' | 'project';
+  scopeVal: string;
+  sessionUser: SessionUser | null;
+} {
+  const sessionUser = getSessionUserFromRequest(request);
+  if (sessionUser && sessionUser.role !== 'admin') {
+    const st =
+      sessionUser.scope_type === 'region' || sessionUser.scope_type === 'project'
+        ? sessionUser.scope_type
+        : 'all';
+    const sv = st === 'all' ? 'all' : String(sessionUser.scope_value || 'all').trim() || 'all';
+    return { scopeType: st, scopeVal: sv, sessionUser };
+  }
+
+  let queryScopeType: string | null = null;
+  let queryScopeVal: string | null = null;
+  try {
+    const { searchParams } = new URL(request.url);
+    queryScopeType = searchParams.get('userScopeType');
+    queryScopeVal = searchParams.get('userScopeValue');
+  } catch {}
+
+  const rawType = (
+    request.headers.get('x-user-scope-type') ||
+    queryScopeType ||
+    sessionUser?.scope_type ||
+    'all'
+  ).trim();
+  const scopeType: 'all' | 'region' | 'project' =
+    rawType === 'region' || rawType === 'project' ? rawType : 'all';
+  const rawVal = (
+    request.headers.get('x-user-scope-value') ||
+    queryScopeVal ||
+    sessionUser?.scope_value ||
+    'all'
+  ).trim();
+  const scopeVal = scopeType === 'all' ? 'all' : rawVal || 'all';
+
+  return { scopeType, scopeVal, sessionUser };
 }
 
 export function buildSessionCookieHeader(

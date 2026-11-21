@@ -67,6 +67,8 @@ export async function POST(request: Request) {
     const validRole =
       role === 'admin'
         ? 'admin'
+        : role === 'hr_specialist'
+        ? 'hr_specialist'
         : role === 'viewer'
         ? 'viewer'
         : role === 'idari_isler'
@@ -141,6 +143,8 @@ export async function PATCH(request: Request) {
         ? 'admin'
         : role === 'admin'
         ? 'admin'
+        : role === 'hr_specialist'
+        ? 'hr_specialist'
         : role === 'viewer'
         ? 'viewer'
         : role === 'idari_isler'

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { resolveRequestRlsScope } from '@/lib/auth';
 import {
   WORK_PERMIT_CASE_SQL,
   normalizePermitFilterKey,
@@ -33,11 +34,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const includeExits = searchParams.get('includeExits') === 'true';
 
-    // Row-Level Security (RLS) Scope
-    const headerScopeType = request.headers.get('x-user-scope-type');
-    const headerScopeVal = request.headers.get('x-user-scope-value');
-    const scopeType = headerScopeType || searchParams.get('userScopeType') || 'all';
-    const scopeVal = headerScopeVal || searchParams.get('userScopeValue') || 'all';
+    // Row-Level Security (RLS) Scope (cookie-enforced for non-admin, header-previewable for admin)
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
 
     let region = searchParams.get('region');
     let project = searchParams.get('project');
@@ -60,6 +58,49 @@ export async function GET(request: Request) {
     const db = getDb();
     ensureInterSiteTransfersSynced(db);
 
+    // Auto-backfill missing personnel.cinsiyet from 1C ZUP (zup_official_personnel.gender_ru)
+    // when an eBA upload omits the Cinsiyet column (prevents Erkek: 0 / Kadın: 0).
+    try {
+      const gBackfill = globalThis as unknown as { __ponderaGenderBackfillSig?: string };
+      const pCountRow = db
+        .prepare(
+          "SELECT COUNT(*) as totalCnt, SUM(CASE WHEN COALESCE(TRIM(cinsiyet), '') != '' THEN 1 ELSE 0 END) as withGender FROM personnel"
+        )
+        .get() as { totalCnt: number; withGender: number };
+      const sigKey = `${pCountRow?.totalCnt || 0}:${pCountRow?.withGender || 0}`;
+      if (
+        pCountRow &&
+        pCountRow.totalCnt > 0 &&
+        (pCountRow.withGender || 0) < pCountRow.totalCnt * 0.2 &&
+        gBackfill.__ponderaGenderBackfillSig !== sigKey
+      ) {
+        gBackfill.__ponderaGenderBackfillSig = sigKey;
+        const hasZup = db
+          .prepare("SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name='zup_official_personnel'")
+          .get() as { c: number };
+        if (hasZup && hasZup.c > 0) {
+          db.exec(`
+            UPDATE personnel
+            SET cinsiyet = (
+              SELECT CASE
+                WHEN LOWER(TRIM(z.gender_ru)) LIKE 'муж%' THEN 'Erkek'
+                WHEN LOWER(TRIM(z.gender_ru)) LIKE 'жен%' THEN 'Kadin'
+                ELSE ''
+              END
+              FROM zup_official_personnel z
+              WHERE COALESCE(TRIM(z.gender_ru), '') != ''
+                AND (
+                  (COALESCE(TRIM(personnel.sicil_no), '') != '' AND (z.norm_sicil = LTRIM(TRIM(personnel.sicil_no), '0') OR z.tabel_no = TRIM(personnel.sicil_no)))
+                  OR (COALESCE(TRIM(personnel.tam_adi_kiril), '') != '' AND LOWER(TRIM(z.fio_kiril)) = LOWER(TRIM(personnel.tam_adi_kiril)))
+                )
+              LIMIT 1
+            )
+            WHERE COALESCE(TRIM(cinsiyet), '') = '';
+          `);
+        }
+      }
+    } catch {}
+
     // Fast in-memory cache keyed by personnel table state + system_info timestamps + query parameters
     const verRow = db
       .prepare('SELECT COUNT(*) as cnt, COALESCE(MAX(id), 0) as maxId FROM personnel')
@@ -71,7 +112,7 @@ export async function GET(request: Request) {
       .all() as { key: string; value: string }[];
     const sysStampSig = sysStampRows.map((r) => `${r.key}=${r.value}`).join('|');
     const jobLevelsRev = getOrgJobLevelsRevision(db);
-    const statsCacheKey = `v4:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const statsCacheKey = `v5:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
     const gStats = globalThis as unknown as {
       __ponderaStatsCache?: Map<string, any>;
     };
@@ -88,6 +129,20 @@ export async function GET(request: Request) {
 
     if (!includeExits) {
       filterMap['status'] = { col: 'genel_durum', op: '=', val: 'Mevcut' };
+    }
+
+    // Mandatory RLS constraint — NEVER excluded by cross-highlighting buildWhere('region') / buildWhere('project')
+    if (scopeType === 'region' && scopeVal && scopeVal !== 'all') {
+      const rlsRegCond = buildEffectiveRegionSqlCondition(scopeVal);
+      filterMap['__rls'] = {
+        col: 'region',
+        op: '=',
+        val: null,
+        rawSql: rlsRegCond.sql,
+        rawParams: rlsRegCond.params,
+      };
+    } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
+      filterMap['__rls'] = { col: 'proje_adi', op: '=', val: scopeVal };
     }
 
     if (region && region !== 'all') {
@@ -298,15 +353,20 @@ export async function GET(request: Request) {
     `);
     const projectDistribution = projectQuery.all(...projectWhere.params);
 
-    // 8. Gender Distribution (Always shows both Erkek and Kadin)
+    // 8. Gender Distribution (Always shows both Erkek and Kadin, normalized across TR/RU variants)
     const genderWhere = buildWhere('gender');
+    const genderCaseSql = `CASE
+      WHEN LOWER(TRIM(COALESCE(cinsiyet, ''))) IN ('erkek', 'e', 'm', 'male', 'мужской', 'муж') THEN 'Erkek'
+      WHEN LOWER(TRIM(COALESCE(cinsiyet, ''))) IN ('kadin', 'kadın', 'k', 'f', 'female', 'женский', 'жен') THEN 'Kadin'
+      ELSE 'Belirtilmemiş'
+    END`;
     const genderQuery = db.prepare(`
       SELECT 
-        COALESCE(NULLIF(cinsiyet, ''), 'Belirtilmemiş') as label,
+        (${genderCaseSql}) as label,
         COUNT(*) as count
       FROM personnel
       ${genderWhere.clause}
-      GROUP BY cinsiyet
+      GROUP BY (${genderCaseSql})
       ORDER BY count DESC
     `);
     const genderDistribution = genderQuery.all(...genderWhere.params);

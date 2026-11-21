@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getSessionUserFromRequest } from '@/lib/auth';
+import { resolveRequestRlsScope } from '@/lib/auth';
 import {
   ensureZupTableAndSeed,
   ZupOfficialRecord,
@@ -306,7 +306,7 @@ function inferVoluntaryResignation(zupReason?: string, ebaReason?: string): stri
 
 export async function GET(request: Request) {
   try {
-    const sessionUser = getSessionUserFromRequest(request);
+    const { scopeType, scopeVal, sessionUser } = resolveRequestRlsScope(request);
     if (!sessionUser) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
@@ -317,10 +317,10 @@ export async function GET(request: Request) {
 
     let scopeRegion = 'all';
     let scopeProject = 'all';
-    if (sessionUser.scope_type === 'region' && sessionUser.scope_value !== 'all') {
-      scopeRegion = sessionUser.scope_value;
-    } else if (sessionUser.scope_type === 'project' && sessionUser.scope_value !== 'all') {
-      scopeProject = sessionUser.scope_value;
+    if (scopeType === 'region' && scopeVal !== 'all') {
+      scopeRegion = scopeVal;
+    } else if (scopeType === 'project' && scopeVal !== 'all') {
+      scopeProject = scopeVal;
     }
 
     const db = getDb();

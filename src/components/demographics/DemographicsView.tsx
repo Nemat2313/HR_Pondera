@@ -5,6 +5,7 @@ import { Globe2, Users, HeartPulse, CheckCircle2 } from 'lucide-react';
 import { StatsData } from '@/types';
 import WorldDemographicsMap from './WorldDemographicsMap';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface DemographicsViewProps {
   stats: StatsData | null;
@@ -22,11 +23,12 @@ interface LiveHealthMini {
 
 export default function DemographicsView({ stats, onNavigateToPersonnel }: DemographicsViewProps) {
   const { lang, translateVal } = useLanguage();
+  const { user, getAuthHeaders } = useAuth();
   const [liveHealth, setLiveHealth] = useState<LiveHealthMini | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/report-proposals', { cache: 'no-store' })
+    fetch('/api/report-proposals', { cache: 'no-store', headers: getAuthHeaders() })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (!cancelled && json?.success && json?.healthHse) {
@@ -44,7 +46,7 @@ export default function DemographicsView({ stats, onNavigateToPersonnel }: Demog
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.scope_type, user?.scope_value]);
 
   const nationalities = stats?.nationalityDistribution || [];
   const genders = stats?.genderDistribution || [];

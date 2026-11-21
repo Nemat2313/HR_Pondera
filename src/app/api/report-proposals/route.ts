@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUserFromRequest } from '@/lib/auth';
+import { resolveRequestRlsScope } from '@/lib/auth';
 import { getReportProposalsPayload } from '@/lib/reportProposalsEngine';
 
 export const runtime = 'nodejs';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    const sessionUser = getSessionUserFromRequest(request);
+    const { scopeType, scopeVal, sessionUser } = resolveRequestRlsScope(request);
     if (!sessionUser) {
       return NextResponse.json(
         { success: false, message: 'Oturum gerekli.' },
@@ -27,8 +27,8 @@ export async function GET(request: Request) {
 
     const payload = getReportProposalsPayload({
       region,
-      scopeType: sessionUser.scope_type,
-      scopeValue: sessionUser.scope_value,
+      scopeType,
+      scopeValue: scopeVal,
     });
 
     return NextResponse.json({

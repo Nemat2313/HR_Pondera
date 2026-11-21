@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { resolveRequestRlsScope } from '@/lib/auth';
 import {
   buildEffectiveRegionSqlCondition,
   resolveEffectiveRegion,
@@ -34,11 +35,7 @@ export interface OrgRawPerson {
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const headerScopeType = request.headers.get('x-user-scope-type');
-    const headerScopeVal = request.headers.get('x-user-scope-value');
-    const scopeType = headerScopeType || searchParams.get('userScopeType') || 'all';
-    const scopeVal = headerScopeVal || searchParams.get('userScopeValue') || 'all';
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
 
     const db = getDb();
 

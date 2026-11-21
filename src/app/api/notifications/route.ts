@@ -1,12 +1,26 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { resolveRequestRlsScope } from '@/lib/auth';
+import { buildEffectiveRegionSqlCondition } from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const db = getDb();
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
+    const rlsConds: string[] = [];
+    const rlsParams: any[] = [];
+    if (scopeType === 'region' && scopeVal && scopeVal !== 'all') {
+      const c = buildEffectiveRegionSqlCondition(scopeVal);
+      rlsConds.push(c.sql);
+      rlsParams.push(...c.params);
+    } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
+      rlsConds.push('proje_adi = ?');
+      rlsParams.push(scopeVal);
+    }
+    const rlsAnd = rlsConds.length > 0 ? ` AND ${rlsConds.join(' AND ')}` : '';
     let refDate = new Date('2026-10-18');
     try {
       const freshRow = db.prepare("SELECT value FROM system_info WHERE key = 'data_freshness'").get() as { value?: string } | undefined;
@@ -34,11 +48,11 @@ export async function GET() {
         WHERE guncel_durum IN ('Mevcut', 'Is Gezisi', 'İş Gezisi', 'Mazeret Izni', 'Mazeret İzni', 'Suresiz izin', 'Suresiz Izin', 'Süresiz İzin', 'Ucretsiz Izin', 'Ücretsiz İzin', 'Yillik Izin', 'Yıllık İzin') 
           AND vize_bitis_tarihi != '' 
           AND vize_bitis_tarihi >= ? 
-          AND vize_bitis_tarihi <= ?
+          AND vize_bitis_tarihi <= ?${rlsAnd}
         ORDER BY vize_bitis_tarihi ASC
         LIMIT 8
       `)
-      .all(today, visa45Limit);
+      .all(today, visa45Limit, ...rlsParams);
 
     // 2. Propusk expiring soon (within next 30 days)
     const propuskExpiring = db
@@ -48,11 +62,11 @@ export async function GET() {
         WHERE guncel_durum IN ('Mevcut', 'Is Gezisi', 'İş Gezisi', 'Mazeret Izni', 'Mazeret İzni', 'Suresiz izin', 'Suresiz Izin', 'Süresiz İzin', 'Ucretsiz Izin', 'Ücretsiz İzin', 'Yillik Izin', 'Yıllık İzin') 
           AND propusk_bitis_tarihi != '' 
           AND propusk_bitis_tarihi >= ? 
-          AND propusk_bitis_tarihi <= ?
+          AND propusk_bitis_tarihi <= ?${rlsAnd}
         ORDER BY propusk_bitis_tarihi ASC
         LIMIT 5
       `)
-      .all(today, propusk30Limit);
+      .all(today, propusk30Limit, ...rlsParams);
 
     // 3. Passports expiring soon (within 6 months)
     const passportExpiring = db
@@ -62,11 +76,11 @@ export async function GET() {
         WHERE guncel_durum IN ('Mevcut', 'Is Gezisi', 'İş Gezisi', 'Mazeret Izni', 'Mazeret İzni', 'Suresiz izin', 'Suresiz Izin', 'Süresiz İzin', 'Ucretsiz Izin', 'Ücretsiz İzin', 'Yillik Izin', 'Yıllık İzin') 
           AND pasaport_gecerlilik != '' 
           AND pasaport_gecerlilik >= ? 
-          AND pasaport_gecerlilik <= ?
+          AND pasaport_gecerlilik <= ?${rlsAnd}
         ORDER BY pasaport_gecerlilik ASC
         LIMIT 5
       `)
-      .all(today, passport180Limit);
+      .all(today, passport180Limit, ...rlsParams);
 
     const alerts = [
       ...visaExpiring.map((v: any) => ({

@@ -60,7 +60,7 @@ export default function Topbar({
   onResetFilters,
   onOpenCommandPalette,
 }: TopbarProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, getAuthHeaders } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { lang, setLang, t } = useLanguage();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -73,7 +73,7 @@ export default function Topbar({
 
   useEffect(() => {
     if (user?.role === 'idari_isler') return;
-    fetch('/api/notifications')
+    fetch('/api/notifications', { headers: getAuthHeaders() })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -404,7 +404,11 @@ export default function Topbar({
                   ? lang === 'ru'
                     ? '🛡️ Администратор'
                     : '🛡️ Yönetici'
-                  : user?.role === 'idari_isler'
+                  : user?.role === 'hr_specialist'
+                    ? lang === 'ru'
+                      ? '🧑‍💼 Кадровик (HR)'
+                      : '🧑‍💼 Personelci (İK)'
+                    : user?.role === 'idari_isler'
                     ? lang === 'ru'
                       ? '✈️ АХО и Билеты'
                       : '✈️ İdari İşler'

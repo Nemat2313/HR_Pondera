@@ -110,12 +110,14 @@ export async function POST(request: Request) {
       role: (
         user.role === 'admin'
           ? 'admin'
+          : user.role === 'hr_specialist'
+          ? 'hr_specialist'
           : user.role === 'viewer'
           ? 'viewer'
           : user.role === 'idari_isler'
           ? 'idari_isler'
           : 'user'
-      ) as 'admin' | 'user' | 'viewer' | 'idari_isler',
+      ) as 'admin' | 'hr_specialist' | 'user' | 'viewer' | 'idari_isler',
       scope_type: (
         user.scope_type === 'region' || user.scope_type === 'project' ? user.scope_type : 'all'
       ) as 'all' | 'region' | 'project',

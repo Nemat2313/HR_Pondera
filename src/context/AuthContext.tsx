@@ -238,6 +238,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       <strong>
                         {user?.role === 'admin'
                           ? 'Admin'
+                          : user?.role === 'hr_specialist'
+                          ? lang === 'ru'
+                            ? 'Кадровик (HR)'
+                            : 'Personelci (İK Uzmanı)'
                           : user?.role === 'user'
                             ? lang === 'ru'
                               ? 'Специалист HR (User)'

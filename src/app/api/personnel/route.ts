@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getSessionUserFromRequest } from '@/lib/auth';
+import { resolveRequestRlsScope } from '@/lib/auth';
 import {
   WORK_PERMIT_CASE_SQL,
   normalizePermitFilterKey,
@@ -32,14 +32,8 @@ export async function GET(request: Request) {
     const limit = Math.min(50000, Math.max(1, parseInt(searchParams.get('limit') || '25', 10)));
     const offset = (page - 1) * limit;
 
-    // Row-Level Security (RLS) Scope (verified session cookie takes precedence over client headers)
-    const sessionUser = getSessionUserFromRequest(request);
-    const headerScopeType = request.headers.get('x-user-scope-type');
-    const headerScopeVal = request.headers.get('x-user-scope-value');
-    const scopeType =
-      sessionUser?.scope_type || headerScopeType || searchParams.get('userScopeType') || 'all';
-    const scopeVal =
-      sessionUser?.scope_value || headerScopeVal || searchParams.get('userScopeValue') || 'all';
+    // Row-Level Security (RLS) Scope (cookie-enforced for non-admin, header-previewable for admin)
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
 
     const search = searchParams.get('search')?.trim() || '';
     const status = searchParams.get('status') || 'Mevcut';

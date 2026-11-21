@@ -355,26 +355,32 @@ export default function Sidebar({
                 <span
                   className={`text-[9px] font-normal px-1.5 py-0.2 rounded border ${user.role === 'viewer'
                     ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300/60 dark:border-amber-800/60'
-                    : user.role === 'idari_isler'
-                      ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border-sky-300/60 dark:border-sky-800/60'
-                      : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200/50 dark:border-indigo-800/50'
+                    : user.role === 'hr_specialist'
+                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300/60 dark:border-emerald-800/60'
+                      : user.role === 'idari_isler'
+                        ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border-sky-300/60 dark:border-sky-800/60'
+                        : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200/50 dark:border-indigo-800/50'
                     }`}
                 >
                   {user.role === 'admin'
                     ? lang === 'ru'
                       ? 'Админ'
                       : 'Admin'
-                    : user.role === 'idari_isler'
+                    : user.role === 'hr_specialist'
                       ? lang === 'ru'
-                        ? '✈️ АХО'
-                        : '✈️ İdari İşler'
-                      : user.role === 'viewer'
+                        ? '🧑‍💼 Кадровик'
+                        : '🧑‍💼 Personelci'
+                      : user.role === 'idari_isler'
                         ? lang === 'ru'
-                          ? '👁️ Наблюдатель'
-                          : '👁️ Gözlemci'
-                        : lang === 'ru'
-                          ? 'Пользователь'
-                          : 'Kullanıcı'}
+                          ? '✈️ АХО'
+                          : '✈️ İdari İşler'
+                        : user.role === 'viewer'
+                          ? lang === 'ru'
+                            ? '👁️ Наблюдатель'
+                            : '👁️ Gözlemci'
+                          : lang === 'ru'
+                            ? 'Пользователь'
+                            : 'Kullanıcı'}
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[10.5px] text-slate-700 dark:text-slate-300 mt-1 font-normal truncate">

@@ -50,7 +50,7 @@ export default function UserManagementView() {
     name: '',
     email: '',
     password: '',
-    role: 'viewer' as 'admin' | 'user' | 'viewer' | 'idari_isler',
+    role: 'hr_specialist' as 'admin' | 'hr_specialist' | 'user' | 'viewer' | 'idari_isler',
     scope_type: 'region' as 'all' | 'region' | 'project',
     scope_value: 'NHNK mPE-300',
   });
@@ -58,7 +58,7 @@ export default function UserManagementView() {
   const [editFormData, setEditFormData] = useState({
     name: '',
     password: '',
-    role: 'viewer' as 'admin' | 'user' | 'viewer' | 'idari_isler',
+    role: 'hr_specialist' as 'admin' | 'hr_specialist' | 'user' | 'viewer' | 'idari_isler',
     scope_type: 'region' as 'all' | 'region' | 'project',
     scope_value: 'NHNK mPE-300',
   });
@@ -364,28 +364,34 @@ export default function UserManagementView() {
                       <span
                         className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${u.role === 'admin'
                           ? 'bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
-                          : u.role === 'idari_isler'
-                            ? 'bg-sky-50 dark:bg-sky-500/20 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-500/30'
-                            : u.role === 'viewer'
-                              ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                          : u.role === 'hr_specialist'
+                            ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
+                            : u.role === 'idari_isler'
+                              ? 'bg-sky-50 dark:bg-sky-500/20 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-500/30'
+                              : u.role === 'viewer'
+                                ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                           }`}
                       >
                         {u.role === 'admin'
                           ? lang === 'ru'
                             ? '🛡️ Администратор'
                             : '🛡️ Admin'
-                          : u.role === 'idari_isler'
+                          : u.role === 'hr_specialist'
                             ? lang === 'ru'
-                              ? '✈️ АХО и Билеты (TV)'
-                              : '✈️ İdari İşler & AI Bilet'
-                            : u.role === 'viewer'
+                              ? '🧑‍💼 Кадровик (HR)'
+                              : '🧑‍💼 Personelci (İK)'
+                            : u.role === 'idari_isler'
                               ? lang === 'ru'
-                                ? '👁️ Наблюдатель (Viewer)'
-                                : '👁️ Gözlemci (Viewer)'
-                              : lang === 'ru'
-                                ? '👤 Пользователь'
-                                : '👤 Kullanıcı'}
+                                ? '✈️ АХО и Билеты (TV)'
+                                : '✈️ İdari İşler & AI Bilet'
+                              : u.role === 'viewer'
+                                ? lang === 'ru'
+                                  ? '👁️ Наблюдатель (Viewer)'
+                                  : '👁️ Gözlemci (Viewer)'
+                                : lang === 'ru'
+                                  ? '👤 Пользователь'
+                                  : '👤 Kullanıcı'}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -527,7 +533,7 @@ export default function UserManagementView() {
                   <select
                     value={formData.role}
                     onChange={(e) => {
-                      const newRole = e.target.value as 'admin' | 'user' | 'viewer' | 'idari_isler';
+                      const newRole = e.target.value as 'admin' | 'hr_specialist' | 'user' | 'viewer' | 'idari_isler';
                       setFormData({
                         ...formData,
                         role: newRole,
@@ -542,6 +548,9 @@ export default function UserManagementView() {
                     }}
                     className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
+                    <option value="hr_specialist" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '🧑‍💼 Специалист по кадрам (Personelci)' : '🧑‍💼 Personelci (İK Uzmanı)'}
+                    </option>
                     <option value="idari_isler" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? '✈️ АХО и ИИ-Билеты (Табло ТВ)' : '✈️ İdari İşler & AI Bilet'}
                     </option>
@@ -819,6 +828,9 @@ export default function UserManagementView() {
                     }}
                     className="w-full px-3 py-2 text-xs text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
+                    <option value="hr_specialist" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                      {lang === 'ru' ? '🧑‍💼 Специалист по кадрам (Personelci)' : '🧑‍💼 Personelci (İK Uzmanı)'}
+                    </option>
                     <option value="idari_isler" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? '✈️ АХО и ИИ-Билеты (Табло ТВ)' : '✈️ İdari İşler & AI Bilet'}
                     </option>
@@ -873,6 +885,18 @@ export default function UserManagementView() {
                   </select>
                 </div>
               </div>
+
+              {editFormData.role === 'hr_specialist' && (
+                <div className="p-3 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/70 text-[11px] text-emerald-950 dark:text-emerald-200 space-y-1 leading-relaxed">
+                  <p className="font-bold">🧑‍💼 Personelci (İK Uzmanı) Rolü Yetkileri:</p>
+                  <p>
+                    • <strong>Ayarlar &amp; Yönetim</strong> (Kullanıcı/RLS, Veritabanı, AI/SMTP) hariç <strong>tüm İK sayfalarında tam işlem yetkisine</strong> sahiptir (Gosuslugi Robotu — VKS / İşe Alım / İşten Çıkış, Davetiye Takip, Çalışma Kotaları, Evrak Analitiği, Excel İndir/Yükle).
+                  </p>
+                  <p>
+                    • Yalnızca kendisine atanan <strong>Bölge / Şantiye (Proje)</strong> verilerini görür ve o şantiyenin personeli üzerinde işlem yapar.
+                  </p>
+                </div>
+              )}
 
               {editFormData.role === 'idari_isler' && (
                 <div className="p-3 rounded-xl bg-sky-50/90 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800/70 text-[11px] text-sky-950 dark:text-sky-200 space-y-1 leading-relaxed">

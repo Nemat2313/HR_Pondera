@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
+import { resolveRequestRlsScope } from '@/lib/auth';
+import { matchesEffectiveRegion } from '@/lib/regionSiteHelper';
 import {
   ensureInvitationsTables,
   getInvitationsUploadDir,
@@ -35,9 +37,22 @@ export async function GET(request: Request) {
       } catch {}
     }
 
-    const rows = db
+    const { scopeType, scopeVal } = resolveRequestRlsScope(request);
+
+    const allRows = db
       .prepare('SELECT * FROM mvd_invitations ORDER BY id DESC')
       .all() as MvdInvitationRecord[];
+
+    const rows =
+      scopeType === 'region' && scopeVal && scopeVal !== 'all'
+        ? allRows.filter((r) =>
+            matchesEffectiveRegion(r.matched_region, r.matched_project, scopeVal)
+          )
+        : scopeType === 'project' && scopeVal && scopeVal !== 'all'
+        ? allRows.filter(
+            (r) => String(r.matched_project || '').trim().toLowerCase() === scopeVal.toLowerCase()
+          )
+        : allRows;
 
     const uploadDir = getInvitationsUploadDir();
     const enriched = rows.map((r) => {
