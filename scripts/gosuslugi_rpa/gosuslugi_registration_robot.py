@@ -602,17 +602,29 @@ class GosuslugiRegistrationRobot:
                 self.click_text_button(["Нет"])
                 continue
 
-            # 10) Registration Address ('Укажите адрес, по которому ставите иностранца на учёт')
-            if "по которому ставите" in h_low and not filled_flags.get("reg_addr"):
-                self.fill_dadata_address_smart(reg_addr)
-                filled_flags["reg_addr"] = True
+            # 11) Previous Registration Address ('прежней' / 'предыдущ' / 'ранее')
+            if (
+                ("прежн" in h_low or "предыдущ" in h_low or "ранее" in h_low)
+                and ("адрес" in h_low or "учёт" in h_low or "учет" in h_low)
+                and not filled_flags.get("prev_addr")
+            ):
+                logger.info(f"Filling previous registration address: {prev_addr}")
+                self.fill_dadata_address_smart(prev_addr)
+                filled_flags["prev_addr"] = True
                 self.click_continue()
                 continue
 
-            # 11) Previous Registration Address ('прежней постановки на учёт' / 'предыдущего места')
-            if ("прежней" in h_low or "предыдущ" in h_low) and "учёт" in h_low and not filled_flags.get("prev_addr"):
-                self.fill_dadata_address_smart(prev_addr)
-                filled_flags["prev_addr"] = True
+            # 10) Registration Address ('Укажите адрес, по которому нужно поставить иностранца на учёт')
+            if (
+                "адрес" in h_low
+                and "юридический" not in h_low
+                and "постоянной регистрации" not in h_low
+                and ("поставить" in h_low or "ставите" in h_low or "места пребывания" in h_low)
+                and not filled_flags.get("reg_addr")
+            ):
+                logger.info(f"Filling registration address: {reg_addr}")
+                self.fill_dadata_address_smart(reg_addr)
+                filled_flags["reg_addr"] = True
                 self.click_continue()
                 continue
 
