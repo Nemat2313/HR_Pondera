@@ -292,7 +292,7 @@ export default function PersonnelListView({
   initialFilter,
   onClearInitialFilter,
 }: PersonnelListViewProps) {
-  const { user } = useAuth();
+  const { user, getAuthHeaders } = useAuth();
   const { lang, t, translateCol, translateVal, translateGroup } = useLanguage();
 
   // Column Groups state (preloaded with 16 groups, then synced with /api/columns)
@@ -311,10 +311,10 @@ export default function PersonnelListView({
     initialFilter?.type === 'search' && initialFilter.value ? initialFilter.value : ''
   );
   const [filterRegion, setFilterRegion] = useState(
-    user?.scope_type === 'region' ? user.scope_value : 'all'
+    user?.scope_type === 'region' && !String(user.scope_value || '').includes(',') ? user.scope_value : 'all'
   );
   const [filterProject, setFilterProject] = useState(
-    user?.scope_type === 'project' ? user.scope_value : 'all'
+    user?.scope_type === 'project' && !String(user.scope_value || '').includes(',') ? user.scope_value : 'all'
   );
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -508,14 +508,15 @@ export default function PersonnelListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialFilter, user]);
 
-  // Fetch filter dropdown options once
+  // Fetch filter dropdown options (RLS-scoped)
   useEffect(() => {
-    fetch('/api/filters')
+    fetch('/api/filters', { headers: getAuthHeaders(), cache: 'no-store' })
       .then((res) => res.json())
       .then((resData) => {
         if (resData.success) {
           setFilterOptions({
             regions: resData.regions || [],
+            rawRegions: resData.rawRegions || [],
             projects: resData.projects || [],
             departments: resData.departments || [],
             categories: resData.categories || [],
@@ -525,7 +526,7 @@ export default function PersonnelListView({
         }
       })
       .catch(() => {});
-  }, []);
+  }, [user?.id, user?.scope_type, user?.scope_value]);
 
   // Fetch personnel data with RLS parameters (with AbortController to prevent stale unfiltered response overwriting search results)
   useEffect(() => {
@@ -1104,11 +1105,11 @@ export default function PersonnelListView({
             />
           </div>
 
-          {/* Region Filter */}
+          {/* Region Filter (True Top-Level Regions) */}
           <div>
             <select
               value={filterRegion}
-              disabled={user?.scope_type === 'region'}
+              disabled={user?.scope_type === 'region' && !String(user?.scope_value || '').includes(',')}
               onChange={(e) => {
                 setFilterRegion(e.target.value);
                 setPage(1);
@@ -1116,7 +1117,10 @@ export default function PersonnelListView({
               className="w-full px-2.5 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
               <option value="all">{t('filter_all_regions')}</option>
-              {filterOptions.regions.map((r) => (
+              {(filterOptions.rawRegions && filterOptions.rawRegions.length > 0
+                ? filterOptions.rawRegions
+                : filterOptions.regions
+              ).map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
@@ -1128,7 +1132,7 @@ export default function PersonnelListView({
           <div>
             <select
               value={filterProject}
-              disabled={user?.scope_type === 'project'}
+              disabled={user?.scope_type === 'project' && !String(user?.scope_value || '').includes(',')}
               onChange={(e) => {
                 setFilterProject(e.target.value);
                 setPage(1);

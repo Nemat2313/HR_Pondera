@@ -15,7 +15,11 @@ import {
   ensureInterSiteTransfersSynced,
   formatSystemTimestampToMsk,
 } from '@/lib/interSiteTransfers';
-import { resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  resolveEffectiveRegion,
+  matchesEffectiveRegion,
+  matchesProjectScope,
+} from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -664,10 +668,13 @@ export async function GET(request: Request) {
         matchedEba?.proje_adi || rawEba['Proje Adı'] || formatZupBranchShort(zr.zup_department, 'tr') || ''
       ).trim();
 
-      if (scopeRegion !== 'all' && effRegion.toLowerCase() !== scopeRegion.toLowerCase()) {
+      if (
+        scopeRegion !== 'all' &&
+        !matchesEffectiveRegion(matchedEba?.region || effRegion, effProject, scopeRegion)
+      ) {
         continue;
       }
-      if (scopeProject !== 'all' && effProject.toLowerCase() !== scopeProject.toLowerCase()) {
+      if (scopeProject !== 'all' && !matchesProjectScope(effProject, scopeProject)) {
         continue;
       }
 

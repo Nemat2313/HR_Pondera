@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { matchesEffectiveRegion, matchesProjectScope } from '@/lib/regionSiteHelper';
 import {
   ensureVksQuarterlyArchiveAndState,
   getVksQuarterOverview,
@@ -857,8 +858,8 @@ export async function GET(request: Request) {
         scopeValue.toLowerCase() !== 'all'
       ) {
         if (!pInfo) continue;
-        if (scopeType === 'region' && pInfo.region.toLowerCase() !== scopeValue.toLowerCase()) continue;
-        if (scopeType === 'project' && pInfo.proje_adi.toLowerCase() !== scopeValue.toLowerCase()) continue;
+        if (scopeType === 'region' && !matchesEffectiveRegion(pInfo.region, pInfo.proje_adi, scopeValue)) continue;
+        if (scopeType === 'project' && !matchesProjectScope(pInfo.proje_adi, scopeValue)) continue;
       }
       if (regionFilter !== 'all' && empRegion !== regionFilter) {
         continue;

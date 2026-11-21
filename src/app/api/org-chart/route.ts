@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { resolveRequestRlsScope } from '@/lib/auth';
 import {
   buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
   resolveEffectiveRegion,
 } from '@/lib/regionSiteHelper';
 import { formatKnownDateToDdMmYyyy } from '@/lib/dateFormatter';
@@ -69,8 +70,9 @@ export async function GET(request: Request) {
       whereConds.push(regCond.sql);
       params.push(...regCond.params);
     } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
-      whereConds.push('proje_adi = ?');
-      params.push(scopeVal);
+      const projCond = buildProjectScopeSqlCondition(scopeVal);
+      whereConds.push(projCond.sql);
+      params.push(...projCond.params);
     }
 
     const sql = `

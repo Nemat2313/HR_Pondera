@@ -29,12 +29,40 @@ export default function UserManagementView() {
   // Filter options for dropdowns
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     regions: [],
+    rawRegions: [],
     projects: [],
     departments: [],
     categories: [],
     nationalities: [],
     statuses: [],
   });
+
+  const parseScopeList = (val?: string | null): string[] => {
+    const raw = String(val ?? '').trim();
+    if (!raw || raw.toLowerCase() === 'all') return [];
+    return Array.from(
+      new Set(
+        raw
+          .split(/\s*(?:,|\|\||;)\s*/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && s.toLowerCase() !== 'all')
+      )
+    );
+  };
+
+  const toggleScopeItem = (currentVal: string, item: string): string => {
+    const list = parseScopeList(currentVal);
+    const exists = list.some((x) => x.toLowerCase() === item.toLowerCase());
+    const next = exists
+      ? list.filter((x) => x.toLowerCase() !== item.toLowerCase())
+      : [...list, item];
+    return next.join(', ');
+  };
+
+  const topRegionsList =
+    filterOptions.rawRegions && filterOptions.rawRegions.length > 0
+      ? filterOptions.rawRegions
+      : filterOptions.regions;
 
   const IDARI_HUB_OPTIONS = [
     'Moskova',
@@ -92,6 +120,7 @@ export default function UserManagementView() {
         if (data.success) {
           setFilterOptions({
             regions: data.regions || [],
+            rawRegions: data.rawRegions || [],
             projects: data.projects || [],
             departments: data.departments || [],
             categories: data.categories || [],
@@ -110,9 +139,22 @@ export default function UserManagementView() {
     setSubmitting(true);
 
     try {
+      const cleanedScope =
+        formData.scope_type === 'all'
+          ? 'all'
+          : parseScopeList(formData.scope_value).join(', ');
+      if (formData.scope_type !== 'all' && !cleanedScope) {
+        setFormError(
+          lang === 'ru'
+            ? 'Выберите хотя бы один регион или проект.'
+            : 'En az bir Bölge veya Proje/Şantiye seçmelisiniz.'
+        );
+        setSubmitting(false);
+        return;
+      }
       const payload = {
         ...formData,
-        scope_value: formData.scope_type === 'all' ? 'all' : formData.scope_value,
+        scope_value: cleanedScope,
       };
 
       const res = await fetch('/api/users', {
@@ -174,15 +216,25 @@ export default function UserManagementView() {
     setSubmitting(true);
 
     try {
+      const isUnlimited = editFormData.role === 'admin' || editFormData.scope_type === 'all';
+      const cleanedScope = isUnlimited
+        ? 'all'
+        : parseScopeList(editFormData.scope_value).join(', ');
+      if (!isUnlimited && !cleanedScope) {
+        setFormError(
+          lang === 'ru'
+            ? 'Выберите хотя бы один регион или проект.'
+            : 'En az bir Bölge veya Proje/Şantiye seçmelisiniz.'
+        );
+        setSubmitting(false);
+        return;
+      }
       const payload = {
         id: editingUser.id,
         name: editFormData.name,
         role: editFormData.role,
         scope_type: editFormData.role === 'admin' ? 'all' : editFormData.scope_type,
-        scope_value:
-          editFormData.role === 'admin' || editFormData.scope_type === 'all'
-            ? 'all'
-            : editFormData.scope_value,
+        scope_value: cleanedScope,
         password: editFormData.password.trim() || undefined,
       };
 
@@ -604,9 +656,9 @@ export default function UserManagementView() {
                           e.target.value === 'region'
                             ? formData.role === 'idari_isler'
                               ? 'Moskova'
-                              : filterOptions.regions[0] || 'NHNK mPE-300'
+                              : topRegionsList[0] || 'Kazan'
                             : e.target.value === 'project'
-                              ? filterOptions.projects[0] || 'DGP-02'
+                              ? filterOptions.projects[0] || 'NHNK mPE-300'
                               : 'all',
                       })
                     }
@@ -619,11 +671,11 @@ export default function UserManagementView() {
                           ? 'По хабу / городу (Москва / Казань)'
                           : 'Karşılama Merkezi / Şehir Bazlı'
                         : lang === 'ru'
-                          ? 'По региону / участку'
-                          : 'Bölge / Şantiye Bazlı'}
+                          ? 'По региону (напр. Казань = 5 проектов)'
+                          : 'Bölge Bazlı (örn. Kazan = Tüm Alt Projeler)'}
                     </option>
                     <option value="project" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {lang === 'ru' ? 'По проекту' : 'Proje Bazlı'}
+                      {lang === 'ru' ? 'По проекту / объекту (можно несколько)' : 'Proje / Şantiye Bazlı (Çoklu Seçim)'}
                     </option>
                     <option value="all" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? 'Все (Без ограничений)' : 'Tümü (Sınırsız)'}
@@ -689,49 +741,74 @@ export default function UserManagementView() {
                 </div>
               )}
 
-              {/* Scope Value Dropdown */}
-              {formData.scope_type !== 'all' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
-                    {formData.scope_type === 'region'
-                      ? formData.role === 'idari_isler'
-                        ? 'Varsayılan Karşılama Merkezi / Bölge'
+              {/* Scope Value Multi-Select */}
+              {formData.scope_type !== 'all' && (() => {
+                const selectedList = parseScopeList(formData.scope_value);
+                const baseOptions =
+                  formData.scope_type === 'region'
+                    ? Array.from(
+                        new Set([
+                          ...(formData.role === 'idari_isler' ? IDARI_HUB_OPTIONS : []),
+                          ...topRegionsList,
+                          ...selectedList,
+                        ])
+                      )
+                    : Array.from(new Set([...filterOptions.projects, ...selectedList]));
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
+                        {formData.scope_type === 'region'
+                          ? formData.role === 'idari_isler'
+                            ? 'Karşılama Merkezi / Bölge (Çoklu Seçilebilir)'
+                            : lang === 'ru'
+                              ? 'Назначаемые регионы (можно выбрать несколько)'
+                              : 'Atanacak Bölge(ler) — Birden Fazla Seçilebilir'
+                          : lang === 'ru'
+                            ? 'Назначаемые проекты / объекты (можно несколько)'
+                            : 'Atanacak Proje / Şantiye(ler) — Birden Fazla Seçilebilir'}
+                      </label>
+                      <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-200">
+                        {selectedList.length} {lang === 'ru' ? 'выбрано' : 'seçili'}
+                      </span>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto p-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 flex flex-wrap gap-1.5">
+                      {baseOptions.map((opt) => {
+                        const isChecked = selectedList.some((x) => x.toLowerCase() === opt.toLowerCase());
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                scope_value: toggleScopeItem(formData.scope_value, opt),
+                              })
+                            }
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                              isChecked
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                            }`}
+                          >
+                            {isChecked ? '✓ ' : '+ '}
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                      {selectedList.length > 0
+                        ? lang === 'ru'
+                          ? `Доступ будет ограничен: ${selectedList.join(', ')}`
+                          : `Bu kullanıcı yalnızca şu yetki kapsamını görecektir: ${selectedList.join(', ')}`
                         : lang === 'ru'
-                          ? 'Назначаемый участок / регион'
-                          : 'Atanacak Şantiye / Bölge'
-                      : lang === 'ru'
-                        ? 'Назначаемый проект'
-                        : 'Atanacak Proje'}
-                  </label>
-                  <select
-                    value={formData.scope_value}
-                    onChange={(e) => setFormData({ ...formData, scope_value: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-indigo-50/70 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-500/40 rounded-xl font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  >
-                    {formData.scope_type === 'region'
-                      ? Array.from(
-                          new Set([
-                            ...(formData.role === 'idari_isler' ? IDARI_HUB_OPTIONS : []),
-                            ...filterOptions.regions,
-                          ])
-                        ).map((r) => (
-                          <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {r}
-                          </option>
-                        ))
-                      : filterOptions.projects.map((p) => (
-                          <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {p}
-                          </option>
-                        ))}
-                  </select>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
-                    {lang === 'ru'
-                      ? `Этот пользователь сможет видеть данные только по: ${formData.scope_value}`
-                      : `Bu kullanıcı yalnızca ${formData.scope_value} verilerini görebilecektir.`}
-                  </p>
-                </div>
-              )}
+                          ? 'Выберите хотя бы один вариант.'
+                          : 'Lütfen en az bir bölge veya şantiye seçin.'}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Status alerts */}
               {formError && (
@@ -884,9 +961,9 @@ export default function UserManagementView() {
                           e.target.value === 'region'
                             ? editFormData.role === 'idari_isler'
                               ? 'Moskova'
-                              : filterOptions.regions[0] || 'NHNK mPE-300'
+                              : topRegionsList[0] || 'Kazan'
                             : e.target.value === 'project'
-                              ? filterOptions.projects[0] || 'DGP-02'
+                              ? filterOptions.projects[0] || 'NHNK mPE-300'
                               : 'all',
                       })
                     }
@@ -897,11 +974,11 @@ export default function UserManagementView() {
                       {editFormData.role === 'idari_isler'
                         ? 'Karşılama Merkezi / Şehir Bazlı'
                         : lang === 'ru'
-                          ? 'По региону / участку'
-                          : 'Bölge / Şantiye Bazlı'}
+                          ? 'По региону (напр. Казань = 5 проектов)'
+                          : 'Bölge Bazlı (örn. Kazan = Tüm Alt Projeler)'}
                     </option>
                     <option value="project" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {lang === 'ru' ? 'По проекту' : 'Proje Bazlı'}
+                      {lang === 'ru' ? 'По проекту / объекту (можно несколько)' : 'Proje / Şantiye Bazlı (Çoklu Seçim)'}
                     </option>
                     <option value="all" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                       {lang === 'ru' ? 'Все (Без ограничений)' : 'Tümü (Sınırsız)'}
@@ -946,43 +1023,73 @@ export default function UserManagementView() {
                 </div>
               )}
 
-              {editFormData.scope_type !== 'all' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
-                    {editFormData.scope_type === 'region'
-                      ? editFormData.role === 'idari_isler'
-                        ? 'Varsayılan Karşılama Merkezi / Bölge'
+              {editFormData.scope_type !== 'all' && (() => {
+                const selectedList = parseScopeList(editFormData.scope_value);
+                const baseOptions =
+                  editFormData.scope_type === 'region'
+                    ? Array.from(
+                        new Set([
+                          ...(editFormData.role === 'idari_isler' ? IDARI_HUB_OPTIONS : []),
+                          ...topRegionsList,
+                          ...selectedList,
+                        ])
+                      )
+                    : Array.from(new Set([...filterOptions.projects, ...selectedList]));
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
+                        {editFormData.scope_type === 'region'
+                          ? editFormData.role === 'idari_isler'
+                            ? 'Karşılama Merkezi / Bölge (Çoklu Seçilebilir)'
+                            : lang === 'ru'
+                              ? 'Назначаемые регионы (можно выбрать несколько)'
+                              : 'Atanacak Bölge(ler) — Birden Fazla Seçilebilir'
+                          : lang === 'ru'
+                            ? 'Назначаемые проекты / объекты (можно несколько)'
+                            : 'Atanacak Proje / Şantiye(ler) — Birden Fazla Seçilebilir'}
+                      </label>
+                      <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-200">
+                        {selectedList.length} {lang === 'ru' ? 'выбрано' : 'seçili'}
+                      </span>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto p-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 flex flex-wrap gap-1.5">
+                      {baseOptions.map((opt) => {
+                        const isChecked = selectedList.some((x) => x.toLowerCase() === opt.toLowerCase());
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() =>
+                              setEditFormData({
+                                ...editFormData,
+                                scope_value: toggleScopeItem(editFormData.scope_value, opt),
+                              })
+                            }
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                              isChecked
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                            }`}
+                          >
+                            {isChecked ? '✓ ' : '+ '}
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
+                      {selectedList.length > 0
+                        ? lang === 'ru'
+                          ? `Выбрано: ${selectedList.join(', ')}`
+                          : `Seçili kapsam: ${selectedList.join(', ')}`
                         : lang === 'ru'
-                          ? 'Назначаемый участок / регион'
-                          : 'Atanacak Şantiye / Bölge'
-                      : lang === 'ru'
-                        ? 'Назначаемый проект'
-                        : 'Atanacak Proje'}
-                  </label>
-                  <select
-                    value={editFormData.scope_value}
-                    onChange={(e) => setEditFormData({ ...editFormData, scope_value: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-indigo-50/70 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-500/40 rounded-xl font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  >
-                    {editFormData.scope_type === 'region'
-                      ? Array.from(
-                          new Set([
-                            ...(editFormData.role === 'idari_isler' ? IDARI_HUB_OPTIONS : []),
-                            ...filterOptions.regions,
-                          ])
-                        ).map((r) => (
-                          <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {r}
-                          </option>
-                        ))
-                      : filterOptions.projects.map((p) => (
-                          <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {p}
-                          </option>
-                        ))}
-                  </select>
-                </div>
-              )}
+                          ? 'Выберите хотя бы один вариант.'
+                          : 'Lütfen en az bir bölge veya şantiye seçin.'}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {formError && (
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">

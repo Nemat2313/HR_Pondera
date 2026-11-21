@@ -8,7 +8,11 @@ import {
   getDatasetReferenceDates,
 } from '@/lib/workPermits';
 import { stripOfficialSalaryFromRaw } from '@/lib/salaryPrivacy';
-import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
+  resolveEffectiveRegion,
+} from '@/lib/regionSiteHelper';
 import {
   ensureInterSiteTransfersSynced,
   NON_TRANSFER_ENTRY_SQL,
@@ -232,8 +236,9 @@ export async function GET(request: Request) {
       params.push(...regCond.params);
     }
     if (project !== 'all') {
-      conditions.push('proje_adi = ?');
-      params.push(project);
+      const projCond = buildProjectScopeSqlCondition(project);
+      conditions.push(projCond.sql);
+      params.push(...projCond.params);
     }
     if (department !== 'all') {
       conditions.push('departman = ?');

@@ -139,6 +139,7 @@ export interface StatsData {
 
 export interface FilterOptions {
   regions: string[];
+  rawRegions?: string[];
   projects: string[];
   departments: string[];
   categories: string[];

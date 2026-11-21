@@ -10,6 +10,7 @@ import {
 import {
   EFFECTIVE_REGION_SQL,
   buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
 } from '@/lib/regionSiteHelper';
 import {
   ensureInterSiteTransfersSynced,
@@ -84,12 +85,12 @@ export async function GET(request: Request) {
               "SELECT tabel_no, norm_sicil, fio_kiril, doc_no, gender FROM zup_official_personnel WHERE COALESCE(TRIM(gender), '') != ''"
             )
             .all() as Array<{
-            tabel_no?: string;
-            norm_sicil?: string;
-            fio_kiril?: string;
-            doc_no?: string;
-            gender?: string;
-          }>;
+              tabel_no?: string;
+              norm_sicil?: string;
+              fio_kiril?: string;
+              doc_no?: string;
+              gender?: string;
+            }>;
           const bySicil = new Map<string, string>();
           const byFio = new Map<string, string>();
           const byPass = new Map<string, string>();
@@ -98,8 +99,8 @@ export async function GET(request: Request) {
             const normGender = gLow.startsWith('муж') || gLow.startsWith('m') || gLow.startsWith('erk')
               ? 'Erkek'
               : gLow.startsWith('жен') || gLow.startsWith('f') || gLow.startsWith('kad')
-              ? 'Kadin'
-              : '';
+                ? 'Kadin'
+                : '';
             if (!normGender) continue;
             const s1 = String(zr.tabel_no || '').trim();
             const s2 = String(zr.norm_sicil || '').trim().replace(/^0+/, '');
@@ -137,11 +138,11 @@ export async function GET(request: Request) {
           } catch {
             try {
               db.exec('ROLLBACK');
-            } catch {}
+            } catch { }
           }
         }
       }
-    } catch {}
+    } catch { }
 
     // Fast in-memory cache keyed by personnel table state + system_info timestamps + query parameters
     const verRow = db
@@ -184,7 +185,14 @@ export async function GET(request: Request) {
         rawParams: rlsRegCond.params,
       };
     } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
-      filterMap['__rls'] = { col: 'proje_adi', op: '=', val: scopeVal };
+      const rlsProjCond = buildProjectScopeSqlCondition(scopeVal);
+      filterMap['__rls'] = {
+        col: 'proje_adi',
+        op: '=',
+        val: null,
+        rawSql: rlsProjCond.sql,
+        rawParams: rlsProjCond.params,
+      };
     }
 
     if (region && region !== 'all') {
@@ -199,7 +207,14 @@ export async function GET(request: Request) {
     }
 
     if (project && project !== 'all') {
-      filterMap['project'] = { col: 'proje_adi', op: '=', val: project };
+      const projCond = buildProjectScopeSqlCondition(project);
+      filterMap['project'] = {
+        col: 'proje_adi',
+        op: '=',
+        val: null,
+        rawSql: projCond.sql,
+        rawParams: projCond.params,
+      };
     }
 
     if (department && department !== 'all') {
@@ -495,7 +510,7 @@ export async function GET(request: Request) {
         { label: '45 - 54 Yaş', group: 'Uzman & Usta Kademesi', count: ageRow.age_45_54 || 0, color: '#10B981' },
         { label: '55+ Yaş', group: 'Kıdemli Danışman & Mentor', count: ageRow.age_55_plus || 0, color: '#F59E0B' },
       ];
-    } catch {}
+    } catch { }
 
     const tenureQuery = db.prepare(`
       SELECT 
@@ -676,7 +691,7 @@ export async function GET(request: Request) {
         ORDER BY count DESC
       `);
       const permitRows = permitQuery.all(...permitWhere.params) as { permit_type: string; count: number }[];
-      
+
       const permitMeta: Record<string, { name: string; nameRu: string; color: string }> = {
         VKS: { name: 'ВКС (Yüksek Nitelikli Uzman)', nameRu: 'ВКС (Высококвалифицированный специалист)', color: '#06B6D4' },
         PATENT: { name: 'Патент (Çalışma Patenti)', nameRu: 'Патент (Трудовой патент)', color: '#3B82F6' },
@@ -896,7 +911,7 @@ export async function GET(request: Request) {
         },
         exitReasons,
       };
-    } catch {}
+    } catch { }
 
     // 12. System info (enriched with Moscow HH:mm times for both eBA & 1C ZUP)
     const sysQuery = db.prepare(`SELECT key, value FROM system_info`);

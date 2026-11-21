@@ -9,7 +9,11 @@ import {
   resolveDocScanColumnIndex,
 } from '@/lib/documentScanDefinitions';
 import { WORK_PERMIT_CASE_SQL, WorkPermitCategoryKey } from '@/lib/workPermits';
-import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
+  resolveEffectiveRegion,
+} from '@/lib/regionSiteHelper';
 
 const EMPTY_MASK = '0'.repeat(TOTAL_DOC_SCAN_COLS);
 
@@ -437,8 +441,9 @@ export function getDocumentScansDataset(
     rlsConditions.push(regCond.sql);
     rlsParams.push(...regCond.params);
   } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
-    rlsConditions.push('proje_adi = ?');
-    rlsParams.push(scopeVal);
+    const projCond = buildProjectScopeSqlCondition(scopeVal);
+    rlsConditions.push(projCond.sql);
+    rlsParams.push(...projCond.params);
   }
 
   const rlsWhere = rlsConditions.length > 0 ? `WHERE ${rlsConditions.join(' AND ')}` : '';

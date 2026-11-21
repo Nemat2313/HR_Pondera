@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db';
 import { resolveRequestRlsScope } from '@/lib/auth';
-import { matchesEffectiveRegion } from '@/lib/regionSiteHelper';
+import { matchesEffectiveRegion, matchesProjectScope } from '@/lib/regionSiteHelper';
 import {
   ensureInvitationsTables,
   getInvitationsUploadDir,
@@ -49,9 +49,7 @@ export async function GET(request: Request) {
             matchesEffectiveRegion(r.matched_region, r.matched_project, scopeVal)
           )
         : scopeType === 'project' && scopeVal && scopeVal !== 'all'
-        ? allRows.filter(
-            (r) => String(r.matched_project || '').trim().toLowerCase() === scopeVal.toLowerCase()
-          )
+        ? allRows.filter((r) => matchesProjectScope(r.matched_project, scopeVal))
         : allRows;
 
     const uploadDir = getInvitationsUploadDir();

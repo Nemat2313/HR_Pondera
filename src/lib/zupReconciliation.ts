@@ -2,7 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { classifyWorkPermitFromRow, buildNormalizedDateSql } from '@/lib/workPermits';
-import { resolveEffectiveRegion, matchesEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  resolveEffectiveRegion,
+  matchesEffectiveRegion,
+  matchesProjectScope,
+} from '@/lib/regionSiteHelper';
 import { formatSystemTimestampToMsk, getCurrentMskTimestamp } from '@/lib/interSiteTransfers';
 
 export interface ZupOfficialRecord {
@@ -1665,13 +1669,9 @@ export function filterZupReconciliationByScope(
     const rawReg = String(r?.region || '').trim();
     const rawPrj = String(r?.project || r?.proje_adi || '').trim();
     if (scopeType === 'project') {
-      return rawPrj.toLowerCase() === targetLower;
+      return matchesProjectScope(rawPrj, scopeVal);
     }
-    return (
-      rawReg.toLowerCase() === targetLower ||
-      rawPrj.toLowerCase() === targetLower ||
-      matchesEffectiveRegion(rawReg, rawPrj, scopeVal)
-    );
+    return matchesEffectiveRegion(rawReg, rawPrj, scopeVal);
   };
 
   const allRecs: any[] = Array.isArray(data.records) ? data.records : [];
@@ -1681,21 +1681,17 @@ export function filterZupReconciliationByScope(
     .map((regRow: any) => {
       const regName = String(regRow?.region || '').trim();
       if (scopeType === 'region') {
-        if (
-          regName.toLowerCase() === targetLower ||
-          matchesEffectiveRegion(regName, regName, scopeVal)
-        ) {
+        if (matchesEffectiveRegion(regName, regName, scopeVal)) {
           return regRow;
         }
-        const matchingProjects = (regRow.projects || []).filter(
-          (p: any) => String(p?.project || '').trim().toLowerCase() === targetLower
+        const matchingProjects = (regRow.projects || []).filter((p: any) =>
+          matchesEffectiveRegion(regName, String(p?.project || '').trim(), scopeVal)
         );
         if (matchingProjects.length === 0) return null;
         const sumReal = matchingProjects.reduce((s: number, p: any) => s + (p.realActive || 0), 0);
         const sumZup = matchingProjects.reduce((s: number, p: any) => s + (p.inZupOfficial || 0), 0);
         return {
           ...regRow,
-          region: scopeVal,
           realActive: sumReal,
           inZupOfficial: sumZup,
           missingMainFirm: matchingProjects.reduce((s: number, p: any) => s + (p.missingMainFirm || 0), 0),
@@ -1706,8 +1702,8 @@ export function filterZupReconciliationByScope(
           projects: matchingProjects,
         };
       }
-      const matchingProjects = (regRow.projects || []).filter(
-        (p: any) => String(p?.project || '').trim().toLowerCase() === targetLower
+      const matchingProjects = (regRow.projects || []).filter((p: any) =>
+        matchesProjectScope(String(p?.project || '').trim(), scopeVal)
       );
       if (matchingProjects.length === 0) return null;
       const sumReal = matchingProjects.reduce((s: number, p: any) => s + (p.realActive || 0), 0);

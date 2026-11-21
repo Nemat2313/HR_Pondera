@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { resolveRequestRlsScope } from '@/lib/auth';
-import { buildEffectiveRegionSqlCondition } from '@/lib/regionSiteHelper';
+import {
+  buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
+} from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,8 +20,9 @@ export async function GET(request: Request) {
       rlsConds.push(c.sql);
       rlsParams.push(...c.params);
     } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
-      rlsConds.push('proje_adi = ?');
-      rlsParams.push(scopeVal);
+      const projCond = buildProjectScopeSqlCondition(scopeVal);
+      rlsConds.push(projCond.sql);
+      rlsParams.push(...projCond.params);
     }
     const rlsAnd = rlsConds.length > 0 ? ` AND ${rlsConds.join(' AND ')}` : '';
     let refDate = new Date('2026-10-18');

@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getMoscowTimeParts } from '@/lib/telegramNotifier';
 import { WORK_PERMIT_CASE_SQL } from '@/lib/workPermits';
-import { resolveEffectiveRegion, matchesEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  resolveEffectiveRegion,
+  matchesEffectiveRegion,
+  matchesProjectScope,
+} from '@/lib/regionSiteHelper';
 import {
   ensureVksQuarterlyArchiveAndState,
   getVksQuarterOverview,
@@ -698,7 +702,7 @@ export async function GET(request: Request) {
         );
       }
       if (scopeType === 'project') {
-        return pInfo.proje_adi.toLowerCase() === scopeValue.toLowerCase();
+        return matchesProjectScope(pInfo.proje_adi, scopeValue);
       }
       return true;
     };

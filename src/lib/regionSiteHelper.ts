@@ -47,12 +47,24 @@ export function resolveEffectiveRegion(
   return reg || fallback;
 }
 
-export function buildEffectiveRegionSqlCondition(
-  filterValue: string,
-  regionCol = 'region',
-  projectCol = 'proje_adi'
+export function parseScopeValues(scopeVal?: string | null): string[] {
+  const raw = String(scopeVal ?? '').trim();
+  if (!raw || raw.toLowerCase() === 'all') return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(/\s*(?:,|\|\||;)\s*/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && s.toLowerCase() !== 'all')
+    )
+  );
+}
+
+function buildSingleEffectiveRegionSql(
+  clean: string,
+  regionCol: string,
+  projectCol: string
 ): { sql: string; params: string[] } {
-  const clean = String(filterValue || '').trim();
   const lower = clean.toLowerCase();
 
   if (lower === 'kazan' || lower === 'казань') {
@@ -75,22 +87,89 @@ export function buildEffectiveRegionSqlCondition(
   };
 }
 
-export function matchesEffectiveRegion(
+export function buildEffectiveRegionSqlCondition(
+  filterValue: string,
+  regionCol = 'region',
+  projectCol = 'proje_adi'
+): { sql: string; params: string[] } {
+  const values = parseScopeValues(filterValue);
+  if (values.length === 0) {
+    return { sql: '1=1', params: [] };
+  }
+  if (values.length === 1) {
+    return buildSingleEffectiveRegionSql(values[0], regionCol, projectCol);
+  }
+  const parts: string[] = [];
+  const params: string[] = [];
+  for (const val of values) {
+    const c = buildSingleEffectiveRegionSql(val, regionCol, projectCol);
+    parts.push(c.sql);
+    params.push(...c.params);
+  }
+  return {
+    sql: `(${parts.join(' OR ')})`,
+    params,
+  };
+}
+
+export function buildProjectScopeSqlCondition(
+  filterValue: string,
+  projectCol = 'proje_adi'
+): { sql: string; params: string[] } {
+  const values = parseScopeValues(filterValue);
+  if (values.length === 0) {
+    return { sql: '1=1', params: [] };
+  }
+  if (values.length === 1) {
+    return {
+      sql: `TRIM(COALESCE(${projectCol}, '')) = ?`,
+      params: [values[0]],
+    };
+  }
+  const placeholders = values.map(() => '?').join(', ');
+  return {
+    sql: `TRIM(COALESCE(${projectCol}, '')) IN (${placeholders})`,
+    params: values,
+  };
+}
+
+function matchesSingleEffectiveRegion(
   rawRegion: string | null | undefined,
   rawProject: string | null | undefined,
-  filterValue: string
+  singleVal: string
 ): boolean {
-  const f = String(filterValue || '').trim();
-  if (!f || f.toLowerCase() === 'all') return true;
-  const fLower = f.toLowerCase();
+  const fLower = singleVal.toLowerCase();
   const rTrim = String(rawRegion ?? '').trim();
   const rLower = rTrim.toLowerCase();
+  const pTrim = String(rawProject ?? '').trim();
+  const pLower = pTrim.toLowerCase();
 
   if (fLower === 'kazan' || fLower === 'казань') {
     return rLower === 'kazan' || rLower === 'казань';
   }
 
   const eff = resolveEffectiveRegion(rawRegion, rawProject, '');
-  return eff.toLowerCase() === fLower || rLower === fLower;
+  return eff.toLowerCase() === fLower || rLower === fLower || pLower === fLower;
+}
+
+export function matchesEffectiveRegion(
+  rawRegion: string | null | undefined,
+  rawProject: string | null | undefined,
+  filterValue: string
+): boolean {
+  const values = parseScopeValues(filterValue);
+  if (values.length === 0) return true;
+  return values.some((v) => matchesSingleEffectiveRegion(rawRegion, rawProject, v));
+}
+
+export function matchesProjectScope(
+  rawProject: string | null | undefined,
+  filterValue: string
+): boolean {
+  const values = parseScopeValues(filterValue);
+  if (values.length === 0) return true;
+  const pLower = String(rawProject ?? '').trim().toLowerCase();
+  if (!pLower) return false;
+  return values.some((v) => v.toLowerCase() === pLower);
 }
 

@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { resolveRequestRlsScope } from '@/lib/auth';
-import { EFFECTIVE_REGION_SQL, buildEffectiveRegionSqlCondition } from '@/lib/regionSiteHelper';
+import {
+  EFFECTIVE_REGION_SQL,
+  buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
+} from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,12 +22,13 @@ export async function GET(request: Request) {
       rlsConds.push(c.sql);
       rlsParams.push(...c.params);
     } else if (scopeType === 'project' && scopeVal && scopeVal !== 'all') {
-      rlsConds.push('proje_adi = ?');
-      rlsParams.push(scopeVal);
+      const pCond = buildProjectScopeSqlCondition(scopeVal);
+      rlsConds.push(pCond.sql);
+      rlsParams.push(...pCond.params);
     }
     const rlsAnd = rlsConds.length > 0 ? ` AND ${rlsConds.join(' AND ')}` : '';
 
-    // Distinct regions (with Kazan split into individual sites)
+    // Distinct effective regions (with Kazan split into individual sites)
     const regions = db
       .prepare(
         `SELECT DISTINCT (${EFFECTIVE_REGION_SQL}) AS eff_region
@@ -33,6 +38,17 @@ export async function GET(request: Request) {
       )
       .all(...rlsParams)
       .map((r: any) => r.eff_region);
+
+    // Distinct raw top-level regions (e.g. Kazan covers all 5 Kazan sites)
+    const rawRegions = db
+      .prepare(
+        `SELECT DISTINCT TRIM(region) AS raw_region
+         FROM personnel
+         WHERE COALESCE(TRIM(region), '') != ''${rlsAnd}
+         ORDER BY raw_region ASC`
+      )
+      .all(...rlsParams)
+      .map((r: any) => r.raw_region);
 
     // Distinct projects
     const projects = db
@@ -67,6 +83,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       regions,
+      rawRegions,
       projects,
       departments,
       categories,

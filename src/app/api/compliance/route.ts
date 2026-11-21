@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { resolveRequestRlsScope } from '@/lib/auth';
 import { classifyWorkPermitFromRow } from '@/lib/workPermits';
-import { buildEffectiveRegionSqlCondition, resolveEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
+  resolveEffectiveRegion,
+} from '@/lib/regionSiteHelper';
 import { normalizeRawRecordDates, formatKnownDateToDdMmYyyy } from '@/lib/dateFormatter';
 
 export const runtime = 'nodejs';
@@ -145,8 +149,9 @@ export async function GET(request: Request) {
       conditions.push(regCond.sql);
       params.push(...regCond.params);
     } else if (scopeType === 'project' && scopeVal !== 'all') {
-      conditions.push('proje_adi = ?');
-      params.push(scopeVal);
+      const projCond = buildProjectScopeSqlCondition(scopeVal);
+      conditions.push(projCond.sql);
+      params.push(...projCond.params);
     } else {
       if (filterRegion !== 'all') {
         const regCond = buildEffectiveRegionSqlCondition(filterRegion);

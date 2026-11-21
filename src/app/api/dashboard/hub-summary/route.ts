@@ -11,7 +11,11 @@ import {
   computeZupVsRealReconciliation,
   filterZupReconciliationByScope,
 } from '@/lib/zupReconciliation';
-import { buildEffectiveRegionSqlCondition, matchesEffectiveRegion } from '@/lib/regionSiteHelper';
+import {
+  buildEffectiveRegionSqlCondition,
+  buildProjectScopeSqlCondition,
+  matchesEffectiveRegion,
+} from '@/lib/regionSiteHelper';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,8 +92,9 @@ export async function GET(request: Request) {
       locConds.push(regCond.sql);
       locParams.push(...regCond.params);
     } else if (scopeType === 'project' && scopeVal !== 'all') {
-      locConds.push('proje_adi = ?');
-      locParams.push(scopeVal);
+      const projCond = buildProjectScopeSqlCondition(scopeVal);
+      locConds.push(projCond.sql);
+      locParams.push(...projCond.params);
     } else {
       if (filterRegion !== 'all') {
         const regCond = buildEffectiveRegionSqlCondition(filterRegion);
