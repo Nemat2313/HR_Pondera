@@ -59,7 +59,7 @@ DEFAULT_CONFIG = {
     "DEFAULT_EXCEL_PATH": r"C:\Users\nemat\Downloads\GosUsluga_ увольнения.xlsx",
     "CDP_PORT": 9222,
     "TIMEOUT_MS": 120000,
-    "MAX_SCREEN_WAIT_SEC": 120,
+    "MAX_SCREEN_WAIT_SEC": 180,
     "DELETE_OLD_DRAFTS": True,
     "ACTION_DELAY_SEC": 0.5,
 }
@@ -88,9 +88,10 @@ class InsufficientPermissionsError(Exception):
 
 
 class GosuslugiDismissalBot:
-    def __init__(self, page: Page, config: Dict[str, Any] = None):
+    def __init__(self, page: Page, config: Dict[str, Any] = None, notification_type: str = "dismissal"):
         self.page = page
         self.current_row: Dict[str, Any] = {}
+        self.notification_type = "hiring" if str(notification_type or "").lower() == "hiring" else "dismissal"
         self.cfg = {**DEFAULT_CONFIG, **(config or {})}
         # Auto-normalize legacy Powerise 42.99 OKVED overrides to Pondera's 43.29 OKVED
         raw_code = str(self.cfg.get("OKVED_CODE") or "").strip()
@@ -184,16 +185,31 @@ class GosuslugiDismissalBot:
             pass
         return False
 
+    def is_mvd_service_down(self) -> bool:
+        try:
+            cur_url = (self.page.url or "").lower()
+            if "gosuslugi.ru" not in cur_url:
+                return False
+            body_text = self.page.locator("body").inner_text(timeout=1200)
+            if "Сервис МВД не отвечает" in body_text:
+                return True
+        except Exception:
+            pass
+        return False
+
     def wait_if_paused_or_logged_out(self) -> bool:
         paused_once = False
         while True:
             logged_out = self.is_on_login_page()
+            mvd_down = False
             service_unavail = False
-            if not logged_out and self.is_service_unavailable_ip_block():
-                self.page.wait_for_timeout(1500)
-                service_unavail = self.is_service_unavailable_ip_block()
+            if not logged_out:
+                mvd_down = self.is_mvd_service_down()
+                if not mvd_down and self.is_service_unavailable_ip_block():
+                    self.page.wait_for_timeout(1500)
+                    service_unavail = self.is_service_unavailable_ip_block()
             manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
-            if not logged_out and not service_unavail and not manual_paused:
+            if not logged_out and not mvd_down and not service_unavail and not manual_paused:
                 break
             paused_once = True
             if os.path.exists(MANUAL_CONTINUE_SIGNAL):
@@ -201,7 +217,21 @@ class GosuslugiDismissalBot:
                     os.remove(MANUAL_CONTINUE_SIGNAL)
                 except Exception:
                     pass
-            if service_unavail:
+            if mvd_down:
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_mvd_down")
+                except Exception:
+                    pass
+                logger.warning(
+                    "ROBOT_PAUSED: Gosuslugi «Сервис МВД не отвечает» uyarısı verdi — robot otomatik DURAKLATILDI (PAUSE). "
+                    "MVD servisi düzeldiğinde «Devam Et (Продолжить)» butonuna basın."
+                )
+                logger.warning(
+                    "WAITING_FOR_USER: «Сервис МВД не отвечает» — Robot otomatik duraklatıldı. "
+                    "Hazır olduğunuzda «Devam Et (Продолжить)» butonuna basın."
+                )
+            elif service_unavail:
                 try:
                     with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
                         pf.write("paused_for_ip_block")
@@ -238,6 +268,23 @@ class GosuslugiDismissalBot:
                         pass
                     break
                 self.page.wait_for_timeout(1000)
+            if mvd_down:
+                try:
+                    self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=30000)
+                    self.page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+                if self.is_mvd_service_down():
+                    logger.warning(
+                        "ROBOT_PAUSED: «Сервис МВД не отвечает» hâlâ devam ediyor — robot tekrar duraklatıldı. "
+                        "Bir süre bekleyip tekrar «Devam Et (Продолжить)» butonuna basın."
+                    )
+                    try:
+                        with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                            pf.write("paused_for_mvd_down")
+                    except Exception:
+                        pass
+                    continue
             if service_unavail:
                 try:
                     self.page.reload(wait_until="domcontentloaded", timeout=30000)
@@ -290,7 +337,10 @@ class GosuslugiDismissalBot:
             self.page.wait_for_timeout(1000)
 
     def check_and_handle_error_modal(self) -> bool:
-        """Check if Gosuslugi displays error modals or MVD check warnings and handle them."""
+        """Check if Gosuslugi displays error modals, 'Сервис МВД не отвечает', or MVD check warnings and handle them."""
+        if self.is_mvd_service_down():
+            self.wait_if_paused_or_logged_out()
+            return True
         handled = False
         try:
             retry_btn = self.page.locator("button:has-text('Попробовать ещё раз')")
@@ -532,8 +582,8 @@ class GosuslugiDismissalBot:
             except Exception as e:
                 logger.warning(f"{step_label} input typing note: {e}")
 
-            # Poll every 250ms (up to 28 ticks = 7s) using non-blocking page.evaluate
-            for tick in range(28):
+            # Poll every 250ms (up to 60 ticks = 15s) using non-blocking page.evaluate
+            for tick in range(60):
                 self.check_and_handle_error_modal()
                 self.page.wait_for_timeout(250)
 
@@ -738,8 +788,8 @@ class GosuslugiDismissalBot:
             step_label=f"Step 7 (ОКВЭД {okved_code})",
             click_continue_after=True,
         )
-        # Wait up to 120 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
-        max_wait_s = max(120, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 120))
+        # Wait up to 180 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
+        max_wait_s = max(180, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 180))
         for _w in range(max_wait_s * 2):
             if os.path.exists(PAUSE_SIGNAL_FILE):
                 self.wait_if_paused_or_logged_out()
@@ -1299,7 +1349,8 @@ class GosuslugiDismissalBot:
             logger.warning(f"Postal code input warning: {e}")
 
     def _is_on_step12_mvd_screen_js(self) -> bool:
-        """Returns True if the browser is currently displaying Step 12 (Подразделение МВД / #dic18 / #dic18_byHand)."""
+        """Returns True ONLY if the browser is currently displaying Step 12 (Подразделение МВД / #dic18 / #dic18_byHand).
+        Explicitly returns False on Contract / OKVED / Passport / Patent screens so 'МОСКВЕ' is never typed into Профессия."""
         try:
             return bool(
                 self.page.evaluate(
@@ -1309,12 +1360,30 @@ class GosuslugiDismissalBot:
                             const r = el.getBoundingClientRect();
                             return r.width > 5 && r.height > 5;
                         };
-                        const dic = document.querySelector('input#dic18, input#dic18_byHand, lib-lookup input.search-input');
+                        const headings = Array.from(document.querySelectorAll('h1, h2, h3'))
+                            .filter(vis)
+                            .map(h => (h.innerText || '').toLowerCase());
+                        if (headings.some(t =>
+                            t.includes('договор') ||
+                            t.includes('оквэд') ||
+                            t.includes('паспорт') ||
+                            t.includes('патент') ||
+                            t.includes('разрешени')
+                        )) {
+                            return false;
+                        }
+                        const dic = document.querySelector('input#dic18, input#dic18_byHand');
                         if (vis(dic)) return true;
-                        const h1 = Array.from(document.querySelectorAll('h1, h2, h3')).find(
-                            h => vis(h) && (h.innerText || '').toLowerCase().includes('подразделение мвд')
+                        const isMvdHeading = headings.some(t =>
+                            t.includes('подразделение мвд') ||
+                            t.includes('орган мвд') ||
+                            t.includes('куда отправится уведомление')
                         );
-                        return !!h1;
+                        if (isMvdHeading) {
+                            const anyLookup = document.querySelector('lib-lookup input.search-input');
+                            return vis(anyLookup) || true;
+                        }
+                        return false;
                     }"""
                 )
             )
@@ -1967,8 +2036,134 @@ class GosuslugiDismissalBot:
         self.check_and_stop_if_insufficient_permissions()
         return False
 
+    def resolve_document_type(self, row: Dict[str, Any]) -> str:
+        """
+        Determines Gosuslugi 600585/1 work-authorization branch for an employee:
+        - 'PATENT': Патент (безвизовые: Узбекистан, Таджикистан, Азербайджан, Молдова и т.д.)
+        - 'RNR': Разрешение на работу (визовые / квота / ВКС: Индия, Турция, Вьетнам, Туркменистан и т.д.)
+        - 'NO_DOC': Документ не нужен (ЕАЭС: Кыргызстан, Казахстан, Армения, Беларусь / ВНЖ / РВП)
+        """
+        explicit = str(row.get("ТипДокумента") or "").strip().upper()
+        if explicit in ("PATENT", "RNR", "NO_DOC"):
+            return explicit
+
+        cat = str(row.get("КатегорияРазрешения") or row.get("permitCategory") or "").strip().lower()
+        if any(k in cat for k in ("вкс", "квот", "виз", "рнр", "разрешен", "quota", "visa")):
+            return "RNR"
+        if any(k in cat for k in ("патент", "patent")):
+            return "PATENT"
+        if any(k in cat for k in ("еаэс", "eaes", "внж", "рвп", "без разреш", "не нужен")):
+            return "NO_DOC"
+
+        b1 = str(row.get("СерийныйНомер1") or "").strip().upper()
+        if b1 in ("ПР", "PR"):
+            return "PATENT"
+        if b1 in ("ВВ", "РВ", "РП", "КС", "ВИ", "BB", "RV", "RP"):
+            return "RNR"
+
+        cit = str(row.get("ТекущееГражданство") or "").strip().upper()
+        has_num = bool(str(row.get("Номер") or "").strip())
+        if any(k in cit for k in ("КЫРГЫЗ", "КИРГИЗ", "КАЗАХ", "АРМЕН", "БЕЛАРУС")):
+            return "NO_DOC"
+        if any(
+            k in cit
+            for k in (
+                "ИНДИ",
+                "ТУРЦ",
+                "ВЬЕТНАМ",
+                "ТУРКМЕН",
+                "КИТА",
+                "ПАКИСТАН",
+                "БАНГЛАДЕШ",
+                "ФИЛИППИН",
+                "СЕРБ",
+                "ЕГИПЕТ",
+            )
+        ):
+            return "RNR"
+        return "PATENT" if has_num else "NO_DOC"
+
+    def fetch_instant_order_status(self, gos_num: str, entry: Dict[str, Any]):
+        """
+        Polls Gosuslugi LK orders feed inside the authenticated browser session right after submission
+        (up to 3 fast checks over ~10s) because Gosuslugi now returns instant MVD decisions.
+        """
+        clean_no = re.sub(r"\D", "", str(gos_num or ""))
+        if len(clean_no) < 7:
+            return
+        logger.info(f"Step 15: Checking instant Gosuslugi status for № {clean_no}...")
+        final_status = ""
+        for attempt in range(3):
+            self.page.wait_for_timeout(3500 if attempt > 0 else 2500)
+            try:
+                res = self.page.evaluate(
+                    """async (appNo) => {
+                        try {
+                            const url = `https://lk.gosuslugi.ru/api/lk/v1/feeds/?pageSize=10&q=${encodeURIComponent(appNo)}&types=ORDER,EQUEUE,APPEAL,CLAIM,SIGN`;
+                            const r = await fetch(url, { credentials: 'include' });
+                            if (!r.ok) return null;
+                            const j = await r.json();
+                            const items = j?.items || j?.data?.items || j?.feed || [];
+                            for (const it of items) {
+                                const idStr = String(it?.id || it?.orderId || it?.number || '');
+                                if (idStr.includes(appNo)) {
+                                    return {
+                                        status: String(it?.statusName || it?.status || it?.subStatus || '').trim(),
+                                        detail: String(it?.statusDescription || it?.description || '').trim(),
+                                    };
+                                }
+                            }
+                            return null;
+                        } catch (e) {
+                            return null;
+                        }
+                    }""",
+                    clean_no,
+                )
+                if isinstance(res, dict) and res.get("status"):
+                    st = str(res["status"]).strip()
+                    final_status = st
+                    low = st.lower()
+                    if any(k in low for k in ("оказан", "отказ", "исполнен", "промежуточн", "принят", "зарегистр")):
+                        if any(k in low for k in ("оказан", "отказ", "исполнен")):
+                            break
+            except Exception:
+                pass
+
+        if final_status and final_status != entry.get("gosuslugi_status"):
+            updated = {
+                **entry,
+                "gosuslugi_status": final_status,
+                "status_checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            logger.info(f"Instant Gosuslugi status for № {clean_no}: {final_status}")
+            logger.info(f"APPLICATION_STATUS_UPDATED: {json.dumps(updated, ensure_ascii=False)}")
+            try:
+                import urllib.request
+                import ssl
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                for api_url in (
+                    "https://hr.pondera.network/api/gosuslugi/submissions",
+                    "http://localhost:3000/api/gosuslugi/submissions",
+                ):
+                    try:
+                        req = urllib.request.Request(
+                            api_url,
+                            data=json.dumps({"records": [updated]}, ensure_ascii=False).encode("utf-8"),
+                            headers={"Content-Type": "application/json; charset=utf-8"},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req, timeout=3.5, context=ctx if api_url.startswith("https") else None) as _:
+                            break
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
     def download_and_rename_receipt_pdf(self, row: Dict[str, Any]):
-        """Downloads the official Gosuslugi receipt PDF and renames it to <Sicil>_<GosuslugiNo>_<WorkerName>_Увольнение.pdf."""
+        """Downloads the official Gosuslugi receipt PDF and renames it to <Sicil>_<GosuslugiNo>_<WorkerName>_<Type>.pdf."""
         try:
             logger.info("Step 14: Checking for Gosuslugi Application Number & PDF Receipt...")
             self.page.wait_for_timeout(2500)
@@ -1996,11 +2191,15 @@ class GosuslugiDismissalBot:
             worker_label = f"{last_n} {first_n}".strip() if last_n.lower() not in ["нет", ""] else first_n
             worker_label = re.sub(r'[\\/*?:"<>|]', "_", worker_label)
 
+            is_hiring = self.notification_type == "hiring"
+            type_suffix = "Прием" if is_hiring else "Увольнение"
+            period_val = str(row.get("ДатаПриема" if is_hiring else "ДатаУволь", "")).strip()
+
             downloads_dir = os.path.expandvars(r"%USERPROFILE%\Downloads")
             if sicil and sicil != gos_num:
-                target_pdf_name = f"{sicil}_{gos_num}_{worker_label}_Увольнение.pdf"
+                target_pdf_name = f"{sicil}_{gos_num}_{worker_label}_{type_suffix}.pdf"
             else:
-                target_pdf_name = f"{gos_num}_{worker_label}_Увольнение.pdf"
+                target_pdf_name = f"{gos_num}_{worker_label}_{type_suffix}.pdf"
             target_pdf_path = os.path.join(downloads_dir, target_pdf_name)
 
             entry = {
@@ -2008,8 +2207,8 @@ class GosuslugiDismissalBot:
                 "sicil_no": sicil,
                 "worker_name": worker_label,
                 "citizenship": str(row.get("ТекущееГражданство", "")).strip(),
-                "notification_type": "dismissal",
-                "period_code": str(row.get("ДатаУволь", "")).strip(),
+                "notification_type": self.notification_type,
+                "period_code": period_val,
                 "application_no": gos_num,
                 "gosuslugi_status": "Заявление зарегистрировано",
                 "pdf_filename": target_pdf_name,
@@ -2039,6 +2238,9 @@ class GosuslugiDismissalBot:
                         pass
             except Exception:
                 pass
+
+            # Immediately poll Gosuslugi LK feed for instant MVD status decision
+            self.fetch_instant_order_status(gos_num, entry)
 
             # Click "Показать все" if visible
             show_all = self.page.locator("button:has-text('Показать все'), span:has-text('Показать все'), a:has-text('Показать все')").first
@@ -2071,11 +2273,17 @@ class GosuslugiDismissalBot:
 
     def fill_notification(self, row: Dict[str, Any]) -> bool:
         """
-        Executes the complete Gosuslugi Form 600585/1 dismissal filling process for a single worker.
+        Executes the complete Gosuslugi Form 600585/1 notification filling process
+        for both Hiring ('О заключении договора') and Dismissal ('О расторжении договора'),
+        automatically branching for Patent ('Патент'), Visa/Quota/VKS ('Разрешение на работу'),
+        and EAES ('Документ не нужен').
         """
         self.enable_background_focus_emulation()
+        is_hiring = self.notification_type == "hiring"
+        doc_type = self.resolve_document_type(row)
         full_name = f"{row.get('Фамилия', '')} {row.get('Имя', '')} {row.get('Отчество', '')}".strip()
-        logger.info(f"=== Starting Gosuslugi Dismissal for: {full_name} (Код: {row.get('Код', '')}) ===")
+        start_prefix = "Starting Gosuslugi Hiring for:" if is_hiring else "Starting Gosuslugi Dismissal for:"
+        logger.info(f"=== {start_prefix} {full_name} (Код: {row.get('Код', '')}, Док: {doc_type}) ===")
 
         logger.info("Step 1: Navigating to Gosuslugi Service 600585/1...")
         try:
@@ -2296,14 +2504,16 @@ class GosuslugiDismissalBot:
                 self.page.wait_for_timeout(900)
                 continue
 
-            # Priority 3: Step 3a ('О расторжении договора')
+            # Priority 3: Step 3a ('О заключении договора' for hiring, 'О расторжении договора' for dismissal)
+            step3a_text = "О заключении договора" if is_hiring else "О расторжении договора"
+            step3a_short = "О заключении" if is_hiring else "О расторжении"
             term_btn = self.page.locator(
-                "epgu-cf-ui-long-button:has-text('О расторжении договора'):visible, "
-                "button:has-text('О расторжении договора'):visible, "
-                "div.long-button:has-text('О расторжении'):visible"
+                f"epgu-cf-ui-long-button:has-text('{step3a_text}'):visible, "
+                f"button:has-text('{step3a_text}'):visible, "
+                f"div.long-button:has-text('{step3a_short}'):visible"
             ).first
             if term_btn.count() > 0 and term_btn.is_visible():
-                logger.info("Step 3a: Selecting 'О расторжении договора'...")
+                logger.info(f"Step 3a: Selecting '{step3a_text}'...")
                 try:
                     term_btn.scroll_into_view_if_needed(timeout=1500)
                 except Exception:
@@ -2313,12 +2523,13 @@ class GosuslugiDismissalBot:
                 except Exception:
                     try:
                         self.page.evaluate(
-                            """() => {
+                            """(targetTxt) => {
                                 const b = Array.from(document.querySelectorAll('epgu-cf-ui-long-button, button, div.long-button')).find(
-                                    el => (el.innerText || '').includes('О расторжении договора')
+                                    el => (el.innerText || '').includes(targetTxt)
                                 );
                                 if (b) b.click();
-                            }"""
+                            }""",
+                            step3a_text,
                         )
                     except Exception:
                         pass
@@ -2329,10 +2540,11 @@ class GosuslugiDismissalBot:
             self.page.wait_for_timeout(500)
 
         if not step3a_selected:
-            logger.info("Step 3a (Fallback): Waiting up to 120s for 'О расторжении договора'...")
+            step3a_text = "О заключении договора" if is_hiring else "О расторжении договора"
+            logger.info(f"Step 3a (Fallback): Waiting up to 120s for '{step3a_text}'...")
             term_btn = self.page.locator(
-                "epgu-cf-ui-long-button:has-text('О расторжении договора'), "
-                "button:has-text('О расторжении договора')"
+                f"epgu-cf-ui-long-button:has-text('{step3a_text}'), "
+                f"button:has-text('{step3a_text}')"
             ).first
             term_btn.wait_for(state="visible", timeout=max_wait_sec * 1000)
             term_btn.click()
@@ -2358,18 +2570,44 @@ class GosuslugiDismissalBot:
             except Exception:
                 pass
 
-            # 1) Step 3b: Select 'Патент' if on document choice screen
+            # 1) Step 3b: Select document type ('Патент' / 'Разрешение на работу' / 'Документ не нужен')
             try:
-                patent_btn = self.page.locator(
-                    "epgu-cf-ui-long-button:has-text('Патент'):visible, "
-                    "button:has-text('Патент'):visible, "
-                    "div.long-button:has-text('Патент'):visible"
+                doc_btn_label = (
+                    "Разрешение на работу"
+                    if doc_type == "RNR"
+                    else "Документ не нужен"
+                    if doc_type == "NO_DOC"
+                    else "Патент"
+                )
+                doc_btn = self.page.locator(
+                    f"epgu-cf-ui-long-button:has-text('{doc_btn_label}'):visible, "
+                    f"button:has-text('{doc_btn_label}'):visible, "
+                    f"div.long-button:has-text('{doc_btn_label}'):visible"
                 ).first
-                if patent_btn.count() > 0 and patent_btn.is_visible():
-                    logger.info("Step 3b: Selecting 'Патент'...")
-                    patent_btn.click()
+                if doc_btn.count() > 0 and doc_btn.is_visible():
+                    logger.info(f"Step 3b: Selecting '{doc_btn_label}' ({doc_type})...")
+                    doc_btn.click()
                     self.page.wait_for_timeout(1400)
                     continue
+            except Exception:
+                pass
+
+            # 1b) Step 3c (Hiring Patent ONLY): 'Иностранец работает в двух регионах?' -> 'Нет'
+            try:
+                two_reg_q = self.page.locator(
+                    "h1:has-text('двух регионах'):visible, h2:has-text('двух регионах'):visible, div:has-text('Иностранец работает в двух регионах'):visible"
+                ).first
+                if two_reg_q.count() > 0 and two_reg_q.is_visible():
+                    no_btn = self.page.locator(
+                        "epgu-cf-ui-long-button:has-text('Нет'):visible, "
+                        "button:has-text('Нет'):visible, "
+                        "div.long-button:has-text('Нет'):visible"
+                    ).first
+                    if no_btn.count() > 0 and no_btn.is_visible():
+                        logger.info("Step 3c: Answering 'Нет' to 'Иностранец работает в двух регионах?'...")
+                        no_btn.click()
+                        self.page.wait_for_timeout(1400)
+                        continue
             except Exception:
                 pass
 
@@ -2471,17 +2709,12 @@ class GosuslugiDismissalBot:
         self.check_and_handle_error_modal()
         last_name_input.wait_for(state="visible", timeout=max_wait_sec * 1000)
 
-        fam_raw = str(row.get("Фамилия") or "").strip()
-        fam_clean = (
-            "Нет"
-            if (not fam_raw or fam_raw.lower() in ("нет", "-", "—", "–", "не заполнено", "none"))
-            else self.sanitize_cyrillic_field(fam_raw, "Нет")
-        )
+        fam_clean = self.sanitize_cyrillic_field(str(row.get("Фамилия", "")))
         imya_clean = self.sanitize_cyrillic_field(str(row.get("Имя", "")))
         otch_raw = str(row.get("Отчество") or "").strip()
         otch_clean = (
             "Нет"
-            if (not otch_raw or otch_raw.lower() in ("нет", "-", "—", "–", "не заполнено", "none"))
+            if (not otch_raw or otch_raw.lower() in ("нет", "-", "не заполнено", "none"))
             else self.sanitize_cyrillic_field(otch_raw, "Нет")
         )
 
@@ -2603,45 +2836,173 @@ class GosuslugiDismissalBot:
             if self.page.locator("#si14_issuedBy_125:visible, input[id*='issuedBy']:visible, input[name='di14_issue']:visible").count() == 0:
                 break
 
-        # Step 10: Wait for and handle optional INN (Step 9b), Patent Region (Step 10a), and Patent Details (Step 10)
+        # Step 10: Wait for and handle optional INN (Step 9b), Permit/Patent Region (Step 10a), and Patent/RNR Details (Step 10)
+        # For EAES ('NO_DOC'), Gosuslugi skips Step 10 and goes directly to Step 11 (contract details).
         patent_series_str = str(row.get("Серия", "")).strip()
-        logger.info(f"Step 10: Filling Patent Series {patent_series_str} No {row.get('Номер')}...")
-        row_reg_short = str(row.get("РегионПатента") or "").strip()
-        row_reg_full = str(row.get("РегионПатентаПолный") or "").strip()
-        if row_reg_short or row_reg_full:
-            reg_short = row_reg_short or row_reg_full.split()[0]
-            reg_full = row_reg_full or row_reg_short
-        else:
-            reg_short, reg_full = PATENT_SERIES_TO_REGION.get(
-                patent_series_str,
-                (self.cfg["PATENT_REGION"], self.cfg["PATENT_REGION_FULL"]),
-            )
+        if doc_type != "NO_DOC":
+            logger.info(f"Step 10: Filling {doc_type} Series {patent_series_str} No {row.get('Номер')}...")
+            row_reg_short = str(row.get("РегионПатента") or "").strip()
+            row_reg_full = str(row.get("РегионПатентаПолный") or "").strip()
+            if row_reg_short or row_reg_full:
+                reg_short = row_reg_short or row_reg_full.split()[0]
+                reg_full = row_reg_full or row_reg_short
+            else:
+                reg_short, reg_full = PATENT_SERIES_TO_REGION.get(
+                    patent_series_str,
+                    (self.cfg["PATENT_REGION"], self.cfg["PATENT_REGION_FULL"]),
+                )
 
-        for _step10_tick in range(int(max_wait_sec * 2.2)):
-            if os.path.exists(PAUSE_SIGNAL_FILE):
-                self.wait_if_paused_or_logged_out()
-            self.check_and_handle_error_modal()
+            reached_step11_early = False
+            for _step10_tick in range(int(max_wait_sec * 2.2)):
+                if os.path.exists(PAUSE_SIGNAL_FILE):
+                    self.wait_if_paused_or_logged_out()
+                self.check_and_handle_error_modal()
 
-            # ONLY break when we are genuinely on the Patent Details screen ('Укажите данные патента' / #s15_dict_2_seriaBlank)
-            # Never break on Step 9's #series!
-            on_patent_details = bool(
-                self.page.evaluate(
+                # Break if we reached Step 10 (Patent or RNR Details) OR jumped directly to Step 11
+                step10_state = self.page.evaluate(
                     """() => {
                         const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
-                        if (vis(document.querySelector("#si14_issuedBy_125, input[id*='issuedBy'], input[name='di14_issue']"))) return false;
+                        if (vis(document.querySelector("#si14_issuedBy_125, input[id*='issuedBy'], input[name='di14_issue']"))) return 'step9';
+                        if (vis(document.querySelector("input#dic16, input#si16, input[name='di16_2'], input[name='ri16_type']"))) return 'step11';
                         const blankInp = document.querySelector("#s15_dict_2_seriaBlank, input[name*='seriaBlank'], input[name*='numberBlank']");
-                        if (vis(blankInp)) return true;
-                        const h1 = Array.from(document.querySelectorAll("h1, h2, h3")).find(
-                            h => vis(h) && (h.innerText || "").toLowerCase().includes("данные патента")
-                        );
-                        return !!h1 && vis(document.querySelector("#series"));
+                        if (vis(blankInp)) return 'step10';
+                        const h1 = Array.from(document.querySelectorAll("h1, h2, h3")).find(h => {
+                            if (!vis(h)) return false;
+                            const t = (h.innerText || "").toLowerCase();
+                            return t.includes("данные патента") || t.includes("данные разрешения") || t.includes("разрешения на работу");
+                        });
+                        if (h1 && vis(document.querySelector("#series, input[name*='series']"))) return 'step10';
+                        return '';
                     }"""
                 )
-            )
-            if on_patent_details:
-                break
+                if step10_state == "step10":
+                    break
+                if step10_state == "step11":
+                    reached_step11_early = True
+                    break
 
-            # Optional Step 9b: Foreigner INN ('ИНН иностранного гражданина')
+                # Optional Step 9b: Foreigner INN ('ИНН иностранного гражданина')
+                inn_loc = self.page.locator("#c_foreignerINN:visible, input[id*='foreignerINN']:visible, input[name*='foreignerINN']:visible")
+                if inn_loc.count() > 0 and inn_loc.first.is_visible():
+                    inn_val = re.sub(r"\D", "", str(row.get("ИНН") or ""))
+                    if len(inn_val) == 12:
+                        self.type_masked_input("#c_foreignerINN:visible, input[id*='foreignerINN']:visible", inn_val)
+                    self._click_continue_js_and_mouse()
+                    self.page.wait_for_timeout(1200)
+                    continue
+
+                # Step 10a: Patent/RNR Region ('В каком регионе выдан патент?')
+                region_input = self.page.locator(
+                    "input[placeholder*='Регион']:visible, input[name*='region']:visible, input[id*='region']:visible, lib-lookup input.search-input:visible"
+                )
+                if region_input.count() > 0 and region_input.first.is_visible():
+                    self.select_lookup_option_mvd_style(
+                        input_selector="input[placeholder*='Регион'], input[name*='region'], input[id*='region'], lib-lookup input.search-input",
+                        type_text=reg_short,
+                        match_keywords=[reg_full, reg_short],
+                        step_label=f"Step 10a (Регион {doc_type}: {reg_full})",
+                        click_continue_after=True,
+                    )
+                    self.page.wait_for_timeout(1000)
+                    continue
+
+                self.page.wait_for_timeout(500)
+
+            if not reached_step11_early:
+                # Patent / RNR Series & Number, Blank Series & Number
+                patent_series_inputs = self.page.locator("#series:visible, input[name*='series']:visible, input[id*='series']:visible").first
+                patent_series_inputs.wait_for(state="visible", timeout=max_wait_sec * 1000)
+                self.type_masked_input(
+                    "#series:visible, input[name*='series']:visible, input[id*='series']:visible",
+                    patent_series_str,
+                )
+                self.type_masked_input(
+                    "#number:visible, input[name*='number']:visible, input[id*='number']:visible",
+                    str(row.get("Номер", "")).strip(),
+                )
+
+                blank_series_val = self.sanitize_cyrillic_field(str(row.get("СерийныйНомер1", "")).strip()).replace(" ", "")
+                if blank_series_val:
+                    self.type_masked_input(
+                        "#s15_dict_2_seriaBlank:visible, #dic15_seriaBlank:visible, input[name*='seriaBlank']:visible, input[id*='seriaBlank']:visible, input[placeholder*='Серия бланка']:visible",
+                        blank_series_val,
+                    )
+                    try:
+                        lookup_item = self.page.locator("#lookup-list-wrap .lookup-item:visible, lib-lookup .lookup-item:visible").first
+                        if lookup_item.count() > 0 and lookup_item.is_visible():
+                            lookup_item.click(timeout=1500)
+                            self.page.wait_for_timeout(200)
+                    except Exception:
+                        pass
+
+                blank_num_val = str(row.get("СерийныйНомер2", "")).strip()
+                # Strip duplicate blank series prefix if present in Excel (e.g. 'ВВ 1294231' or 'ПР 6329333' -> '1294231')
+                if blank_series_val and blank_num_val.upper().startswith(blank_series_val.upper()):
+                    blank_num_val = blank_num_val[len(blank_series_val):].strip()
+                if blank_num_val:
+                    self.type_masked_input(
+                        "input[name='s15_dict_2_numberBlank']:visible, input[name='s15_numberBlank']:visible, input[name*='numberBlank']:visible, input[id*='numberBlank']:visible, input[placeholder*='Номер бланка']:visible",
+                        blank_num_val,
+                    )
+
+                # Optional permit issue & expiry dates (for RNR / Patent if present on screen)
+                patent_issue_date = str(row.get("ДатаВыдачиВКС", "")).strip()
+                if patent_issue_date and self.page.locator("input[name*='di15']:visible, lib-date-picker input:visible").count() > 0:
+                    self.fill_date_input_smart(
+                        primary_selector="input[name*='di15']:visible, input[id*='di15']:visible, lib-date-picker input:visible",
+                        label_keywords=["дата выдачи", "выдачи"],
+                        value=patent_issue_date,
+                    )
+                patent_expiry_date = str(row.get("ДатаОкончанияВКС", "")).strip()
+                if patent_expiry_date and self.page.locator("lib-date-picker input:visible").count() >= 2:
+                    self.fill_date_input_smart(
+                        primary_selector="input[name*='end']:visible, input[id*='end']:visible, lib-date-picker input:visible",
+                        label_keywords=["действует до", "окончания", "срок действия"],
+                        value=patent_expiry_date,
+                    )
+
+                self.page.wait_for_timeout(500)
+                for _ in range(5):
+                    self._click_continue_js_and_mouse()
+                    for _w in range(15):
+                        self.page.wait_for_timeout(300)
+                        self.check_and_handle_error_modal()
+                        reached_step11 = bool(
+                            self.page.evaluate(
+                                """() => {
+                                    const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
+                                    if (vis(document.querySelector("button.loader"))) return false;
+                                    if (vis(document.querySelector("#s15_dict_2_seriaBlank, input[name*='numberBlank']"))) return false;
+                                    const step11El = document.querySelector("input#dic16, input#si16, input[name='di16_2'], input[name='ri16_type']");
+                                    if (vis(step11El)) return true;
+                                    const h1 = Array.from(document.querySelectorAll("h1, h2, h3")).find(
+                                        h => vis(h) && ((h.innerText || "").toLowerCase().includes("расторжении договора") || (h.innerText || "").toLowerCase().includes("заключении договора"))
+                                    );
+                                    return !!h1;
+                                }"""
+                            )
+                        )
+                        if reached_step11:
+                            break
+                    if self.page.locator("#s15_dict_2_seriaBlank:visible, input[name*='numberBlank']:visible").count() == 0:
+                        # If RNR showed an extra intermediate confirmation screen, keep clicking Продолжить until Step 11
+                        if self.page.locator("input#dic16:visible, input#si16:visible, input[name='di16_2']:visible, input[name='ri16_type']:visible, h1:has-text('договора'):visible").count() > 0:
+                            break
+
+        # Step 11: Contract Details ('Укажите сведения о заключении договора' OR 'Укажите информацию о расторжении договора')
+        raw_dismiss_date = str(row.get("ДатаУволь", "")).strip()
+        dismiss_date = self.normalize_past_or_today_date_ru(raw_dismiss_date) if raw_dismiss_date else ""
+        raw_hire_date = str(row.get("ДатаПриема", "")).strip()
+        hire_date = self.normalize_past_or_today_date_ru(raw_hire_date) if raw_hire_date else ""
+        pos_str = self.sanitize_cyrillic_field(str(row.get("Должность", "Монтажник")).strip(), "Монтажник", allow_digits=True)
+        logger.info(
+            f"Step 11: Setting {'Hire Date ' + hire_date if is_hiring else 'Termination Date ' + dismiss_date} & Position {pos_str}..."
+        )
+        self.check_and_handle_error_modal()
+        for _ in range(int(max_wait_sec * 2.2)):
+            if os.path.exists(PAUSE_SIGNAL_FILE):
+                self.wait_if_paused_or_logged_out()
+            # Handle optional INN screen for NO_DOC employees before Step 11
             inn_loc = self.page.locator("#c_foreignerINN:visible, input[id*='foreignerINN']:visible, input[name*='foreignerINN']:visible")
             if inn_loc.count() > 0 and inn_loc.first.is_visible():
                 inn_val = re.sub(r"\D", "", str(row.get("ИНН") or ""))
@@ -2650,105 +3011,10 @@ class GosuslugiDismissalBot:
                 self._click_continue_js_and_mouse()
                 self.page.wait_for_timeout(1200)
                 continue
-
-            # Step 10a: Patent Region ('В каком регионе выдан патент?')
-            region_input = self.page.locator(
-                "input[placeholder*='Регион']:visible, input[name*='region']:visible, input[id*='region']:visible, lib-lookup input.search-input:visible"
-            )
-            if region_input.count() > 0 and region_input.first.is_visible():
-                self.select_lookup_option_mvd_style(
-                    input_selector="input[placeholder*='Регион'], input[name*='region'], input[id*='region'], lib-lookup input.search-input",
-                    type_text=reg_short,
-                    match_keywords=[reg_full, reg_short],
-                    step_label=f"Step 10a (Регион патента: {reg_full})",
-                    click_continue_after=True,
-                )
-                self.page.wait_for_timeout(1000)
-                continue
-
-            self.page.wait_for_timeout(500)
-
-        # Patent Series & Number, Blank Series & Number
-        patent_series_inputs = self.page.locator("#series:visible, input[name*='series']:visible, input[id*='series']:visible").first
-        patent_series_inputs.wait_for(state="visible", timeout=max_wait_sec * 1000)
-        self.type_masked_input(
-            "#series:visible, input[name*='series']:visible, input[id*='series']:visible",
-            patent_series_str,
-        )
-        self.type_masked_input(
-            "#number:visible, input[name*='number']:visible, input[id*='number']:visible",
-            str(row.get("Номер", "")).strip(),
-        )
-
-        blank_series_val = self.sanitize_cyrillic_field(str(row.get("СерийныйНомер1", "")).strip()).replace(" ", "")
-        if blank_series_val:
-            self.type_masked_input(
-                "#s15_dict_2_seriaBlank:visible, #dic15_seriaBlank:visible, input[name*='seriaBlank']:visible, input[id*='seriaBlank']:visible, input[placeholder*='Серия бланка']:visible",
-                blank_series_val,
-            )
-            # If 'Серия бланка' opened a lookup dropdown (#lookup-list-wrap .lookup-item), click the matching item
-            try:
-                lookup_item = self.page.locator("#lookup-list-wrap .lookup-item:visible, lib-lookup .lookup-item:visible").first
-                if lookup_item.count() > 0 and lookup_item.is_visible():
-                    lookup_item.click(timeout=1500)
-                    self.page.wait_for_timeout(200)
-            except Exception:
-                pass
-
-        blank_num_val = str(row.get("СерийныйНомер2", "")).strip()
-        if blank_num_val:
-            self.type_masked_input(
-                "input[name='s15_dict_2_numberBlank']:visible, input[name='s15_numberBlank']:visible, input[name*='numberBlank']:visible, input[id*='numberBlank']:visible, input[placeholder*='Номер бланка']:visible",
-                blank_num_val,
-            )
-
-        # Only fill patent issue date if a date-picker is actually present on the Patent screen
-        patent_issue_date = str(row.get("ДатаВыдачиВКС", "")).strip()
-        if patent_issue_date and self.page.locator("input[name*='di15']:visible, lib-date-picker input:visible").count() > 0:
-            self.fill_date_input_smart(
-                primary_selector="input[name*='di15']:visible, input[id*='di15']:visible, lib-date-picker input:visible",
-                label_keywords=["дата выдачи", "выдачи"],
-                value=patent_issue_date,
-            )
-
-        self.page.wait_for_timeout(500)
-        for _ in range(4):
-            self._click_continue_js_and_mouse()
-            for _w in range(15):
-                self.page.wait_for_timeout(300)
-                self.check_and_handle_error_modal()
-                reached_step11 = bool(
-                    self.page.evaluate(
-                        """() => {
-                            const vis = (el) => el && el.getBoundingClientRect().width > 5 && el.getBoundingClientRect().height > 5;
-                            if (vis(document.querySelector("button.loader"))) return false;
-                            if (vis(document.querySelector("#s15_dict_2_seriaBlank, input[name*='numberBlank']"))) return false;
-                            const step11El = document.querySelector("input#dic16, input#si16, input[name='di16_2'], input[name='ri16_type']");
-                            if (vis(step11El)) return true;
-                            const h1 = Array.from(document.querySelectorAll("h1, h2, h3")).find(
-                                h => vis(h) && (h.innerText || "").toLowerCase().includes("расторжении договора")
-                            );
-                            return !!h1;
-                        }"""
-                    )
-                )
-                if reached_step11:
-                    break
-            if self.page.locator("#s15_dict_2_seriaBlank:visible, input[name*='numberBlank']:visible").count() == 0:
-                break
-
-        # Step 11: Contract Termination Details ('Укажите информацию о расторжении договора')
-        raw_dismiss_date = str(row.get("ДатаУволь", "")).strip()
-        dismiss_date = self.normalize_past_or_today_date_ru(raw_dismiss_date)
-        pos_str = self.sanitize_cyrillic_field(str(row.get("Должность", "Монтажник")).strip(), "Монтажник", allow_digits=True)
-        logger.info(f"Step 11: Setting Termination Date {dismiss_date} & Position {pos_str}...")
-        self.check_and_handle_error_modal()
-        for _ in range(int(max_wait_sec * 2.2)):
-            if os.path.exists(PAUSE_SIGNAL_FILE):
-                self.wait_if_paused_or_logged_out()
             if (
                 self.page.locator(
                     "h1:has-text('расторжении договора'):visible, "
+                    "h1:has-text('заключении договора'):visible, "
                     "input#dic16:visible, input#si16:visible, input[name='di16_2']:visible, "
                     "lib-radio:has-text('Трудовой'):visible"
                 ).count()
@@ -2821,81 +3087,155 @@ class GosuslugiDismissalBot:
                     click_continue_after=False,
                 )
 
-        # 11c. Dates on Step 11 (optional 'Дата заключения' + mandatory 'Дата расторжения' [di16_2])
-        hire_date = str(row.get("ДатаПриема", "")).strip()
-        if hire_date and self.page.locator("lib-date-picker input:visible").count() >= 2:
-            self.fill_date_input_smart(
-                primary_selector="input[name*='start']:visible, input[id*='start']:visible",
-                label_keywords=["дата заключения", "заключения"],
-                value=hire_date,
-            )
-
-        self.fill_date_input_smart(
-            primary_selector="input[name='di16_2']:visible, input[name*='di16']:visible, input[id*='di16']:visible, lib-date-picker input:visible",
-            label_keywords=["дата расторжения", "дата прекращения", "расторжения", "прекращения", "увольнения", "дата"],
-            value=dismiss_date,
-        )
-
-        # 11d. Voluntary termination radio ('По инициативе работника' -> input[name='ri16_2_ini'][value='Y'|'N'])
-        is_voluntary = str(row.get("УвПоСобствЖел", self.cfg.get("DEFAULT_VOLUNTARY", "Да"))).strip()
-        vol_val = "Y" if is_voluntary.lower() in ["да", "yes", "true", "1"] else "N"
-        vol_label = "Да" if vol_val == "Y" else "Нет"
-        try:
-            vol_box = self.page.evaluate(
-                """(val) => {
-                    const inp = document.querySelector(`input[name='ri16_2_ini'][value='${val}']`);
-                    if (!inp) return null;
-                    const libRadio = inp.closest("lib-radio");
-                    const lbl = libRadio ? (libRadio.querySelector("label.radio") || libRadio) : inp;
-                    lbl.scrollIntoView({ block: 'center' });
-                    const r = lbl.getBoundingClientRect();
-                    lbl.click();
-                    return (r.width > 5 && r.height > 5) ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
-                }""",
-                vol_val,
-            )
-            if vol_box and not self.page.evaluate(f"() => !!(document.querySelector(\"input[name='ri16_2_ini'][value='{vol_val}']\")?.checked)"):
-                self.page.mouse.click(float(vol_box["x"]), float(vol_box["y"]))
-        except Exception:
-            vol_loc = self.page.locator(f"lib-radio:has-text('{vol_label}') label.radio:visible").last
-            if vol_loc.count() > 0:
+        # 11c & 11d: Dates & Contract flags (Hiring vs Dismissal)
+        if is_hiring:
+            # On Hiring Step 11 ('Укажите информацию о договоре'), there are TWO mandatory date fields:
+            #   [0] Дата заключения
+            #   [1] Дата начала действия
+            # Fill BOTH explicitly by index so 'Дата начала действия' is NEVER left empty!
+            for attempt_d in range(3):
+                date_inputs = self.page.locator("lib-date-picker input:visible")
+                d_cnt = date_inputs.count()
+                if d_cnt == 0:
+                    date_inputs = self.page.locator("input[name*='di16']:visible, input[id*='di16']:visible")
+                    d_cnt = date_inputs.count()
+                all_filled = True
+                for d_idx in range(min(d_cnt, 2)):
+                    inp = date_inputs.nth(d_idx)
+                    try:
+                        cur_v = (inp.input_value() or "").strip()
+                        if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", cur_v):
+                            continue
+                        all_filled = False
+                        inp.scroll_into_view_if_needed(timeout=2000)
+                        inp.click(timeout=2000)
+                        self.page.wait_for_timeout(120)
+                        self.page.keyboard.press("Control+A")
+                        self.page.keyboard.press("Backspace")
+                        self.page.wait_for_timeout(100)
+                        inp.press_sequentially(hire_date, delay=45)
+                        self.page.wait_for_timeout(150)
+                        self.page.keyboard.press("Tab")
+                        self.page.wait_for_timeout(200)
+                    except Exception as e:
+                        all_filled = False
+                        logger.debug(f"Hiring date field #{d_idx} fill attempt {attempt_d + 1} note: {e}")
+                if all_filled and d_cnt >= 2:
+                    break
+                # Re-verify after filling
                 try:
-                    vol_loc.click(timeout=2000)
+                    if d_cnt >= 2:
+                        v0 = (date_inputs.nth(0).input_value() or "").strip()
+                        v1 = (date_inputs.nth(1).input_value() or "").strip()
+                        if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", v0) and re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", v1):
+                            logger.info(f"Step 11 (Hiring): Both dates filled -> Дата заключения={v0}, Дата начала действия={v1}")
+                            break
                 except Exception:
                     pass
-        self.page.wait_for_timeout(400)
+                self.page.wait_for_timeout(250)
 
-        # 11e. Work Address (if present on Step 11) — uses employee row's АдресРаботы if filled, else global WORK_ADDRESS
+            # Check 'Договор бессрочный' checkbox (from PAD Hiring flows)
+            try:
+                self.page.evaluate(
+                    """() => {
+                        const cbs = Array.from(document.querySelectorAll("lib-checkbox, label"));
+                        for (const el of cbs) {
+                            const txt = (el.innerText || "").toLowerCase();
+                            if (txt.includes("бессрочный")) {
+                                const inp = el.querySelector("input[type='checkbox']");
+                                if (!inp || !inp.checked) {
+                                    const lbl = el.querySelector("label.check") || el;
+                                    lbl.click();
+                                }
+                                break;
+                            }
+                        }
+                    }"""
+                )
+                self.page.wait_for_timeout(300)
+            except Exception:
+                pass
+        else:
+            if hire_date and self.page.locator("lib-date-picker input:visible").count() >= 2:
+                self.fill_date_input_smart(
+                    primary_selector="input[name*='start']:visible, input[id*='start']:visible",
+                    label_keywords=["дата заключения", "заключения"],
+                    value=hire_date,
+                )
+
+            self.fill_date_input_smart(
+                primary_selector="input[name='di16_2']:visible, input[name*='di16']:visible, input[id*='di16']:visible, lib-date-picker input:visible",
+                label_keywords=["дата расторжения", "дата прекращения", "расторжения", "прекращения", "увольнения", "дата"],
+                value=dismiss_date,
+            )
+
+            # 11d. Voluntary termination radio ('По инициативе работника' -> input[name='ri16_2_ini'][value='Y'|'N'])
+            is_voluntary = str(row.get("УвПоСобствЖел", self.cfg.get("DEFAULT_VOLUNTARY", "Да"))).strip()
+            vol_val = "Y" if is_voluntary.lower() in ["да", "yes", "true", "1"] else "N"
+            vol_label = "Да" if vol_val == "Y" else "Нет"
+            try:
+                vol_box = self.page.evaluate(
+                    """(val) => {
+                        const inp = document.querySelector(`input[name='ri16_2_ini'][value='${val}']`);
+                        if (!inp) return null;
+                        const libRadio = inp.closest("lib-radio");
+                        const lbl = libRadio ? (libRadio.querySelector("label.radio") || libRadio) : inp;
+                        lbl.scrollIntoView({ block: 'center' });
+                        const r = lbl.getBoundingClientRect();
+                        lbl.click();
+                        return (r.width > 5 && r.height > 5) ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+                    }""",
+                    vol_val,
+                )
+                if vol_box and not self.page.evaluate(f"() => !!(document.querySelector(\"input[name='ri16_2_ini'][value='{vol_val}']\")?.checked)"):
+                    self.page.mouse.click(float(vol_box["x"]), float(vol_box["y"]))
+            except Exception:
+                vol_loc = self.page.locator(f"lib-radio:has-text('{vol_label}') label.radio:visible").last
+                if vol_loc.count() > 0:
+                    try:
+                        vol_loc.click(timeout=2000)
+                    except Exception:
+                        pass
+            self.page.wait_for_timeout(400)
+
+        # 11e. Work Address (on Step 11 OR on dedicated Step 11b 'Укажите фактический адрес места работы иностранца')
         raw_work_addr = str(row.get("АдресРаботы") or "").strip()
         work_addr = raw_work_addr if raw_work_addr else self.cfg["WORK_ADDRESS"]
-
         m_post = re.search(r"\b(\d{6})\b", work_addr)
         postal_code = m_post.group(1) if m_post else str(self.cfg.get("WORK_POSTAL_CODE") or "626150")
 
-        if self.page.locator("epgu-constructor-address-input textarea:visible, lib-dadata-widget textarea:visible, textarea.search-input:visible").count() > 0:
-            self.select_dadata_work_address(work_addr)
-            try:
-                if self.page.locator("input#index:visible").count() == 0:
-                    clarify_btn = self.page.locator(
-                        "button.clarify-address:visible, "
-                        "button:has-text('Уточнить адрес'):visible, "
-                        "span:has-text('Уточнить адрес'):visible"
-                    ).first
-                    if clarify_btn.count() > 0 and clarify_btn.is_visible():
-                        clarify_btn.click(timeout=2500)
-                        self.page.wait_for_timeout(700)
-            except Exception:
-                pass
-            self.fill_postal_code_strict(postal_code)
-            self.set_address_checkbox("Нет дома", "houseCheckbox", True)
-            self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+        def _fill_work_address_if_visible() -> bool:
+            if self.page.locator("epgu-constructor-address-input textarea:visible, lib-dadata-widget textarea:visible, textarea.search-input:visible").count() > 0:
+                self.select_dadata_work_address(work_addr)
+                try:
+                    if self.page.locator("input#index:visible").count() == 0:
+                        clarify_btn = self.page.locator(
+                            "button.clarify-address:visible, "
+                            "button:has-text('Уточнить адрес'):visible, "
+                            "span:has-text('Уточнить адрес'):visible"
+                        ).first
+                        if clarify_btn.count() > 0 and clarify_btn.is_visible():
+                            clarify_btn.click(timeout=2500)
+                            self.page.wait_for_timeout(700)
+                except Exception:
+                    pass
+                self.fill_postal_code_strict(postal_code)
+                self.set_address_checkbox("Нет дома", "houseCheckbox", True)
+                self.set_address_checkbox("Нет квартиры", "apartmentCheckbox", True)
+                return True
+            return False
+
+        addr_filled = _fill_work_address_if_visible()
 
         self.page.wait_for_timeout(500)
-        for _ in range(4):
+        for _ in range(6):
             self._click_continue_js_and_mouse()
             for _w in range(12):
                 self.page.wait_for_timeout(300)
                 self.check_and_handle_error_modal()
+                if not addr_filled and _fill_work_address_if_visible():
+                    addr_filled = True
+                    break
                 if self._is_on_step12_mvd_screen_js() or self._has_advanced_past_step12_js():
                     break
             if self._is_on_step12_mvd_screen_js() or self._has_advanced_past_step12_js():
@@ -2974,6 +3314,7 @@ def main():
     parser.add_argument("--config-json", default="", help="Path to JSON file with config overrides")
     parser.add_argument("--attach", action="store_true", default=True, help="Attach to running Chrome session on port 9222")
     parser.add_argument("--cdp-port", type=int, default=9222, help="Chrome Remote Debugging Port (default 9222)")
+    parser.add_argument("--notification-type", default="dismissal", choices=["dismissal", "hiring"], help="Gosuslugi 600585/1 notification type")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of rows to process (0 = all)")
     args = parser.parse_args()
 
@@ -3070,7 +3411,7 @@ def main():
                 logger.error(f"Could not connect to Chrome on port {args.cdp_port} ({ex2})!")
                 return
 
-        bot = GosuslugiDismissalBot(page, config=config_overrides)
+        bot = GosuslugiDismissalBot(page, config=config_overrides, notification_type=args.notification_type)
 
         success_count = 0
         fail_count = 0

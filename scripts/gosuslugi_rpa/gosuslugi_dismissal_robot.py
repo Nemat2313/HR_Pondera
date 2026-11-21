@@ -59,7 +59,7 @@ DEFAULT_CONFIG = {
     "DEFAULT_EXCEL_PATH": r"C:\Users\nemat\Downloads\GosUsluga_ увольнения.xlsx",
     "CDP_PORT": 9222,
     "TIMEOUT_MS": 120000,
-    "MAX_SCREEN_WAIT_SEC": 120,
+    "MAX_SCREEN_WAIT_SEC": 180,
     "DELETE_OLD_DRAFTS": True,
     "ACTION_DELAY_SEC": 0.5,
 }
@@ -582,8 +582,8 @@ class GosuslugiDismissalBot:
             except Exception as e:
                 logger.warning(f"{step_label} input typing note: {e}")
 
-            # Poll every 250ms (up to 28 ticks = 7s) using non-blocking page.evaluate
-            for tick in range(28):
+            # Poll every 250ms (up to 60 ticks = 15s) using non-blocking page.evaluate
+            for tick in range(60):
                 self.check_and_handle_error_modal()
                 self.page.wait_for_timeout(250)
 
@@ -788,8 +788,8 @@ class GosuslugiDismissalBot:
             step_label=f"Step 7 (ОКВЭД {okved_code})",
             click_continue_after=True,
         )
-        # Wait up to 120 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
-        max_wait_s = max(120, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 120))
+        # Wait up to 180 seconds for Step 8 (#si13_lastNameRu) to appear after clicking 'Продолжить' on Step 7
+        max_wait_s = max(180, int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 180))
         for _w in range(max_wait_s * 2):
             if os.path.exists(PAUSE_SIGNAL_FILE):
                 self.wait_if_paused_or_logged_out()
@@ -1349,7 +1349,8 @@ class GosuslugiDismissalBot:
             logger.warning(f"Postal code input warning: {e}")
 
     def _is_on_step12_mvd_screen_js(self) -> bool:
-        """Returns True if the browser is currently displaying Step 12 (Подразделение МВД / #dic18 / #dic18_byHand)."""
+        """Returns True ONLY if the browser is currently displaying Step 12 (Подразделение МВД / #dic18 / #dic18_byHand).
+        Explicitly returns False on Contract / OKVED / Passport / Patent screens so 'МОСКВЕ' is never typed into Профессия."""
         try:
             return bool(
                 self.page.evaluate(
@@ -1359,12 +1360,30 @@ class GosuslugiDismissalBot:
                             const r = el.getBoundingClientRect();
                             return r.width > 5 && r.height > 5;
                         };
-                        const dic = document.querySelector('input#dic18, input#dic18_byHand, lib-lookup input.search-input');
+                        const headings = Array.from(document.querySelectorAll('h1, h2, h3'))
+                            .filter(vis)
+                            .map(h => (h.innerText || '').toLowerCase());
+                        if (headings.some(t =>
+                            t.includes('договор') ||
+                            t.includes('оквэд') ||
+                            t.includes('паспорт') ||
+                            t.includes('патент') ||
+                            t.includes('разрешени')
+                        )) {
+                            return false;
+                        }
+                        const dic = document.querySelector('input#dic18, input#dic18_byHand');
                         if (vis(dic)) return true;
-                        const h1 = Array.from(document.querySelectorAll('h1, h2, h3')).find(
-                            h => vis(h) && (h.innerText || '').toLowerCase().includes('подразделение мвд')
+                        const isMvdHeading = headings.some(t =>
+                            t.includes('подразделение мвд') ||
+                            t.includes('орган мвд') ||
+                            t.includes('куда отправится уведомление')
                         );
-                        return !!h1;
+                        if (isMvdHeading) {
+                            const anyLookup = document.querySelector('lib-lookup input.search-input');
+                            return vis(anyLookup) || true;
+                        }
+                        return false;
                     }"""
                 )
             )
@@ -3070,17 +3089,51 @@ class GosuslugiDismissalBot:
 
         # 11c & 11d: Dates & Contract flags (Hiring vs Dismissal)
         if is_hiring:
-            self.fill_date_input_smart(
-                primary_selector="input[name*='di16']:visible, input[id*='di16']:visible, lib-date-picker input:visible",
-                label_keywords=["дата заключения", "заключения", "дата"],
-                value=hire_date,
-            )
-            if self.page.locator("lib-date-picker input:visible").count() >= 2:
-                self.fill_date_input_smart(
-                    primary_selector="lib-date-picker input:visible",
-                    label_keywords=["дата начала", "начала работы", "приема"],
-                    value=hire_date,
-                )
+            # On Hiring Step 11 ('Укажите информацию о договоре'), there are TWO mandatory date fields:
+            #   [0] Дата заключения
+            #   [1] Дата начала действия
+            # Fill BOTH explicitly by index so 'Дата начала действия' is NEVER left empty!
+            for attempt_d in range(3):
+                date_inputs = self.page.locator("lib-date-picker input:visible")
+                d_cnt = date_inputs.count()
+                if d_cnt == 0:
+                    date_inputs = self.page.locator("input[name*='di16']:visible, input[id*='di16']:visible")
+                    d_cnt = date_inputs.count()
+                all_filled = True
+                for d_idx in range(min(d_cnt, 2)):
+                    inp = date_inputs.nth(d_idx)
+                    try:
+                        cur_v = (inp.input_value() or "").strip()
+                        if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", cur_v):
+                            continue
+                        all_filled = False
+                        inp.scroll_into_view_if_needed(timeout=2000)
+                        inp.click(timeout=2000)
+                        self.page.wait_for_timeout(120)
+                        self.page.keyboard.press("Control+A")
+                        self.page.keyboard.press("Backspace")
+                        self.page.wait_for_timeout(100)
+                        inp.press_sequentially(hire_date, delay=45)
+                        self.page.wait_for_timeout(150)
+                        self.page.keyboard.press("Tab")
+                        self.page.wait_for_timeout(200)
+                    except Exception as e:
+                        all_filled = False
+                        logger.debug(f"Hiring date field #{d_idx} fill attempt {attempt_d + 1} note: {e}")
+                if all_filled and d_cnt >= 2:
+                    break
+                # Re-verify after filling
+                try:
+                    if d_cnt >= 2:
+                        v0 = (date_inputs.nth(0).input_value() or "").strip()
+                        v1 = (date_inputs.nth(1).input_value() or "").strip()
+                        if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", v0) and re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", v1):
+                            logger.info(f"Step 11 (Hiring): Both dates filled -> Дата заключения={v0}, Дата начала действия={v1}")
+                            break
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(250)
+
             # Check 'Договор бессрочный' checkbox (from PAD Hiring flows)
             try:
                 self.page.evaluate(
