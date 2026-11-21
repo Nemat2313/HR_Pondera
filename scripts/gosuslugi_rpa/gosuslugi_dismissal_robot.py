@@ -185,16 +185,31 @@ class GosuslugiDismissalBot:
             pass
         return False
 
+    def is_mvd_service_down(self) -> bool:
+        try:
+            cur_url = (self.page.url or "").lower()
+            if "gosuslugi.ru" not in cur_url:
+                return False
+            body_text = self.page.locator("body").inner_text(timeout=1200)
+            if "Сервис МВД не отвечает" in body_text:
+                return True
+        except Exception:
+            pass
+        return False
+
     def wait_if_paused_or_logged_out(self) -> bool:
         paused_once = False
         while True:
             logged_out = self.is_on_login_page()
+            mvd_down = False
             service_unavail = False
-            if not logged_out and self.is_service_unavailable_ip_block():
-                self.page.wait_for_timeout(1500)
-                service_unavail = self.is_service_unavailable_ip_block()
+            if not logged_out:
+                mvd_down = self.is_mvd_service_down()
+                if not mvd_down and self.is_service_unavailable_ip_block():
+                    self.page.wait_for_timeout(1500)
+                    service_unavail = self.is_service_unavailable_ip_block()
             manual_paused = os.path.exists(PAUSE_SIGNAL_FILE)
-            if not logged_out and not service_unavail and not manual_paused:
+            if not logged_out and not mvd_down and not service_unavail and not manual_paused:
                 break
             paused_once = True
             if os.path.exists(MANUAL_CONTINUE_SIGNAL):
@@ -202,7 +217,21 @@ class GosuslugiDismissalBot:
                     os.remove(MANUAL_CONTINUE_SIGNAL)
                 except Exception:
                     pass
-            if service_unavail:
+            if mvd_down:
+                try:
+                    with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                        pf.write("paused_for_mvd_down")
+                except Exception:
+                    pass
+                logger.warning(
+                    "ROBOT_PAUSED: Gosuslugi «Сервис МВД не отвечает» uyarısı verdi — robot otomatik DURAKLATILDI (PAUSE). "
+                    "MVD servisi düzeldiğinde «Devam Et (Продолжить)» butonuna basın."
+                )
+                logger.warning(
+                    "WAITING_FOR_USER: «Сервис МВД не отвечает» — Robot otomatik duraklatıldı. "
+                    "Hazır olduğunuzda «Devam Et (Продолжить)» butonuna basın."
+                )
+            elif service_unavail:
                 try:
                     with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
                         pf.write("paused_for_ip_block")
@@ -239,6 +268,23 @@ class GosuslugiDismissalBot:
                         pass
                     break
                 self.page.wait_for_timeout(1000)
+            if mvd_down:
+                try:
+                    self.page.goto(self.cfg["FORM_URL"], wait_until="domcontentloaded", timeout=30000)
+                    self.page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+                if self.is_mvd_service_down():
+                    logger.warning(
+                        "ROBOT_PAUSED: «Сервис МВД не отвечает» hâlâ devam ediyor — robot tekrar duraklatıldı. "
+                        "Bir süre bekleyip tekrar «Devam Et (Продолжить)» butonuna basın."
+                    )
+                    try:
+                        with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                            pf.write("paused_for_mvd_down")
+                    except Exception:
+                        pass
+                    continue
             if service_unavail:
                 try:
                     self.page.reload(wait_until="domcontentloaded", timeout=30000)
@@ -291,7 +337,10 @@ class GosuslugiDismissalBot:
             self.page.wait_for_timeout(1000)
 
     def check_and_handle_error_modal(self) -> bool:
-        """Check if Gosuslugi displays error modals or MVD check warnings and handle them."""
+        """Check if Gosuslugi displays error modals, 'Сервис МВД не отвечает', or MVD check warnings and handle them."""
+        if self.is_mvd_service_down():
+            self.wait_if_paused_or_logged_out()
+            return True
         handled = False
         try:
             retry_btn = self.page.locator("button:has-text('Попробовать ещё раз')")
