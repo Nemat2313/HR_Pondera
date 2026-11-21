@@ -51,6 +51,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "EMPLOYEE_DOCS_DIR": r"C:\Pondera_Registre\Dosyalar",
     "COMPANY_DOCS_DIR": r"C:\Pondera_Registre\Firma",
     "MAX_SCREEN_WAIT_SEC": 180,
+    "DELETE_OLD_DRAFTS": True,
     "AUTO_SUBMIT": True,
 }
 
@@ -153,6 +154,122 @@ class GosuslugiRegistrationRobot:
                 return True
         except Exception:
             pass
+        return False
+
+    def _handle_draft_modal_if_visible(self) -> bool:
+        """
+        Battle-tested Gosuslugi draft modal handler (ported from 600585/1 robot):
+        - Scrolls modal to bottom
+        - If DELETE_OLD_DRAFTS is True and (button is disabled OR draft count >= 8), deletes oldest 1-3 drafts
+        - Clicks 'Создать заявление' / 'Создать новое заявление' / 'Начать заново' via JS + physical mouse click.
+        """
+        if not self.page:
+            return False
+        try:
+            draft_state = self.page.evaluate(
+                """() => {
+                    const vis = (el) => {
+                        if (!el) return false;
+                        const r = el.getBoundingClientRect();
+                        return r.width > 10 && r.height > 10;
+                    };
+                    const bodyTxt = ((document.body && document.body.innerText) || '').toLowerCase();
+                    const isDraftModal = bodyTxt.includes('выберите черновик') || bodyTxt.includes('перейти в черновик');
+                    const drafts = document.querySelectorAll('.draft-list .draft, epgu-constructor-draft-list .draft, .conf-modal .draft');
+                    const delBtns = Array.from(document.querySelectorAll('button, a, span'))
+                        .filter(el => vis(el) && (el.innerText || el.textContent || '').trim() === 'Удалить');
+                    const createBtn = Array.from(document.querySelectorAll('button, lib-button button'))
+                        .find(b => {
+                            if (!vis(b)) return false;
+                            const t = (b.innerText || b.textContent || '').trim();
+                            return t.includes('Создать заявление') || t.includes('Создать новое заявление') || t.includes('Начать заново') || t.includes('Новое заявление');
+                        }) || document.querySelector('lib-button.conf-modal__button button');
+                    if (!isDraftModal && !vis(createBtn) && drafts.length === 0) {
+                        return { found: false };
+                    }
+                    // Scroll modal containers to bottom so button is always in viewport
+                    document.querySelectorAll('ng-scrollbar, .ng-scroll-viewport, .conf-modal__body, .modal-body, div').forEach(el => {
+                        if (el.scrollHeight > el.clientHeight + 10) {
+                            try { el.scrollTop = el.scrollHeight; } catch (e) {}
+                        }
+                    });
+                    if (createBtn) {
+                        createBtn.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+                    }
+                    const r = createBtn ? createBtn.getBoundingClientRect() : null;
+                    const wrap = createBtn ? createBtn.closest('lib-button, epgu-cf-ui-button') : null;
+                    const st = createBtn ? window.getComputedStyle(createBtn) : null;
+                    const btnDisabled = createBtn ? !!(
+                        createBtn.disabled ||
+                        createBtn.getAttribute('disabled') !== null ||
+                        (createBtn.className || '').includes('disabled') ||
+                        (st && st.pointerEvents === 'none') ||
+                        (wrap && ((wrap.className || '').includes('disabled') || wrap.getAttribute('disabled') !== null))
+                    ) : true;
+                    return {
+                        found: true,
+                        draftCount: Math.max(drafts.length, delBtns.length),
+                        btnDisabled,
+                        btnText: createBtn ? (createBtn.innerText || '').trim() : '',
+                        x: r ? r.left + r.width / 2 : 0,
+                        y: r ? r.top + r.height / 2 : 0
+                    };
+                }"""
+            ) or {}
+        except Exception:
+            return False
+
+        if not draft_state.get("found"):
+            return False
+
+        logger.info(
+            f"Draft Modal detected (drafts={draft_state.get('draftCount')}, btn='{draft_state.get('btnText')}', disabled={draft_state.get('btnDisabled')})..."
+        )
+        delete_old = bool(self.cfg.get("DELETE_OLD_DRAFTS", True))
+        if delete_old and (draft_state.get("btnDisabled") or int(draft_state.get("draftCount") or 0) >= 8):
+            for _ in range(3):
+                del_btns = self.page.locator(
+                    ".draft-list .draft button.draft-link:has-text('Удалить'):visible, "
+                    "epgu-constructor-draft-list button:has-text('Удалить'):visible, "
+                    "button:has-text('Удалить'):visible, a:has-text('Удалить'):visible"
+                )
+                if del_btns.count() == 0:
+                    break
+                logger.info(f"Удаляем самый старый черновик (всего: {del_btns.count()})...")
+                try:
+                    del_btns.last.scroll_into_view_if_needed(timeout=1500)
+                    del_btns.last.click(timeout=2500)
+                except Exception:
+                    try:
+                        del_btns.last.evaluate("el => el.click()")
+                    except Exception:
+                        pass
+                self.page.wait_for_timeout(850)
+
+        # Click 'Создать заявление' via BOTH JS click and physical mouse click
+        try:
+            coords = self.page.evaluate(
+                """() => {
+                    const btn = Array.from(document.querySelectorAll('button, lib-button button')).find(b => {
+                        const r = b.getBoundingClientRect();
+                        if (r.width < 10 || r.height < 10) return false;
+                        const t = (b.innerText || b.textContent || '').trim();
+                        return t.includes('Создать заявление') || t.includes('Создать новое заявление') || t.includes('Начать заново') || t.includes('Новое заявление');
+                    }) || document.querySelector('lib-button.conf-modal__button button');
+                    if (!btn) return null;
+                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    const r = btn.getBoundingClientRect();
+                    btn.click();
+                    return { x: r.left + r.width / 2, y: r.top + r.height / 2, t: (btn.innerText || '').trim() };
+                }"""
+            )
+            if coords and coords.get("x") and coords.get("y"):
+                logger.info(f"Clicking draft modal button '{coords.get('t')}' at ({int(coords['x'])}, {int(coords['y'])})...")
+                self.page.mouse.click(float(coords["x"]), float(coords["y"]))
+                self.page.wait_for_timeout(1200)
+                return True
+        except Exception as e:
+            logger.debug(f"Draft modal click note: {e}")
         return False
 
     def click_text_button(self, texts: List[str], timeout_ms: int = 4000) -> bool:
@@ -316,24 +433,23 @@ class GosuslugiRegistrationRobot:
                     docs[k] = v
 
         # Step 1: Open 600380/1/form
+        logger.info(f"Step 1: Navigating to {GOSUSLUGI_REG_URL}...")
         self.page.goto(GOSUSLUGI_REG_URL, wait_until="domcontentloaded", timeout=120000)
-        self.page.wait_for_timeout(2000)
+        self.page.wait_for_timeout(1500)
         self.check_mvd_unavailable_and_pause()
 
-        # Draft modal / Start button
-        if (
-            self.page.locator(
-                "button:has-text('Создать заявление'):visible, "
-                "span:has-text('Создать заявление'):visible, "
-                "span:has-text('Создать новое заявление'):visible, "
-                "button:has-text('Начать заново'):visible"
-            ).count()
-            > 0
-        ):
-            self.click_text_button(["Создать заявление", "Создать новое заявление", "Начать заново"])
-            self.page.wait_for_timeout(1000)
+        # Wait up to 15s for either Draft Modal OR 'Начать' OR first question screen to render
+        for _init_w in range(30):
+            self.wait_if_paused()
+            self.check_mvd_unavailable_and_pause()
+            if self._handle_draft_modal_if_visible():
+                break
+            if self.page.locator("button:has-text('Начать'):visible, span:has-text('Уведомление о прибытии'):visible").count() > 0:
+                break
+            self.page.wait_for_timeout(500)
+
         self.click_text_button(["Начать"])
-        self.page.wait_for_timeout(1000)
+        self.page.wait_for_timeout(900)
 
         # Wizard Q&A screens before 'Проверьте ваши данные'
         max_wait = int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 180)
@@ -347,12 +463,17 @@ class GosuslugiRegistrationRobot:
 
         # Dynamic state-machine loop across all 600380/1 screens (resilient to minor screen order differences)
         filled_flags: Dict[str, bool] = {}
+        last_logged_heading = ""
         start_ts = time.time()
         app_no = ""
 
         while time.time() - start_ts < max_wait * 3:
             self.wait_if_paused()
             self.check_mvd_unavailable_and_pause()
+
+            # Always catch late-appearing draft modal inside the loop too!
+            if self._handle_draft_modal_if_visible():
+                continue
 
             heading = ""
             body_text = ""
@@ -373,6 +494,10 @@ class GosuslugiRegistrationRobot:
             except Exception:
                 self.page.wait_for_timeout(500)
                 continue
+
+            if heading and heading != last_logged_heading:
+                last_logged_heading = heading
+                logger.info(f"Screen: {heading}")
 
             h_low = heading.lower()
             b_low = body_text.lower()
