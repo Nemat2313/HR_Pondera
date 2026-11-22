@@ -25,7 +25,23 @@ function formatDateRu(raw: any): string {
   return s;
 }
 
-async function queryFnsNalogInn(params: {
+function formatFnsDocNo(series: string, number: string, doctype: string, withSpaceForForeign = false): string {
+  const s = String(series || '').trim();
+  const n = String(number || '').trim();
+  if (doctype === '21') {
+    const digits = `${s}${n}`.replace(/\D/g, '');
+    if (digits.length === 10) {
+      return `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4)}`;
+    }
+    return `${s} ${n}`.trim();
+  }
+  if (s && n && !n.toUpperCase().startsWith(s.toUpperCase())) {
+    return withSpaceForForeign ? `${s} ${n}` : `${s}${n}`;
+  }
+  return n || s;
+}
+
+async function queryFnsNalogInnOnce(params: {
   fam: string;
   nam: string;
   otch?: string;
@@ -49,7 +65,9 @@ async function queryFnsNalogInn(params: {
   formBody.set('bplace', '');
   formBody.set('doctype', params.doctype || '10');
   formBody.set('docno', params.docno.trim());
-  formBody.set('docdt', formatDateRu(params.docdt || ''));
+  if (params.docdt && formatDateRu(params.docdt)) {
+    formBody.set('docdt', formatDateRu(params.docdt));
+  }
 
   const headers = {
     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -69,13 +87,13 @@ async function queryFnsNalogInn(params: {
     });
     const json1: any = await res1.json().catch(() => null);
     if (!res1.ok || !json1) {
-      return { status: 'ERROR', message: `FNS HTTP ${res1.status}` };
+      const errDetail = json1?.ERRORS ? JSON.stringify(json1.ERRORS).slice(0, 180) : `FNS HTTP ${res1.status}`;
+      return { status: 'ERROR', message: errDetail };
     }
     if (json1.inn) {
       return { status: 'VERIFIED', inn: String(json1.inn).trim() };
     }
     if (json1.requestId) {
-      // Poll result up to 6 times (async FNS queue)
       for (let i = 0; i < 6; i++) {
         await new Promise((r) => setTimeout(r, 900));
         const pollBody = new URLSearchParams();
@@ -101,13 +119,37 @@ async function queryFnsNalogInn(params: {
       return { status: 'ERROR', message: 'ФНС не успела вернуть ответ (таймаут)' };
     }
     if (json1.ERRORS) {
-      const errText = JSON.stringify(json1.ERRORS);
-      return { status: 'ERROR', message: errText.slice(0, 200) };
+      return { status: 'ERROR', message: JSON.stringify(json1.ERRORS).slice(0, 180) };
     }
     return { status: 'NOT_FOUND', message: 'Информация об ИНН не найдена в ФНС' };
   } catch (err: any) {
     return { status: 'ERROR', message: err?.message || 'FNS bağlantı hatası' };
   }
+}
+
+async function queryFnsNalogInn(params: {
+  fam: string;
+  nam: string;
+  otch?: string;
+  bdate: string;
+  doctype: string;
+  docSeries?: string;
+  docno: string;
+  docdt?: string;
+}): Promise<{ status: 'VERIFIED' | 'NOT_FOUND' | 'ERROR'; inn?: string; message?: string }> {
+  const primaryDoc = formatFnsDocNo(params.docSeries || '', params.docno, params.doctype, false);
+  const res1 = await queryFnsNalogInnOnce({ ...params, docno: primaryDoc });
+  if (res1.status === 'VERIFIED') return res1;
+
+  // For foreign passports, FNS sometimes stores series+number WITH a space (e.g. 'FA 1243278' vs 'FA1243278')
+  if (params.doctype === '10' && params.docSeries) {
+    const spacedDoc = formatFnsDocNo(params.docSeries, params.docno, '10', true);
+    if (spacedDoc !== primaryDoc) {
+      const res2 = await queryFnsNalogInnOnce({ ...params, docno: spacedDoc });
+      if (res2.status === 'VERIFIED') return res2;
+    }
+  }
+  return res1;
 }
 
 export async function GET(request: Request) {
@@ -202,13 +244,22 @@ export async function GET(request: Request) {
 
     const items = rows.map((r) => {
       let rawSnils = '';
+      let rawPassSeries = '';
+      let rawPassNo = '';
       let rawPassIssue = '';
       let rawPassIssuedBy = '';
       if (r.all_data_json) {
         try {
           const parsed = JSON.parse(r.all_data_json);
           rawSnils = String(parsed['SNILS'] || parsed['СНИЛС'] || parsed['Snils No'] || '').trim();
-          rawPassIssue = String(parsed['Pasaport Veriliş Tarihi'] || parsed['Pasaport Alış Tarihi'] || '').trim();
+          rawPassSeries = String(parsed['Pasaport Seri No'] || parsed['Pasaport Serisi'] || '').trim();
+          rawPassNo = String(parsed['Pasaport No'] || '').trim();
+          rawPassIssue = String(
+            parsed['Pasaport Düzenleme Tarihi'] ||
+              parsed['Pasaport Veriliş Tarihi'] ||
+              parsed['Pasaport Alış Tarihi'] ||
+              ''
+          ).trim();
           rawPassIssuedBy = String(parsed['Pasaport Veren Makam'] || '').trim();
         } catch {}
       }
@@ -216,6 +267,10 @@ export async function GET(request: Request) {
       const zInfo = zupBySicil.get(sKey) || zupBySicil.get(sKey.replace(/^0+/, ''));
       const snilsVal = r.verified_snils || zInfo?.snils || rawSnils || '';
       const innVal = r.verified_inn || r.inn_no || '';
+      const passSeries = rawPassSeries || zInfo?.doc_series || '';
+      const passNum = String(r.pasaport_no || rawPassNo || zInfo?.doc_no || '').trim();
+      const isRf = String(r.uyruk || '').toUpperCase().includes('RUSYA');
+      const fullPassport = formatFnsDocNo(passSeries, passNum, isRf ? '21' : '10', false);
 
       return {
         id: r.id,
@@ -226,9 +281,10 @@ export async function GET(request: Request) {
         cinsiyet: r.cinsiyet || '',
         dogum_tarihi: r.dogum_tarihi || '',
         dogum_yeri: r.dogum_yeri || '',
-        pasaport_no: r.pasaport_no || `${zInfo?.doc_series || ''} ${zInfo?.doc_no || ''}`.trim(),
-        pasaport_verilis: zInfo?.doc_issue_date || rawPassIssue || '',
-        pasaport_veren: zInfo?.doc_issued_by || rawPassIssuedBy || '',
+        pasaport_seri: passSeries,
+        pasaport_no: fullPassport,
+        pasaport_verilis: rawPassIssue || zInfo?.doc_issue_date || '',
+        pasaport_veren: rawPassIssuedBy || zInfo?.doc_issued_by || '',
         inn_no: innVal,
         eba_inn: r.inn_no || '',
         snils_no: snilsVal,
@@ -306,6 +362,7 @@ export async function POST(request: Request) {
         const nam = String(w.nam || kirilParts[1] || '').trim();
         const otch = String(w.otch || kirilParts.slice(2).join(' ') || '').trim();
         const bdate = String(w.dogum_tarihi || '').trim();
+        const docSeries = String(w.pasaport_seri || '').trim();
         const docno = String(w.pasaport_no || '').trim();
         const docdt = String(w.pasaport_verilis || '').trim();
         const isRf = String(w.uyruk || '').toUpperCase().includes('RUSYA');
@@ -324,7 +381,7 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const fnsRes = await queryFnsNalogInn({ fam, nam, otch, bdate, doctype, docno, docdt });
+        const fnsRes = await queryFnsNalogInn({ fam, nam, otch, bdate, doctype, docSeries, docno, docdt });
         upsertInnSnilsVerification(db, {
           sicil_no: sicil,
           ad_soyad: w.ad_soyad || '',
