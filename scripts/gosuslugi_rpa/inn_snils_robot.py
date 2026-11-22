@@ -549,11 +549,21 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                 tel_digits = re.sub(r"\D+", "", default_tel)
                 if len(tel_digits) == 10:
                     tel_digits = "7" + tel_digits
+                elif len(tel_digits) == 11 and tel_digits.startswith("8"):
+                    tel_digits = "7" + tel_digits[1:]
+                # Format strictly as "+7(KKK)HHHHHHH" per nalog.ru validation rule
+                tel_formatted = (
+                    f"+7({tel_digits[1:4]}){tel_digits[4:11]}"
+                    if len(tel_digits) == 11 and tel_digits.startswith("7")
+                    else default_tel
+                )
                 tel_inp = page.locator("input#tel").first
                 if tel_inp.count() > 0:
                     tel_inp.click(force=True)
                     tel_inp.press("Control+a")
-                    tel_inp.type(tel_digits, delay=35)
+                    tel_inp.press("Backspace")
+                    tel_inp.fill(tel_formatted)
+                    tel_inp.press("Tab")
             rep = page.locator("text=Представитель заявителя").first
             if rep.count() > 0:
                 rep.click()

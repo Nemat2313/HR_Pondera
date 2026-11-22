@@ -68,6 +68,15 @@ interface InnSnilsRow {
 
 const LOCAL_BRIDGE_URL = 'http://127.0.0.1:8088';
 
+const PRESET_FIAS_ADDRESSES = [
+  { label: 'Moskova Merkez (Varsayılan)', value: '121087, г. Москва, Береговой проезд, д. 5А, корп. 1, этаж 10, офис 10.1' },
+  { label: 'Svobodny / AGHK', value: '676454, обл. Амурская, г. Свободный, ул. Репина, д. 8' },
+  { label: 'Tobolsk', value: 'Тюменская область, г. Тобольск, территория Восточный промышленный район, квартал 5 тер, з.у.' },
+  { label: 'Nizhnekamsk', value: '423556, Республика Татарстан, г. Нижнекамск, ул. Первопроходцев, зд. 5г' },
+  { label: 'Kazan', value: '420051, Республика Татарстан, г. Казань, ул. Беломорская, д. 101' },
+  { label: 'Ust-Luga', value: '188471, Ленинградская область, Кингисеппский район, п. Усть-Луга' },
+];
+
 export default function InnSnilsView() {
   const { user, getAuthHeaders } = useAuth();
   const { lang } = useLanguage();
@@ -125,10 +134,8 @@ export default function InnSnilsView() {
   const [applicantFam, setApplicantFam] = useState('АХМЕДОВ');
   const [applicantNam, setApplicantNam] = useState('НЕМАТ');
   const [contactEmail, setContactEmail] = useState('ikbildirim@pondera.ru');
-  const [contactPhone, setContactPhone] = useState('+79000000000');
-  const [regAddress, setRegAddress] = useState(
-    '188471, обл. Ленинградская, р-н. Кингисеппский, п. Усть-Луга, кв-л. Краколье, соор. 1'
-  );
+  const [contactPhone, setContactPhone] = useState('+7 977 869 96 16');
+  const [regAddress, setRegAddress] = useState(PRESET_FIAS_ADDRESSES[0].value);
   const [regDate, setRegDate] = useState(() => {
     const d = new Date();
     return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
@@ -852,8 +859,27 @@ export default function InnSnilsView() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Varsayılan Kayıt Adresi (АдресРФ)</label>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-[11px] text-slate-600 dark:text-slate-300">
+                      Varsayılan Kayıt Adresi (Адрес по ФИАС)
+                    </label>
+                    <select
+                      value={PRESET_FIAS_ADDRESSES.some((a) => a.value === regAddress) ? regAddress : ''}
+                      onChange={(e) => {
+                        if (e.target.value) setRegAddress(e.target.value);
+                      }}
+                      className="px-2 py-0.5 text-[11px] rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/70 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 cursor-pointer max-w-[220px]"
+                      title="Hazır şantiye adreslerinden seçin"
+                    >
+                      <option value="">Hazır Adres Seç...</option>
+                      {PRESET_FIAS_ADDRESSES.map((a) => (
+                        <option key={a.label} value={a.value}>
+                          {a.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <input
                     type="text"
                     value={regAddress}

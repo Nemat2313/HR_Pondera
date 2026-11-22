@@ -4608,8 +4608,8 @@ export default function GosuslugiVksView() {
       />
 
       {/* COMPACT TOP HEADER BAR (CONNECTED DIRECTLY TO TAB BAR ABOVE) */}
-      <div className="-mt-4 bg-white dark:bg-[#111F38] rounded-b-2xl border border-slate-300/80 dark:border-slate-800 px-4 py-3 text-slate-900 dark:text-white shadow-xs relative">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="-mt-4 bg-white dark:bg-[#111F38] rounded-b-2xl border border-slate-300/80 dark:border-slate-800 px-3 sm:px-4 py-3 text-slate-900 dark:text-white shadow-xs relative overflow-x-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 min-w-0">
           {/* Left: Icon + Title + Hover Tooltip + Status Badges */}
           <div className="flex flex-wrap items-center gap-2.5 min-w-0">
             <div
@@ -4675,14 +4675,14 @@ export default function GosuslugiVksView() {
           </div>
 
           {/* Right: Clean Consolidated Toolbar */}
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0 max-w-full">
             {/* Quarter / Archive Selector */}
-            <div className="h-8 px-2.5 rounded-lg border border-indigo-300 dark:border-indigo-500/40 bg-indigo-50/90 dark:bg-indigo-950/60 inline-flex items-center gap-1.5">
+            <div className="h-8 px-2.5 rounded-lg border border-indigo-300 dark:border-indigo-500/40 bg-indigo-50/90 dark:bg-indigo-950/60 inline-flex items-center gap-1.5 max-w-full min-w-0">
               <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
               <select
                 value={selectedQuarter || quarterOverview?.defaultQuarter || '2026-3'}
                 onChange={(e) => handleSwitchQuarterView(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-indigo-950 dark:text-indigo-100 focus:outline-none cursor-pointer pr-1"
+                className="bg-transparent text-xs font-semibold text-indigo-950 dark:text-indigo-100 focus:outline-none cursor-pointer pr-1 max-w-full truncate"
                 title="Çeyrek dönem verilerini seçin (bitmeyen çeyreklerde tamamlanan bir önceki çeyrek varsayılan seçilidir)"
               >
                 {quarterOverview?.quarters && quarterOverview.quarters.length > 0 ? (
