@@ -57,6 +57,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import GosuslugiDismissalPanel from './GosuslugiDismissalPanel';
 import GosuslugiRegistrationPanel from './GosuslugiRegistrationPanel';
 import VksAddQuarterModal from './VksAddQuarterModal';
+import WindowsTabBar from '@/components/common/WindowsTabBar';
 
 export interface GosuslugiSubmissionEntry {
   sicil_no?: string;
@@ -4427,7 +4428,7 @@ export default function GosuslugiVksView() {
       : 'Power Automate Desktop (PAD) yerine doğrudan tarayıcı otomasyonu. Excel yükleyin veya veritabanından VKS uzmanlarını çekin; hangi satırın Gosuslugi üzerinde işlendiğini canlı takip edin.';
 
   return (
-    <div className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1600px] mx-auto [overflow-anchor:none]">
+    <div className="pondera-3d-page p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1600px] mx-auto [overflow-anchor:none]">
       {/* Animations for RPA Assistant */}
       <style>{`
         @keyframes rpaBotRoam {
@@ -4483,142 +4484,48 @@ export default function GosuslugiVksView() {
         }
       `}</style>
 
-      {/* PAGE-CONNECTED TAB BAR + TOP HEADER SECTION */}
+      {/* PAGE-CONNECTED 3D SLANTED RIBBON TAB BAR (LEFT-ALIGNED, EQUAL COMPACT WIDTH) */}
       <div>
-        {/* WINDOWS MULTI-TAB FORM HEADER (4 EQUAL-WIDTH TABS) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1 px-1.5 pt-1.5 bg-slate-200/85 dark:bg-[#0B1528] rounded-t-2xl border border-b border-slate-300/90 dark:border-slate-600/80">
-          {/* Tab 1: VKS Salary Notification */}
-          <button
-            type="button"
-            onClick={() => setServiceTab('vks')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
-              serviceTab === 'vks'
-                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
-            }`}
-          >
-            <span className="flex items-center gap-2 truncate">
-              <Bot
-                className={`w-4 h-4 shrink-0 ${
-                  serviceTab === 'vks'
-                    ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-600'
-                }`}
-              />
-              <span className="truncate">
-                {lang === 'ru' ? '1. ВКС — Выплата ЗП' : '1. VKS Maaş Bildirimi'}
-              </span>
-            </span>
-            <span
-              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
-                serviceTab === 'vks'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-800 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
-                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
-              }`}
-            >
-              600585/1
-            </span>
-          </button>
-
-          {/* Tab 2: Hiring Notification */}
-          <button
-            type="button"
-            onClick={() => setServiceTab('hiring')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
-              serviceTab === 'hiring'
-                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
-            }`}
-          >
-            <span className="flex items-center gap-2 truncate">
-              <UserPlus
-                className={`w-4 h-4 shrink-0 ${
-                  serviceTab === 'hiring'
-                    ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-600'
-                }`}
-              />
-              <span className="truncate">
-                {lang === 'ru' ? '2. Прием на работу' : '2. İşe Alım Bildirimi'}
-              </span>
-            </span>
-            <span
-              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
-                serviceTab === 'hiring'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-800 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
-                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
-              }`}
-            >
-              600585/1
-            </span>
-          </button>
-
-          {/* Tab 3: Dismissal Notification */}
-          <button
-            type="button"
-            onClick={() => setServiceTab('dismissal')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
-              serviceTab === 'dismissal'
-                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-indigo-600 dark:border-t-indigo-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
-            }`}
-          >
-            <span className="flex items-center gap-2 truncate">
-              <UserMinus
-                className={`w-4 h-4 shrink-0 ${
-                  serviceTab === 'dismissal'
-                    ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-600'
-                }`}
-              />
-              <span className="truncate">
-                {lang === 'ru' ? '3. Увольнение (МВД)' : '3. İşten Çıkış Bildirimi'}
-              </span>
-            </span>
-            <span
-              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
-                serviceTab === 'dismissal'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/90 text-indigo-800 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
-                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
-              }`}
-            >
-              600585/1
-            </span>
-          </button>
-
-          {/* Tab 4: Migration Registration (Registre — 600380/1) */}
-          <button
-            type="button"
-            onClick={() => setServiceTab('registration')}
-            className={`group relative h-11 px-4 rounded-t-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
-              serviceTab === 'registration'
-                ? 'bg-white dark:bg-[#111F38] text-slate-950 dark:text-white border-t-2 border-x border-t-emerald-600 dark:border-t-emerald-400 border-x-slate-300/80 dark:border-x-slate-700 shadow-xs -mb-px z-10'
-                : 'bg-slate-100/90 dark:bg-slate-800/50 text-slate-800 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800 hover:text-black dark:hover:text-white border border-transparent'
-            }`}
-          >
-            <span className="flex items-center gap-2 truncate">
-              <MapPin
-                className={`w-4 h-4 shrink-0 ${
-                  serviceTab === 'registration'
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-slate-600'
-                }`}
-              />
-              <span className="truncate">
-                {lang === 'ru' ? '4. Регистрация (Мигр. учёт)' : '4. Registre (Göç Kaydı)'}
-              </span>
-            </span>
-            <span
-              className={`text-xs px-2.5 py-0.5 rounded-md font-medium shrink-0 ${
-                serviceTab === 'registration'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/90 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/80'
-                  : 'bg-slate-200/90 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
-              }`}
-            >
-              600380/1
-            </span>
-          </button>
-        </div>
+        <WindowsTabBar
+          activeId={serviceTab}
+          onChange={(id) =>
+            setServiceTab(id as 'vks' | 'hiring' | 'dismissal' | 'registration')
+          }
+          tabs={[
+            {
+              id: 'vks',
+              label: lang === 'ru' ? '1. ВКС Зарплата' : '1. VKS Maaş',
+              badge: '600585/1',
+              icon: <Bot className="w-3.5 h-3.5" />,
+              accent: 'emerald',
+              title: '1. VKS Maaş Bildirimi (600585/1)',
+            },
+            {
+              id: 'hiring',
+              label: lang === 'ru' ? '2. Приём (МВД)' : '2. İşe Alım',
+              badge: '600585/1',
+              icon: <UserPlus className="w-3.5 h-3.5" />,
+              accent: 'indigo',
+              title: '2. İşe Alım Bildirimi (600585/1)',
+            },
+            {
+              id: 'dismissal',
+              label: lang === 'ru' ? '3. Увольнение' : '3. İşten Çıkış',
+              badge: '600585/1',
+              icon: <UserMinus className="w-3.5 h-3.5" />,
+              accent: 'indigo',
+              title: '3. İşten Çıkış Bildirimi (600585/1)',
+            },
+            {
+              id: 'registration',
+              label: lang === 'ru' ? '4. Регистрация' : '4. Registre',
+              badge: '600380/1',
+              icon: <MapPin className="w-3.5 h-3.5" />,
+              accent: 'emerald',
+              title: '4. Registre — Göç Kaydı (600380/1)',
+            },
+          ]}
+        />
 
         {/* TAB 4: MIGRATION REGISTRATION (REGISTRE — GOSUSLUGI 600380/1) */}
         {serviceTab === 'registration' && (

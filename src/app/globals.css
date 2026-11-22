@@ -8,23 +8,135 @@
 }
 
 .dark {
-  --background: #080f1d;
+  --background: #090f1c;
   --foreground: #f8fafc;
 }
 
-/* Dark Mode Surface Elevation & Crisp Container Separation */
+/* Global Dark Mode Surface Elevation & Unmistakable Card Contrast */
 .dark .bg-\[\#131C31\],
 .dark .bg-\[\#111F38\],
 .dark .bg-\[\#111C35\],
+.dark .bg-\[\#13213a\],
 .dark .bg-\[\#131F38\]\/95,
 .dark .bg-\[\#131C31\]\/95 {
-  background-color: #13213a !important;
-  border-color: rgba(148, 163, 184, 0.24) !important;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, #1b2d4d 0%, #13223b 100%) !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  box-shadow: 0 10px 26px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
 }
 
 .dark .border-slate-800 {
-  border-color: rgba(148, 163, 184, 0.22) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+/* ===== PONDERA 3D BEVELED RIBBON-TAB & CARD SYSTEM ===== */
+.pondera-3d-page {
+  background: linear-gradient(180deg, #e5ecf4 0%, #eef3f9 100%);
+  min-height: calc(100vh - 56px);
+}
+.dark .pondera-3d-page {
+  background: radial-gradient(circle at top center, #101d34 0%, #080e1a 70%);
+}
+
+.pondera-3d-page .rounded-2xl.border {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 24px -6px rgba(15, 23, 42, 0.14), 0 3px 8px -2px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.dark .pondera-3d-page .rounded-2xl.border {
+  background: linear-gradient(180deg, #1d3154 0%, #14233d 100%) !important;
+  border-color: rgba(148, 163, 184, 0.38) !important;
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.58), 0 4px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+.pondera-3d-page input[type="text"],
+.pondera-3d-page select {
+  box-shadow: inset 0 2px 5px rgba(15, 23, 42, 0.12), 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.dark .pondera-3d-page input[type="text"],
+.dark .pondera-3d-page select {
+  background-color: #0b1426 !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Left-Aligned Compact Equal-Width Slanted 3D Folder Ribbon Tabs */
+.pondera-ribbon-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 6px 10px 0 6px;
+  border-bottom: 2px solid #0d9488;
+  background: linear-gradient(180deg, #dce5f0 0%, #cfdbe8 100%);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+.dark .pondera-ribbon-bar {
+  border-bottom: 2px solid #14b8a6;
+  background: linear-gradient(180deg, #0d182b 0%, #091222 100%);
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  border-left: 1px solid rgba(148, 163, 184, 0.25);
+  border-right: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+.pondera-ribbon-tab {
+  position: relative;
+  width: 184px;
+  min-width: 158px;
+  height: 38px;
+  padding: 0 22px 0 14px;
+  margin-right: -8px;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+  border-top-left-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
+}
+
+.pondera-ribbon-tab--inactive {
+  z-index: 5;
+  color: #f8fafc;
+  background: linear-gradient(180deg, #0e9f8e 0%, #0f766e 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  filter: drop-shadow(2px 0 2px rgba(15, 23, 42, 0.18));
+}
+.pondera-ribbon-tab--inactive:hover {
+  filter: brightness(1.08) drop-shadow(2px 0 3px rgba(15, 23, 42, 0.24));
+  transform: translateY(-1px);
+}
+.dark .pondera-ribbon-tab--inactive {
+  color: #cbd5e1;
+  background: linear-gradient(180deg, #1b3656 0%, #13253e 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  filter: drop-shadow(2px 0 3px rgba(0, 0, 0, 0.55));
+}
+.dark .pondera-ribbon-tab--inactive:hover {
+  color: #ffffff;
+  background: linear-gradient(180deg, #24456c 0%, #183152 100%);
+}
+
+.pondera-ribbon-tab--active {
+  z-index: 20;
+  height: 41px;
+  margin-bottom: -2px;
+  color: #0f172a;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+  box-shadow: inset 0 2px 0 #10b981;
+  filter: drop-shadow(0 -2px 5px rgba(15, 23, 42, 0.15));
+}
+.dark .pondera-ribbon-tab--active {
+  color: #ffffff;
+  background: linear-gradient(180deg, #25406b 0%, #1c3154 100%);
+  box-shadow: inset 0 2px 0 #2dd4bf;
+  filter: drop-shadow(0 -3px 8px rgba(0, 0, 0, 0.65));
 }
 
 /* Universal Typography: Tahoma & Clean System Fallbacks */
