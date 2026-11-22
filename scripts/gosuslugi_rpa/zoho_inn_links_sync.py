@@ -71,13 +71,13 @@ def main():
         imap.login(user, password)
 
         folders_to_check = ["INBOX"]
-        # Also check Spam/Junk if available (FNS emails occasionally land in Spam)
+        # Also check Notification, Newsletter, and Spam/Junk folders (Zoho Smart Filter routes nalog.ru to Notification)
         try:
             typ, flist = imap.list()
             if typ == "OK" and flist:
                 for line in flist:
                     s = line.decode("utf-8", errors="replace")
-                    if any(k in s.lower() for k in ("spam", "junk")):
+                    if any(k in s.lower() for k in ("notification", "spam", "junk", "newsletter")):
                         m = re.search(r'"([^"]+)"\s*$', s)
                         fname = m.group(1) if m else s.split()[-1]
                         if fname not in folders_to_check:
