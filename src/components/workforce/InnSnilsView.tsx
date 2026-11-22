@@ -115,6 +115,7 @@ export default function InnSnilsView() {
   });
   const wasRpaRunningRef = useRef(false);
   const lastCompletedCountRef = useRef(0);
+  const fetchDataRef = useRef<(overrideSicils?: string, silent?: boolean) => Promise<void>>(async () => {});
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [lightboxFile, setLightboxFile] = useState<string | null>(null);
 
@@ -159,6 +160,7 @@ export default function InnSnilsView() {
       if (!silent) setLoading(false);
     }
   };
+  fetchDataRef.current = fetchData;
 
   useEffect(() => {
     fetchData();
@@ -175,10 +177,12 @@ export default function InnSnilsView() {
         }
         setBridgeOnline(true);
         const data = await res.json();
-        const isRunning = Boolean(data?.is_running);
-        const isPaused = Boolean(data?.is_paused);
-        const logsArr = Array.isArray(data?.logs) ? (data.logs as string[]) : [];
-        const lastLog = logsArr.length > 0 ? String(logsArr[logsArr.length - 1] || '') : '';
+        const isRunning = Boolean(data?.running ?? data?.is_running);
+        const isPaused = Boolean(data?.paused ?? data?.is_paused);
+        const logsArr: string[] = Array.isArray(data?.logs)
+          ? data.logs.map((entry: any) => (typeof entry === 'string' ? entry : String(entry?.text || '')))
+          : [];
+        const lastLog = logsArr.length > 0 ? logsArr[logsArr.length - 1] : '';
 
         // Parse latest batch progress from bridge logs: "[3/5] INN Check ...: NAME (Sicil: 945999)"
         let startIdx = 0;
@@ -238,7 +242,7 @@ export default function InnSnilsView() {
           (isRunning && completedCount > lastCompletedCountRef.current) ||
           (wasRpaRunningRef.current && !isRunning)
         ) {
-          fetchData(undefined, true);
+          fetchDataRef.current(undefined, true);
         }
         lastCompletedCountRef.current = isRunning ? completedCount : 0;
         wasRpaRunningRef.current = isRunning;
@@ -247,7 +251,7 @@ export default function InnSnilsView() {
       }
     };
     pingBridge();
-    const t = setInterval(pingBridge, 2000);
+    const t = setInterval(pingBridge, 1500);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
