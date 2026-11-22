@@ -869,6 +869,8 @@ def run_robot_worker(
         script_name = "gosuslugi_dismissal_robot.py"
     elif mode == "registration":
         script_name = "gosuslugi_registration_robot.py"
+    elif mode in ("inn_check", "snils_check", "inn_zayavka_1", "inn_zayavka_2"):
+        script_name = "inn_snils_robot.py"
     elif mode in ("check_status", "check_status_fast", "check_status_single"):
         script_name = "gosuslugi_status_checker.py"
     else:
@@ -880,6 +882,8 @@ def run_robot_worker(
         cmd.extend(["--notification-type", "hiring"])
     elif mode == "dismissal":
         cmd.extend(["--notification-type", "dismissal"])
+    elif mode in ("inn_check", "snils_check", "inn_zayavka_1", "inn_zayavka_2"):
+        cmd.extend(["--task", mode])
 
     if mode == "check_status_fast":
         cmd.extend(["--status-only", "--single-search", "--search-scope", "pending_only", "--max-pages", "60"])
@@ -1293,6 +1297,9 @@ class RPABridgeHandler(BaseHTTPRequestHandler):
             elif mode == "registration":
                 queue_filename = "active_registration_queue.json"
                 cfg_filename = "active_registration_config.json"
+            elif mode in ("inn_check", "snils_check", "inn_zayavka_1", "inn_zayavka_2"):
+                queue_filename = "active_inn_snils_queue.json"
+                cfg_filename = "active_inn_snils_config.json"
             elif mode in ("check_status", "check_status_single"):
                 queue_filename = "active_status_check_queue.json"
                 cfg_filename = "active_status_check_config.json"

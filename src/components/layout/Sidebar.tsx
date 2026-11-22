@@ -185,6 +185,13 @@ export default function Sidebar({
           badgeColor: 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/50 dark:border-rose-700/50',
         },
         {
+          id: 'inn_snils',
+          label: lang === 'ru' ? 'ИНН и СНИЛС' : 'INN & SNILS Kontrol',
+          icon: ShieldCheck,
+          badge: lang === 'ru' ? 'ФНС • СФР' : 'FNS • Yeni',
+          badgeColor: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-700/50',
+        },
+        {
           id: 'sites',
           label: t('nav_sites'),
           icon: Building2,

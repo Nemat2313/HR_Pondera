@@ -115,6 +115,10 @@ const GosuslugiAnalyticsView = dynamicWithRetry(
   () => import('@/components/gosuslugi/GosuslugiAnalyticsView'),
   'VKS İstatistik & Analiz yükleniyor...'
 );
+const InnSnilsView = dynamicWithRetry(
+  () => import('@/components/workforce/InnSnilsView'),
+  'INN & SNILS Kontrol yükleniyor...'
+);
 const PoweriseInnovationView = dynamicWithRetry(
   () => import('@/components/powerise/PoweriseInnovationView'),
   'Powerise İnovasyon yükleniyor...'
@@ -506,6 +510,7 @@ export default function Home() {
         {effectiveTab === 'gosuslugi' && <GosuslugiVksView />}
 
         {effectiveTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
+        {effectiveTab === 'inn_snils' && <InnSnilsView />}
 
         {effectiveTab === 'powerise_tech' && <PoweriseInnovationView />}
 

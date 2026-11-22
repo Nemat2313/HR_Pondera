@@ -1,0 +1,434 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Pondera HR — INN & SNILS Verification + INN Application (Zayavka 1 & 2) Playwright Robot
+Connects to visible Chrome via CDP (http://localhost:9222).
+
+Tasks:
+  - inn_check      : Checks INN on https://service.nalog.ru/inn.do, captures PNG screenshot, saves to Pondera HR.
+  - snils_check    : Opens official SNILS check page in visible Chrome, pre-fills fields, pauses for human operator
+                     to complete any CAPTCHA manually (no automated CAPTCHA bypass), captures screenshot & saves.
+  - inn_zayavka_1  : Submits Stage 1 INN application on https://service.nalog.ru/zpufl/edit.html (PAD Zayavka 1).
+  - inn_zayavka_2  : Opens email confirmation links on service.nalog.ru/zpufl, matches passport, completes Stage 2,
+                     extracts application number, captures screenshot & saves to Pondera HR (PAD Zayavka 2).
+"""
+
+import argparse
+import base64
+import json
+import logging
+import os
+import re
+import ssl
+import sys
+import time
+import urllib.request
+from typing import Any, Dict, List, Optional
+
+from playwright.sync_api import Page, sync_playwright
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PAUSE_SIGNAL_FILE = os.path.join(CURRENT_DIR, "rpa_pause.signal")
+CENTRAL_API_URL = "https://hr.pondera.network/api/inn-snils"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger("PonderaInnSnilsRPA")
+
+
+def post_result_to_central(payload: Dict[str, Any]) -> bool:
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        data = json.dumps({"action": "save_result", **payload}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            CENTRAL_API_URL,
+            data=data,
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+            return resp.status == 200
+    except Exception as e:
+        logger.warning(f"Central save warning: {e}")
+        return False
+
+
+def capture_page_png_b64(page: Page) -> str:
+    try:
+        raw = page.screenshot(full_page=False, type="png")
+        return base64.b64encode(raw).decode("ascii")
+    except Exception:
+        return ""
+
+
+def wait_if_paused():
+    if not os.path.exists(PAUSE_SIGNAL_FILE):
+        return
+    logger.info("ROBOT_PAUSED: Ожидание нажатия «Продолжить (Devam Et)»...")
+    while os.path.exists(PAUSE_SIGNAL_FILE):
+        time.sleep(0.5)
+    logger.info("ROBOT_RESUMED: Продолжаем работу.")
+
+
+def run_inn_check(page: Page, records: List[Dict[str, Any]]):
+    for idx, r in enumerate(records, 1):
+        wait_if_paused()
+        sicil = str(r.get("sicil_no") or "").strip()
+        fam = str(r.get("fam") or "").strip()
+        nam = str(r.get("nam") or "").strip()
+        otch = str(r.get("otch") or "").strip()
+        bdate = str(r.get("dogum_tarihi") or "").strip()
+        docno = str(r.get("pasaport_no") or "").strip()
+        docdt = str(r.get("pasaport_verilis") or "").strip()
+        is_rf = "RUSYA" in str(r.get("uyruk") or "").upper()
+        doctype_val = "21" if is_rf else "10"
+
+        logger.info(f"[{idx}/{len(records)}] INN Check (nalog.ru): {fam} {nam} (Sicil: {sicil})")
+        try:
+            page.goto("https://service.nalog.ru/inn.do", wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1200)
+
+            # Accept personal data modal if present
+            consent_cb = page.locator("input#personalData, input[name='personalData']").first
+            if consent_cb.count() > 0 and consent_cb.is_visible():
+                try:
+                    consent_cb.check()
+                    page.locator("button:has-text('Продолжить'):visible").first.click()
+                    page.wait_for_timeout(800)
+                except Exception:
+                    pass
+
+            page.fill("input#fam", fam)
+            page.fill("input#nam", nam)
+            if otch:
+                page.fill("input#otch", otch)
+            else:
+                opt_otch = page.locator("input#opt_otch").first
+                if opt_otch.count() > 0:
+                    opt_otch.check()
+
+            if bdate:
+                page.fill("input#bdate", bdate)
+            try:
+                page.select_option("select#doctype", doctype_val)
+            except Exception:
+                pass
+            if docno:
+                page.fill("input#docno", docno)
+            if docdt:
+                page.fill("input#docdt", docdt)
+
+            page.click("button#btn_send")
+            page.wait_for_timeout(2500)
+
+            body_text = (page.inner_text("body") or "").strip()
+            m_inn = re.search(r"\b(\d{12})\b", body_text)
+            shot_b64 = capture_page_png_b64(page)
+
+            if m_inn:
+                inn_val = m_inn.group(1)
+                logger.info(f"  -> INN FOUND: {inn_val}")
+                post_result_to_central({
+                    "sicil_no": sicil,
+                    "ad_soyad": r.get("ad_soyad", ""),
+                    "tam_adi_kiril": r.get("tam_adi_kiril", ""),
+                    "inn_status": "VERIFIED",
+                    "verified_inn": inn_val,
+                    "inn_screenshot_base64": shot_b64,
+                })
+            elif "не найдена" in body_text.lower() or "отсутствуют" in body_text.lower():
+                logger.info("  -> INN NOT FOUND (кандидат на Заявку 1)")
+                post_result_to_central({
+                    "sicil_no": sicil,
+                    "ad_soyad": r.get("ad_soyad", ""),
+                    "tam_adi_kiril": r.get("tam_adi_kiril", ""),
+                    "inn_status": "NOT_FOUND",
+                    "inn_error": "Информация об ИНН не найдена в ФНС",
+                    "inn_screenshot_base64": shot_b64,
+                })
+            else:
+                logger.warning("  -> Could not parse INN result")
+                post_result_to_central({
+                    "sicil_no": sicil,
+                    "ad_soyad": r.get("ad_soyad", ""),
+                    "tam_adi_kiril": r.get("tam_adi_kiril", ""),
+                    "inn_status": "ERROR",
+                    "inn_error": "Sonuç okunamadı (ekran görüntüsünü inceleyin)",
+                    "inn_screenshot_base64": shot_b64,
+                })
+        except Exception as e:
+            logger.error(f"  -> INN check error: {e}")
+
+
+def run_snils_check_human_in_loop(page: Page, records: List[Dict[str, Any]]):
+    """
+    Opens the official SFR/PFR SNILS verification page in visible Chrome, fills employee fields,
+    and PAUSES so the human operator can manually complete reCAPTCHA and click submit.
+    After the operator clicks 'Devam Et (Resume)', captures the screenshot and saves verified SNILS.
+    """
+    for idx, r in enumerate(records, 1):
+        wait_if_paused()
+        sicil = str(r.get("sicil_no") or "").strip()
+        fam = str(r.get("fam") or "").strip()
+        nam = str(r.get("nam") or "").strip()
+        otch = str(r.get("otch") or "").strip()
+        bdate = str(r.get("dogum_tarihi") or "").strip()
+        snils = str(r.get("snils_no") or "").strip()
+
+        logger.info(f"[{idx}/{len(records)}] SNILS Check (Human-in-the-loop): {fam} {nam} (SNILS: {snils})")
+        try:
+            page.goto("https://es.pfrf.ru/checkSnils/", wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1500)
+
+            for sel, val in [
+                ("input[name*='lastName'], input[id*='surname'], input[placeholder*='Фамилия']", fam),
+                ("input[name*='firstName'], input[id*='name'], input[placeholder*='Имя']", nam),
+                ("input[name*='middleName'], input[id*='patronymic'], input[placeholder*='Отчество']", otch),
+                ("input[name*='birthDate'], input[placeholder*='рождения']", bdate),
+                ("input[name*='snils'], input[id*='snils'], input[placeholder*='СНИЛС']", snils),
+            ]:
+                if not val:
+                    continue
+                loc = page.locator(sel).first
+                if loc.count() > 0:
+                    try:
+                        loc.fill(val)
+                    except Exception:
+                        pass
+
+            # Pause for human operator to complete reCAPTCHA & click 'Проверить'
+            logger.info(
+                "MANUAL_CAPTCHA_REQUIRED: Lütfen Chrome penceresinde reCAPTCHA doğrulamasını tamamlayıp 'Проверить' butonuna basın, ardından panelden 'Devam Et'e tıklayın."
+            )
+            with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                pf.write("snils_manual_captcha")
+            wait_if_paused()
+
+            page.wait_for_timeout(1000)
+            body_text = (page.inner_text("body") or "").lower()
+            shot_b64 = capture_page_png_b64(page)
+            is_ok = any(k in body_text for k in ("соответствует", "подтвержден", "действителен", "найден")) and "не соответств" not in body_text
+
+            post_result_to_central({
+                "sicil_no": sicil,
+                "ad_soyad": r.get("ad_soyad", ""),
+                "tam_adi_kiril": r.get("tam_adi_kiril", ""),
+                "snils_status": "VERIFIED" if is_ok else "NOT_FOUND",
+                "verified_snils": snils if is_ok else "",
+                "snils_error": "" if is_ok else "СНИЛС не подтвержден (см. скриншот)",
+                "snils_screenshot_base64": shot_b64,
+            })
+            logger.info(f"  -> SNILS saved ({'VERIFIED' if is_ok else 'NOT_FOUND'}) + screenshot archived.")
+        except Exception as e:
+            logger.error(f"  -> SNILS check error: {e}")
+
+
+def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, Any]):
+    """Implements PAD ИНН_Заявка_1.txt on https://service.nalog.ru/zpufl/edit.html"""
+    default_addr = str(cfg.get("REG_ADDRESS") or "").strip()
+    default_mail = str(cfg.get("CONTACT_EMAIL") or "ikbildirim@pondera.ru").strip()
+    default_tel = str(cfg.get("CONTACT_PHONE") or "").strip()
+    default_reg_date = str(cfg.get("REG_DATE") or "").strip()
+
+    for idx, r in enumerate(records, 1):
+        wait_if_paused()
+        sicil = str(r.get("sicil_no") or "").strip()
+        fam = str(r.get("fam") or "").strip()
+        nam = str(r.get("nam") or "").strip()
+        otch = str(r.get("otch") or "").strip()
+        gender = str(r.get("cinsiyet") or "Муж").strip().lower()
+        bp = str(r.get("dogum_yeri") or r.get("uyruk") or "").strip()
+        ctz = str(r.get("uyruk") or "").strip()
+        docno = str(r.get("pasaport_no") or "").strip()
+        issued_by = str(r.get("pasaport_veren") or "").strip()
+        issue_date = str(r.get("pasaport_verilis") or "").strip()
+        addr = str(r.get("reg_address") or default_addr).strip()
+        reg_date = str(r.get("reg_date") or default_reg_date).strip()
+
+        logger.info(f"[{idx}/{len(records)}] INN Zayavka 1 (service.nalog.ru/zpufl): {fam} {nam} (Sicil: {sicil})")
+        try:
+            page.goto("https://service.nalog.ru/zpufl/edit.html", wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1500)
+
+            page.fill("input#fam", fam)
+            page.fill("input#nam", nam)
+            if otch:
+                page.fill("input#otch", otch)
+            page.locator("text=Женский" if gender.startswith(("ж", "k", "f")) else "text=Мужской").first.click()
+            if bp:
+                page.fill("input#bp", bp)
+            page.locator("text=Гражданин").first.click()
+            if ctz:
+                sel3 = page.locator("input#uni_select_3").first
+                if sel3.count() > 0:
+                    sel3.fill(ctz)
+                    page.wait_for_timeout(400)
+            page.locator("text=Место пребывания").first.click()
+            page.locator("button:has-text('Далее')").first.click()
+            page.wait_for_timeout(2000)
+
+            # Screen 2: Passport, Address, Email, Phone, Representative
+            sel_doc = page.locator("input#uni_select_3").first
+            if sel_doc.count() > 0:
+                sel_doc.fill("Паспорт иностранного гражданина")
+            if docno:
+                page.fill("input#sn_doc", docno)
+            if issued_by:
+                page.fill("input#nv_doc", issued_by)
+            date_inps = page.locator("input[placeholder*='ДД.ММ.ГГГГ']")
+            if date_inps.count() >= 1 and issue_date:
+                date_inps.nth(0).fill(issue_date)
+            if addr:
+                page.fill("input#addr", addr)
+            if date_inps.count() >= 2 and reg_date:
+                date_inps.nth(1).fill(reg_date)
+            if default_mail:
+                page.fill("input#mail", default_mail)
+            if default_tel:
+                page.fill("input#tel", default_tel)
+            rep = page.locator("text=Представитель заявителя").first
+            if rep.count() > 0:
+                rep.click()
+
+            if cfg.get("AUTO_SUBMIT", False):
+                page.locator("button:has-text('Отправить')").first.click()
+                page.wait_for_timeout(2500)
+            else:
+                logger.info("AUTO_SUBMIT=False: Zayavka 1 dolduruldu -> kontrol edip 'Отправить' basın ve Devam Et'e tıklayın.")
+                with open(PAUSE_SIGNAL_FILE, "w", encoding="utf-8") as pf:
+                    pf.write("zayavka1_review")
+                wait_if_paused()
+
+            shot_b64 = capture_page_png_b64(page)
+            post_result_to_central({
+                "sicil_no": sicil,
+                "ad_soyad": r.get("ad_soyad", ""),
+                "tam_adi_kiril": r.get("tam_adi_kiril", ""),
+                "inn_status": "APPLIED_STEP1",
+                "inn_screenshot_base64": shot_b64,
+            })
+            logger.info("  -> Zayavka 1 saved (APPLIED_STEP1).")
+        except Exception as e:
+            logger.error(f"  -> Zayavka 1 error: {e}")
+
+
+def run_inn_zayavka_2(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, Any]):
+    """Implements PAD ИНН_Заявка_2.txt: opens email links, matches passport, completes submission & captures application no."""
+    links = [str(u).strip() for u in (cfg.get("EMAIL_LINKS") or []) if str(u).strip().startswith("http")]
+    rep_fam = str(cfg.get("APPLICANT_FAM") or "").strip()
+    rep_nam = str(cfg.get("APPLICANT_NAM") or "").strip()
+    ifns_code = str(cfg.get("IFNS_CODE") or "4707").strip()
+    default_reg_date = str(cfg.get("REG_DATE") or "").strip()
+
+    rec_by_pass = {
+        re.sub(r"\s+", "", str(r.get("pasaport_no") or "")).upper(): r
+        for r in records
+        if r.get("pasaport_no")
+    }
+
+    for idx, url in enumerate(links, 1):
+        wait_if_paused()
+        logger.info(f"[{idx}/{len(links)}] INN Zayavka 2: Opening link {url[:75]}...")
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1800)
+
+            page_text = page.inner_text("body") or ""
+            matched_rec = None
+            for p_key, r in rec_by_pass.items():
+                if p_key and p_key in re.sub(r"\s+", "", page_text).upper():
+                    matched_rec = r
+                    break
+
+            page.locator("button:has-text('Далее')").first.click()
+            page.wait_for_timeout(1500)
+
+            sel3 = page.locator("input#uni_select_3").first
+            if sel3.count() > 0:
+                sel3.fill("Иные документы")
+            page.fill("input#sn_doc", "1")
+            page.fill("input#nv_doc", "УФМС")
+            d_inp = page.locator("input[placeholder*='ДД.ММ.ГГГГ']").first
+            reg_date = str((matched_rec or {}).get("reg_date") or default_reg_date).strip()
+            if d_inp.count() > 0 and reg_date:
+                d_inp.fill(reg_date)
+            if rep_fam:
+                page.fill("input#fam", rep_fam)
+            if rep_nam:
+                page.fill("input#nam", rep_nam)
+
+            if ifns_code:
+                opt = page.locator(f"a:has-text('{ifns_code}')").first
+                if opt.count() > 0:
+                    opt.click()
+
+            page.locator("button:has-text('Далее')").first.click()
+            page.wait_for_timeout(2500)
+
+            tds = page.locator("table tbody tr td")
+            app_no = tds.nth(0).inner_text().strip() if tds.count() >= 1 else ""
+            app_code = tds.nth(1).inner_text().strip() if tds.count() >= 2 else ""
+            shot_b64 = capture_page_png_b64(page)
+
+            if matched_rec:
+                post_result_to_central({
+                    "sicil_no": matched_rec.get("sicil_no", ""),
+                    "ad_soyad": matched_rec.get("ad_soyad", ""),
+                    "tam_adi_kiril": matched_rec.get("tam_adi_kiril", ""),
+                    "inn_status": "APPLIED_STEP2",
+                    "inn_application_no": app_no,
+                    "inn_application_code": app_code,
+                    "inn_screenshot_base64": shot_b64,
+                })
+            logger.info(f"  -> Zayavka 2 completed! AppNo={app_no} Code={app_code}")
+        except Exception as e:
+            logger.error(f"  -> Zayavka 2 error: {e}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Pondera HR — INN & SNILS RPA Robot")
+    parser.add_argument("--task", required=True, choices=["inn_check", "snils_check", "inn_zayavka_1", "inn_zayavka_2"])
+    parser.add_argument("--json", required=True)
+    parser.add_argument("--config-json", default="")
+    args = parser.parse_args()
+
+    with open(args.json, "r", encoding="utf-8") as f:
+        records = json.load(f)
+    cfg: Dict[str, Any] = {}
+    if args.config_json and os.path.exists(args.config_json):
+        with open(args.config_json, "r", encoding="utf-8") as cf:
+            cfg = json.load(cf)
+
+    cdp_url = str(cfg.get("CHROME_CDP_URL") or "http://localhost:9222")
+    logger.info(f"Starting INN/SNILS Robot (task={args.task}, records={len(records)}) on {cdp_url}...")
+    with sync_playwright() as p:
+        browser = p.chromium.connect_over_cdp(cdp_url)
+        ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+        if args.task == "inn_check":
+            run_inn_check(page, records)
+        elif args.task == "snils_check":
+            run_snils_check_human_in_loop(page, records)
+        elif args.task == "inn_zayavka_1":
+            run_inn_zayavka_1(page, records, cfg)
+        elif args.task == "inn_zayavka_2":
+            run_inn_zayavka_2(page, records, cfg)
+
+    logger.info("=== INN/SNILS Robot Batch Complete ===")
+
+
+if __name__ == "__main__":
+    main()
