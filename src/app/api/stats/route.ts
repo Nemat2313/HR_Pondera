@@ -155,7 +155,7 @@ export async function GET(request: Request) {
       .all() as { key: string; value: string }[];
     const sysStampSig = sysStampRows.map((r) => `${r.key}=${r.value}`).join('|');
     const jobLevelsRev = getOrgJobLevelsRevision(db);
-    const statsCacheKey = `v7:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const statsCacheKey = `v8:${verRow.cnt}:${verRow.maxId}:${sysStampSig}:${jobLevelsRev}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
     const gStats = globalThis as unknown as {
       __ponderaStatsCache?: Map<string, any>;
     };
@@ -221,8 +221,33 @@ export async function GET(request: Request) {
       filterMap['department'] = { col: 'departman', op: '=', val: department };
     }
 
+    const EFFECTIVE_CATEGORY_SQL = `
+      CASE
+        WHEN COALESCE(TRIM(kategori), '') != '' THEN TRIM(kategori)
+        WHEN UPPER(TRIM(COALESCE(uyruk, ''))) IN ('RUSYA', 'RUSSIA', 'РОССИЯ', 'RF', 'RUSYA FEDERASYONU') THEN 'Yerel'
+        WHEN UPPER(TRIM(COALESCE(uyruk, ''))) IN (
+          'OZBEKISTAN', 'ÖZBEKISTAN', 'ÖZBEKİSTAN', 'UZBEKISTAN',
+          'AZERBAYCAN', 'AZERBAIJAN',
+          'TACIKISTAN', 'TACİKİSTAN', 'TAJIKISTAN',
+          'KIRGIZISTAN', 'KIRGIZİSTAN', 'KIRSIZISTAN', 'KYRGYZSTAN',
+          'KAZAKISTAN', 'KAZAKİSTAN', 'KAZAKHSTAN',
+          'BELARUS', 'BEYAZ RUSYA',
+          'MOLDOVA', 'ERMENISTAN', 'ERMENİSTAN', 'ARMENIA',
+          'UKRAYNA', 'UKRAINE', 'ABHAZYA'
+        ) THEN 'SNG'
+        WHEN COALESCE(TRIM(uyruk), '') != '' THEN 'Ekspat'
+        ELSE 'Belirtilmemiş'
+      END
+    `;
+
     if (category && category !== 'all') {
-      filterMap['category'] = { col: 'kategori', op: '=', val: category };
+      filterMap['category'] = {
+        col: 'kategori',
+        op: '=',
+        val: null,
+        rawSql: `(${EFFECTIVE_CATEGORY_SQL}) = ?`,
+        rawParams: [category],
+      };
     }
 
     if (nationality && nationality !== 'all') {
@@ -342,15 +367,15 @@ export async function GET(request: Request) {
     `);
     const collarDistribution = collarQuery.all(...collarWhere.params);
 
-    // 3. Local vs Expat (Kategori) - Excludes category filter so all stay visible
+    // 3. Local vs Expat (Kategori) - Falls back to citizenship (uyruk) when eBA Excel omits Kategori column
     const categoryWhere = buildWhere('category');
     const categoryQuery = db.prepare(`
       SELECT 
-        COALESCE(NULLIF(kategori, ''), 'Belirtilmemiş') as label,
+        (${EFFECTIVE_CATEGORY_SQL}) as label,
         COUNT(*) as count
       FROM personnel
       ${categoryWhere.clause}
-      GROUP BY kategori
+      GROUP BY label
       ORDER BY count DESC
     `);
     const categoryDistribution = categoryQuery.all(...categoryWhere.params);

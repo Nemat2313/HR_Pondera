@@ -245,7 +245,24 @@ export async function GET(request: Request) {
       params.push(department);
     }
     if (category !== 'all') {
-      conditions.push('kategori = ?');
+      conditions.push(`(
+        CASE
+          WHEN COALESCE(TRIM(kategori), '') != '' THEN TRIM(kategori)
+          WHEN UPPER(TRIM(COALESCE(uyruk, ''))) IN ('RUSYA', 'RUSSIA', 'РОССИЯ', 'RF', 'RUSYA FEDERASYONU') THEN 'Yerel'
+          WHEN UPPER(TRIM(COALESCE(uyruk, ''))) IN (
+            'OZBEKISTAN', 'ÖZBEKISTAN', 'ÖZBEKİSTAN', 'UZBEKISTAN',
+            'AZERBAYCAN', 'AZERBAIJAN',
+            'TACIKISTAN', 'TACİKİSTAN', 'TAJIKISTAN',
+            'KIRGIZISTAN', 'KIRGIZİSTAN', 'KIRSIZISTAN', 'KYRGYZSTAN',
+            'KAZAKISTAN', 'KAZAKİSTAN', 'KAZAKHSTAN',
+            'BELARUS', 'BEYAZ RUSYA',
+            'MOLDOVA', 'ERMENISTAN', 'ERMENİSTAN', 'ARMENIA',
+            'UKRAYNA', 'UKRAINE', 'ABHAZYA'
+          ) THEN 'SNG'
+          WHEN COALESCE(TRIM(uyruk), '') != '' THEN 'Ekspat'
+          ELSE 'Belirtilmemiş'
+        END
+      ) = ?`);
       params.push(category);
     }
     if (nationality !== 'all') {
