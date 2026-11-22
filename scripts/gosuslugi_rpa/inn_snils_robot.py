@@ -392,6 +392,28 @@ def fill_uni_select(page: Page, selector: str, value: str):
             pass
 
 
+def type_masked_date(page: Page, selector: str, ru_date: str):
+    """Types DD.MM.YYYY into nalog.ru masked date inputs (input#bd, input#dt_doc, input#rd)."""
+    if not ru_date:
+        return
+    inp = page.locator(selector).first
+    if inp.count() == 0:
+        return
+    try:
+        inp.click(force=True)
+        inp.press("Control+a")
+        inp.press("Backspace")
+        # Send digits with keystroke delay so jQuery date mask accepts it cleanly
+        inp.type(ru_date, delay=45)
+        inp.press("Tab")
+        page.wait_for_timeout(200)
+    except Exception:
+        try:
+            inp.fill(ru_date)
+        except Exception:
+            pass
+
+
 def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, Any]):
     """Implements PAD ИНН_Заявка_1.txt on https://service.nalog.ru/zpufl/edit.html"""
     default_addr = str(cfg.get("REG_ADDRESS") or "").strip()
@@ -415,7 +437,7 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
         addr = str(r.get("reg_address") or default_addr).strip()
         reg_date = to_ru_date(str(r.get("reg_date") or default_reg_date).strip())
 
-        logger.info(f"[{idx}/{len(records)}] INN Zayavka 1 (service.nalog.ru/zpufl): {fam} {nam} (Sicil: {sicil})")
+        logger.info(f"[{idx}/{len(records)}] INN Zayavka 1 (service.nalog.ru/zpufl): {fam} {nam} (Sicil: {sicil}, bdate={bdate}, ctz={ctz})")
         try:
             page.goto("https://service.nalog.ru/zpufl/edit.html", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1500)
@@ -428,14 +450,8 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                 page.fill("input#otch", otch)
             page.locator("text=Женский" if gender.startswith(("ж", "k", "f")) else "text=Мужской").first.click()
 
-            # Fill Дата рождения (required field on Screen 1!)
-            if bdate:
-                bd_inp = page.locator("input#bd, input#bdate, input[placeholder*='ДД.ММ.ГГГГ'], input[title*='ДД.ММ.ГГГГ']").first
-                if bd_inp.count() > 0:
-                    bd_inp.click(force=True)
-                    bd_inp.fill(bdate)
-                    bd_inp.press("Tab")
-                    page.wait_for_timeout(200)
+            # Fill Дата рождения (input#bd — masked date field, must use emulate-typing!)
+            type_masked_date(page, "input#bd", bdate)
 
             if bp:
                 page.fill("input#bp", bp)
@@ -458,17 +474,10 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                 page.fill("input#sn_doc", docno)
             if issued_by:
                 page.fill("input#nv_doc", issued_by)
-            date_inps = page.locator("input[placeholder*='ДД.ММ.ГГГГ'], input[title*='ДД.ММ.ГГГГ']")
-            if date_inps.count() >= 1 and issue_date:
-                date_inps.nth(0).click(force=True)
-                date_inps.nth(0).fill(issue_date)
-                date_inps.nth(0).press("Tab")
+            type_masked_date(page, "input#dt_doc", issue_date)
             if addr:
                 page.fill("input#addr", addr)
-            if date_inps.count() >= 2 and reg_date:
-                date_inps.nth(1).click(force=True)
-                date_inps.nth(1).fill(reg_date)
-                date_inps.nth(1).press("Tab")
+            type_masked_date(page, "input#rd", reg_date)
             if default_mail:
                 page.fill("input#mail", default_mail)
             if default_tel:
