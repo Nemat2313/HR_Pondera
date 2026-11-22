@@ -414,6 +414,68 @@ def type_masked_date(page: Page, selector: str, ru_date: str):
             pass
 
 
+def fill_fias_address(page: Page, addr: str) -> bool:
+    """Opens nalog.ru FIAS modal (iframe#uniDialogFrame), searches addr in #text, picks suggestion, clicks #btn_ok."""
+    if not addr:
+        return False
+    try:
+        btn = page.locator("#fias").locator("..").locator("button, .btn, a").first
+        if btn.count() > 0:
+            btn.click(force=True)
+        else:
+            page.locator("#fias").click(force=True)
+        page.wait_for_selector("iframe#uniDialogFrame", timeout=8000)
+        page.wait_for_timeout(800)
+
+        fias_frame = None
+        for f in page.frames:
+            if f != page.main_frame and "fias" in (f.url or "").lower():
+                fias_frame = f
+                break
+        if not fias_frame:
+            return False
+
+        search_inp = fias_frame.locator("input#text").first
+        if search_inp.count() == 0:
+            return False
+
+        # Try full address first, then without leading 6-digit postal code if no suggestion appears
+        candidates = [addr]
+        no_zip = re.sub(r"^\s*\d{6}\s*,?\s*", "", addr).strip()
+        if no_zip and no_zip != addr:
+            candidates.append(no_zip)
+
+        for cand in candidates:
+            search_inp.click(force=True)
+            search_inp.fill("")
+            search_inp.type(cand, delay=20)
+            page.wait_for_timeout(1400)
+
+            sugg = fias_frame.locator(
+                ".ui-autocomplete li:visible, .uni-search-list li:visible, .search-results li:visible, ul.dropdown-menu li:visible, .suggestions li:visible, .fias-item:visible"
+            ).first
+            if sugg.count() > 0 and sugg.is_visible():
+                sugg.click(force=True)
+            else:
+                search_inp.press("ArrowDown")
+                page.wait_for_timeout(200)
+                search_inp.press("Enter")
+            page.wait_for_timeout(700)
+
+            ok_btn = fias_frame.locator("button#btn_ok").first
+            if ok_btn.count() > 0 and ok_btn.get_attribute("disabled") is None and "disabled" not in (ok_btn.get_attribute("class") or ""):
+                ok_btn.click(force=True)
+                page.wait_for_timeout(600)
+                logger.info(f"  -> FIAS address selected & confirmed: {cand[:60]}")
+                return True
+
+        logger.warning("  -> FIAS suggestion did not enable ОК button; leaving modal open for quick manual pick.")
+        return False
+    except Exception as e:
+        logger.warning(f"  -> FIAS address helper warning: {e}")
+        return False
+
+
 def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, Any]):
     """Implements PAD ИНН_Заявка_1.txt on https://service.nalog.ru/zpufl/edit.html"""
     default_addr = str(cfg.get("REG_ADDRESS") or "").strip()
@@ -501,10 +563,8 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                 legacy_addr = page.locator("input#addr:not([readonly])").first
                 if legacy_addr.count() > 0:
                     legacy_addr.fill(addr)
-                else:
-                    fias_inp = page.locator("input#fias").first
-                    if fias_inp.count() > 0:
-                        logger.info(f"  -> FIAS address picker detected (#fias). Target address: {addr}")
+                elif page.locator("input#fias").count() > 0:
+                    fill_fias_address(page, addr)
 
             if cfg.get("AUTO_SUBMIT", False):
                 page.locator("button:has-text('Отправить')").first.click()
