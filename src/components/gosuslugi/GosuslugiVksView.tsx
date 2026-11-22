@@ -4525,6 +4525,33 @@ export default function GosuslugiVksView() {
               title: '4. Registre — Göç Kaydı (600380/1)',
             },
           ]}
+          rightSlot={
+            <div className="flex items-center gap-2">
+              <a
+                href="/Pondera_Gosuslugi_Agent.zip"
+                download="Pondera_Gosuslugi_Agent.zip"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/70 dark:hover:bg-amber-900/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 transition no-underline"
+                title="Güncel Python RPA dosyalarını (.zip) bilgisayarınıza yeniden indirin"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{lang === 'ru' ? 'Скачать RPA (.zip)' : 'RPA Paketi İndir (.zip)'}</span>
+              </a>
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border ${
+                  bridgeStatus.status === 'online'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    bridgeStatus.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                  }`}
+                />
+                <span>{bridgeStatus.status === 'online' ? 'RPA Köprüsü Aktif (8088)' : 'RPA Köprüsü Kapalı'}</span>
+              </span>
+            </div>
+          }
         />
 
         {/* TAB 4: MIGRATION REGISTRATION (REGISTRE — GOSUSLUGI 600380/1) */}
