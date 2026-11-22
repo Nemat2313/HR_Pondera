@@ -467,24 +467,44 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
             page.locator("button:has-text('Далее')").first.click()
             page.wait_for_timeout(2200)
 
-            # Screen 2: Passport, Address, Email, Phone, Representative
+            # Screen 2: Passport, Address (FIAS), Reg Date, Email, Phone, Representative
             page.wait_for_selector("input#sn_doc", timeout=20000)
-            fill_uni_select(page, "input#uni_select_3, input[id^='uni_select_']:visible", "Паспорт иностранного гражданина")
+            doc_type_label = (
+                "Паспорт гражданина Российской Федерации"
+                if ctz == "РОССИЯ"
+                else "Паспорт иностранного гражданина"
+            )
+            fill_uni_select(page, "input#uni_select_3, input[id^='uni_select_']:visible", doc_type_label)
             if docno:
                 page.fill("input#sn_doc", docno)
             if issued_by:
                 page.fill("input#nv_doc", issued_by)
             type_masked_date(page, "input#dt_doc", issue_date)
-            if addr:
-                page.fill("input#addr", addr)
             type_masked_date(page, "input#rd", reg_date)
             if default_mail:
                 page.fill("input#mail", default_mail)
             if default_tel:
-                page.fill("input#tel", default_tel)
+                tel_digits = re.sub(r"\D+", "", default_tel)
+                if len(tel_digits) == 10:
+                    tel_digits = "7" + tel_digits
+                tel_inp = page.locator("input#tel").first
+                if tel_inp.count() > 0:
+                    tel_inp.click(force=True)
+                    tel_inp.press("Control+a")
+                    tel_inp.type(tel_digits, delay=35)
             rep = page.locator("text=Представитель заявителя").first
             if rep.count() > 0:
                 rep.click()
+
+            # Legacy addr input (if present & writable) OR FIAS readonly picker (#fias)
+            if addr:
+                legacy_addr = page.locator("input#addr:not([readonly])").first
+                if legacy_addr.count() > 0:
+                    legacy_addr.fill(addr)
+                else:
+                    fias_inp = page.locator("input#fias").first
+                    if fias_inp.count() > 0:
+                        logger.info(f"  -> FIAS address picker detected (#fias). Target address: {addr}")
 
             if cfg.get("AUTO_SUBMIT", False):
                 page.locator("button:has-text('Отправить')").first.click()
