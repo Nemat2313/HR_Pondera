@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   Camera,
   Play,
+  Pause,
+  Square,
   Send,
   Mail,
   FileSpreadsheet,
@@ -86,6 +88,20 @@ export default function InnSnilsView() {
 
   const [runningApiCheck, setRunningApiCheck] = useState(false);
   const [bridgeOnline, setBridgeOnline] = useState(false);
+  const [rpaStatus, setRpaStatus] = useState<{
+    is_running: boolean;
+    is_paused: boolean;
+    waiting_for_manual: boolean;
+    manual_message: string | null;
+    last_log: string;
+  }>({
+    is_running: false,
+    is_paused: false,
+    waiting_for_manual: false,
+    manual_message: null,
+    last_log: '',
+  });
+  const wasRpaRunningRef = useRef(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [lightboxFile, setLightboxFile] = useState<string | null>(null);
 
@@ -140,15 +156,57 @@ export default function InnSnilsView() {
     const pingBridge = async () => {
       try {
         const res = await fetch(`${LOCAL_BRIDGE_URL}/status`, { cache: 'no-store' });
-        setBridgeOnline(res.ok);
+        if (!res.ok) {
+          setBridgeOnline(false);
+          return;
+        }
+        setBridgeOnline(true);
+        const data = await res.json();
+        const isRunning = Boolean(data?.is_running);
+        const isPaused = Boolean(data?.is_paused);
+        const logsArr = Array.isArray(data?.logs) ? data.logs : [];
+        const lastLog = logsArr.length > 0 ? String(logsArr[logsArr.length - 1] || '') : '';
+        setRpaStatus({
+          is_running: isRunning,
+          is_paused: isPaused,
+          waiting_for_manual: Boolean(data?.waiting_for_manual),
+          manual_message: data?.manual_message || null,
+          last_log: lastLog,
+        });
+        if (wasRpaRunningRef.current && !isRunning) {
+          fetchData();
+        }
+        wasRpaRunningRef.current = isRunning;
       } catch {
         setBridgeOnline(false);
       }
     };
     pingBridge();
-    const t = setInterval(pingBridge, 8000);
+    const t = setInterval(pingBridge, 2500);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleRpaControl = async (action: 'pause' | 'resume' | 'stop') => {
+    try {
+      const res = await fetch(`${LOCAL_BRIDGE_URL}/${action}`, { method: 'POST' });
+      if (res.ok) {
+        if (action === 'pause') {
+          setRpaStatus((s) => ({ ...s, is_paused: true }));
+          setFeedback({ type: 'info', text: 'Robot duraklatıldı. Devam etmek için "Devam Et" butonuna basın.' });
+        } else if (action === 'resume') {
+          setRpaStatus((s) => ({ ...s, is_paused: false, waiting_for_manual: false, manual_message: null }));
+          setFeedback({ type: 'success', text: 'Robot devam ediyor...' });
+        } else {
+          setRpaStatus((s) => ({ ...s, is_running: false, is_paused: false, waiting_for_manual: false, manual_message: null }));
+          setFeedback({ type: 'info', text: 'Robot durduruldu.' });
+          fetchData();
+        }
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'Yerel RPA Bridge ile iletişim kurulamadı.' });
+    }
+  };
 
   const handleUploadSicilExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -454,6 +512,64 @@ export default function InnSnilsView() {
               <UserCheck className="w-6 h-6 text-sky-500 opacity-80" />
             </div>
           </div>
+
+          {/* Live RPA Robot Control Bar (Pause / Resume / Stop) */}
+          {(rpaStatus.is_running || rpaStatus.is_paused || rpaStatus.waiting_for_manual) && (
+            <div
+              className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+                rpaStatus.is_paused || rpaStatus.waiting_for_manual
+                  ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100'
+                  : 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-900 dark:text-indigo-100'
+              }`}
+            >
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex items-center gap-2 text-xs">
+                  {rpaStatus.is_paused || rpaStatus.waiting_for_manual ? (
+                    <Pause className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  ) : (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  )}
+                  <span className="font-semibold">
+                    {rpaStatus.is_paused || rpaStatus.waiting_for_manual
+                      ? 'RPA Robotu Duraklatıldı'
+                      : 'RPA Robotu Çalışıyor...'}
+                  </span>
+                </div>
+                <p className="text-[11px] opacity-90 truncate">
+                  {rpaStatus.manual_message || rpaStatus.last_log || 'İşlem devam ediyor...'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {rpaStatus.is_paused || rpaStatus.waiting_for_manual ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRpaControl('resume')}
+                    className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    Devam Et
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleRpaControl('pause')}
+                    className="px-3 py-1.5 rounded-lg text-xs bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Pause className="w-3.5 h-3.5" />
+                    Duraklat
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleRpaControl('stop')}
+                  className="px-3 py-1.5 rounded-lg text-xs bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  Durdur
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Feedback Banner */}
           {feedback && (
