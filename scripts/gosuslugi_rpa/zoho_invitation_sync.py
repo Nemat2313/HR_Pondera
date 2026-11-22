@@ -742,8 +742,9 @@ def sync_imap_invitations(payload: dict) -> dict:
     seen_msg_ids_this_run = set(existing_message_ids)
 
     try:
-        conn.select("INBOX", readonly=True)
-        typ, data = conn.search(None, "ALL")
+        conn.select("INBOX", readonly=False)
+        # Scan UNSEEN (unread) emails first so processed invitations are never re-scanned
+        typ, data = conn.search(None, "UNSEEN")
         if typ == "OK" and data and data[0]:
             msg_ids = data[0].split()
             recent_ids = msg_ids[-max_messages:]
@@ -766,11 +767,19 @@ def sync_imap_invitations(payload: dict) -> dict:
 
                     if mid_hdr and mid_hdr in seen_msg_ids_this_run:
                         skipped_duplicates_imap += 1
+                        try:
+                            conn.store(mid, "+FLAGS", "\\Seen")
+                        except Exception:
+                            pass
                         continue
 
                     pet_no = extract_petition_no_from_subject(subj)
                     if pet_no and pet_no in seen_petitions_this_run:
                         skipped_duplicates_imap += 1
+                        try:
+                            conn.store(mid, "+FLAGS", "\\Seen")
+                        except Exception:
+                            pass
                         continue
 
                     if mid_hdr:
@@ -799,8 +808,12 @@ def sync_imap_invitations(payload: dict) -> dict:
                     f"imap-{mid.decode('utf-8', errors='ignore')}",
                     items,
                 )
-                # Deduplicate newly parsed items against already-seen invitation/petition numbers
+                # Mark processed invitation email as Read (\Seen) in Zoho Mail
                 if len(items) > before_len:
+                    try:
+                        conn.store(mid, "+FLAGS", "\\Seen")
+                    except Exception:
+                        pass
                     kept = items[:before_len]
                     for new_it in items[before_len:]:
                         flds = new_it.get("fields") or {}
