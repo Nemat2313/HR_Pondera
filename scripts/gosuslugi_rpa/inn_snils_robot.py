@@ -65,9 +65,9 @@ def post_result_to_central(payload: Dict[str, Any]) -> bool:
         return False
 
 
-def capture_page_png_b64(page: Page) -> str:
+def capture_page_png_b64(page: Page, full_page: bool = True) -> str:
     try:
-        raw = page.screenshot(full_page=False, type="png")
+        raw = page.screenshot(full_page=full_page, type="png")
         return base64.b64encode(raw).decode("ascii")
     except Exception:
         return ""
@@ -176,13 +176,10 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
             page.click("button#btn_send")
             page.wait_for_timeout(2800)
 
-            # Set 72% zoom & scroll to top so header, INN result, and all passport fields fit cleanly in one screenshot
+            # Scroll to top; full_page=True captures the entire header, INN result, and all passport fields on any DPI/screen
             try:
-                page.evaluate("""() => {
-                    document.documentElement.style.zoom = '0.72';
-                    window.scrollTo(0, 0);
-                }""")
-                page.wait_for_timeout(300)
+                page.evaluate("() => { document.documentElement.style.zoom = '1'; window.scrollTo(0, 0); }")
+                page.wait_for_timeout(250)
             except Exception:
                 pass
 
