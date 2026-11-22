@@ -47,10 +47,10 @@ logger = logging.getLogger("PonderaInnSnilsRPA")
 
 
 def post_result_to_central(payload: Dict[str, Any]) -> bool:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
     try:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
         data = json.dumps({"action": "save_result", **payload}, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
             CENTRAL_API_URL,
@@ -58,16 +58,33 @@ def post_result_to_central(payload: Dict[str, Any]) -> bool:
             headers={"Content-Type": "application/json; charset=utf-8"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+        with urllib.request.urlopen(req, timeout=25, context=ctx) as resp:
             return resp.status == 200
     except Exception as e:
         logger.warning(f"Central save warning: {e}")
+        # Fallback: retry without screenshot so verified INN/SNILS is never lost if image payload fails
+        if payload.get("inn_screenshot_base64") or payload.get("snils_screenshot_base64"):
+            try:
+                slim = {k: v for k, v in payload.items() if k not in ("inn_screenshot_base64", "snils_screenshot_base64")}
+                data2 = json.dumps({"action": "save_result", **slim}, ensure_ascii=False).encode("utf-8")
+                req2 = urllib.request.Request(
+                    CENTRAL_API_URL,
+                    data=data2,
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2, timeout=20, context=ctx) as resp2:
+                    logger.info("  -> Central save succeeded (fallback without screenshot).")
+                    return resp2.status == 200
+            except Exception as e2:
+                logger.warning(f"Central fallback save warning: {e2}")
         return False
 
 
 def capture_page_png_b64(page: Page, full_page: bool = True) -> str:
     try:
-        raw = page.screenshot(full_page=full_page, type="png")
+        # JPEG quality=82 keeps full-page high-DPI screenshots ~90 KB (avoids HTTP 413 limit)
+        raw = page.screenshot(full_page=full_page, type="jpeg", quality=82)
         return base64.b64encode(raw).decode("ascii")
     except Exception:
         return ""

@@ -69,9 +69,12 @@ export function saveInnSnilsScreenshotBase64(
   const dir = getInnSnilsScreenshotDir();
   const safeSicil = String(sicilNo || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '');
   const stamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
-  const filename = `${safeSicil}_${kind}_${stamp}.png`;
+  const buf = Buffer.from(cleanB64, 'base64');
+  const isJpeg = buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8;
+  const ext = isJpeg ? 'jpg' : 'png';
+  const filename = `${safeSicil}_${kind}_${stamp}.${ext}`;
   const fullPath = path.join(dir, filename);
-  fs.writeFileSync(fullPath, Buffer.from(cleanB64, 'base64'));
+  fs.writeFileSync(fullPath, buf);
   return filename;
 }
 

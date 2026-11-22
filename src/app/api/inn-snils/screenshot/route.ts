@@ -93,7 +93,15 @@ function buildZipBuffer(entries: Array<{ name: string; data: Buffer }>): Buffer 
 function sanitizeDownloadName(raw: string, fallback: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
   if (!cleaned) return fallback;
-  return cleaned.toLowerCase().endsWith('.png') ? cleaned : `${cleaned}.png`;
+  const fallbackExt = fallback.toLowerCase().endsWith('.jpg') ? '.jpg' : '.png';
+  if (/\.(png|jpe?g)$/i.test(cleaned)) {
+    return cleaned.replace(/\.(png|jpe?g)$/i, fallbackExt);
+  }
+  return `${cleaned}${fallbackExt}`;
+}
+
+function isAllowedImageFile(file: string): boolean {
+  return /\.(png|jpe?g)$/i.test(file);
 }
 
 export async function GET(request: Request) {
@@ -102,7 +110,7 @@ export async function GET(request: Request) {
     const file = path.basename(String(searchParams.get('file') || '').trim());
     const download = searchParams.get('download') === '1';
     const customName = String(searchParams.get('name') || '').trim();
-    if (!file || !file.endsWith('.png')) {
+    if (!file || !isAllowedImageFile(file)) {
       return NextResponse.json({ success: false, message: 'Geçersiz dosya adı.' }, { status: 400 });
     }
     const fullPath = path.join(getInnSnilsScreenshotDir(), file);
@@ -110,8 +118,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, message: 'Ekran görüntüsü bulunamadı.' }, { status: 404 });
     }
     const bytes = fs.readFileSync(fullPath);
+    const isJpeg = (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) || /\.jpe?g$/i.test(file);
     const headers: Record<string, string> = {
-      'Content-Type': 'image/png',
+      'Content-Type': isJpeg ? 'image/jpeg' : 'image/png',
       'Cache-Control': 'public, max-age=3600',
     };
     if (download) {
@@ -134,12 +143,12 @@ export async function POST(request: Request) {
 
     for (const item of list.slice(0, 500)) {
       const safeFile = path.basename(String(item?.file || '').trim());
-      if (!safeFile || !safeFile.endsWith('.png')) continue;
+      if (!safeFile || !isAllowedImageFile(safeFile)) continue;
       const fullPath = path.join(dir, safeFile);
       if (!fs.existsSync(fullPath)) continue;
       let zipName = sanitizeDownloadName(String(item?.name || ''), safeFile);
       if (usedNames.has(zipName)) {
-        zipName = zipName.replace(/\.png$/i, `_${entries.length + 1}.png`);
+        zipName = zipName.replace(/\.(png|jpe?g)$/i, `_${entries.length + 1}.$1`);
       }
       usedNames.add(zipName);
       entries.push({ name: zipName, data: fs.readFileSync(fullPath) });
