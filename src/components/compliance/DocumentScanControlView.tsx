@@ -77,6 +77,19 @@ const DONUT_COLORS = {
   not_in_report: '#94a3b8',
 };
 
+// Legal-penalty priority order (left-to-right):
+// 1. Official Hiring/Dismissal/Contract & MVD notices (highest fine risk)
+// 2. Work Permit & Migration permits (RNR, Patent, Visa, Registration, Migration)
+// 3. Employee Identity documents (Passport, Translation, Photo)
+// 4. Medical, Biometrics & Other archive documents
+const DOC_PRIORITY_ORDER: number[] = [
+  11, 10, 9, 26, 34, 33, 8, 13, 17, 25, 18, 12, 27, 23, 22,
+  4, 19, 20, 6, 3, 1, 21,
+  0, 5, 7,
+  14, 2, 29, 16, 15, 30, 31, 32, 28, 24,
+];
+const DOC_PRIORITY_RANK = new Map<number, number>(DOC_PRIORITY_ORDER.map((docIdx, rank) => [docIdx, rank]));
+
 const PERMIT_LABELS: Record<string, { tr: string; ru: string; badgeClass: string }> = {
   VKS: {
     tr: 'VKS (Yüksek Uzman)',
@@ -557,16 +570,34 @@ export default function DocumentScanControlView({
     }
 
     return Array.from(map.values())
-      .map((r) => ({
-        ...r,
-        completionPct: r.reqDocs > 0 ? Math.round((r.upDocs / r.reqDocs) * 100) : 0,
-        projectsList: Array.from(r.projects.values())
-          .map((p) => ({
-            ...p,
-            completionPct: p.reqDocs > 0 ? Math.round((p.upDocs / p.reqDocs) * 100) : 0,
-          }))
-          .sort((a, b) => b.total - a.total),
-      }))
+      .map((r) => {
+        const denom = r.total || 1;
+        const completePct = Math.round((r.complete / denom) * 100);
+        const partialMissingPct = Math.round((r.partialMissing / denom) * 100);
+        const heavyMissingPct = Math.round((r.heavyMissing / denom) * 100);
+        const notInReportPct = Math.max(0, 100 - completePct - partialMissingPct - heavyMissingPct);
+        const completionPct = r.reqDocs > 0 ? Math.round((r.upDocs / r.reqDocs) * 100) : 0;
+        const missingDocPct = r.reqDocs > 0 ? Math.max(0, 100 - completionPct) : 0;
+        return {
+          ...r,
+          completionPct,
+          missingDocPct,
+          completePct,
+          partialMissingPct,
+          heavyMissingPct,
+          notInReportPct,
+          projectsList: Array.from(r.projects.values())
+            .map((p) => {
+              const pComp = p.reqDocs > 0 ? Math.round((p.upDocs / p.reqDocs) * 100) : 0;
+              return {
+                ...p,
+                completionPct: pComp,
+                missingDocPct: p.reqDocs > 0 ? Math.max(0, 100 - pComp) : 0,
+              };
+            })
+            .sort((a, b) => b.total - a.total),
+        };
+      })
       .sort((a, b) => b.total - a.total);
   }, [scopedPool, selectedPermit]);
 
@@ -613,18 +644,22 @@ export default function DocumentScanControlView({
         missing,
         rawUploadedAll,
         pct,
+        uploadedPct: pct,
+        missingPct: denom > 0 ? Math.max(0, 100 - pct) : 0,
       };
     });
   }, [locationFilteredPool, evalScope, lang]);
 
   const filteredDocChartData = useMemo(() => {
-    if (docChartGroup === 'core') {
-      return docTypeStats.filter((d) => d.isCore14);
-    }
-    if (docChartGroup === 'all') {
-      return docTypeStats;
-    }
-    return docTypeStats.filter((d) => d.group === docChartGroup);
+    const base =
+      docChartGroup === 'core'
+        ? docTypeStats.filter((d) => d.isCore14)
+        : docChartGroup === 'all'
+        ? docTypeStats
+        : docTypeStats.filter((d) => d.group === docChartGroup);
+    return [...base].sort(
+      (a, b) => (DOC_PRIORITY_RANK.get(a.index) ?? 999) - (DOC_PRIORITY_RANK.get(b.index) ?? 999)
+    );
   }, [docTypeStats, docChartGroup]);
 
   // Final filtered employee list for the detailed matrix table
@@ -1529,13 +1564,13 @@ export default function DocumentScanControlView({
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
                 {lang === 'ru'
-                  ? 'Анализ сканов по регионам и строительным площадкам'
-                  : 'Bölge ve Şantiye Bazlı Evrak Skan Karşılaştırması'}
+                  ? 'Анализ сканов по строительным площадкам и проектам (%)'
+                  : 'Şantiye / Proje Bazlı Evrak Skan Karşılaştırması (%)'}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {lang === 'ru'
-                  ? 'Сравнение регионов и раскрытие подплощадок (Казань, Свободный, Тобольск, Усть-Луга)'
-                  : 'Hangi bölge ve şantiyede eksik skan yoğunluğu var? Bölgeye tıklayarak şantiye kırılımını filtreleyin.'}
+                  ? 'Процентное сравнение полноты и пропусков по проектам (нажмите для фильтрации)'
+                  : 'Her şantiye / projenin %100 oransal evrak doluluk ve eksik dağılımı. Projeye tıklayarak filtreleyin.'}
               </p>
             </div>
             <div className="flex items-center gap-3 text-[10px] font-bold flex-wrap">
@@ -1571,36 +1606,40 @@ export default function DocumentScanControlView({
                     interval={0}
                     tick={{ fontSize: 10.5, fill: '#64748b', fontWeight: 600 }}
                   />
-                  <YAxis tick={{ fontSize: 10, fill: '#64748b' }} />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `%${v}`}
+                    tick={{ fontSize: 10, fill: '#64748b' }}
+                  />
                   <Tooltip
                     cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
                     content={({ active, payload, label }) => {
                       if (!active || !payload?.length) return null;
                       const row = payload[0]?.payload;
                       return (
-                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl text-xs space-y-1 min-w-[200px]">
+                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl text-xs space-y-1 min-w-[220px]">
                           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
                             <span className="font-bold text-slate-900 dark:text-white">{label}</span>
-                            <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono font-bold text-[10px]">
-                              Doluluk: %{row?.completionPct}
+                            <span className="px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-mono font-bold text-[10px]">
+                              Eksik Evrak: %{row?.missingDocPct}
                             </span>
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-emerald-600 font-semibold">Tam Eksiksiz:</span>
-                            <span className="font-mono font-bold">{row?.complete}</span>
+                            <span className="font-mono font-bold">%{row?.completePct} ({row?.complete})</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-amber-600 font-semibold">1–3 Evrak Eksik:</span>
-                            <span className="font-mono font-bold">{row?.partialMissing}</span>
+                            <span className="font-mono font-bold">%{row?.partialMissingPct} ({row?.partialMissing})</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-rose-600 font-semibold">4+ Evrak Eksik:</span>
-                            <span className="font-mono font-bold">{row?.heavyMissing}</span>
+                            <span className="font-mono font-bold">%{row?.heavyMissingPct} ({row?.heavyMissing})</span>
                           </div>
                           {row?.notInReport > 0 && (
                             <div className="flex justify-between text-[11px]">
                               <span className="text-slate-500 font-semibold">eBA Raporunda Yok:</span>
-                              <span className="font-mono font-bold">{row?.notInReport}</span>
+                              <span className="font-mono font-bold">%{row?.notInReportPct} ({row?.notInReport})</span>
                             </div>
                           )}
                         </div>
@@ -1608,8 +1647,8 @@ export default function DocumentScanControlView({
                     }}
                   />
                   <Bar
-                    dataKey="complete"
-                    name="Eksiksiz"
+                    dataKey="completePct"
+                    name="Eksiksiz (%)"
                     stackId="reg"
                     fill="#10b981"
                     animationDuration={850}
@@ -1622,8 +1661,8 @@ export default function DocumentScanControlView({
                     className="cursor-pointer"
                   />
                   <Bar
-                    dataKey="partialMissing"
-                    name="1-3 Eksik"
+                    dataKey="partialMissingPct"
+                    name="1-3 Eksik (%)"
                     stackId="reg"
                     fill="#f59e0b"
                     animationDuration={850}
@@ -1636,8 +1675,8 @@ export default function DocumentScanControlView({
                     className="cursor-pointer"
                   />
                   <Bar
-                    dataKey="heavyMissing"
-                    name="4+ Eksik"
+                    dataKey="heavyMissingPct"
+                    name="4+ Eksik (%)"
                     stackId="reg"
                     fill="#f43f5e"
                     animationDuration={850}
@@ -1650,8 +1689,8 @@ export default function DocumentScanControlView({
                     className="cursor-pointer"
                   />
                   <Bar
-                    dataKey="notInReport"
-                    name="Raporda Yok"
+                    dataKey="notInReportPct"
+                    name="Raporda Yok (%)"
                     stackId="reg"
                     fill="#94a3b8"
                     radius={[4, 4, 0, 0]}
@@ -1714,10 +1753,10 @@ export default function DocumentScanControlView({
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-mono font-bold text-[10px]">
-                            %{r.completionPct} Skan
+                            %{r.completionPct} Dolu
                           </span>
-                          <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-xs">
-                            {r.missingAny} Eksik
+                          <span className="px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-mono font-black text-[11px]">
+                            %{r.missingDocPct} Eksik
                           </span>
                         </div>
                       </div>
@@ -1766,7 +1805,7 @@ export default function DocumentScanControlView({
                                   %{p.completionPct}
                                 </span>
                                 <span className="text-rose-600 dark:text-rose-400 font-bold">
-                                  {p.missingAny} eksik
+                                  %{p.missingDocPct} eksik
                                 </span>
                                 <span className="text-slate-500">({p.total})</span>
                               </div>
@@ -1842,27 +1881,31 @@ export default function DocumentScanControlView({
                 interval={0}
                 tick={{ fontSize: 10.5, fill: '#64748b', fontWeight: 600 }}
               />
-              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} />
+              <YAxis
+                domain={[0, 100]}
+                tickFormatter={(v) => `%${v}`}
+                tick={{ fontSize: 10, fill: '#64748b' }}
+              />
               <Tooltip
                 cursor={{ fill: 'rgba(99, 102, 241, 0.08)' }}
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
                   const item = payload[0]?.payload;
                   return (
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl text-xs space-y-1.5 min-w-[215px]">
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl text-xs space-y-1.5 min-w-[225px]">
                       <div className="font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-1">
                         {item.fullLabel}
                       </div>
                       <div className="flex justify-between">
                         <span className="text-emerald-600 font-semibold">Uploaded (Yüklü):</span>
                         <span className="font-mono font-bold">
-                          {item.uploaded.toLocaleString('tr-TR')} (%{item.pct})
+                          %{item.uploadedPct} ({item.uploaded.toLocaleString('tr-TR')})
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-rose-600 font-semibold">Eksik (-):</span>
                         <span className="font-mono font-bold">
-                          {item.missing.toLocaleString('tr-TR')}
+                          %{item.missingPct} ({item.missing.toLocaleString('tr-TR')})
                         </span>
                       </div>
                       <div className="text-[10px] text-indigo-600 dark:text-indigo-400 pt-0.5 font-semibold">
@@ -1873,8 +1916,8 @@ export default function DocumentScanControlView({
                 }}
               />
               <Bar
-                dataKey="uploaded"
-                name="Uploaded (Yüklü)"
+                dataKey="uploadedPct"
+                name="Uploaded (%)"
                 stackId="doc"
                 fill="#10b981"
                 animationDuration={850}
@@ -1886,8 +1929,8 @@ export default function DocumentScanControlView({
                 className="cursor-pointer"
               />
               <Bar
-                dataKey="missing"
-                name="Eksik (-)"
+                dataKey="missingPct"
+                name="Eksik (%)"
                 stackId="doc"
                 fill="#f43f5e"
                 radius={[4, 4, 0, 0]}
