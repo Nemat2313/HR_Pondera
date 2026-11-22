@@ -413,8 +413,10 @@ export default function InnSnilsView() {
         const foundCnt = (json.results || []).filter((x: any) => x.status === 'VERIFIED').length;
         const notFoundCnt = (json.results || []).filter((x: any) => x.status === 'NOT_FOUND').length;
         setFeedback({
-          type: 'success',
-          text: `FNS sorgusu tamamlandı: ${foundCnt} INN bulundu, ${notFoundCnt} bulunamadı (Заявка 1'e hazır).`,
+          type: json?.captchaStopped ? 'info' : 'success',
+          text: json?.captchaStopped
+            ? `FNS sunucu IP'si için CAPTCHA istedi (${foundCnt} bulundu, ${notFoundCnt} bulunamadı). Kalan kişiler için yerel tarayıcınızdan çalışan Mor "nalog.ru Ekran Görüntüsü Al" butonunu kullanın.`
+            : `FNS sorgusu tamamlandı: ${foundCnt} INN bulundu, ${notFoundCnt} bulunamadı (Заявка 1'e hazır).`,
         });
         fetchData();
       } else {

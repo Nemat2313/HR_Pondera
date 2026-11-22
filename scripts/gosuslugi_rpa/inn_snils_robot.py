@@ -192,7 +192,6 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
 
             if m_inn:
                 inn_val = m_inn.group(1)
-                logger.info(f"  -> INN FOUND: {inn_val}")
                 post_result_to_central({
                     "sicil_no": sicil,
                     "ad_soyad": r.get("ad_soyad", ""),
@@ -202,8 +201,8 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
                     "inn_error": "",
                     "inn_screenshot_base64": shot_b64,
                 })
+                logger.info(f"  -> INN FOUND: {inn_val}")
             elif "не найдена" in body_text.lower() or "отсутствуют" in body_text.lower():
-                logger.info("  -> INN NOT FOUND (кандидат на Заявку 1)")
                 post_result_to_central({
                     "sicil_no": sicil,
                     "ad_soyad": r.get("ad_soyad", ""),
@@ -212,8 +211,8 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
                     "inn_error": "Информация об ИНН не найдена в ФНС",
                     "inn_screenshot_base64": shot_b64,
                 })
+                logger.info("  -> INN NOT FOUND (кандидат на Заявку 1)")
             else:
-                logger.warning("  -> Could not parse INN result")
                 post_result_to_central({
                     "sicil_no": sicil,
                     "ad_soyad": r.get("ad_soyad", ""),
@@ -222,6 +221,7 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
                     "inn_error": "Sonuç okunamadı (ekran görüntüsünü inceleyin)",
                     "inn_screenshot_base64": shot_b64,
                 })
+                logger.warning("  -> Could not parse INN result")
         except Exception as e:
             logger.error(f"  -> INN check error: {e}")
 

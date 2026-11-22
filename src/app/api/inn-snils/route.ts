@@ -367,10 +367,11 @@ export async function POST(request: Request) {
       const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
       let queriedCount = 0;
+      let captchaStopped = false;
       for (const w of workers.slice(0, 50)) {
         if (queriedCount > 0) {
-          // Pace requests to respect FNS rate limit (1.2s between calls, 6s cooldown every 5 calls)
-          const waitMs = queriedCount % 5 === 0 ? 6000 : 1200;
+          // Pace requests gently to respect FNS server-IP rate limits
+          const waitMs = queriedCount % 4 === 0 ? 7000 : 2200;
           await new Promise((r) => setTimeout(r, waitMs));
         }
         queriedCount++;
@@ -426,9 +427,15 @@ export async function POST(request: Request) {
           inn: fnsRes.inn || '',
           message: fnsRes.message || '',
         });
+
+        // Stop immediately on FNS CAPTCHA so we don't hammer the server IP or extend cooldown
+        if (fnsRes.status === 'ERROR' && /captcha/i.test(fnsRes.message || '')) {
+          captchaStopped = true;
+          break;
+        }
       }
 
-      return NextResponse.json({ success: true, results });
+      return NextResponse.json({ success: true, results, captchaStopped });
     }
 
     if (action === 'save_result') {
