@@ -87,7 +87,14 @@ export default function InnSnilsView() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<
-    'all' | 'inn_missing' | 'inn_verified' | 'inn_not_found' | 'snils_verified' | 'unverified'
+    | 'all'
+    | 'inn_missing'
+    | 'inn_verified'
+    | 'inn_not_found'
+    | 'inn_applied_step1'
+    | 'inn_applied_step2'
+    | 'snils_verified'
+    | 'unverified'
   >('all');
   const [siteFilter, setSiteFilter] = useState<string>('all');
   const [visibleCount, setVisibleCount] = useState<number>(200);
@@ -131,8 +138,9 @@ export default function InnSnilsView() {
   const [lightboxFile, setLightboxFile] = useState<string | null>(null);
 
   // INN Zayavka 1 & 2 config
-  const [applicantFam, setApplicantFam] = useState('АХМЕДОВ');
-  const [applicantNam, setApplicantNam] = useState('НЕМАТ');
+  const [applicantFam, setApplicantFam] = useState('РАХИМОВ');
+  const [applicantNam, setApplicantNam] = useState('ЗАХИДЖОН');
+  const [applicantOtch, setApplicantOtch] = useState('ТАЙИРОВИЧ');
   const [contactEmail, setContactEmail] = useState('ikbildirim@pondera.ru');
   const [contactPhone, setContactPhone] = useState('+7 977 869 96 16');
   const [regAddress, setRegAddress] = useState(PRESET_FIAS_ADDRESSES[0].value);
@@ -161,8 +169,25 @@ export default function InnSnilsView() {
       });
       const json = await res.json();
       if (json?.success) {
-        setItems(json.items || []);
+        const nextItems: InnSnilsRow[] = json.items || [];
+        setItems(nextItems);
         if (json.summary) setSummary(json.summary);
+        // Auto-uncheck rows whose INN is already VERIFIED (or already APPLIED on Tab 2)
+        setSelectedSicils((prev) => {
+          if (prev.size === 0) return prev;
+          const statusBySicil = new Map(nextItems.map((row) => [row.sicil_no, row.inn_status]));
+          let changed = false;
+          const next = new Set<string>();
+          prev.forEach((sic) => {
+            const st = statusBySicil.get(sic);
+            if (st === 'VERIFIED' || st === 'APPLIED_STEP1' || st === 'APPLIED_STEP2') {
+              changed = true;
+            } else {
+              next.add(sic);
+            }
+          });
+          return changed ? next : prev;
+        });
       }
     } catch {
       if (!silent) setFeedback({ type: 'error', text: 'INN/SNILS personel listesi yüklenemedi.' });
@@ -370,6 +395,8 @@ export default function InnSnilsView() {
       if (statusFilter === 'inn_missing') return !r.inn_no && r.inn_status !== 'VERIFIED';
       if (statusFilter === 'inn_verified') return r.inn_status === 'VERIFIED';
       if (statusFilter === 'inn_not_found') return r.inn_status === 'NOT_FOUND';
+      if (statusFilter === 'inn_applied_step1') return r.inn_status === 'APPLIED_STEP1';
+      if (statusFilter === 'inn_applied_step2') return r.inn_status === 'APPLIED_STEP2';
       if (statusFilter === 'snils_verified') return r.snils_status === 'VERIFIED';
       if (statusFilter === 'unverified') return r.inn_status !== 'VERIFIED' || r.snils_status !== 'VERIFIED';
       return true;
@@ -457,7 +484,22 @@ export default function InnSnilsView() {
       return;
     }
 
-    const records = (chosen.length > 0 ? chosen : items).map((r) => {
+    // Prevent duplicate Заявка 1 submission for already-applied or already-verified personnel
+    let effectiveChosen = chosen;
+    if (task === 'inn_zayavka_1') {
+      effectiveChosen = chosen.filter(
+        (r) => r.inn_status !== 'APPLIED_STEP1' && r.inn_status !== 'APPLIED_STEP2' && r.inn_status !== 'VERIFIED'
+      );
+      if (effectiveChosen.length === 0) {
+        setFeedback({
+          type: 'info',
+          text: 'Seçili personellerin tümü için Заявка 1 başvurusu zaten yapılmış veya INN doğrulanmış.',
+        });
+        return;
+      }
+    }
+
+    const records = (effectiveChosen.length > 0 ? effectiveChosen : items).map((r) => {
       const parts = String(r.tam_adi_kiril || r.ad_soyad || '')
         .trim()
         .split(/\s+/);
@@ -493,6 +535,7 @@ export default function InnSnilsView() {
             REG_DATE: regDate,
             APPLICANT_FAM: applicantFam,
             APPLICANT_NAM: applicantNam,
+            APPLICANT_OTCH: applicantOtch,
             IFNS_CODE: ifnsCode,
             AUTO_SUBMIT: autoSubmitZ1,
             EMAIL_LINKS: zayavka2Links
@@ -862,13 +905,21 @@ export default function InnSnilsView() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Temsilci Ad (Заявка 2)</label>
-                  <input
-                    type="text"
-                    value={applicantNam}
-                    onChange={(e) => setApplicantNam(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
-                  />
+                  <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Temsilci Ad &amp; Baba Adı (Заявка 2)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={applicantNam}
+                      onChange={(e) => setApplicantNam(e.target.value)}
+                      className="w-1/2 px-2 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
+                    />
+                    <input
+                      type="text"
+                      value={applicantOtch}
+                      onChange={(e) => setApplicantOtch(e.target.value)}
+                      className="w-1/2 px-2 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Dönüş E-Posta</label>
@@ -1000,6 +1051,8 @@ export default function InnSnilsView() {
                 <option value="inn_missing">INN Eksik</option>
                 <option value="inn_verified">INN Doğrulanmış</option>
                 <option value="inn_not_found">INN Bulunamadı</option>
+                <option value="inn_applied_step1">Заявка 1 Gönderildi</option>
+                <option value="inn_applied_step2">INN Başvuru Tamam</option>
                 <option value="snils_verified">SNILS Doğrulanmış</option>
                 <option value="unverified">Henüz Doğrulanmamış</option>
               </select>
