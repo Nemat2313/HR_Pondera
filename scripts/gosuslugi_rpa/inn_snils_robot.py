@@ -82,6 +82,43 @@ def wait_if_paused():
     logger.info("ROBOT_RESUMED: Продолжаем работу.")
 
 
+def accept_nalog_personal_data_if_needed(page: Page):
+    """Accepts service.nalog.ru/static/personal-data.html consent page (uni_checkbox hides native input)."""
+    try:
+        if "personal-data" not in (page.url or "").lower() and page.locator("#personalData").count() == 0:
+            return
+        logger.info("  -> Accepting nalog.ru personal data consent...")
+        lbl = page.locator("label[for='personalData'], .checkbox-item label, #unichk_0").first
+        if lbl.count() > 0 and lbl.is_visible():
+            lbl.click(force=True)
+        else:
+            page.evaluate("""() => {
+                const cb = document.getElementById('personalData');
+                if (cb) { cb.click(); }
+            }""")
+        page.wait_for_timeout(400)
+        # Ensure btnContinue is enabled (trigger jQuery click handler if still disabled)
+        btn = page.locator("button#btnContinue, button:has-text('Продолжить')").first
+        if btn.count() > 0:
+            is_dis = btn.get_attribute("disabled")
+            if is_dis is not None:
+                page.evaluate("""() => {
+                    const cb = document.getElementById('personalData');
+                    if (cb) { cb.checked = true; cb.dispatchEvent(new Event('click', {bubbles:true})); cb.dispatchEvent(new Event('change', {bubbles:true})); }
+                    const b = document.getElementById('btnContinue');
+                    if (b) { b.removeAttribute('disabled'); b.classList.remove('disabled'); }
+                }""")
+                page.wait_for_timeout(200)
+            btn.click(force=True)
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=15000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1200)
+    except Exception as e:
+        logger.warning(f"  -> Consent handling warning: {e}")
+
+
 def run_inn_check(page: Page, records: List[Dict[str, Any]]):
     for idx, r in enumerate(records, 1):
         wait_if_paused()
@@ -100,31 +137,33 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
             page.goto("https://service.nalog.ru/inn.do", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1200)
 
-            # Accept personal data modal if present
-            consent_cb = page.locator("input#personalData, input[name='personalData']").first
-            if consent_cb.count() > 0 and consent_cb.is_visible():
-                try:
-                    consent_cb.check()
-                    page.locator("button:has-text('Продолжить'):visible").first.click()
-                    page.wait_for_timeout(800)
-                except Exception:
-                    pass
+            accept_nalog_personal_data_if_needed(page)
 
+            page.wait_for_selector("input#fam", timeout=15000)
             page.fill("input#fam", fam)
             page.fill("input#nam", nam)
             if otch:
                 page.fill("input#otch", otch)
             else:
-                opt_otch = page.locator("input#opt_otch").first
-                if opt_otch.count() > 0:
-                    opt_otch.check()
+                lbl_otch = page.locator("label[for='opt_otch']").first
+                if lbl_otch.count() > 0 and lbl_otch.is_visible():
+                    lbl_otch.click(force=True)
+                else:
+                    page.evaluate("""() => {
+                        const cb = document.getElementById('opt_otch');
+                        if (cb && !cb.checked) cb.click();
+                    }""")
 
             if bdate:
                 m_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})", bdate)
                 bdate_ru = f"{m_iso.group(3)}.{m_iso.group(2)}.{m_iso.group(1)}" if m_iso else bdate
                 page.fill("input#bdate", bdate_ru)
             try:
-                page.select_option("select#doctype", doctype_val)
+                page.select_option("select#doctype", doctype_val, force=True)
+                page.evaluate("""(val) => {
+                    const sel = document.getElementById('doctype');
+                    if (sel) { sel.value = val; sel.dispatchEvent(new Event('change', {bubbles:true})); }
+                }""", doctype_val)
             except Exception:
                 pass
             if docno:
@@ -274,6 +313,7 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
         try:
             page.goto("https://service.nalog.ru/zpufl/edit.html", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1500)
+            accept_nalog_personal_data_if_needed(page)
 
             page.fill("input#fam", fam)
             page.fill("input#nam", nam)
