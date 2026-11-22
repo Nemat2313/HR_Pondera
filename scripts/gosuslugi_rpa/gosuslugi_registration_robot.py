@@ -490,11 +490,16 @@ class GosuslugiRegistrationRobot:
         self.click_text_button(["Начать"])
         self.page.wait_for_timeout(900)
 
-        # Wizard Q&A screens before 'Проверьте ваши данные'
+        # Wizard Q&A screens (per-row answers with config fallbacks)
         max_wait = int(self.cfg.get("MAX_SCREEN_WAIT_SEC") or 180)
-        permit_type = str(row.get("ТипДокумента") or "DOC_NOT_NEEDED").upper()
-        has_prev = bool(self.cfg.get("HAS_PREV_REG", True))
-        has_mk = bool(self.cfg.get("HAS_MIGRATION_CARD", True))
+        q1_action = str(row.get("Q1_Action") or "Поставить иностранца на учёт").strip()
+        q2_whom = str(row.get("Q2_Whom") or "Совершеннолетнего иностранца").strip()
+        q3_contract = str(row.get("Q3_Contract") or "Да").strip()
+        permit_type = str(row.get("Q4_StayDoc") or row.get("ТипДокумента") or "Документ не нужен").strip()
+        q5_prev = str(row.get("Q5_PrevReg") or ("Да" if self.cfg.get("HAS_PREV_REG", True) else "Нет")).strip()
+        q6_mk = str(row.get("Q6_MigCard") or ("Да" if self.cfg.get("HAS_MIGRATION_CARD", True) else "Нет")).strip()
+        has_prev = not q5_prev.lower().startswith(("н", "n", "f", "0"))
+        has_mk = not q6_mk.lower().startswith(("н", "n", "f", "0"))
 
         reg_addr = str(row.get("АдресРегистрации") or self.cfg.get("REG_ADDRESS") or "").strip()
         prev_addr = str(row.get("АдресРегистрацииСТР") or self.cfg.get("PREV_REG_ADDRESS") or reg_addr).strip()
@@ -553,28 +558,29 @@ class GosuslugiRegistrationRobot:
                 if self.click_text_button(["Начать"]):
                     continue
 
-            # 1) 'Что нужно сделать?' -> 'Поставить иностранца на учёт'
+            # 1) 'Что нужно сделать?' -> Q1
             if "что нужно сделать" in h_low:
-                if self.click_text_button(["Поставить иностранца на учёт", "Поставить иностранца на учет"]):
+                if self.click_text_button([q1_action, "Поставить иностранца на учёт", "Поставить иностранца на учет"]):
                     continue
 
-            # 2) 'Кого хотите поставить на учёт?' -> 'Совершеннолетнего иностранца'
+            # 2) 'Кого хотите поставить на учёт?' -> Q2
             if "кого хотите поставить на учёт" in h_low or "кого хотите поставить на учет" in h_low:
-                self.click_text_button(["Совершеннолетнего иностранца"])
+                self.click_text_button([q2_whom, "Совершеннолетнего иностранца"])
                 continue
 
-            # 3) 'У иностранца или члена его семьи есть трудовой договор в России?' -> 'Да'
+            # 3) 'У иностранца или члена его семьи есть трудовой договор в России?' -> Q3
             if "трудовой договор в россии" in h_low:
-                self.click_text_button(["Да"])
+                self.click_text_button(["Нет" if q3_contract.lower().startswith(("н", "n")) else "Да"])
                 continue
 
-            # 4) 'Какой документ подтверждает право пребывания или проживания иностранца в России?'
+            # 4) 'Какой документ подтверждает право пребывания или проживания иностранца в России?' -> Q4
             if "какой документ" in h_low and "россии" in h_low:
-                if permit_type == "VISA":
+                pt_up = permit_type.upper()
+                if pt_up in ("VISA", "ВИЗА") or "виза" in permit_type.lower():
                     self.click_text_button(["Виза"])
-                elif permit_type == "VNJ":
+                elif pt_up in ("VNJ", "ВНЖ") or "вид на жительство" in permit_type.lower():
                     self.click_text_button(["Вид на жительство"])
-                elif permit_type == "RVP":
+                elif pt_up in ("RVP", "РВП") or "временное проживание" in permit_type.lower():
                     self.click_text_button(["Разрешение на временное проживание"])
                 else:
                     self.click_text_button(["Документ не нужен"])

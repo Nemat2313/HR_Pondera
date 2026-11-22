@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import StandbyComplianceView from './StandbyComplianceView';
 import DocumentScanControlView from './DocumentScanControlView';
+import WindowsTabBar from '@/components/common/WindowsTabBar';
 import {
   ResponsiveContainer,
   BarChart,
@@ -241,63 +242,34 @@ export default function ComplianceAnalyticsView({
 
   return (
     <div className="p-3 sm:p-5 lg:p-7 space-y-5 sm:space-y-6 max-w-full overflow-hidden">
-      {/* SUB-TAB NAVIGATOR */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#111C35] p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900/90 rounded-xl border border-slate-200/70 dark:border-slate-800 flex-1 sm:flex-none">
-          {/* Tab 1: Evrak Süresi */}
-          <button
-            onClick={() => setComplianceSubTab('expiry')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              complianceSubTab === 'expiry'
-                ? 'bg-white dark:bg-emerald-500/25 text-emerald-950 dark:text-emerald-100 shadow-sm ring-1 ring-emerald-300 dark:ring-emerald-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <ShieldAlert className={`w-4 h-4 ${complianceSubTab === 'expiry' ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500'}`} />
-            <span>{lang === 'ru' ? 'Срок действия документов' : 'Evrak Geçerlilik & Süre Kontrolü'}</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 dark:bg-emerald-950/90 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              {data?.totalActivePersonnel ? data.totalActivePersonnel.toLocaleString() : '5.005'}
-            </span>
-          </button>
-
-          {/* Tab 2: Standby Bekleyenler */}
-          <button
-            onClick={() => setComplianceSubTab('standby')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              complianceSubTab === 'standby'
-                ? 'bg-white dark:bg-amber-500/25 text-amber-950 dark:text-amber-100 shadow-sm ring-1 ring-amber-300 dark:ring-amber-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <Hourglass className={`w-4 h-4 ${complianceSubTab === 'standby' ? 'text-amber-600 dark:text-amber-300' : 'text-amber-500'}`} />
-            <span>{lang === 'ru' ? 'Ожидание документов & Простой' : 'Evrak Bekleyenler & Standby'}</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 dark:bg-amber-950/90 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-              323
-            </span>
-          </button>
-
-          {/* Tab 3: eBA Evrak Skan Kontrolü */}
-          <button
-            onClick={() => setComplianceSubTab('scans')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              complianceSubTab === 'scans'
-                ? 'bg-white dark:bg-indigo-500/25 text-indigo-950 dark:text-indigo-100 shadow-sm ring-1 ring-indigo-300 dark:ring-indigo-500/50'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <FolderCheck className={`w-4 h-4 ${complianceSubTab === 'scans' ? 'text-indigo-600 dark:text-indigo-300' : 'text-indigo-500'}`} />
-            <span>{lang === 'ru' ? 'Контроль сканов (eBA Архив)' : 'Evrak Skan Kontrolü (eBA Arşiv)'}</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-              {scanTabCounts.total.toLocaleString('tr-TR')}
-            </span>
-          </button>
-        </div>
-
-        <div className="text-[11px] text-slate-500 dark:text-slate-400 px-3 hidden xl:flex items-center gap-1.5 font-medium">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-          <span>{lang === 'ru' ? 'Аналитика соответствия законодательству РФ' : 'RF Mevzuat & Operasyonel Uyumluluk Analitiği'}</span>
-        </div>
-      </div>
+      {/* WINDOWS-STYLE EQUAL-WIDTH TAB NAVIGATOR */}
+      <WindowsTabBar
+        activeId={complianceSubTab}
+        onChange={(id) => setComplianceSubTab(id as 'expiry' | 'standby' | 'scans')}
+        tabs={[
+          {
+            id: 'expiry',
+            label: lang === 'ru' ? '1. Сроки документов' : '1. Süre Kontrolü',
+            badge: data?.totalActivePersonnel ? data.totalActivePersonnel.toLocaleString('tr-TR') : '—',
+            icon: <ShieldAlert className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />,
+            accent: 'emerald',
+          },
+          {
+            id: 'standby',
+            label: lang === 'ru' ? '2. Ожидание (Standby)' : '2. Bekleyenler',
+            badge: 323,
+            icon: <Hourglass className="w-4 h-4 text-amber-600 dark:text-amber-400" />,
+            accent: 'amber',
+          },
+          {
+            id: 'scans',
+            label: lang === 'ru' ? '3. Сканы (eBA)' : '3. Evrak Skan',
+            badge: scanTabCounts.total.toLocaleString('tr-TR'),
+            icon: <FolderCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />,
+            accent: 'indigo',
+          },
+        ]}
+      />
 
       {complianceSubTab === 'standby' ? (
         <StandbyComplianceView onNavigateToPersonnel={onNavigateToPersonnel} />
@@ -523,7 +495,42 @@ export default function ComplianceAnalyticsView({
                 data={data?.docStats || []}
                 margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
               >
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                <defs>
+                  <filter id="bar3dShadow" x="-10%" y="-10%" width="130%" height="130%">
+                    <feDropShadow dx="2" dy="3" stdDeviation="2.5" floodColor="#000000" floodOpacity="0.28" />
+                  </filter>
+                  <linearGradient id="gradExpired3d" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#FB7185" />
+                    <stop offset="35%" stopColor="#F43F5E" />
+                    <stop offset="100%" stopColor="#BE123C" />
+                  </linearGradient>
+                  <linearGradient id="gradCritical3d" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#FCD34D" />
+                    <stop offset="35%" stopColor="#F59E0B" />
+                    <stop offset="100%" stopColor="#B45309" />
+                  </linearGradient>
+                  <linearGradient id="gradWarning3d" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#FDBA74" />
+                    <stop offset="35%" stopColor="#FB923C" />
+                    <stop offset="100%" stopColor="#C2410C" />
+                  </linearGradient>
+                  <linearGradient id="gradNormal3d" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#7DD3FC" />
+                    <stop offset="35%" stopColor="#38BDF8" />
+                    <stop offset="100%" stopColor="#0369A1" />
+                  </linearGradient>
+                  <linearGradient id="gradValid3d" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#6EE7B7" />
+                    <stop offset="35%" stopColor="#10B981" />
+                    <stop offset="100%" stopColor="#047857" />
+                  </linearGradient>
+                  <linearGradient id="gradMissing3d" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#D8B4FE" />
+                    <stop offset="35%" stopColor="#A855F7" />
+                    <stop offset="100%" stopColor="#6B21A8" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.18} vertical={false} />
                 <XAxis
                   dataKey="label"
                   angle={-15}
@@ -572,24 +579,24 @@ export default function ComplianceAnalyticsView({
                     return null;
                   }}
                 />
-                <Bar dataKey="expiredCount" name="Süresi Doldu" stackId="a" fill="#F43F5E" />
-                <Bar dataKey="criticalCount" name="0-15 Gün (Kritik)" stackId="a" fill="#F59E0B" />
-                <Bar dataKey="warningCount" name="16-30 Gün (Yaklaşan)" stackId="a" fill="#FB923C" />
-                <Bar dataKey="normalCount" name="31-60 Gün" stackId="a" fill="#38BDF8" />
-                <Bar dataKey="validCount" name="Geçerli (>60g)" stackId="a" fill="#10B981" />
-                <Bar dataKey="missingCount" name="Eksik" stackId="a" fill="#A855F7" />
+                <Bar dataKey="expiredCount" name="Süresi Doldu" stackId="a" fill="url(#gradExpired3d)" radius={[2, 2, 4, 4]} maxBarSize={46} style={{ filter: 'url(#bar3dShadow)' }} isAnimationActive={true} animationDuration={850} animationEasing="ease-out" />
+                <Bar dataKey="criticalCount" name="0-15 Gün (Kritik)" stackId="a" fill="url(#gradCritical3d)" radius={[2, 2, 2, 2]} maxBarSize={46} isAnimationActive={true} animationDuration={850} animationEasing="ease-out" />
+                <Bar dataKey="warningCount" name="16-30 Gün (Yaklaşan)" stackId="a" fill="url(#gradWarning3d)" radius={[2, 2, 2, 2]} maxBarSize={46} isAnimationActive={true} animationDuration={850} animationEasing="ease-out" />
+                <Bar dataKey="normalCount" name="31-60 Gün" stackId="a" fill="url(#gradNormal3d)" radius={[2, 2, 2, 2]} maxBarSize={46} isAnimationActive={true} animationDuration={850} animationEasing="ease-out" />
+                <Bar dataKey="validCount" name="Geçerli (>60g)" stackId="a" fill="url(#gradValid3d)" radius={[4, 4, 2, 2]} maxBarSize={46} isAnimationActive={true} animationDuration={850} animationEasing="ease-out" />
+                <Bar dataKey="missingCount" name="Eksik" stackId="a" fill="url(#gradMissing3d)" radius={[8, 8, 0, 0]} maxBarSize={46} isAnimationActive={true} animationDuration={850} animationEasing="ease-out" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* CHART 2: Bölge / Şantiye Risk Dağılımı */}
+        {/* CHART 2: Proje / Şantiye Risk Sıralaması */}
         <div className="p-5 bg-white dark:bg-[#131C31] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                Bölge Risk Sıralaması
+                {lang === 'ru' ? 'Рейтинг рисков по проектам' : 'Proje Risk Sıralaması'}
               </h3>
               <span className="text-[10px] text-slate-600 dark:text-slate-400">Kritik Evrak Adedi</span>
             </div>

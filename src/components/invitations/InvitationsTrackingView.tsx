@@ -33,6 +33,7 @@ import {
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import InvitationApplicationsTab from './InvitationApplicationsTab';
+import WindowsTabBar from '@/components/common/WindowsTabBar';
 
 interface CandidateMatch {
   sicil_no: string;
@@ -709,42 +710,28 @@ export default function InvitationsTrackingView() {
           </div>
         )}
 
-        {/* 2-Tab Main Switcher: ПРИГЛАШЕНИЯ Applications vs Incoming MVD PDFs */}
-        <div className="pt-2 border-t border-emerald-200/60 dark:border-slate-800 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveSection('applications')}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
-              activeSection === 'applications'
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'bg-white/90 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>
-              {lang === 'ru'
-                ? '1. Поданные заявки (ПРИГЛАШЕНИЯ — Excel & Ввод)'
-                : '1. Başvurulan Davetiyeler & Bekleme Takibi (ПРИГЛАШЕНИЯ)'}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('mvd_pdfs')}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
-              activeSection === 'mvd_pdfs'
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                : 'bg-white/90 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
-            }`}
-          >
-            <Mail className="w-3.5 h-3.5" />
-            <span>
-              {lang === 'ru'
-                ? `2. Входящие PDF МВД (${summary.total})`
-                : `2. Gelen MVD Davetiyeleri & PDF Arşivi (${summary.total})`}
-            </span>
-          </button>
-        </div>
+        {/* Windows-Style Equal-Width 2-Tab Switcher */}
+        <WindowsTabBar
+          activeId={activeSection}
+          onChange={(id) => setActiveSection(id as 'applications' | 'mvd_pdfs')}
+          tabs={[
+            {
+              id: 'applications',
+              label: lang === 'ru' ? '1. Список заявок' : '1. Başvuru Listesi',
+              icon: <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />,
+              accent: 'emerald',
+              title: 'Başvurulan Davetiyeler & Bekleme Takibi (ПРИГЛАШЕНИЯ)',
+            },
+            {
+              id: 'mvd_pdfs',
+              label: lang === 'ru' ? '2. Входящие приглашения' : '2. Gelen Davetiyeler',
+              badge: summary.total,
+              icon: <Mail className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />,
+              accent: 'indigo',
+              title: 'Gelen MVD Davetiyeleri & PDF Arşivi',
+            },
+          ]}
+        />
       </div>
 
       {activeSection === 'applications' ? (

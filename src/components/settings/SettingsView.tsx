@@ -29,6 +29,7 @@ import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import UserManagementView from '@/components/admin/UserManagementView';
+import WindowsTabBar from '@/components/common/WindowsTabBar';
 import DatabaseManagementView from '@/components/database/DatabaseManagementView';
 import AISettingsTab from '@/components/settings/AISettingsTab';
 
@@ -533,60 +534,42 @@ export default function SettingsView({
           </div>
         </div>
 
-        {/* 3 Main Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('users_rls')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeSubTab === 'users_rls'
-                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
-                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>{lang === 'ru' ? '1. Пользователи и RLS' : '1. Kullanıcı & RLS'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('database_excel')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeSubTab === 'database_excel'
-                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
-                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5" />
-            <span>{lang === 'ru' ? '2. Excel и База данных' : '2. Excel & Veritabanı'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('mail_notifications')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeSubTab === 'mail_notifications'
-                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
-                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
-            }`}
-          >
-            <Mail className="w-3.5 h-3.5" />
-            <span>{lang === 'ru' ? '3. Почта и Автоматизация' : '3. Mail Bildirimleri & Otomasyon'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('ai_settings')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeSubTab === 'ai_settings'
-                ? 'bg-indigo-100/95 dark:bg-indigo-500/25 border border-indigo-300 dark:border-indigo-400/40 text-indigo-950 dark:text-indigo-100 shadow-2xs'
-                : 'text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white dark:hover:bg-slate-800'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{lang === 'ru' ? '4. ИИ и Чтение Билетов/Сканов' : '4. Yapay Zeka (AI) & Evrak Okuma'}</span>
-          </button>
-        </div>
+        {/* Windows-Style Equal-Width 4-Tab Bar */}
+        <WindowsTabBar
+          activeId={activeSubTab}
+          onChange={(id) =>
+            setActiveSubTab(
+              id as 'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings'
+            )
+          }
+          className="mt-3"
+          tabs={[
+            {
+              id: 'users_rls',
+              label: lang === 'ru' ? '1. Пользователи' : '1. Kullanıcı & RLS',
+              icon: <Users className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />,
+              accent: 'indigo',
+            },
+            {
+              id: 'database_excel',
+              label: lang === 'ru' ? '2. База данных' : '2. Veritabanı',
+              icon: <Database className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />,
+              accent: 'emerald',
+            },
+            {
+              id: 'mail_notifications',
+              label: lang === 'ru' ? '3. Почта и отчёты' : '3. Mail & Bildirim',
+              icon: <Mail className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />,
+              accent: 'sky',
+            },
+            {
+              id: 'ai_settings',
+              label: lang === 'ru' ? '4. ИИ и OCR' : '4. AI Ayarları',
+              icon: <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
+              accent: 'amber',
+            },
+          ]}
+        />
       </div>
 
       {/* TAB 1: KULLANICI & RLS */}

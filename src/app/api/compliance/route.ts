@@ -102,6 +102,23 @@ export async function GET(request: Request) {
 
     const db = getDb();
 
+    // Fast in-memory cache keyed by personnel version + freshness + RLS scope + query params
+    const verRow = db
+      .prepare('SELECT COUNT(*) as cnt, COALESCE(MAX(id), 0) as maxId FROM personnel')
+      .get() as { cnt: number; maxId: number };
+    const freshRowCache = db
+      .prepare("SELECT value FROM system_info WHERE key = 'data_freshness'")
+      .get() as { value?: string } | undefined;
+    const compCacheKey = `comp_v1:${verRow?.cnt || 0}:${verRow?.maxId || 0}:${freshRowCache?.value || ''}:${scopeType}:${scopeVal}:${searchParams.toString()}`;
+    const gComp = globalThis as unknown as { __ponderaComplianceCache?: Map<string, any> };
+    if (!gComp.__ponderaComplianceCache) {
+      gComp.__ponderaComplianceCache = new Map();
+    }
+    const cachedComp = gComp.__ponderaComplianceCache.get(compCacheKey);
+    if (cachedComp) {
+      return NextResponse.json(cachedComp);
+    }
+
     let referenceDateStr = DEFAULT_REFERENCE_DATE_STR;
     try {
       const freshRow = db.prepare("SELECT value FROM system_info WHERE key = 'data_freshness'").get() as { value?: string } | undefined;
@@ -513,7 +530,7 @@ export async function GET(request: Request) {
 
     const complianceRate = totalDocsCount > 0 ? Math.round((totalValid / totalDocsCount) * 100) : 0;
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       referenceDate: formatDateDisplay(referenceDateStr),
       totalActivePersonnel: rows.length,
@@ -541,7 +558,14 @@ export async function GET(request: Request) {
       uyrukBreakdown: Object.values(uyrukBreakdown).sort((a, b) => b.total - a.total).slice(0, 8),
       items: filteredItems, // Unlimited - full list for export and client pagination
       totalFilteredItems: filteredItems.length,
-    });
+    };
+
+    if (gComp.__ponderaComplianceCache.size > 30) {
+      gComp.__ponderaComplianceCache.clear();
+    }
+    gComp.__ponderaComplianceCache.set(compCacheKey, payload);
+
+    return NextResponse.json(payload);
   } catch {
     return NextResponse.json(
       { success: false, message: 'Evrak analizi verisi oluşturulurken bir hata oluştu.' },

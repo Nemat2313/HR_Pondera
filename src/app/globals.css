@@ -8,8 +8,23 @@
 }
 
 .dark {
-  --background: #0b1120;
+  --background: #080f1d;
   --foreground: #f8fafc;
+}
+
+/* Dark Mode Surface Elevation & Crisp Container Separation */
+.dark .bg-\[\#131C31\],
+.dark .bg-\[\#111F38\],
+.dark .bg-\[\#111C35\],
+.dark .bg-\[\#131F38\]\/95,
+.dark .bg-\[\#131C31\]\/95 {
+  background-color: #13213a !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.dark .border-slate-800 {
+  border-color: rgba(148, 163, 184, 0.22) !important;
 }
 
 /* Universal Typography: Tahoma & Clean System Fallbacks */

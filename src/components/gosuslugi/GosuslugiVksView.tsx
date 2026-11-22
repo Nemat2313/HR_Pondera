@@ -4486,7 +4486,7 @@ export default function GosuslugiVksView() {
       {/* PAGE-CONNECTED TAB BAR + TOP HEADER SECTION */}
       <div>
         {/* WINDOWS MULTI-TAB FORM HEADER (4 EQUAL-WIDTH TABS) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 px-1 pt-1 bg-slate-200/80 dark:bg-slate-900/90 rounded-t-2xl border border-b-0 border-slate-300/80 dark:border-slate-800">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1 px-1.5 pt-1.5 bg-slate-200/85 dark:bg-[#0B1528] rounded-t-2xl border border-b border-slate-300/90 dark:border-slate-600/80">
           {/* Tab 1: VKS Salary Notification */}
           <button
             type="button"
