@@ -120,7 +120,9 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
                     opt_otch.check()
 
             if bdate:
-                page.fill("input#bdate", bdate)
+                m_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})", bdate)
+                bdate_ru = f"{m_iso.group(3)}.{m_iso.group(2)}.{m_iso.group(1)}" if m_iso else bdate
+                page.fill("input#bdate", bdate_ru)
             try:
                 page.select_option("select#doctype", doctype_val)
             except Exception:
@@ -128,10 +130,21 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
             if docno:
                 page.fill("input#docno", docno)
             if docdt:
-                page.fill("input#docdt", docdt)
+                m_iso2 = re.match(r"^(\d{4})-(\d{2})-(\d{2})", docdt)
+                docdt_ru = f"{m_iso2.group(3)}.{m_iso2.group(2)}.{m_iso2.group(1)}" if m_iso2 else docdt
+                page.fill("input#docdt", docdt_ru)
 
             page.click("button#btn_send")
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(2800)
+
+            # Scroll to result section so official nalog.ru INN result is clearly visible in PNG screenshot
+            try:
+                res_el = page.locator("#resultInn, .pane-result, #result_1, #result_0").first
+                if res_el.count() > 0:
+                    res_el.scroll_into_view_if_needed(timeout=1500)
+                    page.wait_for_timeout(300)
+            except Exception:
+                pass
 
             body_text = (page.inner_text("body") or "").strip()
             m_inn = re.search(r"\b(\d{12})\b", body_text)

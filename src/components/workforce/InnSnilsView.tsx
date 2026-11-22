@@ -683,10 +683,10 @@ export default function InnSnilsView() {
                     onClick={() => handleLaunchLocalRobot('inn_check')}
                     disabled={selectedSicils.size === 0}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 cursor-pointer"
-                    title="Chrome ile nalog.ru'dan kontrol edip ekran görüntüsünü sunucuya arşivler"
+                    title="Gerçek Chrome penceresinde service.nalog.ru/inn.do üzerinden sorgular ve resmi ekran görüntüsünü sunucuya arşivler"
                   >
                     <Camera className="w-3.5 h-3.5" />
-                    <span>INN + Ekran Görüntüsü</span>
+                    <span>nalog.ru Ekran Görüntüsü Al ({selectedSicils.size})</span>
                   </button>
 
                   <button
@@ -737,11 +737,12 @@ export default function InnSnilsView() {
                   </th>
                   <th className="py-2.5 px-2.5">Sicil</th>
                   <th className="py-2.5 px-2.5">Ad Soyad / Kiril</th>
+                  <th className="py-2.5 px-2.5">Doğum &amp; Pasaport (FNS Verisi)</th>
                   <th className="py-2.5 px-2.5">Şantiye / Proje</th>
                   <th className="py-2.5 px-2.5">Giriş / Çıkış / Durum</th>
                   <th className="py-2.5 px-2.5">INN No &amp; Doğrulama</th>
                   <th className="py-2.5 px-2.5">SNILS No &amp; Doğrulama</th>
-                  <th className="py-2.5 px-2.5">Ekran Görüntüleri</th>
+                  <th className="py-2.5 px-2.5">Ekran Görüntüsü</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -758,9 +759,20 @@ export default function InnSnilsView() {
                     <td className="py-2 px-2.5 font-mono text-slate-900 dark:text-white">{r.sicil_no}</td>
                     <td className="py-2 px-2.5">
                       <div className="text-slate-900 dark:text-white">{r.ad_soyad}</div>
-                      {r.tam_adi_kiril && (
+                      {r.tam_adi_kiril ? (
                         <div className="text-[10.5px] text-slate-500 dark:text-slate-400">{r.tam_adi_kiril}</div>
+                      ) : (
+                        <div className="text-[10px] text-rose-500">Kiril Ad Soyad Eksik!</div>
                       )}
+                    </td>
+                    <td className="py-2 px-2.5">
+                      <div className={`font-mono text-[11px] ${r.pasaport_no ? 'text-slate-900 dark:text-white' : 'text-rose-500'}`}>
+                        {r.pasaport_no || 'Pasaport Eksik!'}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                        D.T: <span className={r.dogum_tarihi ? '' : 'text-rose-500'}>{r.dogum_tarihi || 'Eksik'}</span>
+                        {' • '}Ver: {r.pasaport_verilis || '—'}
+                      </div>
                     </td>
                     <td className="py-2 px-2.5">
                       <div className="text-slate-800 dark:text-slate-200">{r.proje_adi || r.region || '—'}</div>
@@ -855,7 +867,7 @@ export default function InnSnilsView() {
                 ))}
                 {filteredItems.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-10 text-center text-slate-500">
+                    <td colSpan={9} className="py-10 text-center text-slate-500">
                       <FileSpreadsheet className="w-7 h-7 mx-auto mb-1.5 opacity-40" />
                       Gösterilecek kayıt bulunamadı.
                     </td>
