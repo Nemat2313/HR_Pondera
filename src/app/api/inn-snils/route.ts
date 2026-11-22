@@ -29,11 +29,12 @@ function formatFnsDocNo(series: string, number: string, doctype: string, withSpa
   const s = String(series || '').trim();
   const n = String(number || '').trim();
   if (doctype === '21') {
-    const digits = `${s}${n}`.replace(/\D/g, '');
+    const nDigits = n.replace(/\D/g, '');
+    const digits = nDigits.length === 10 ? nDigits : `${s}${n}`.replace(/\D/g, '');
     if (digits.length === 10) {
       return `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4)}`;
     }
-    return `${s} ${n}`.trim();
+    return n || s;
   }
   if (s && n && !n.toUpperCase().startsWith(s.toUpperCase())) {
     return withSpaceForForeign ? `${s} ${n}` : `${s}${n}`;
