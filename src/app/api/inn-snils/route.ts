@@ -88,7 +88,12 @@ async function queryFnsNalogInnOnce(params: {
     });
     const json1: any = await res1.json().catch(() => null);
     if (!res1.ok || !json1) {
-      const errDetail = json1?.ERRORS ? JSON.stringify(json1.ERRORS).slice(0, 180) : `FNS HTTP ${res1.status}`;
+      const rawErr = json1?.ERRORS ? JSON.stringify(json1.ERRORS) : '';
+      const errDetail = /captcha/i.test(rawErr)
+        ? 'FNS CAPTCHA istedi — Mor "nalog.ru Ekran Görüntüsü Al" butonunu kullanın'
+        : rawErr
+        ? rawErr.slice(0, 180)
+        : `FNS HTTP ${res1.status}`;
       return { status: 'ERROR', message: errDetail };
     }
     if (json1.inn) {
@@ -120,7 +125,13 @@ async function queryFnsNalogInnOnce(params: {
       return { status: 'ERROR', message: 'ФНС не успела вернуть ответ (таймаут)' };
     }
     if (json1.ERRORS) {
-      return { status: 'ERROR', message: JSON.stringify(json1.ERRORS).slice(0, 180) };
+      const rawErr = JSON.stringify(json1.ERRORS);
+      return {
+        status: 'ERROR',
+        message: /captcha/i.test(rawErr)
+          ? 'FNS CAPTCHA istedi — Mor "nalog.ru Ekran Görüntüsü Al" butonunu kullanın'
+          : rawErr.slice(0, 180),
+      };
     }
     return { status: 'NOT_FOUND', message: 'Информация об ИНН не найдена в ФНС' };
   } catch (err: any) {

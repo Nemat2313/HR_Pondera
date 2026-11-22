@@ -198,6 +198,7 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
                     "tam_adi_kiril": r.get("tam_adi_kiril", ""),
                     "inn_status": "VERIFIED",
                     "verified_inn": inn_val,
+                    "inn_error": "",
                     "inn_screenshot_base64": shot_b64,
                 })
             elif "не найдена" in body_text.lower() or "отсутствуют" in body_text.lower():

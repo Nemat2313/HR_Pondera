@@ -94,14 +94,27 @@ export default function InnSnilsView() {
     waiting_for_manual: boolean;
     manual_message: string | null;
     last_log: string;
+    currentIndex: number;
+    totalCount: number;
+    completedCount: number;
+    activeSicil: string;
+    activeName: string;
+    completedSicils: string[];
   }>({
     is_running: false,
     is_paused: false,
     waiting_for_manual: false,
     manual_message: null,
     last_log: '',
+    currentIndex: 0,
+    totalCount: 0,
+    completedCount: 0,
+    activeSicil: '',
+    activeName: '',
+    completedSicils: [],
   });
   const wasRpaRunningRef = useRef(false);
+  const lastCompletedCountRef = useRef(0);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [lightboxFile, setLightboxFile] = useState<string | null>(null);
 
@@ -123,8 +136,8 @@ export default function InnSnilsView() {
 
   const sicilExcelRef = useRef<HTMLInputElement>(null);
 
-  const fetchData = async (overrideSicils?: string) => {
-    setLoading(true);
+  const fetchData = async (overrideSicils?: string, silent?: boolean) => {
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams();
       if (includeExits) params.set('includeExits', 'true');
@@ -141,9 +154,9 @@ export default function InnSnilsView() {
         if (json.summary) setSummary(json.summary);
       }
     } catch {
-      setFeedback({ type: 'error', text: 'INN/SNILS personel listesi yüklenemedi.' });
+      if (!silent) setFeedback({ type: 'error', text: 'INN/SNILS personel listesi yüklenemedi.' });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -164,25 +177,77 @@ export default function InnSnilsView() {
         const data = await res.json();
         const isRunning = Boolean(data?.is_running);
         const isPaused = Boolean(data?.is_paused);
-        const logsArr = Array.isArray(data?.logs) ? data.logs : [];
+        const logsArr = Array.isArray(data?.logs) ? (data.logs as string[]) : [];
         const lastLog = logsArr.length > 0 ? String(logsArr[logsArr.length - 1] || '') : '';
+
+        // Parse latest batch progress from bridge logs: "[3/5] INN Check ...: NAME (Sicil: 945999)"
+        let startIdx = 0;
+        for (let i = logsArr.length - 1; i >= 0; i--) {
+          if (String(logsArr[i]).includes('Starting INN/SNILS Robot')) {
+            startIdx = i;
+            break;
+          }
+        }
+        const batchLogs = logsArr.slice(startIdx);
+        let currentIndex = 0;
+        let totalCount = 0;
+        let activeSicil = '';
+        let activeName = '';
+        const completedSet = new Set<string>();
+        let lastSeenSicil = '';
+        for (const line of batchLogs) {
+          const s = String(line || '');
+          const mStep = s.match(/\[(\d+)\/(\d+)\]\s+(?:INN Check|SNILS Check|INN Zayavka)[^:]*:\s*(.+?)\s*\((?:Sicil|SNILS):\s*([^)]+)\)/i);
+          if (mStep) {
+            currentIndex = Number(mStep[1]) || 0;
+            totalCount = Number(mStep[2]) || 0;
+            activeName = (mStep[3] || '').trim();
+            lastSeenSicil = (mStep[4] || '').trim();
+            activeSicil = lastSeenSicil;
+          } else if (
+            lastSeenSicil &&
+            (s.includes('-> INN FOUND') ||
+              s.includes('-> INN NOT FOUND') ||
+              s.includes('-> Could not parse INN') ||
+              s.includes('-> INN check error') ||
+              s.includes('-> SNILS saved') ||
+              s.includes('-> Zayavka'))
+          ) {
+            completedSet.add(lastSeenSicil);
+          }
+        }
+        const completedSicils = Array.from(completedSet);
+        const completedCount = completedSicils.length;
+
         setRpaStatus({
           is_running: isRunning,
           is_paused: isPaused,
           waiting_for_manual: Boolean(data?.waiting_for_manual),
           manual_message: data?.manual_message || null,
           last_log: lastLog,
+          currentIndex,
+          totalCount,
+          completedCount,
+          activeSicil: isRunning ? activeSicil : '',
+          activeName: isRunning ? activeName : '',
+          completedSicils,
         });
-        if (wasRpaRunningRef.current && !isRunning) {
-          fetchData();
+
+        // Live silent refresh whenever a record finishes OR the whole batch finishes
+        if (
+          (isRunning && completedCount > lastCompletedCountRef.current) ||
+          (wasRpaRunningRef.current && !isRunning)
+        ) {
+          fetchData(undefined, true);
         }
+        lastCompletedCountRef.current = isRunning ? completedCount : 0;
         wasRpaRunningRef.current = isRunning;
       } catch {
         setBridgeOnline(false);
       }
     };
     pingBridge();
-    const t = setInterval(pingBridge, 2500);
+    const t = setInterval(pingBridge, 2000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -513,61 +578,90 @@ export default function InnSnilsView() {
             </div>
           </div>
 
-          {/* Live RPA Robot Control Bar (Pause / Resume / Stop) */}
+          {/* Live RPA Robot Control Bar + Progress Bar (Pause / Resume / Stop) */}
           {(rpaStatus.is_running || rpaStatus.is_paused || rpaStatus.waiting_for_manual) && (
             <div
-              className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+              className={`p-3.5 rounded-xl border space-y-2.5 ${
                 rpaStatus.is_paused || rpaStatus.waiting_for_manual
                   ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100'
                   : 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-900 dark:text-indigo-100'
               }`}
             >
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <div className="flex items-center gap-2 text-xs">
-                  {rpaStatus.is_paused || rpaStatus.waiting_for_manual ? (
-                    <Pause className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  ) : (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
-                  )}
-                  <span className="font-semibold">
-                    {rpaStatus.is_paused || rpaStatus.waiting_for_manual
-                      ? 'RPA Robotu Duraklatıldı'
-                      : 'RPA Robotu Çalışıyor...'}
-                  </span>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {rpaStatus.is_paused || rpaStatus.waiting_for_manual ? (
+                      <Pause className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    ) : (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    )}
+                    <span className="font-semibold">
+                      {rpaStatus.is_paused || rpaStatus.waiting_for_manual
+                        ? 'RPA Robotu Duraklatıldı'
+                        : 'RPA Robotu Çalışıyor...'}
+                    </span>
+                    {rpaStatus.totalCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-white/80 dark:bg-slate-900/70 border border-indigo-200 dark:border-indigo-700">
+                        {rpaStatus.completedCount} / {rpaStatus.totalCount} tamamlandı (
+                        {Math.round((rpaStatus.completedCount / rpaStatus.totalCount) * 100)}%)
+                      </span>
+                    )}
+                    {rpaStatus.activeSicil && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] bg-indigo-600 text-white font-mono">
+                        İşleniyor: #{rpaStatus.activeSicil} {rpaStatus.activeName}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] opacity-90 truncate">
+                    {rpaStatus.manual_message || rpaStatus.last_log || 'İşlem devam ediyor...'}
+                  </p>
                 </div>
-                <p className="text-[11px] opacity-90 truncate">
-                  {rpaStatus.manual_message || rpaStatus.last_log || 'İşlem devam ediyor...'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {rpaStatus.is_paused || rpaStatus.waiting_for_manual ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  {rpaStatus.is_paused || rpaStatus.waiting_for_manual ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRpaControl('resume')}
+                      className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      Devam Et
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleRpaControl('pause')}
+                      className="px-3 py-1.5 rounded-lg text-xs bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Pause className="w-3.5 h-3.5" />
+                      Duraklat
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => handleRpaControl('resume')}
-                    className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => handleRpaControl('stop')}
+                    className="px-3 py-1.5 rounded-lg text-xs bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Play className="w-3.5 h-3.5" />
-                    Devam Et
+                    <Square className="w-3.5 h-3.5" />
+                    Durdur
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleRpaControl('pause')}
-                    className="px-3 py-1.5 rounded-lg text-xs bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Pause className="w-3.5 h-3.5" />
-                    Duraklat
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleRpaControl('stop')}
-                  className="px-3 py-1.5 rounded-lg text-xs bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Square className="w-3.5 h-3.5" />
-                  Durdur
-                </button>
+                </div>
               </div>
+              {rpaStatus.totalCount > 0 && (
+                <div className="w-full h-2 rounded-full bg-indigo-200/70 dark:bg-indigo-950 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-violet-500 to-emerald-500 transition-all duration-500"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.max(
+                          5,
+                          Math.round(((rpaStatus.completedCount + (rpaStatus.is_running ? 0.35 : 0)) / rpaStatus.totalCount) * 100)
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -862,8 +956,20 @@ export default function InnSnilsView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                {filteredItems.slice(0, 200).map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                {filteredItems.slice(0, 200).map((r) => {
+                  const isActiveRow = rpaStatus.is_running && rpaStatus.activeSicil === r.sicil_no;
+                  const isJustDoneRow = rpaStatus.completedSicils.includes(r.sicil_no);
+                  return (
+                  <tr
+                    key={r.id}
+                    className={
+                      isActiveRow
+                        ? 'bg-indigo-50/90 dark:bg-indigo-950/60 ring-1 ring-inset ring-indigo-400/70 transition-colors'
+                        : isJustDoneRow
+                        ? 'bg-emerald-50/40 dark:bg-emerald-950/25 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 transition-colors'
+                        : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                    }
+                  >
                     <td className="py-2 px-3">
                       <input
                         type="checkbox"
@@ -910,7 +1016,12 @@ export default function InnSnilsView() {
                     </td>
                     <td className="py-2 px-2.5">
                       <div className="font-mono text-slate-900 dark:text-white">{r.verified_inn || r.inn_no || '—'}</div>
-                      {r.inn_status === 'VERIFIED' ? (
+                      {isActiveRow ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Sorgulanıyor...
+                        </span>
+                      ) : r.inn_status === 'VERIFIED' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
                           <CheckCircle2 className="w-3 h-3" />
                           Doğrulandı ({r.inn_verified_at?.slice(0, 10) || 'OK'})
@@ -930,7 +1041,7 @@ export default function InnSnilsView() {
                       ) : r.inn_status === 'ERROR' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] text-rose-500" title={r.inn_error}>
                           <XCircle className="w-3 h-3" />
-                          Hata
+                          {/captcha/i.test(r.inn_error || '') ? 'FNS CAPTCHA (Mor butonla deneyin)' : 'Hata'}
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-400">Kontrol Bekliyor</span>
@@ -980,7 +1091,8 @@ export default function InnSnilsView() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {filteredItems.length === 0 && (
                   <tr>
                     <td colSpan={9} className="py-10 text-center text-slate-500">
