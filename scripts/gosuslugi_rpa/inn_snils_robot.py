@@ -176,12 +176,13 @@ def run_inn_check(page: Page, records: List[Dict[str, Any]]):
             page.click("button#btn_send")
             page.wait_for_timeout(2800)
 
-            # Scroll to result section so official nalog.ru INN result is clearly visible in PNG screenshot
+            # Set 72% zoom & scroll to top so header, INN result, and all passport fields fit cleanly in one screenshot
             try:
-                res_el = page.locator("#resultInn, .pane-result, #result_1, #result_0").first
-                if res_el.count() > 0:
-                    res_el.scroll_into_view_if_needed(timeout=1500)
-                    page.wait_for_timeout(300)
+                page.evaluate("""() => {
+                    document.documentElement.style.zoom = '0.72';
+                    window.scrollTo(0, 0);
+                }""")
+                page.wait_for_timeout(300)
             except Exception:
                 pass
 

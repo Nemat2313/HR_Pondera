@@ -80,6 +80,8 @@ export default function InnSnilsView() {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'inn_missing' | 'inn_verified' | 'inn_not_found' | 'snils_verified' | 'unverified'
   >('all');
+  const [siteFilter, setSiteFilter] = useState<string>('all');
+  const [visibleCount, setVisibleCount] = useState<number>(200);
   const [includeExits, setIncludeExits] = useState(false);
   const [sicilFilterList, setSicilFilterList] = useState<string>('');
   const [showSicilModal, setShowSicilModal] = useState(false);
@@ -144,7 +146,7 @@ export default function InnSnilsView() {
       if (includeExits) params.set('includeExits', 'true');
       const sParam = overrideSicils !== undefined ? overrideSicils : sicilFilterList;
       if (sParam.trim()) params.set('sicils', sParam.trim());
-      params.set('limit', '1000');
+      params.set('limit', '25000');
       const res = await fetch(`/api/inn-snils?${params.toString()}`, {
         headers: getAuthHeaders(),
         cache: 'no-store',
@@ -334,11 +336,24 @@ export default function InnSnilsView() {
     });
   };
 
+  const siteOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of items) {
+      const site = (r.proje_adi || r.region || 'Diğer').trim() || 'Diğer';
+      counts.set(site, (counts.get(site) || 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [items]);
+
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((r) => {
       if (activeTab === 'apply') {
         if (r.inn_status === 'VERIFIED') return false;
+      }
+      if (siteFilter !== 'all') {
+        const site = (r.proje_adi || r.region || 'Diğer').trim() || 'Diğer';
+        if (site !== siteFilter) return false;
       }
       if (q) {
         const hay = `${r.sicil_no} ${r.ad_soyad} ${r.tam_adi_kiril} ${r.inn_no} ${r.snils_no} ${r.proje_adi} ${r.region} ${r.pasaport_no}`.toLowerCase();
@@ -351,7 +366,11 @@ export default function InnSnilsView() {
       if (statusFilter === 'unverified') return r.inn_status !== 'VERIFIED' || r.snils_status !== 'VERIFIED';
       return true;
     });
-  }, [items, search, statusFilter, activeTab]);
+  }, [items, search, statusFilter, siteFilter, activeTab]);
+
+  useEffect(() => {
+    setVisibleCount(200);
+  }, [search, statusFilter, siteFilter, activeTab, includeExits, sicilFilterList]);
 
   const toggleAll = () => {
     if (selectedSicils.size === filteredItems.length && filteredItems.length > 0) {
@@ -823,11 +842,25 @@ export default function InnSnilsView() {
               </div>
 
               <select
+                value={siteFilter}
+                onChange={(e) => setSiteFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600 max-w-[210px]"
+                title="Şantiye / Proje Filtresi"
+              >
+                <option value="all">Tüm Şantiyeler ({items.length})</option>
+                {siteOptions.map(([siteName, cnt]) => (
+                  <option key={siteName} value={siteName}>
+                    {siteName} ({cnt})
+                  </option>
+                ))}
+              </select>
+
+              <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
                 className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
               >
-                <option value="all">Tümü ({items.length})</option>
+                <option value="all">Tüm Durumlar ({filteredItems.length})</option>
                 <option value="inn_missing">INN Eksik</option>
                 <option value="inn_verified">INN Doğrulanmış</option>
                 <option value="inn_not_found">INN Bulunamadı</option>
@@ -960,7 +993,7 @@ export default function InnSnilsView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                {filteredItems.slice(0, 200).map((r) => {
+                {filteredItems.slice(0, visibleCount).map((r) => {
                   const isActiveRow = rpaStatus.is_running && rpaStatus.activeSicil === r.sicil_no;
                   const isJustDoneRow = rpaStatus.completedSicils.includes(r.sicil_no);
                   return (
@@ -1108,6 +1141,32 @@ export default function InnSnilsView() {
               </tbody>
             </table>
           </div>
+          {filteredItems.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400 px-1">
+              <span>
+                Gösterilen: <strong className="text-slate-800 dark:text-slate-200">{Math.min(visibleCount, filteredItems.length)}</strong> /{' '}
+                <strong className="text-slate-800 dark:text-slate-200">{filteredItems.length}</strong> kayıt (Toplam yüklenen: {items.length})
+              </span>
+              {visibleCount < filteredItems.length && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((c) => c + 200)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 cursor-pointer"
+                  >
+                    +200 Daha Göster
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount(filteredItems.length)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 cursor-pointer"
+                  >
+                    Tümünü Göster ({filteredItems.length})
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

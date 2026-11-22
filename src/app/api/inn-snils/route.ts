@@ -151,12 +151,13 @@ async function queryFnsNalogInn(params: {
 }): Promise<{ status: 'VERIFIED' | 'NOT_FOUND' | 'ERROR'; inn?: string; message?: string }> {
   const primaryDoc = formatFnsDocNo(params.docSeries || '', params.docno, params.doctype, false);
   const res1 = await queryFnsNalogInnOnce({ ...params, docno: primaryDoc });
-  if (res1.status === 'VERIFIED') return res1;
+  if (res1.status === 'VERIFIED' || /captcha/i.test(res1.message || '')) return res1;
 
   // For foreign passports, FNS sometimes stores series+number WITH a space (e.g. 'FA 1243278' vs 'FA1243278')
   if (params.doctype === '10' && params.docSeries) {
     const spacedDoc = formatFnsDocNo(params.docSeries, params.docno, '10', true);
     if (spacedDoc !== primaryDoc) {
+      await new Promise((r) => setTimeout(r, 700));
       const res2 = await queryFnsNalogInnOnce({ ...params, docno: spacedDoc });
       if (res2.status === 'VERIFIED') return res2;
     }
@@ -173,7 +174,7 @@ export async function GET(request: Request) {
     const includeExits = searchParams.get('includeExits') === 'true';
     const search = (searchParams.get('search') || '').trim().toLowerCase();
     const sicilsRaw = (searchParams.get('sicils') || '').trim();
-    const limit = Math.min(2000, Math.max(50, Number(searchParams.get('limit')) || 600));
+    const limit = Math.min(25000, Math.max(50, Number(searchParams.get('limit')) || 25000));
 
     const conds: string[] = [];
     const params: any[] = [];
@@ -365,7 +366,14 @@ export async function POST(request: Request) {
       const results: any[] = [];
       const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
+      let queriedCount = 0;
       for (const w of workers.slice(0, 50)) {
+        if (queriedCount > 0) {
+          // Pace requests to respect FNS rate limit (1.2s between calls, 6s cooldown every 5 calls)
+          const waitMs = queriedCount % 5 === 0 ? 6000 : 1200;
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
+        queriedCount++;
         const sicil = String(w.sicil_no || '').trim();
         const kirilParts = String(w.tam_adi_kiril || w.ad_soyad || '')
           .trim()
