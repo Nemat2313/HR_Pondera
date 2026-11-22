@@ -96,6 +96,8 @@ export async function GET(request: Request) {
     const filterStatus = searchParams.get('status') || 'all';
     const filterGuncelDurum = searchParams.get('guncelDurum') || 'all';
     const filterSearch = searchParams.get('search')?.trim().toLowerCase() || '';
+    const exportAll = searchParams.get('all') === 'true';
+    const maxItems = exportAll ? 50000 : Math.min(2000, Math.max(50, Number(searchParams.get('limit')) || 400));
 
     // RLS Scope (cookie-enforced for non-admin, header-previewable for admin)
     const { scopeType, scopeVal } = resolveRequestRlsScope(request);
@@ -556,7 +558,7 @@ export async function GET(request: Request) {
         }))
         .sort((a, b) => b.expired + b.critical - (a.expired + a.critical)),
       uyrukBreakdown: Object.values(uyrukBreakdown).sort((a, b) => b.total - a.total).slice(0, 8),
-      items: filteredItems, // Unlimited - full list for export and client pagination
+      items: exportAll ? filteredItems : filteredItems.slice(0, maxItems),
       totalFilteredItems: filteredItems.length,
     };
 

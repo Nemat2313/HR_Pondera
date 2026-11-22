@@ -80,7 +80,7 @@ export default function ComplianceAnalyticsView({
   onNavigateToPersonnel,
   initialSubTab,
 }: ComplianceAnalyticsViewProps) {
-  const { user } = useAuth();
+  const { user, getAuthHeaders } = useAuth();
   const { lang, t, translateCol, translateVal } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{
@@ -156,11 +156,31 @@ export default function ComplianceAnalyticsView({
     fetchCompliance();
   }, [filterDocType, filterStatus, filterRegion, filterProject, filterGuncelDurum, search]);
 
-  // Export to Excel
-  const handleExportExcel = () => {
-    if (!data?.items || data.items.length === 0) return;
+  // Export to Excel (fetches full dataset only on demand so page load stays ultra-fast)
+  const handleExportExcel = async () => {
+    let exportItems = data?.items || [];
+    if ((data?.totalFilteredItems || 0) > exportItems.length) {
+      try {
+        const params = new URLSearchParams();
+        if (filterDocType !== 'all') params.set('docType', filterDocType);
+        if (filterStatus !== 'all') params.set('status', filterStatus);
+        if (filterRegion !== 'all') params.set('region', filterRegion);
+        if (filterProject !== 'all') params.set('project', filterProject);
+        if (filterGuncelDurum !== 'all') params.set('guncelDurum', filterGuncelDurum);
+        if (search) params.set('search', search);
+        params.set('all', 'true');
+        const res = await fetch(`/api/compliance?${params.toString()}`, {
+          headers: getAuthHeaders(),
+        });
+        const fullJson = await res.json();
+        if (fullJson?.success && Array.isArray(fullJson.items)) {
+          exportItems = fullJson.items;
+        }
+      } catch {}
+    }
+    if (exportItems.length === 0) return;
 
-    const rows = data.items.map((i) => ({
+    const rows = exportItems.map((i) => ({
       'Sicil No': i.sicilNo,
       'Adı Soyadı': i.adSoyad,
       'Görevi': i.gorevi,
