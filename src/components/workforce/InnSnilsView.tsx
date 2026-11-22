@@ -135,7 +135,7 @@ export default function InnSnilsView() {
   });
   const [ifnsCode, setIfnsCode] = useState('4707');
   const [zayavka2Links, setZayavka2Links] = useState('');
-  const [autoSubmitZ1, setAutoSubmitZ1] = useState(false);
+  const [autoSubmitZ1, setAutoSubmitZ1] = useState(true);
 
   const sicilExcelRef = useRef<HTMLInputElement>(null);
 

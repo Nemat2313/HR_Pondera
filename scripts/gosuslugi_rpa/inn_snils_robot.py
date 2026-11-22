@@ -566,7 +566,7 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                 elif page.locator("input#fias").count() > 0:
                     fill_fias_address(page, addr)
 
-            if cfg.get("AUTO_SUBMIT", False):
+            if cfg.get("AUTO_SUBMIT", True):
                 page.locator("button:has-text('Отправить')").first.click()
                 page.wait_for_timeout(2500)
             else:
