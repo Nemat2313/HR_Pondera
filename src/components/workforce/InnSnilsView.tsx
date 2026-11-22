@@ -142,6 +142,7 @@ export default function InnSnilsView() {
   });
   const [ifnsCode, setIfnsCode] = useState('4707');
   const [zayavka2Links, setZayavka2Links] = useState('');
+  const [scanningZ2Mail, setScanningZ2Mail] = useState(false);
   const [autoSubmitZ1, setAutoSubmitZ1] = useState(true);
 
   const sicilExcelRef = useRef<HTMLInputElement>(null);
@@ -520,6 +521,45 @@ export default function InnSnilsView() {
 
   const [downloadingZip, setDownloadingZip] = useState(false);
 
+  const handleScanZayavka2Mail = async () => {
+    setScanningZ2Mail(true);
+    setFeedback({ type: 'info', text: 'Zoho Mail (ikbildirim@pondera.ru) FNS Заявка 2 onay linkleri taranıyor...' });
+    try {
+      const res = await fetch('/api/inn-snils', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ action: 'scan_zayavka2_mail' }),
+      });
+      const json = await res.json();
+      if (json?.success) {
+        const links: Array<{ url: string; personHint?: string }> = json.links || [];
+        if (links.length === 0) {
+          setFeedback({
+            type: 'info',
+            text: `${json.scannedEmails || 0} e-posta tarandı; henüz yeni FNS (service.nalog.ru/zpufl) onay linki gelmemiş. Birkaç dakika sonra tekrar deneyin.`,
+          });
+        } else {
+          const existing = zayavka2Links
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const merged = Array.from(new Set([...links.map((l) => l.url), ...existing]));
+          setZayavka2Links(merged.join('\n'));
+          setFeedback({
+            type: 'success',
+            text: `${json.scannedEmails || 0} e-posta tarandı: ${links.length} adet FNS onay linki bulundu ve listeye eklendi! Şimdi "2. Заявка 2 Başlat" butonuna basabilirsiniz.`,
+          });
+        }
+      } else {
+        setFeedback({ type: 'error', text: json?.message || 'Zoho Mail taraması başarısız oldu.' });
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'Zoho Mail tarama bağlantısı başarısız.' });
+    } finally {
+      setScanningZ2Mail(false);
+    }
+  };
+
   const handleDownloadScansZip = async () => {
     const selected = getSelectedRows();
     const pool = selected.length > 0 ? selected : filteredItems;
@@ -792,18 +832,28 @@ export default function InnSnilsView() {
                   </button>
                   <button
                     type="button"
+                    onClick={handleScanZayavka2Mail}
+                    disabled={scanningZ2Mail}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs bg-sky-600 hover:bg-sky-700 text-white cursor-pointer disabled:opacity-50"
+                    title="ikbildirim@pondera.ru (Zoho Mail) kutusundan gelen FNS onay linklerini otomatik çeker"
+                  >
+                    {scanningZ2Mail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    <span>Zoho Mail Tara (Linkleri Çek)</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleLaunchLocalRobot('inn_zayavka_2')}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>2. Заявка 2 Başlat (Mail Linkleri)</span>
+                    <span>2. Заявка 2 Başlat ({zayavka2Links.split(/\r?\n/).filter((s) => s.trim()).length})</span>
                   </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
                 <div>
-                  <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Başvuran Soyad (Kiril)</label>
+                  <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Temsilci Soyad (Заявка 2)</label>
                   <input
                     type="text"
                     value={applicantFam}
@@ -812,7 +862,7 @@ export default function InnSnilsView() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Başvuran Ad (Kiril)</label>
+                  <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Temsilci Ad (Заявка 2)</label>
                   <input
                     type="text"
                     value={applicantNam}

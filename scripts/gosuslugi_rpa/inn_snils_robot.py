@@ -439,17 +439,19 @@ def fill_fias_address(page: Page, addr: str) -> bool:
         if search_inp.count() == 0:
             return False
 
-        # Try full address first, then without leading 6-digit postal code if no suggestion appears
-        candidates = [addr]
-        no_zip = re.sub(r"^\s*\d{6}\s*,?\s*", "", addr).strip()
-        if no_zip and no_zip != addr:
-            candidates.append(no_zip)
+        # Try full address first, then without floor/office suffix (FIAS matches house-level first), then without postal code
+        candidates = []
+        no_office = re.sub(r",?\s*(?:этаж|эт\.|офис|оф\.|пом\.|помещ\.|кв\.).*$", "", addr, flags=re.IGNORECASE).strip(" ,")
+        no_zip = re.sub(r"^\s*\d{6}\s*,?\s*", "", no_office or addr).strip(" ,")
+        for c in (addr, no_office, no_zip):
+            if c and c not in candidates:
+                candidates.append(c)
 
         for cand in candidates:
             search_inp.click(force=True)
             search_inp.fill("")
             search_inp.type(cand, delay=20)
-            page.wait_for_timeout(1400)
+            page.wait_for_timeout(1600)
 
             sugg = fias_frame.locator(
                 ".ui-autocomplete li:visible, .uni-search-list li:visible, .search-results li:visible, ul.dropdown-menu li:visible, .suggestions li:visible, .fias-item:visible"
@@ -458,16 +460,21 @@ def fill_fias_address(page: Page, addr: str) -> bool:
                 sugg.click(force=True)
             else:
                 search_inp.press("ArrowDown")
-                page.wait_for_timeout(200)
+                page.wait_for_timeout(250)
                 search_inp.press("Enter")
-            page.wait_for_timeout(700)
 
+            # Wait up to 5 seconds (10 x 500ms) for #btn_ok to become enabled and click it reliably
             ok_btn = fias_frame.locator("button#btn_ok").first
-            if ok_btn.count() > 0 and ok_btn.get_attribute("disabled") is None and "disabled" not in (ok_btn.get_attribute("class") or ""):
-                ok_btn.click(force=True)
-                page.wait_for_timeout(600)
-                logger.info(f"  -> FIAS address selected & confirmed: {cand[:60]}")
-                return True
+            for _ in range(10):
+                page.wait_for_timeout(500)
+                try:
+                    if ok_btn.count() > 0 and ok_btn.get_attribute("disabled") is None and "disabled" not in (ok_btn.get_attribute("class") or ""):
+                        ok_btn.click(force=True)
+                        page.wait_for_timeout(700)
+                        logger.info(f"  -> FIAS address selected & confirmed: {cand[:60]}")
+                        return True
+                except Exception:
+                    pass
 
         logger.warning("  -> FIAS suggestion did not enable ОК button; leaving modal open for quick manual pick.")
         return False

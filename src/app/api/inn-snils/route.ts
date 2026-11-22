@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
+import path from 'path';
+import { spawnSync } from 'child_process';
 import { getDb } from '@/lib/db';
+import { getSmtpConfig } from '@/lib/emailNotifier';
 import { resolveRequestRlsScope } from '@/lib/auth';
 import {
   buildEffectiveRegionSqlCondition,
@@ -436,6 +439,51 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({ success: true, results, captchaStopped });
+    }
+
+    if (action === 'scan_zayavka2_mail') {
+      const smtp = getSmtpConfig();
+      if (!smtp.user || !smtp.pass) {
+        return NextResponse.json(
+          { success: false, message: 'Zoho e-posta (ikbildirim@pondera.ru) ayarları eksik.' },
+          { status: 400 }
+        );
+      }
+      const scriptPath = path.join(process.cwd(), 'scripts', 'gosuslugi_rpa', 'zoho_inn_links_sync.py');
+      const payload = JSON.stringify({
+        imap_host: smtp.imapHost || 'imappro.zoho.com',
+        imap_port: smtp.imapPort || 993,
+        email: smtp.user,
+        password: smtp.pass,
+        max_messages: 80,
+      });
+      const bins = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
+      let parsed: any = null;
+      let lastErr = '';
+      for (const bin of bins) {
+        try {
+          const res = spawnSync(bin, [scriptPath], {
+            input: payload,
+            encoding: 'utf-8',
+            timeout: 45000,
+            maxBuffer: 10 * 1024 * 1024,
+          });
+          if (res.stdout && res.stdout.trim()) {
+            parsed = JSON.parse(res.stdout.trim());
+            break;
+          }
+          if (res.stderr) lastErr = res.stderr.trim();
+        } catch (err: any) {
+          lastErr = err?.message || String(err);
+        }
+      }
+      if (!parsed) {
+        return NextResponse.json(
+          { success: false, message: lastErr || 'Zoho Mail taraması çalıştırılamadı.' },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json(parsed);
     }
 
     if (action === 'save_result') {
