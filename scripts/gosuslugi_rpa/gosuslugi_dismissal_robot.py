@@ -1583,6 +1583,11 @@ class GosuslugiDismissalBot:
         )
         search_word = "МОСКВЕ" if is_moscow_target else raw_target
 
+        # Hard guard: NEVER type MVD department on Contract / OKVED / Passport / Patent screens!
+        if not self._is_on_step12_mvd_screen_js():
+            logger.warning("Step 12: Not on MVD department screen -> skipping MVD input to avoid typing into wrong field.")
+            return False
+
         state = {}
         try:
             state = self.page.evaluate(
@@ -3089,6 +3094,30 @@ class GosuslugiDismissalBot:
             except Exception as e:
                 logger.debug(f"Step 11 official profession lookup note: {e}")
 
+        # Safety check: clicking the dropdown item can occasionally overlap 'Нет подходящей профессии' right below #dic16.
+        # If official dictionary match succeeded, ensure 'Нет подходящей профессии' is NOT checked!
+        if matched_official_prof:
+            try:
+                was_checked = self.page.evaluate(
+                    """() => {
+                        const cb = document.querySelector("input#cb16_");
+                        const libCb = cb ? cb.closest("lib-checkbox") : Array.from(document.querySelectorAll("lib-checkbox")).find(el => (el.innerText || "").includes("Нет подходящей профессии"));
+                        if (!libCb) return false;
+                        const inp = libCb.querySelector("input[type='checkbox']");
+                        if (inp && inp.checked) {
+                            const lbl = libCb.querySelector("label.check") || libCb;
+                            lbl.click();
+                            return true;
+                        }
+                        return false;
+                    }"""
+                )
+                if was_checked:
+                    logger.info("Step 11: Unchecked accidental 'Нет подходящей профессии' after dictionary match.")
+                    self.page.wait_for_timeout(300)
+            except Exception:
+                pass
+
         if not matched_official_prof:
             logger.info(
                 f"Step 11: Профессия «{pos_str}» не найдена в справочнике -> отмечаем «Нет подходящей профессии» и вводим вручную..."
@@ -3301,9 +3330,44 @@ class GosuslugiDismissalBot:
 
         addr_filled = _fill_work_address_if_visible()
 
-        self.page.wait_for_timeout(500)
+        # Before clicking 'Продолжить', verify button is enabled (and if 'Нет подходящей профессии' is checked with empty manual field, fill it)
+        def _is_continue_enabled_js() -> bool:
+            try:
+                return bool(
+                    self.page.evaluate(
+                        """() => {
+                            const btns = Array.from(document.querySelectorAll("button, lib-button button"));
+                            const cont = btns.find(b => {
+                                const r = b.getBoundingClientRect();
+                                const t = (b.innerText || "").trim();
+                                return r.width > 10 && r.height > 10 && (t === "Продолжить" || t === "Далее");
+                            });
+                            if (!cont) return false;
+                            return !cont.disabled && !cont.classList.contains("disabled") && cont.getAttribute("aria-disabled") !== "true";
+                        }"""
+                    )
+                )
+            except Exception:
+                return False
+
+        for _wait_en in range(16):
+            if _is_continue_enabled_js():
+                break
+            # Self-heal: if 'Нет подходящей профессии' is checked but manual input (#si16) is empty, fill pos_str
+            try:
+                if self.page.locator("input#si16:visible, input[name='si16']:visible").count() > 0:
+                    cur_si = (self.page.locator("input#si16:visible, input[name='si16']:visible").first.input_value() or "").strip()
+                    if not cur_si and pos_str:
+                        logger.info(f"Step 11: Filling empty manual profession field (#si16) with «{pos_str}» so 'Продолжить' activates...")
+                        self.type_masked_input("input#si16:visible, input[name='si16']:visible", pos_str)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(300)
+
+        self.page.wait_for_timeout(300)
         for _ in range(6):
-            self._click_continue_js_and_mouse()
+            if _is_continue_enabled_js():
+                self._click_continue_js_and_mouse()
             for _w in range(12):
                 self.page.wait_for_timeout(300)
                 self.check_and_handle_error_modal()
@@ -3314,6 +3378,22 @@ class GosuslugiDismissalBot:
                     break
             if self._is_on_step12_mvd_screen_js() or self._has_advanced_past_step12_js():
                 break
+
+        # Never proceed to Step 12 MVD if still stuck on Contract screen!
+        still_on_contract = False
+        try:
+            still_on_contract = bool(
+                self.page.evaluate(
+                    """() => Array.from(document.querySelectorAll('h1, h2, h3')).some(h => {
+                        const r = h.getBoundingClientRect();
+                        return r.width > 5 && (h.innerText || '').toLowerCase().includes('информацию о договоре');
+                    })"""
+                )
+            )
+        except Exception:
+            pass
+        if still_on_contract:
+            raise RuntimeError("Step 11: Кнопка «Продолжить» осталась неактивной на экране «Укажите информацию о договоре»")
 
         # Steps 12 -> 13 -> 14 -> 15: MVD Destination Division (uses row's ПодразделениеМВД if filled, else global UFMS_DEPARTMENT),
         # Employee Consent ('Подтвердить'), and Final Submission ('Отправить')
