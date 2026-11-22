@@ -286,12 +286,101 @@ def run_snils_check_human_in_loop(page: Page, records: List[Dict[str, Any]]):
             logger.error(f"  -> SNILS check error: {e}")
 
 
+def to_ru_date(val: str) -> str:
+    s = str(val or "").strip()
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(3)}.{m.group(2)}.{m.group(1)}"
+    return s
+
+
+COUNTRY_TR_TO_RU = {
+    "OZBEKISTAN": "УЗБЕКИСТАН",
+    "ÖZBEKISTAN": "УЗБЕКИСТАН",
+    "ÖZBEKİSTAN": "УЗБЕКИСТАН",
+    "UZBEKISTAN": "УЗБЕКИСТАН",
+    "TACIKISTAN": "ТАДЖИКИСТАН",
+    "TACİKİSTAN": "ТАДЖИКИСТАН",
+    "TAJIKISTAN": "ТАДЖИКИСТАН",
+    "KIRGIZISTAN": "КИРГИЗИЯ",
+    "KIRGIZİSTAN": "КИРГИЗИЯ",
+    "KIRSIZISTAN": "КИРГИЗИЯ",
+    "KYRGYZSTAN": "КИРГИЗИЯ",
+    "TURKMENISTAN": "ТУРКМЕНИЯ",
+    "TÜRKMENİSTAN": "ТУРКМЕНИЯ",
+    "TURKIYE": "ТУРЦИЯ",
+    "TÜRKİYE": "ТУРЦИЯ",
+    "TURKEY": "ТУРЦИЯ",
+    "HINDISTAN": "ИНДИЯ",
+    "HİNDİSTAN": "ИНДИЯ",
+    "INDIA": "ИНДИЯ",
+    "AZERBAYCAN": "АЗЕРБАЙДЖАН",
+    "AZERBAIJAN": "АЗЕРБАЙДЖАН",
+    "KAZAKISTAN": "КАЗАХСТАН",
+    "KAZAKİSTAN": "КАЗАХСТАН",
+    "KAZAKHSTAN": "КАЗАХСТАН",
+    "RUSYA": "РОССИЯ",
+    "RUSSIA": "РОССИЯ",
+    "BANGLADES": "БАНГЛАДЕШ",
+    "BANGLADEŞ": "БАНГЛАДЕШ",
+    "BANGLADESH": "БАНГЛАДЕШ",
+    "BELARUS": "БЕЛАРУСЬ",
+    "MOLDOVA": "МОЛДОВА",
+    "ERMENISTAN": "АРМЕНИЯ",
+    "UKRAYNA": "УКРАИНА",
+    "GURCISTAN": "ГРУЗИЯ",
+    "SIRBISTAN": "СЕРБИЯ",
+    "BOSNA": "БОСНИЯ И ГЕРЦЕГОВИНА",
+    "MISIR": "ЕГИПЕТ",
+    "NEPAL": "НЕПАЛ",
+    "VIETNAM": "ВЬЕТНАМ",
+    "CIN": "КИТАЙ",
+    "ÇİN": "КИТАЙ",
+}
+
+
+def to_ru_country(val: str) -> str:
+    s = str(val or "").strip()
+    if not s:
+        return ""
+    up = s.upper()
+    return COUNTRY_TR_TO_RU.get(up, s)
+
+
+def fill_uni_select(page: Page, selector: str, value: str):
+    """Fills nalog.ru uni_select combobox and picks the matching dropdown item."""
+    if not value:
+        return
+    inp = page.locator(selector).first
+    if inp.count() == 0:
+        return
+    try:
+        inp.click(force=True)
+        inp.fill("")
+        inp.type(value, delay=35)
+        page.wait_for_timeout(500)
+        # Click first visible dropdown item matching text, or press ArrowDown + Enter
+        item = page.locator(f".uni-select-list li:visible, .ui-autocomplete li:visible, .select-list li:visible, .dropdown-item:visible").first
+        if item.count() > 0 and item.is_visible():
+            item.click(force=True)
+        else:
+            inp.press("ArrowDown")
+            page.wait_for_timeout(150)
+            inp.press("Enter")
+        page.wait_for_timeout(300)
+    except Exception:
+        try:
+            inp.fill(value)
+        except Exception:
+            pass
+
+
 def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, Any]):
     """Implements PAD ИНН_Заявка_1.txt on https://service.nalog.ru/zpufl/edit.html"""
     default_addr = str(cfg.get("REG_ADDRESS") or "").strip()
     default_mail = str(cfg.get("CONTACT_EMAIL") or "ikbildirim@pondera.ru").strip()
     default_tel = str(cfg.get("CONTACT_PHONE") or "").strip()
-    default_reg_date = str(cfg.get("REG_DATE") or "").strip()
+    default_reg_date = to_ru_date(str(cfg.get("REG_DATE") or "").strip())
 
     for idx, r in enumerate(records, 1):
         wait_if_paused()
@@ -300,13 +389,14 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
         nam = str(r.get("nam") or "").strip()
         otch = str(r.get("otch") or "").strip()
         gender = str(r.get("cinsiyet") or "Муж").strip().lower()
-        bp = str(r.get("dogum_yeri") or r.get("uyruk") or "").strip()
-        ctz = str(r.get("uyruk") or "").strip()
+        bdate = to_ru_date(str(r.get("dogum_tarihi") or "").strip())
+        ctz = to_ru_country(str(r.get("uyruk") or "").strip())
+        bp = str(r.get("dogum_yeri") or "").strip() or ctz
         docno = str(r.get("pasaport_no") or "").strip()
-        issued_by = str(r.get("pasaport_veren") or "").strip()
-        issue_date = str(r.get("pasaport_verilis") or "").strip()
+        issued_by = str(r.get("pasaport_veren") or "").strip() or (f"МВД {ctz}" if ctz else "МВД")
+        issue_date = to_ru_date(str(r.get("pasaport_verilis") or "").strip())
         addr = str(r.get("reg_address") or default_addr).strip()
-        reg_date = str(r.get("reg_date") or default_reg_date).strip()
+        reg_date = to_ru_date(str(r.get("reg_date") or default_reg_date).strip())
 
         logger.info(f"[{idx}/{len(records)}] INN Zayavka 1 (service.nalog.ru/zpufl): {fam} {nam} (Sicil: {sicil})")
         try:
@@ -314,38 +404,54 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
             page.wait_for_timeout(1500)
             accept_nalog_personal_data_if_needed(page)
 
+            page.wait_for_selector("input#fam", timeout=15000)
             page.fill("input#fam", fam)
             page.fill("input#nam", nam)
             if otch:
                 page.fill("input#otch", otch)
             page.locator("text=Женский" if gender.startswith(("ж", "k", "f")) else "text=Мужской").first.click()
+
+            # Fill Дата рождения (required field on Screen 1!)
+            if bdate:
+                bd_inp = page.locator("input#bd, input#bdate, input[placeholder*='ДД.ММ.ГГГГ'], input[title*='ДД.ММ.ГГГГ']").first
+                if bd_inp.count() > 0:
+                    bd_inp.click(force=True)
+                    bd_inp.fill(bdate)
+                    bd_inp.press("Tab")
+                    page.wait_for_timeout(200)
+
             if bp:
                 page.fill("input#bp", bp)
             page.locator("text=Гражданин").first.click()
+            page.wait_for_timeout(300)
+
+            # Fill Страна (Гражданство) combobox in Russian & select dropdown option
             if ctz:
-                sel3 = page.locator("input#uni_select_3").first
-                if sel3.count() > 0:
-                    sel3.fill(ctz)
-                    page.wait_for_timeout(400)
+                fill_uni_select(page, "input#uni_select_3, input[id^='uni_select_']:visible", ctz)
+
             page.locator("text=Место пребывания").first.click()
+            page.wait_for_timeout(300)
             page.locator("button:has-text('Далее')").first.click()
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(2200)
 
             # Screen 2: Passport, Address, Email, Phone, Representative
-            sel_doc = page.locator("input#uni_select_3").first
-            if sel_doc.count() > 0:
-                sel_doc.fill("Паспорт иностранного гражданина")
+            page.wait_for_selector("input#sn_doc", timeout=20000)
+            fill_uni_select(page, "input#uni_select_3, input[id^='uni_select_']:visible", "Паспорт иностранного гражданина")
             if docno:
                 page.fill("input#sn_doc", docno)
             if issued_by:
                 page.fill("input#nv_doc", issued_by)
-            date_inps = page.locator("input[placeholder*='ДД.ММ.ГГГГ']")
+            date_inps = page.locator("input[placeholder*='ДД.ММ.ГГГГ'], input[title*='ДД.ММ.ГГГГ']")
             if date_inps.count() >= 1 and issue_date:
+                date_inps.nth(0).click(force=True)
                 date_inps.nth(0).fill(issue_date)
+                date_inps.nth(0).press("Tab")
             if addr:
                 page.fill("input#addr", addr)
             if date_inps.count() >= 2 and reg_date:
+                date_inps.nth(1).click(force=True)
                 date_inps.nth(1).fill(reg_date)
+                date_inps.nth(1).press("Tab")
             if default_mail:
                 page.fill("input#mail", default_mail)
             if default_tel:
