@@ -726,9 +726,96 @@ def run_inn_zayavka_2(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
             logger.error(f"  -> Zayavka 2 error: {e}")
 
 
+def run_inn_zayavka_status(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, Any]):
+    """Opens https://service.nalog.ru/zpufl/list.html, reads all application rows & syncs live status/INN to Pondera HR."""
+    rec_by_fio = {
+        re.sub(r"\s+", " ", str(r.get("tam_adi_kiril") or "")).strip().upper(): r
+        for r in records
+        if r.get("tam_adi_kiril")
+    }
+    logger.info("INN Zayavka Status: Opening https://service.nalog.ru/zpufl/list.html...")
+    try:
+        page.goto("https://service.nalog.ru/zpufl/list.html", wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(2000)
+        accept_nalog_personal_data_if_needed(page)
+
+        rows = page.evaluate("""() => {
+            const trs = Array.from(document.querySelectorAll('table tbody tr'));
+            return trs.map(tr => {
+                const tds = Array.from(tr.querySelectorAll('td')).map(td => (td.innerText || '').replace(/\\s+/g, ' ').trim());
+                return {
+                    app_no: tds[0] || '',
+                    created_at: tds[1] || '',
+                    status_text: tds[2] || '',
+                    action_text: tds[3] || '',
+                    fio: tds[4] || '',
+                    ifns: tds[5] || '',
+                };
+            }).filter(x => x.app_no && x.fio);
+        }""")
+        shot_b64 = capture_page_png_b64(page)
+        logger.info(f"  -> Found {len(rows)} applications on zpufl/list.html")
+
+        synced = 0
+        for row in rows:
+            fio_norm = re.sub(r"\s+", " ", row["fio"]).strip().upper()
+            matched = rec_by_fio.get(fio_norm)
+            if not matched:
+                parts = fio_norm.split(" ")
+                if len(parts) >= 2:
+                    prefix = f"{parts[0]} {parts[1]}"
+                    for k_fio, r in rec_by_fio.items():
+                        if k_fio.startswith(prefix):
+                            matched = r
+                            break
+            if not matched:
+                continue
+
+            status_low = row["status_text"].lower()
+            action_low = row["action_text"].lower()
+            combined = f"{row['status_text']} {row['action_text']}"
+            m_inn = re.search(r"\b(\d{12})\b", combined)
+            detail_str = " | ".join([x for x in (row["status_text"], row["ifns"]) if x])
+
+            if m_inn:
+                inn_val = m_inn.group(1)
+                post_result_to_central({
+                    "sicil_no": matched.get("sicil_no", ""),
+                    "ad_soyad": matched.get("ad_soyad", ""),
+                    "tam_adi_kiril": matched.get("tam_adi_kiril", ""),
+                    "inn_status": "VERIFIED",
+                    "verified_inn": inn_val,
+                    "inn_application_no": row["app_no"],
+                    "inn_application_code": detail_str,
+                    "inn_error": "",
+                    "inn_screenshot_base64": shot_b64,
+                })
+                logger.info(f"  -> Sicil={matched.get('sicil_no')} INN ASSIGNED: {inn_val} (AppNo={row['app_no']})")
+                synced += 1
+            elif "зарегистрирована" in status_low or "принята" in status_low or "выписк" in status_low or "ожидать" in action_low:
+                post_result_to_central({
+                    "sicil_no": matched.get("sicil_no", ""),
+                    "ad_soyad": matched.get("ad_soyad", ""),
+                    "tam_adi_kiril": matched.get("tam_adi_kiril", ""),
+                    "inn_status": "APPLIED_STEP2",
+                    "inn_application_no": row["app_no"],
+                    "inn_application_code": detail_str,
+                    "inn_error": "",
+                })
+                logger.info(f"  -> Sicil={matched.get('sicil_no')} Status={row['status_text']} (AppNo={row['app_no']}, IFNS={row['ifns']})")
+                synced += 1
+        logger.info(f"  -> Zayavka Status sync complete ({synced} matched & updated).")
+    except Exception as e:
+        logger.error(f"  -> Zayavka Status error: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Pondera HR — INN & SNILS RPA Robot")
-    parser.add_argument("--task", required=True, choices=["inn_check", "snils_check", "inn_zayavka_1", "inn_zayavka_2"])
+    parser.add_argument(
+        "--task",
+        required=True,
+        choices=["inn_check", "snils_check", "inn_zayavka_1", "inn_zayavka_2", "inn_zayavka_status"],
+    )
     parser.add_argument("--json", required=True)
     parser.add_argument("--config-json", default="")
     args = parser.parse_args()
@@ -755,6 +842,8 @@ def main():
             run_inn_zayavka_1(page, records, cfg)
         elif args.task == "inn_zayavka_2":
             run_inn_zayavka_2(page, records, cfg)
+        elif args.task == "inn_zayavka_status":
+            run_inn_zayavka_status(page, records, cfg)
 
     logger.info("=== INN/SNILS Robot Batch Complete ===")
 

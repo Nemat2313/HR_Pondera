@@ -465,7 +465,7 @@ export default function InnSnilsView() {
   };
 
   const handleLaunchLocalRobot = async (
-    task: 'inn_check' | 'snils_check' | 'inn_zayavka_1' | 'inn_zayavka_2'
+    task: 'inn_check' | 'snils_check' | 'inn_zayavka_1' | 'inn_zayavka_2' | 'inn_zayavka_status'
   ) => {
     if (!bridgeOnline) {
       setFeedback({
@@ -475,7 +475,7 @@ export default function InnSnilsView() {
       return;
     }
     const chosen = getSelectedRows();
-    if (task !== 'inn_zayavka_2' && chosen.length === 0) {
+    if (task !== 'inn_zayavka_2' && task !== 'inn_zayavka_status' && chosen.length === 0) {
       setFeedback({ type: 'error', text: 'Lütfen en az bir personel seçin.' });
       return;
     }
@@ -661,6 +661,7 @@ export default function InnSnilsView() {
       'INN Durumu': r.inn_status,
       'INN Doğrulama Tarihi': r.inn_verified_at,
       'INN Başvuru No': r.inn_application_no,
+      'INN Başvuru Detay / İFNS': r.inn_application_code,
       'SNILS No': r.verified_snils || r.snils_no,
       'SNILS Durumu': r.snils_status,
       'SNILS Doğrulama Tarihi': r.snils_verified_at,
@@ -890,6 +891,15 @@ export default function InnSnilsView() {
                   >
                     <Mail className="w-3.5 h-3.5" />
                     <span>2. Заявка 2 Başlat ({zayavka2Links.split(/\r?\n/).filter((s) => s.trim()).length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleLaunchLocalRobot('inn_zayavka_status')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
+                    title="service.nalog.ru/zpufl/list.html sayfasındaki tüm başvuru durumlarını ve atanan INN numaralarını Pondera HR'a çeker"
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>3. Başvuru Durumu Sorgula</span>
                   </button>
                 </div>
               </div>
@@ -1269,12 +1279,22 @@ export default function InnSnilsView() {
                           Bulunamadı (Заявка 1)
                         </span>
                       ) : r.inn_status === 'APPLIED_STEP1' || r.inn_status === 'APPLIED_STEP2' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400">
-                          <Send className="w-3 h-3" />
-                          {r.inn_status === 'APPLIED_STEP2'
-                            ? `Başvuru Tamam (${r.inn_application_no || 'OK'})`
-                            : 'Заявка 1 Gönderildi'}
-                        </span>
+                        <div>
+                          <span className="inline-flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400">
+                            <Send className="w-3 h-3" />
+                            {r.inn_status === 'APPLIED_STEP2'
+                              ? `Başvuru Tamam (${r.inn_application_no || 'OK'})`
+                              : 'Заявка 1 Gönderildi'}
+                          </span>
+                          {r.inn_application_code && (
+                            <div
+                              className="text-[9.5px] text-slate-500 dark:text-slate-400 max-w-[210px] truncate"
+                              title={r.inn_application_code}
+                            >
+                              {r.inn_application_code}
+                            </div>
+                          )}
+                        </div>
                       ) : r.inn_status === 'ERROR' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] text-rose-500" title={r.inn_error}>
                           <XCircle className="w-3 h-3" />
