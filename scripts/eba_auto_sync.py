@@ -138,15 +138,30 @@ def main():
 
             mdl = next((fr for fr in page.frames if "WorkflowModalForm.aspx" in fr.url), None)
             if mdl:
-                # Select All Region -> wait postback -> Select All Company -> wait postback -> Select All Project -> wait postback
-                for sel_btn in ["#ctl05_btnSelectAllRegion", "#ctl05_btnSelectAlCompany", "#ctl05_btnSelectAllProject"]:
-                    try:
-                        loc = mdl.locator(sel_btn).first
-                        if loc.count() > 0 and loc.is_visible():
-                            loc.click()
-                            page.wait_for_timeout(2600)
-                    except Exception:
-                        pass
+                # 1. Select All Regions and wait until Project listbox populates
+                reg_btn = mdl.locator("#ctl05_btnSelectAllRegion").first
+                if reg_btn.count() > 0:
+                    reg_btn.click()
+                    for _ in range(15):
+                        page.wait_for_timeout(1000)
+                        try:
+                            proj_cnt = mdl.evaluate("() => (document.getElementById('ctl05_lBoxProject')?.options.length) || 0")
+                            if proj_cnt > 5:
+                                break
+                        except Exception:
+                            pass
+
+                # 2. Select All Companies
+                comp_btn = mdl.locator("#ctl05_btnSelectAlCompany").first
+                if comp_btn.count() > 0:
+                    comp_btn.click()
+                    page.wait_for_timeout(3000)
+
+                # 3. Select All Projects
+                proj_btn = mdl.locator("#ctl05_btnSelectAllProject").first
+                if proj_btn.count() > 0:
+                    proj_btn.click()
+                    page.wait_for_timeout(3000)
 
                 dl_btn = mdl.locator("#ctl05_btnAddPersonnels").or_(
                     mdl.locator("input[value*='Download'], button:has-text('Download')")
@@ -159,9 +174,9 @@ def main():
                 write_progress(
                     progress_file,
                     52,
-                    "eBA sunucusu 198 kolonluk Excel raporunu hazırlıyor (yaklaşık 70-100 saniye)...",
+                    "eBA sunucusu tüm şantiyeler için 198 kolonluk (~32 MB) Excel raporunu hazırlıyor (yaklaşık 2-3 dakika)...",
                 )
-                with page.expect_download(timeout=240000) as dl_info:
+                with page.expect_download(timeout=420000) as dl_info:
                     dl_btn.click()
             else:
                 # Some direct reports might download without opening MdlDownload

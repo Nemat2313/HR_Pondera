@@ -49,7 +49,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script_stop: true
-          command_timeout: 5m
+          command_timeout: 8m
           script: |
             echo "=== Starting Pondera HR Fast Pre-Built Deploy ==="
             sysctl -w vm.swappiness=10 2>/dev/null || true
@@ -62,8 +62,8 @@ jobs:
             # Ensure Playwright + headless Chromium is available once for server-side eBA Auto-Sync
             PY_BIN=$([ -x ./venv/bin/python3 ] && echo ./venv/bin/python3 || echo python3)
             if ! $PY_BIN -c "import playwright" 2>/dev/null; then
-              $PY_BIN -m pip install --quiet playwright || true
-              $PY_BIN -m playwright install chromium || true
+              $PY_BIN -m pip install --break-system-packages --quiet playwright || $PY_BIN -m pip install --quiet playwright
+              $PY_BIN -m playwright install chromium
               $PY_BIN -m playwright install-deps chromium 2>/dev/null || true
             fi
             python3 scripts/repair_production_db.py 2>/dev/null || true
