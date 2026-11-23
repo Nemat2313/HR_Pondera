@@ -59,6 +59,13 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             pm2 stop hr-pondera 2>/dev/null || pm2 stop all 2>/dev/null || true
+            # Ensure Playwright + headless Chromium is available once for server-side eBA Auto-Sync
+            PY_BIN=$([ -x ./venv/bin/python3 ] && echo ./venv/bin/python3 || echo python3)
+            if ! $PY_BIN -c "import playwright" 2>/dev/null; then
+              $PY_BIN -m pip install --quiet playwright || true
+              $PY_BIN -m playwright install chromium || true
+              $PY_BIN -m playwright install-deps chromium 2>/dev/null || true
+            fi
             python3 scripts/repair_production_db.py 2>/dev/null || true
             rm -rf .next
             tar -xzf /tmp/next_build.tar.gz -C .

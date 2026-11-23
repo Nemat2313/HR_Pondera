@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { X, UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Calendar } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Calendar, Globe, Save, Play, Clock } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface ExcelUploadModalProps {
   isOpen: boolean;
@@ -12,6 +13,8 @@ interface ExcelUploadModalProps {
 
 export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: ExcelUploadModalProps) {
   const { lang } = useLanguage();
+  const { getAuthHeaders } = useAuth();
+  const [modalTab, setModalTab] = useState<'manual' | 'eba'>('manual');
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [customDate, setCustomDate] = useState(() => {
@@ -26,6 +29,140 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // eBA Auto-Sync state
+  const [ebaUsername, setEbaUsername] = useState('');
+  const [ebaPassword, setEbaPassword] = useState('');
+  const [ebaReportBtnId, setEbaReportBtnId] = useState('fileView_ctl01_btnPersonnelReport1');
+  const [ebaAutoEnabled, setEbaAutoEnabled] = useState(false);
+  const [ebaAutoTime, setEbaAutoTime] = useState('08:00');
+  const [ebaReportOptions, setEbaReportOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [ebaStatus, setEbaStatus] = useState<{
+    isRunning: boolean;
+    percent: number;
+    stageMessage: string;
+    lastSyncAt: string;
+    lastSyncStatus: string;
+    lastSyncMessage: string;
+    lastSyncFile: string;
+    lastSyncActiveRecords: number;
+    lastSyncTotalRecords: number;
+  } | null>(null);
+  const [ebaSaving, setEbaSaving] = useState(false);
+  const [ebaFeedback, setEbaFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const wasEbaRunningRef = useRef(false);
+
+  const loadEbaState = async (silent = false) => {
+    try {
+      const res = await fetch('/api/eba-sync', { headers: { ...getAuthHeaders() } });
+      const data = await res.json();
+      if (data?.success) {
+        if (!silent && data.config) {
+          setEbaUsername(data.config.username || '');
+          setEbaPassword(data.config.password || '');
+          setEbaReportBtnId(data.config.reportBtnId || 'fileView_ctl01_btnPersonnelReport1');
+          setEbaAutoEnabled(Boolean(data.config.autoSyncEnabled));
+          setEbaAutoTime(data.config.autoSyncTimeMsk || '08:00');
+        }
+        if (Array.isArray(data.reportOptions)) {
+          setEbaReportOptions(data.reportOptions);
+        }
+        if (data.status) {
+          const prevRunning = wasEbaRunningRef.current;
+          wasEbaRunningRef.current = Boolean(data.status.isRunning);
+          setEbaStatus(data.status);
+          if (prevRunning && !data.status.isRunning && data.status.lastSyncStatus === 'SUCCESS') {
+            setEbaFeedback({ type: 'success', text: data.status.lastSyncMessage || 'eBA senkronizasyonu tamamlandı!' });
+            setTimeout(() => {
+              onUploadSuccess();
+              onClose();
+              window.location.reload();
+            }, 1800);
+          } else if (prevRunning && !data.status.isRunning && data.status.lastSyncStatus === 'ERROR') {
+            setEbaFeedback({ type: 'error', text: data.status.lastSyncMessage || 'eBA senkronizasyonu başarısız oldu.' });
+          }
+        }
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    loadEbaState(false);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !ebaStatus?.isRunning) return;
+    const t = setInterval(() => {
+      loadEbaState(true);
+    }, 3000);
+    return () => clearInterval(t);
+  }, [isOpen, ebaStatus?.isRunning]);
+
+  const handleSaveEbaConfig = async () => {
+    setEbaSaving(true);
+    setEbaFeedback(null);
+    try {
+      const res = await fetch('/api/eba-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          action: 'save_config',
+          config: {
+            username: ebaUsername,
+            password: ebaPassword,
+            reportBtnId: ebaReportBtnId,
+            autoSyncEnabled: ebaAutoEnabled,
+            autoSyncTimeMsk: ebaAutoTime,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        if (data.config?.password) setEbaPassword(data.config.password);
+        setEbaFeedback({ type: 'success', text: data.message || 'eBA ayarları kaydedildi.' });
+      } else {
+        setEbaFeedback({ type: 'error', text: data?.message || 'Ayarlar kaydedilemedi.' });
+      }
+    } catch {
+      setEbaFeedback({ type: 'error', text: 'Sunucu bağlantı hatası.' });
+    } finally {
+      setEbaSaving(false);
+    }
+  };
+
+  const handleRunEbaSync = async () => {
+    setEbaSaving(true);
+    setEbaFeedback(null);
+    try {
+      const res = await fetch('/api/eba-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          action: 'run_sync',
+          config: {
+            username: ebaUsername,
+            password: ebaPassword,
+            reportBtnId: ebaReportBtnId,
+            autoSyncEnabled: ebaAutoEnabled,
+            autoSyncTimeMsk: ebaAutoTime,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        wasEbaRunningRef.current = true;
+        if (data.status) setEbaStatus(data.status);
+        setEbaFeedback({ type: 'info', text: data.message });
+      } else {
+        setEbaFeedback({ type: 'error', text: data?.message || 'eBA senkronizasyonu başlatılamadı.' });
+      }
+    } catch {
+      setEbaFeedback({ type: 'error', text: 'Sunucu bağlantı hatası.' });
+    } finally {
+      setEbaSaving(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -227,6 +364,178 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
           )}
         </div>
 
+        {/* Mode Tabs: Manual Upload vs Automated eBA Sync */}
+        <div className="px-6 pt-4 flex gap-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
+          <button
+            type="button"
+            onClick={() => setModalTab('manual')}
+            className={`px-3.5 py-2 text-xs font-semibold rounded-t-xl border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
+              modalTab === 'manual'
+                ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400 bg-white dark:bg-[#131C31]'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            <span>{lang === 'ru' ? 'Ручная загрузка' : 'Manuel Dosya Yükle'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalTab('eba')}
+            className={`px-3.5 py-2 text-xs font-semibold rounded-t-xl border-b-2 transition cursor-pointer flex items-center gap-1.5 ${
+              modalTab === 'eba'
+                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 bg-white dark:bg-[#131C31]'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>{lang === 'ru' ? 'Авто-загрузка из eBA' : "eBA'dan Otomatik Çek"}</span>
+            {ebaStatus?.isRunning && <RefreshCw className="w-3 h-3 animate-spin text-indigo-500" />}
+          </button>
+        </div>
+
+        {/* Body */}
+        {modalTab === 'eba' ? (
+          <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/70 text-[11px] text-indigo-900 dark:text-indigo-200">
+              <strong>pearl.pondera.network (eBA)</strong> üzerinden seçilen raporu (varsayılan: <strong>Personel Rapor 1 (TR) — 198 Kolon</strong>) sunucuda otomatik indirir, yedek alır ve veritabanını günceller.
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                  eBA Kullanıcı Adı (Login)
+                </label>
+                <input
+                  type="text"
+                  value={ebaUsername}
+                  onChange={(e) => setEbaUsername(e.target.value)}
+                  placeholder="zrakhimov"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                  eBA Şifre (Parol)
+                </label>
+                <input
+                  type="password"
+                  value={ebaPassword}
+                  onChange={(e) => setEbaPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                İndirilecek eBA Raporu (Pondera Personel → Excel Raporları)
+              </label>
+              <select
+                value={ebaReportBtnId}
+                onChange={(e) => setEbaReportBtnId(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+              >
+                {(ebaReportOptions.length > 0
+                  ? ebaReportOptions
+                  : [{ id: 'fileView_ctl01_btnPersonnelReport1', label: 'Personel Rapor 1 (TR) — 198 Kolon (Ana Liste)' }]
+                ).map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3">
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={ebaAutoEnabled}
+                  onChange={(e) => setEbaAutoEnabled(e.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                <span>Her gün otomatik çek &amp; güncelle</span>
+              </label>
+              <div className="flex items-center gap-1.5 text-xs">
+                <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                <span className="text-slate-500 dark:text-slate-400">Saat (MSK):</span>
+                <input
+                  type="time"
+                  value={ebaAutoTime}
+                  onChange={(e) => setEbaAutoTime(e.target.value)}
+                  className="px-2 py-1 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                />
+              </div>
+            </div>
+
+            {ebaStatus?.lastSyncAt && (
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-1 px-1">
+                <span>Son başarılı eBA çekimi: <strong className="text-slate-800 dark:text-slate-200">{ebaStatus.lastSyncAt}</strong></span>
+                {ebaStatus.lastSyncActiveRecords > 0 && (
+                  <span>Aktif: <strong>{ebaStatus.lastSyncActiveRecords}</strong> / Toplam: <strong>{ebaStatus.lastSyncTotalRecords}</strong></span>
+                )}
+              </div>
+            )}
+
+            {ebaStatus?.isRunning && (
+              <div className="space-y-2">
+                <div className="p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/60 text-xs text-indigo-900 dark:text-indigo-200 flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-indigo-600 dark:text-indigo-400" />
+                  <span className="flex-1">{ebaStatus.stageMessage || 'eBA senkronizasyonu çalışıyor...'}</span>
+                  <span className="font-mono font-bold">%{ebaStatus.percent || 5}</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-600 dark:bg-indigo-400 transition-all duration-500"
+                    style={{ width: `${Math.max(5, ebaStatus.percent || 5)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {ebaFeedback && !ebaStatus?.isRunning && (
+              <div
+                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                  ebaFeedback.type === 'error'
+                    ? 'bg-rose-50 dark:bg-rose-950/70 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+                    : ebaFeedback.type === 'success'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                    : 'bg-sky-50 dark:bg-sky-950/70 border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200'
+                }`}
+              >
+                {ebaFeedback.type === 'error' ? (
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                )}
+                <span>{ebaFeedback.text}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={handleSaveEbaConfig}
+                disabled={ebaSaving || ebaStatus?.isRunning}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-600 cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Ayarları Kaydet</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleRunEbaSync}
+                disabled={ebaSaving || ebaStatus?.isRunning || !ebaUsername}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer disabled:opacity-50"
+              >
+                {ebaStatus?.isRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                <span>{ebaStatus?.isRunning ? 'eBA Çekiliyor...' : "Şimdi eBA'dan Çek & Güncelle"}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Body */}
         <div className="p-6 space-y-4">
           <input
@@ -494,6 +803,8 @@ export default function ExcelUploadModal({ isOpen, onClose, onUploadSuccess }: E
             )}
           </button>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

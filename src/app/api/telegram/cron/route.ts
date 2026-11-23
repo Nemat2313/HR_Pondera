@@ -22,6 +22,7 @@ import {
   sendDailyInvitationsSummaryNotification,
   syncZohoInvitationsFromImap,
 } from '@/lib/invitationManager';
+import { checkAndRunScheduledEbaSync } from '@/lib/ebaSyncManager';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -151,6 +152,12 @@ export async function GET(request: Request) {
     // 3. Check Scheduled Corporate Email Reports (09:15 Compliance, 09:20 ZUP vs Real, 09:30 VKS, 10:00 Turnover)
     const emailScheduleResult = await runScheduledEmailReports(false);
 
+    // 3a. Check Daily Scheduled eBA Auto-Sync (e.g. 08:00 MSK)
+    let ebaAutoSyncResult: any = { triggered: false };
+    try {
+      ebaAutoSyncResult = checkAndRunScheduledEbaSync();
+    } catch {}
+
     // 3b. Threshold-based Low Quota & Expiring ИРС (РНП) Alerts (only sends when critical fingerprint changes)
     let quotaAlertResult: any = { skipped: true };
     if (msk.hour === 9 && msk.minute >= 25 && msk.minute <= 29) {
@@ -182,6 +189,7 @@ export async function GET(request: Request) {
       vksResult,
       complianceResult,
       emailScheduleResult,
+      ebaAutoSyncResult,
       pendingOutbox: [],
     });
   } catch (err: any) {
