@@ -24,6 +24,9 @@ import {
   Sparkles,
   UserCheck,
   Globe,
+  BarChart3,
+  Clock,
+  User as UserIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -58,6 +61,8 @@ interface InnSnilsRow {
   inn_screenshot: string;
   inn_application_no: string;
   inn_application_code: string;
+  inn_applied_by: string;
+  inn_applied_at: string;
   inn_error: string;
   snils_status: 'PENDING' | 'VERIFIED' | 'NOT_FOUND' | 'ERROR';
   verified_snils: string;
@@ -77,11 +82,49 @@ const PRESET_FIAS_ADDRESSES = [
   { label: 'Ust-Luga', value: '188471, Ленинградская область, Кингисеппский район, п. Усть-Луга' },
 ];
 
+type WaitBucket = 'lt_24h' | 'd1_3' | 'd3_7' | 'gt_7d';
+
+function getWaitingInfo(appliedAt: string): { hours: number; days: number; label: string; bucket: WaitBucket } | null {
+  const raw = String(appliedAt || '').trim();
+  if (!raw) return null;
+  const iso = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  const diffHours = Math.max(0, (Date.now() - ms) / 3600000);
+  const days = Math.floor(diffHours / 24);
+  const remHours = Math.floor(diffHours % 24);
+  const label =
+    diffHours < 1
+      ? `${Math.max(1, Math.round(diffHours * 60))} dk`
+      : days === 0
+      ? `${Math.floor(diffHours)} saat`
+      : remHours > 0 && days < 5
+      ? `${days} gün ${remHours} sa`
+      : `${days} gün`;
+  const bucket: WaitBucket =
+    diffHours < 24 ? 'lt_24h' : diffHours < 72 ? 'd1_3' : diffHours < 168 ? 'd3_7' : 'gt_7d';
+  return { hours: diffHours, days, label, bucket };
+}
+
+function formatAppliedDateShort(raw: string): string {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s);
+  if (m) return `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}`;
+  return s.slice(0, 16);
+}
+
+function hasValidInnNumber(r: InnSnilsRow): boolean {
+  if (r.inn_status === 'VERIFIED') return true;
+  const digits = String(r.verified_inn || r.inn_no || '').replace(/\D/g, '');
+  return digits.length === 12;
+}
+
 export default function InnSnilsView() {
   const { user, getAuthHeaders } = useAuth();
   const { lang } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'verify' | 'apply'>('verify');
+  const [activeTab, setActiveTab] = useState<'verify' | 'apply' | 'analytics'>('verify');
   const [items, setItems] = useState<InnSnilsRow[]>([]);
   const [summary, setSummary] = useState({ innVerified: 0, innNotFound: 0, innApplied: 0, snilsVerified: 0 });
   const [loading, setLoading] = useState(true);
@@ -91,11 +134,13 @@ export default function InnSnilsView() {
     | 'inn_missing'
     | 'inn_verified'
     | 'inn_not_found'
+    | 'inn_waiting'
     | 'inn_applied_step1'
     | 'inn_applied_step2'
     | 'snils_verified'
     | 'unverified'
   >('all');
+  const [waitFilter, setWaitFilter] = useState<'all' | 'waiting_any' | WaitBucket>('all');
   const [siteFilter, setSiteFilter] = useState<string>('all');
   const [visibleCount, setVisibleCount] = useState<number>(200);
   const [includeExits, setIncludeExits] = useState(false);
@@ -395,17 +440,130 @@ export default function InnSnilsView() {
       if (statusFilter === 'inn_missing') return !r.inn_no && r.inn_status !== 'VERIFIED';
       if (statusFilter === 'inn_verified') return r.inn_status === 'VERIFIED';
       if (statusFilter === 'inn_not_found') return r.inn_status === 'NOT_FOUND';
+      if (statusFilter === 'inn_waiting') return r.inn_status === 'APPLIED_STEP1' || r.inn_status === 'APPLIED_STEP2';
       if (statusFilter === 'inn_applied_step1') return r.inn_status === 'APPLIED_STEP1';
       if (statusFilter === 'inn_applied_step2') return r.inn_status === 'APPLIED_STEP2';
       if (statusFilter === 'snils_verified') return r.snils_status === 'VERIFIED';
       if (statusFilter === 'unverified') return r.inn_status !== 'VERIFIED' || r.snils_status !== 'VERIFIED';
+      if (waitFilter !== 'all') {
+        const isWaiting = r.inn_status === 'APPLIED_STEP1' || r.inn_status === 'APPLIED_STEP2';
+        if (!isWaiting) return false;
+        if (waitFilter !== 'waiting_any') {
+          const wi = getWaitingInfo(r.inn_applied_at);
+          if (!wi || wi.bucket !== waitFilter) return false;
+        }
+      }
       return true;
     });
-  }, [items, search, statusFilter, siteFilter, activeTab]);
+  }, [items, search, statusFilter, waitFilter, siteFilter, activeTab]);
+
+  const analytics = useMemo(() => {
+    let hasInn = 0;
+    let verifiedFns = 0;
+    let appliedStep1 = 0;
+    let appliedStep2 = 0;
+    let notFoundReady = 0;
+    let needsAppTotal = 0;
+    let waitHoursSum = 0;
+    let waitHoursCount = 0;
+    const aging: Record<WaitBucket, number> = { lt_24h: 0, d1_3: 0, d3_7: 0, gt_7d: 0 };
+
+    const siteMap = new Map<
+      string,
+      { site: string; total: number; hasInn: number; appliedWaiting: number; needsApp: number; notFoundReady: number }
+    >();
+    const opMap = new Map<
+      string,
+      { operator: string; total: number; step1: number; step2: number; verified: number; latestAt: string }
+    >();
+    const natMap = new Map<string, { uyruk: string; total: number; hasInn: number; appliedWaiting: number; needsApp: number }>();
+
+    for (const r of items) {
+      const site = (r.proje_adi || r.region || 'Diğer').trim() || 'Diğer';
+      const uyruk = (r.uyruk || 'Belirtilmemiş').trim() || 'Belirtilmemiş';
+      const validInn = hasValidInnNumber(r);
+      const isStep1 = r.inn_status === 'APPLIED_STEP1';
+      const isStep2 = r.inn_status === 'APPLIED_STEP2';
+      const isApplied = isStep1 || isStep2;
+      const isNeedsApp = !validInn && !isApplied;
+
+      if (validInn) hasInn++;
+      if (r.inn_status === 'VERIFIED') verifiedFns++;
+      if (isStep1) appliedStep1++;
+      if (isStep2) appliedStep2++;
+      if (r.inn_status === 'NOT_FOUND') notFoundReady++;
+      if (isNeedsApp) needsAppTotal++;
+
+      if (isApplied) {
+        const wi = getWaitingInfo(r.inn_applied_at);
+        if (wi) {
+          waitHoursSum += wi.hours;
+          waitHoursCount++;
+          aging[wi.bucket]++;
+        } else {
+          aging.lt_24h++;
+        }
+      }
+
+      if (isApplied || r.inn_applied_by || r.inn_application_no) {
+        const op = (r.inn_applied_by || 'Belirtilmemiş').trim() || 'Belirtilmemiş';
+        const curOp = opMap.get(op) || { operator: op, total: 0, step1: 0, step2: 0, verified: 0, latestAt: '' };
+        curOp.total++;
+        if (isStep1) curOp.step1++;
+        if (isStep2) curOp.step2++;
+        if (r.inn_status === 'VERIFIED') curOp.verified++;
+        if (r.inn_applied_at && r.inn_applied_at > curOp.latestAt) curOp.latestAt = r.inn_applied_at;
+        opMap.set(op, curOp);
+      }
+
+      const curSite = siteMap.get(site) || { site, total: 0, hasInn: 0, appliedWaiting: 0, needsApp: 0, notFoundReady: 0 };
+      curSite.total++;
+      if (validInn) curSite.hasInn++;
+      else if (isApplied) curSite.appliedWaiting++;
+      else curSite.needsApp++;
+      if (r.inn_status === 'NOT_FOUND') curSite.notFoundReady++;
+      siteMap.set(site, curSite);
+
+      const curNat = natMap.get(uyruk) || { uyruk, total: 0, hasInn: 0, appliedWaiting: 0, needsApp: 0 };
+      curNat.total++;
+      if (validInn) curNat.hasInn++;
+      else if (isApplied) curNat.appliedWaiting++;
+      else curNat.needsApp++;
+      natMap.set(uyruk, curNat);
+    }
+
+    const appliedTotal = appliedStep1 + appliedStep2;
+    const avgHours = waitHoursCount > 0 ? waitHoursSum / waitHoursCount : 0;
+    const avgWaitLabel =
+      waitHoursCount === 0
+        ? '—'
+        : avgHours < 24
+        ? `${avgHours.toFixed(1)} saat`
+        : `${(avgHours / 24).toFixed(1)} gün`;
+
+    return {
+      total: items.length,
+      hasInn,
+      verifiedFns,
+      appliedTotal,
+      appliedStep1,
+      appliedStep2,
+      needsAppTotal,
+      notFoundReady,
+      avgWaitLabel,
+      aging,
+      bySite: Array.from(siteMap.values()).sort((a, b) => b.needsApp + b.appliedWaiting - (a.needsApp + a.appliedWaiting)),
+      byOperator: Array.from(opMap.values()).sort((a, b) => b.total - a.total),
+      byNationality: Array.from(natMap.values())
+        .filter((n) => n.needsApp > 0 || n.appliedWaiting > 0)
+        .sort((a, b) => b.needsApp - a.needsApp)
+        .slice(0, 10),
+    };
+  }, [items]);
 
   useEffect(() => {
     setVisibleCount(200);
-  }, [search, statusFilter, siteFilter, activeTab, includeExits, sicilFilterList]);
+  }, [search, statusFilter, waitFilter, siteFilter, activeTab, includeExits, sicilFilterList]);
 
   const toggleAll = () => {
     if (selectedSicils.size === filteredItems.length && filteredItems.length > 0) {
@@ -445,13 +603,16 @@ export default function InnSnilsView() {
       });
       const json = await res.json();
       if (json?.success) {
-        const foundCnt = (json.results || []).filter((x: any) => x.status === 'VERIFIED').length;
-        const notFoundCnt = (json.results || []).filter((x: any) => x.status === 'NOT_FOUND').length;
+        const resArr: any[] = json.results || [];
+        const foundCnt = resArr.filter((x: any) => x.status === 'VERIFIED').length;
+        const stillWaitingCnt = resArr.filter((x: any) => x.stillWaiting).length;
+        const notFoundCnt = resArr.filter((x: any) => x.status === 'NOT_FOUND' && !x.stillWaiting).length;
+        const waitSuffix = stillWaitingCnt > 0 ? `, ${stillWaitingCnt} başvuru hâlâ INN bekleniyor (statüsü korundu)` : '';
         setFeedback({
           type: json?.captchaStopped ? 'info' : 'success',
           text: json?.captchaStopped
-            ? `FNS sunucu IP'si için CAPTCHA istedi (${foundCnt} bulundu, ${notFoundCnt} bulunamadı). Kalan kişiler için yerel tarayıcınızdan çalışan Mor "nalog.ru Ekran Görüntüsü Al" butonunu kullanın.`
-            : `FNS sorgusu tamamlandı: ${foundCnt} INN bulundu, ${notFoundCnt} bulunamadı (Заявка 1'e hazır).`,
+            ? `FNS sunucu IP'si için CAPTCHA istedi (${foundCnt} bulundu, ${notFoundCnt} bulunamadı${waitSuffix}). Kalan kişiler için Mor "nalog.ru Ekran Görüntüsü Al" butonunu kullanın.`
+            : `FNS sorgusu tamamlandı: ${foundCnt} INN bulundu, ${notFoundCnt} bulunamadı${waitSuffix}.`,
         });
         fetchData();
       } else {
@@ -543,6 +704,7 @@ export default function InnSnilsView() {
             APPLICANT_OTCH: applicantOtch,
             IFNS_CODE: ifnsCode,
             AUTO_SUBMIT: autoSubmitZ1,
+            APPLIED_BY: user?.name || user?.email || '',
             EMAIL_LINKS: emailLinksList,
           },
         }),
@@ -669,6 +831,12 @@ export default function InnSnilsView() {
       'INN Doğrulama Tarihi': r.inn_verified_at,
       'INN Başvuru No': r.inn_application_no,
       'INN Başvuru Detay / İFNS': r.inn_application_code,
+      'INN Başvuru Yapan': r.inn_applied_by,
+      'INN Başvuru Tarihi': formatAppliedDateShort(r.inn_applied_at),
+      'INN Bekleme Süresi':
+        r.inn_status === 'APPLIED_STEP1' || r.inn_status === 'APPLIED_STEP2'
+          ? getWaitingInfo(r.inn_applied_at)?.label || ''
+          : '',
       'SNILS No': r.verified_snils || r.snils_no,
       'SNILS Durumu': r.snils_status,
       'SNILS Doğrulama Tarihi': r.snils_verified_at,
@@ -685,7 +853,7 @@ export default function InnSnilsView() {
       <div>
         <WindowsTabBar
           activeId={activeTab}
-          onChange={(id) => setActiveTab(id as 'verify' | 'apply')}
+          onChange={(id) => setActiveTab(id as 'verify' | 'apply' | 'analytics')}
           tabs={[
             {
               id: 'verify',
@@ -696,8 +864,14 @@ export default function InnSnilsView() {
             {
               id: 'apply',
               label: lang === 'ru' ? '2. Заявка ИНН (1 & 2)' : '2. INN Başvuru (Zayavka)',
-              badge: summary.innNotFound,
+              badge: summary.innNotFound + summary.innApplied,
               icon: <Send className="w-3.5 h-3.5" />,
+            },
+            {
+              id: 'analytics',
+              label: lang === 'ru' ? '3. Аналитика и Отчёт' : '3. Analitik & Rapor',
+              badge: analytics.appliedTotal,
+              icon: <BarChart3 className="w-3.5 h-3.5" />,
             },
           ]}
           rightSlot={
@@ -1031,7 +1205,232 @@ export default function InnSnilsView() {
             </div>
           )}
 
+          {/* TAB 3: Analytics & Reporting Dashboard */}
+          {activeTab === 'analytics' && (
+            <div className="space-y-4">
+              {/* Executive KPI Strip */}
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-[#0D192E]/70">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-300">Toplam Personel</p>
+                  <p className="text-2xl font-semibold text-slate-900 dark:text-white mt-0.5">{analytics.total}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {includeExits ? 'Çıkışlılar dahil' : 'Aktif (Mevcut)'}
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/40 dark:bg-emerald-950/30">
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300">INN Mevcut / Doğrulandı</p>
+                  <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">{analytics.hasInn}</p>
+                  <p className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 mt-0.5">
+                    %{analytics.total ? Math.round((analytics.hasInn / analytics.total) * 100) : 0} tamamlandı ({analytics.verifiedFns} FNS teyitli)
+                  </p>
+                </div>
+                <div
+                  onClick={() => {
+                    setStatusFilter('inn_missing');
+                    setWaitFilter('all');
+                    setActiveTab('apply');
+                  }}
+                  className="p-3.5 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/40 dark:bg-amber-950/30 cursor-pointer hover:ring-1 hover:ring-amber-400 transition"
+                  title="Başvuru yapılması gereken listeyi aç"
+                >
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300">Başvuru Yapılması Gereken</p>
+                  <p className="text-2xl font-semibold text-amber-600 dark:text-amber-400 mt-0.5">{analytics.needsAppTotal}</p>
+                  <p className="text-[10px] text-amber-700/80 dark:text-amber-300/80 mt-0.5">
+                    {analytics.notFoundReady} FNS&apos;de bulunamadı (Заявка 1 hazır)
+                  </p>
+                </div>
+                <div
+                  onClick={() => {
+                    setStatusFilter('inn_waiting');
+                    setWaitFilter('all');
+                    setActiveTab('apply');
+                  }}
+                  className="p-3.5 rounded-2xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/40 dark:bg-indigo-950/30 cursor-pointer hover:ring-1 hover:ring-indigo-400 transition"
+                  title="INN bekleyen başvuruları listele"
+                >
+                  <p className="text-[11px] text-indigo-800 dark:text-indigo-300">Başvuruldu (INN Bekleniyor)</p>
+                  <p className="text-2xl font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5">{analytics.appliedTotal}</p>
+                  <p className="text-[10px] text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">
+                    Zayavka 1: {analytics.appliedStep1} · İFNS Kayıtlı (Z2): {analytics.appliedStep2}
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-sky-50/40 dark:bg-sky-950/30">
+                  <p className="text-[11px] text-sky-800 dark:text-sky-300">Ort. Bekleme Süresi</p>
+                  <p className="text-2xl font-semibold text-sky-600 dark:text-sky-400 mt-0.5">{analytics.avgWaitLabel}</p>
+                  <p className="text-[10px] text-sky-700/80 dark:text-sky-300/80 mt-0.5">
+                    3+ gün bekleyen: {analytics.aging.d3_7 + analytics.aging.gt_7d} kişi
+                  </p>
+                </div>
+              </div>
+
+              {/* Waiting Duration Aging Buckets (Clickable) */}
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-indigo-500" />
+                    <span>INN Bekleme Süresi Dağılımı (Tıklayarak Filtrele)</span>
+                  </h3>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Toplam {analytics.appliedTotal} bekleyen başvuru
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {(
+                    [
+                      { key: 'lt_24h', label: '< 24 Saat (Yeni)', count: analytics.aging.lt_24h, cls: 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/30' },
+                      { key: 'd1_3', label: '1 – 3 Gün (Normal)', count: analytics.aging.d1_3, cls: 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 bg-sky-50/50 dark:bg-sky-950/30' },
+                      { key: 'd3_7', label: '3 – 7 Gün (Takip)', count: analytics.aging.d3_7, cls: 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/30' },
+                      { key: 'gt_7d', label: '7+ Gün (Kritik)', count: analytics.aging.gt_7d, cls: 'border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 bg-rose-50/50 dark:bg-rose-950/30' },
+                    ] as const
+                  ).map((b) => (
+                    <button
+                      key={b.key}
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter('inn_waiting');
+                        setWaitFilter(b.key);
+                        setActiveTab('apply');
+                      }}
+                      className={`p-3 rounded-xl border text-left cursor-pointer hover:opacity-90 transition ${b.cls}`}
+                    >
+                      <div className="text-[11px] opacity-90">{b.label}</div>
+                      <div className="text-xl font-semibold mt-0.5">{b.count}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Site-based Breakdown + Operator Performance */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Site Table (2 cols) */}
+                <div className="lg:col-span-2 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                      Şantiye / Proje Bazlı INN &amp; Başvuru Durumu
+                    </h3>
+                    <span className="text-[10.5px] text-slate-500">Satıra tıklayarak şantiyeyi filtreleyin</span>
+                  </div>
+                  <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-[10.5px] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-[#0D192E]">
+                        <tr>
+                          <th className="py-2 pr-2">Şantiye / Proje</th>
+                          <th className="py-2 px-2 text-right">Toplam</th>
+                          <th className="py-2 px-2 text-right text-emerald-600 dark:text-emerald-400">INN Var</th>
+                          <th className="py-2 px-2 text-right text-indigo-600 dark:text-indigo-400">Başvuruldu</th>
+                          <th className="py-2 px-2 text-right text-amber-600 dark:text-amber-400">Başvurulmalı</th>
+                          <th className="py-2 pl-2 w-36">Dağılım (%)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                        {analytics.bySite.map((s) => {
+                          const pInn = s.total ? (s.hasInn / s.total) * 100 : 0;
+                          const pWait = s.total ? (s.appliedWaiting / s.total) * 100 : 0;
+                          const pNeed = s.total ? (s.needsApp / s.total) * 100 : 0;
+                          return (
+                            <tr
+                              key={s.site}
+                              onClick={() => {
+                                setSiteFilter(s.site);
+                                setStatusFilter('all');
+                                setWaitFilter('all');
+                                setActiveTab('apply');
+                              }}
+                              className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                            >
+                              <td className="py-2 pr-2 font-medium text-slate-800 dark:text-slate-200 max-w-[200px] truncate" title={s.site}>
+                                {s.site}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono">{s.total}</td>
+                              <td className="py-2 px-2 text-right font-mono text-emerald-600 dark:text-emerald-400">{s.hasInn}</td>
+                              <td className="py-2 px-2 text-right font-mono text-indigo-600 dark:text-indigo-400">{s.appliedWaiting}</td>
+                              <td className="py-2 px-2 text-right font-mono text-amber-600 dark:text-amber-400">{s.needsApp}</td>
+                              <td className="py-2 pl-2">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex-1 h-2.5 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 flex">
+                                    <div style={{ width: `${pInn}%` }} className="bg-emerald-500 h-full" title={`INN Var: ${s.hasInn}`} />
+                                    <div style={{ width: `${pWait}%` }} className="bg-indigo-500 h-full" title={`Başvuruldu: ${s.appliedWaiting}`} />
+                                    <div style={{ width: `${pNeed}%` }} className="bg-amber-400 h-full" title={`Başvurulmalı: ${s.needsApp}`} />
+                                  </div>
+                                  <span className="text-[10px] font-mono w-8 text-right text-slate-600 dark:text-slate-300">
+                                    %{Math.round(pInn)}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Right Column: Operator Performance + Top Nationalities */}
+                <div className="space-y-4">
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                    <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                      <UserIcon className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Başvuru Yapan Kullanıcılar</span>
+                    </h3>
+                    {analytics.byOperator.length === 0 ? (
+                      <p className="text-[11px] text-slate-500">Henüz kayıtlı INN başvurusu yok.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {analytics.byOperator.map((op) => (
+                          <div
+                            key={op.operator}
+                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium text-slate-800 dark:text-slate-100 truncate">{op.operator}</div>
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                Z1: {op.step1} · İFNS (Z2): {op.step2} · Doğrulanan: {op.verified}
+                              </div>
+                              {op.latestAt && (
+                                <div className="text-[9.5px] font-mono text-slate-400">
+                                  Son: {formatAppliedDateShort(op.latestAt)}
+                                </div>
+                              )}
+                            </div>
+                            <span className="px-2.5 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-mono text-xs font-semibold">
+                              {op.total}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                    <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                      Uyruk Bazlı INN Eksikliği (İlk 10)
+                    </h3>
+                    <div className="space-y-1.5">
+                      {analytics.byNationality.map((n) => (
+                        <div key={n.uyruk} className="flex items-center justify-between text-[11px] gap-2">
+                          <span className="text-slate-700 dark:text-slate-300 truncate">{n.uyruk}</span>
+                          <div className="flex items-center gap-2 font-mono shrink-0">
+                            <span className="text-amber-600 dark:text-amber-400" title="Başvurulması gereken">
+                              {n.needsApp} eksik
+                            </span>
+                            {n.appliedWaiting > 0 && (
+                              <span className="text-indigo-600 dark:text-indigo-400" title="INN bekleniyor">
+                                · {n.appliedWaiting} bekleyen
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Toolbar: Search, Filters, Sicil List Upload, Verify Actions */}
+          {activeTab !== 'analytics' && (
+          <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
@@ -1067,11 +1466,26 @@ export default function InnSnilsView() {
                 <option value="all">Tüm Durumlar ({filteredItems.length})</option>
                 <option value="inn_missing">INN Eksik</option>
                 <option value="inn_verified">INN Doğrulanmış</option>
-                <option value="inn_not_found">INN Bulunamadı</option>
-                <option value="inn_applied_step1">Заявка 1 Gönderildi</option>
-                <option value="inn_applied_step2">INN Başvuru Tamam</option>
+                <option value="inn_not_found">INN Bulunamadı (Başvuru Adayı)</option>
+                <option value="inn_waiting">INN Bekleniyor (Tüm Başvurular)</option>
+                <option value="inn_applied_step1">Заявка 1 Gönderildi (INN Bekleniyor)</option>
+                <option value="inn_applied_step2">INN Başvuru Tamam (INN Bekleniyor)</option>
                 <option value="snils_verified">SNILS Doğrulanmış</option>
                 <option value="unverified">Henüz Doğrulanmamış</option>
+              </select>
+
+              <select
+                value={waitFilter}
+                onChange={(e) => setWaitFilter(e.target.value as any)}
+                className="px-2.5 py-1.5 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700"
+                title="INN Başvurusu Bekleme Süresi Filtresi"
+              >
+                <option value="all">Bekleme Süresi: Tümü</option>
+                <option value="waiting_any">Sadece INN Bekleyenler</option>
+                <option value="lt_24h">Bekleme: &lt; 24 Saat</option>
+                <option value="d1_3">Bekleme: 1–3 Gün</option>
+                <option value="d3_7">Bekleme: 3–7 Gün</option>
+                <option value="gt_7d">Bekleme: 7+ Gün (Kritik)</option>
               </select>
 
               <button
@@ -1286,22 +1700,48 @@ export default function InnSnilsView() {
                           Bulunamadı (Заявка 1)
                         </span>
                       ) : r.inn_status === 'APPLIED_STEP1' || r.inn_status === 'APPLIED_STEP2' ? (
-                        <div>
-                          <span className="inline-flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400">
-                            <Send className="w-3 h-3" />
-                            {r.inn_status === 'APPLIED_STEP2'
-                              ? `Başvuru Tamam (${r.inn_application_no || 'OK'})`
-                              : 'Заявка 1 Gönderildi'}
-                          </span>
-                          {r.inn_application_code && (
-                            <div
-                              className="text-[9.5px] text-slate-500 dark:text-slate-400 max-w-[210px] truncate"
-                              title={r.inn_application_code}
-                            >
-                              {r.inn_application_code}
+                        (() => {
+                          const wi = getWaitingInfo(r.inn_applied_at);
+                          const waitBadgeCls =
+                            wi?.bucket === 'gt_7d'
+                              ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+                              : wi?.bucket === 'd3_7'
+                              ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                              : 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700';
+                          return (
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+                                  <Send className="w-3 h-3" />
+                                  {r.inn_status === 'APPLIED_STEP2'
+                                    ? `INN Bekleniyor · Başvuru Tamam (${r.inn_application_no || 'OK'})`
+                                    : 'INN Bekleniyor · Заявка 1 Gönderildi'}
+                                </span>
+                                {wi && (
+                                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md text-[9.5px] border ${waitBadgeCls}`}>
+                                    <Clock className="w-2.5 h-2.5" />
+                                    {wi.label}
+                                  </span>
+                                )}
+                              </div>
+                              {r.inn_application_code && (
+                                <div
+                                  className="text-[9.5px] text-slate-500 dark:text-slate-400 max-w-[230px] truncate"
+                                  title={r.inn_application_code}
+                                >
+                                  {r.inn_application_code}
+                                </div>
+                              )}
+                              {(r.inn_applied_by || r.inn_applied_at) && (
+                                <div className="text-[9.5px] text-slate-400 dark:text-slate-400 flex items-center gap-1">
+                                  {r.inn_applied_by && <span>{r.inn_applied_by}</span>}
+                                  {r.inn_applied_by && r.inn_applied_at && <span>•</span>}
+                                  {r.inn_applied_at && <span className="font-mono">{formatAppliedDateShort(r.inn_applied_at)}</span>}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
+                          );
+                        })()
                       ) : r.inn_status === 'ERROR' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] text-rose-500" title={r.inn_error}>
                           <XCircle className="w-3 h-3" />
@@ -1415,6 +1855,8 @@ export default function InnSnilsView() {
                 </div>
               )}
             </div>
+          )}
+          </>
           )}
         </div>
       </div>

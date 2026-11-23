@@ -593,11 +593,13 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                 wait_if_paused()
 
             shot_b64 = capture_page_png_b64(page)
+            applied_by = str(cfg.get("APPLIED_BY") or "").strip()
             post_result_to_central({
                 "sicil_no": sicil,
                 "ad_soyad": r.get("ad_soyad", ""),
                 "tam_adi_kiril": r.get("tam_adi_kiril", ""),
                 "inn_status": "APPLIED_STEP1",
+                "inn_applied_by": applied_by,
                 "inn_screenshot_base64": shot_b64,
             })
             logger.info("  -> Zayavka 1 saved (APPLIED_STEP1).")
@@ -709,6 +711,7 @@ def run_inn_zayavka_2(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
             shot_b64 = capture_page_png_b64(page)
 
             if matched_rec:
+                applied_by = str(cfg.get("APPLIED_BY") or "").strip()
                 post_result_to_central({
                     "sicil_no": matched_rec.get("sicil_no", ""),
                     "ad_soyad": matched_rec.get("ad_soyad", ""),
@@ -716,6 +719,7 @@ def run_inn_zayavka_2(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                     "inn_status": "APPLIED_STEP2",
                     "inn_application_no": app_no,
                     "inn_application_code": ifns_text or applicant_fio,
+                    "inn_applied_by": applied_by,
                     "inn_error": "",
                     "inn_screenshot_base64": shot_b64,
                 })
@@ -793,6 +797,7 @@ def run_inn_zayavka_status(page: Page, records: List[Dict[str, Any]], cfg: Dict[
                 logger.info(f"  -> Sicil={matched.get('sicil_no')} INN ASSIGNED: {inn_val} (AppNo={row['app_no']})")
                 synced += 1
             elif "зарегистрирована" in status_low or "принята" in status_low or "выписк" in status_low or "ожидать" in action_low:
+                applied_by = str(cfg.get("APPLIED_BY") or "").strip()
                 post_result_to_central({
                     "sicil_no": matched.get("sicil_no", ""),
                     "ad_soyad": matched.get("ad_soyad", ""),
@@ -800,6 +805,7 @@ def run_inn_zayavka_status(page: Page, records: List[Dict[str, Any]], cfg: Dict[
                     "inn_status": "APPLIED_STEP2",
                     "inn_application_no": row["app_no"],
                     "inn_application_code": detail_str,
+                    "inn_applied_by": applied_by,
                     "inn_error": "",
                 })
                 logger.info(f"  -> Sicil={matched.get('sicil_no')} Status={row['status_text']} (AppNo={row['app_no']}, IFNS={row['ifns']})")

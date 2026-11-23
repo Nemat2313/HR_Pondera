@@ -229,8 +229,9 @@ export async function GET(request: Request) {
           p.region, p.proje_adi, p.ise_giris_tarihi, p.cikis_tarihi, p.genel_durum, p.guncel_durum,
           p.telefon_no, p.email, p.all_data_json,
           v.inn_status, v.verified_inn, v.inn_verified_at, v.inn_screenshot,
-          v.inn_application_no, v.inn_application_code, v.inn_error,
-          v.snils_status, v.verified_snils, v.snils_verified_at, v.snils_screenshot, v.snils_error
+          v.inn_application_no, v.inn_application_code, v.inn_applied_by, v.inn_applied_at, v.inn_error,
+          v.snils_status, v.verified_snils, v.snils_verified_at, v.snils_screenshot, v.snils_error,
+          v.updated_at as verif_updated_at
         FROM personnel p
         LEFT JOIN inn_snils_verifications v ON TRIM(v.sicil_no) = TRIM(p.sicil_no)
         ${whereSql}
@@ -318,6 +319,10 @@ export async function GET(request: Request) {
         inn_screenshot: r.inn_screenshot || '',
         inn_application_no: r.inn_application_no || '',
         inn_application_code: r.inn_application_code || '',
+        inn_applied_by: r.inn_applied_by || '',
+        inn_applied_at:
+          r.inn_applied_at ||
+          (r.inn_status === 'APPLIED_STEP1' || r.inn_status === 'APPLIED_STEP2' ? r.verif_updated_at || '' : ''),
         inn_error: r.inn_error || '',
         snils_status: r.snils_status || 'PENDING',
         verified_snils: r.verified_snils || '',
@@ -405,6 +410,11 @@ export async function POST(request: Request) {
           continue;
         }
 
+        const prevRow = db
+          .prepare('SELECT inn_status FROM inn_snils_verifications WHERE sicil_no = ?')
+          .get(sicil) as { inn_status?: string } | undefined;
+        const wasApplied = prevRow?.inn_status === 'APPLIED_STEP1' || prevRow?.inn_status === 'APPLIED_STEP2';
+
         const fnsRes = await queryFnsNalogInn({ fam, nam, otch, bdate, doctype, docSeries, docno, docdt });
         upsertInnSnilsVerification(db, {
           sicil_no: sicil,
@@ -424,11 +434,18 @@ export async function POST(request: Request) {
           } catch {}
         }
 
+        const effectiveResultStatus =
+          wasApplied && fnsRes.status !== 'VERIFIED' ? prevRow?.inn_status || 'APPLIED_STEP2' : fnsRes.status;
+
         results.push({
           sicil_no: sicil,
-          status: fnsRes.status,
+          status: effectiveResultStatus,
+          stillWaiting: wasApplied && fnsRes.status !== 'VERIFIED',
           inn: fnsRes.inn || '',
-          message: fnsRes.message || '',
+          message:
+            wasApplied && fnsRes.status !== 'VERIFIED'
+              ? 'INN henüz çıkmadı — başvuru beklemede (statü korundu)'
+              : fnsRes.message || '',
         });
 
         // Stop immediately on FNS CAPTCHA so we don't hammer the server IP or extend cooldown
@@ -518,6 +535,8 @@ export async function POST(request: Request) {
         inn_screenshot: innScreenshot,
         inn_application_no: body?.inn_application_no || '',
         inn_application_code: body?.inn_application_code || '',
+        inn_applied_by: String(body?.inn_applied_by || '').trim(),
+        inn_applied_at: String(body?.inn_applied_at || '').trim(),
         inn_error: body?.inn_error,
         snils_status: body?.snils_status || undefined,
         verified_snils: body?.verified_snils || '',
