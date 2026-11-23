@@ -522,6 +522,11 @@ export default function InnSnilsView() {
     });
 
     try {
+      const emailLinksList = zayavka2Links
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       const res = await fetch(`${LOCAL_BRIDGE_URL}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -538,21 +543,23 @@ export default function InnSnilsView() {
             APPLICANT_OTCH: applicantOtch,
             IFNS_CODE: ifnsCode,
             AUTO_SUBMIT: autoSubmitZ1,
-            EMAIL_LINKS: zayavka2Links
-              .split(/\r?\n/)
-              .map((s) => s.trim())
-              .filter(Boolean),
+            EMAIL_LINKS: emailLinksList,
           },
         }),
       });
       const json = await res.json();
       if (json?.success) {
+        const successText =
+          task === 'snils_check'
+            ? `SNILS kontrol robotu ${records.length} kişi için açıldı. Chrome'da reCAPTCHA'yı elle onaylayıp Devam Et'e basın; ekran görüntüsü otomatik kaydedilecek.`
+            : task === 'inn_zayavka_status'
+            ? 'FNS başvuru listesi (service.nalog.ru/zpufl/list.html) taranıyor; güncel başvuru durumları ve atanan INN numaraları otomatik senkronize edilecektir.'
+            : task === 'inn_zayavka_2'
+            ? `Заявка 2 robotu ${emailLinksList.length} onay linki için başlatıldı; kayıt numaraları, İFNS bilgileri ve ekran görüntüleri otomatik sunucuya kaydedilecektir.`
+            : `${task === 'inn_zayavka_1' ? 'Заявка 1' : 'INN kontrol'} robotu ${records.length} kişi için başlatıldı; sonuçlar ve ekran görüntüleri otomatik sunucuya kaydedilecektir.`;
         setFeedback({
           type: 'success',
-          text:
-            task === 'snils_check'
-              ? `SNILS kontrol robotu ${records.length} kişi için açıldı. Chrome'da reCAPTCHA'yı elle onaylayıp Devam Et'e basın; ekran görüntüsü otomatik kaydedilecek.`
-              : `${task} robotu ${records.length} kayıt için başlatıldı; sonuçlar ve ekran görüntüleri otomatik sunucuya kaydedilecektir.`,
+          text: successText,
         });
       } else {
         setFeedback({ type: 'error', text: json?.message || 'Robot başlatılamadı.' });
