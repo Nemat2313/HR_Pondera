@@ -606,17 +606,23 @@ def run_inn_zayavka_1(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
 
 
 def run_inn_zayavka_2(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, Any]):
-    """Implements PAD ИНН_Заявка_2.txt: opens email links, matches passport, completes submission & captures application no."""
+    """Implements PAD ИНН_Заявка_2.txt: opens email links, matches passport/FIO, submits to IFNS, saves app no & screenshot."""
     links = [str(u).strip() for u in (cfg.get("EMAIL_LINKS") or []) if str(u).strip().startswith("http")]
-    rep_fam = str(cfg.get("APPLICANT_FAM") or "").strip()
-    rep_nam = str(cfg.get("APPLICANT_NAM") or "").strip()
-    ifns_code = str(cfg.get("IFNS_CODE") or "4707").strip()
-    default_reg_date = str(cfg.get("REG_DATE") or "").strip()
+    rep_fam = str(cfg.get("APPLICANT_FAM") or "РАХИМОВ").strip()
+    rep_nam = str(cfg.get("APPLICANT_NAM") or "ЗАХИДЖОН").strip()
+    rep_otch = str(cfg.get("APPLICANT_OTCH") or "ТАЙИРОВИЧ").strip()
+    ifns_code = str(cfg.get("IFNS_CODE") or "").strip()
+    default_reg_date = to_ru_date(str(cfg.get("REG_DATE") or "").strip())
 
     rec_by_pass = {
         re.sub(r"\s+", "", str(r.get("pasaport_no") or "")).upper(): r
         for r in records
         if r.get("pasaport_no")
+    }
+    rec_by_fio = {
+        re.sub(r"\s+", " ", str(r.get("tam_adi_kiril") or "")).strip().upper(): r
+        for r in records
+        if r.get("tam_adi_kiril")
     }
 
     for idx, url in enumerate(links, 1):
@@ -625,42 +631,81 @@ def run_inn_zayavka_2(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1800)
+            accept_nalog_personal_data_if_needed(page)
 
-            page_text = page.inner_text("body") or ""
             matched_rec = None
-            for p_key, r in rec_by_pass.items():
-                if p_key and p_key in re.sub(r"\s+", "", page_text).upper():
-                    matched_rec = r
-                    break
+            # Try matching passport from input#sn_doc value OR body text on Step 2
+            try:
+                sn_inp = page.locator("input#sn_doc").first
+                sn_val = re.sub(r"\s+", "", (sn_inp.input_value() if sn_inp.count() > 0 else "") or "").upper()
+                if sn_val and sn_val in rec_by_pass:
+                    matched_rec = rec_by_pass[sn_val]
+            except Exception:
+                pass
+            if not matched_rec:
+                page_text_norm = re.sub(r"\s+", "", page.inner_text("body") or "").upper()
+                for p_key, r in rec_by_pass.items():
+                    if p_key and len(p_key) >= 6 and p_key in page_text_norm:
+                        matched_rec = r
+                        break
 
-            page.locator("button:has-text('Далее')").first.click()
-            page.wait_for_timeout(1500)
+            # Step 2 -> Step 3 (if 'Далее' button is present)
+            next_btn = page.locator("button:has-text('Далее')").first
+            if next_btn.count() > 0 and next_btn.is_visible():
+                next_btn.click()
+                page.wait_for_timeout(1600)
 
-            sel3 = page.locator("input#uni_select_3").first
-            if sel3.count() > 0:
-                sel3.fill("Иные документы")
-            page.fill("input#sn_doc", "1")
-            page.fill("input#nv_doc", "УФМС")
-            d_inp = page.locator("input[placeholder*='ДД.ММ.ГГГГ']").first
-            reg_date = str((matched_rec or {}).get("reg_date") or default_reg_date).strip()
-            if d_inp.count() > 0 and reg_date:
-                d_inp.fill(reg_date)
-            if rep_fam:
-                page.fill("input#fam", rep_fam)
-            if rep_nam:
-                page.fill("input#nam", rep_nam)
+            # Step 3: Additional info / Representative (if on Step 3)
+            if page.locator("input#sn_doc:visible, input#fam:visible").count() > 0:
+                fill_uni_select(page, "input#uni_select_3, input[id^='uni_select_']:visible", "Иные документы")
+                if page.locator("input#sn_doc:visible").count() > 0:
+                    page.fill("input#sn_doc", "1")
+                if page.locator("input#nv_doc:visible").count() > 0:
+                    page.fill("input#nv_doc", "УФМС")
+                reg_date = to_ru_date(str((matched_rec or {}).get("reg_date") or default_reg_date).strip())
+                type_masked_date(page, "input[placeholder*='ДД.ММ.ГГГГ'], input[title*='ДД.ММ.ГГГГ']", reg_date)
+                if rep_fam and page.locator("input#fam:visible").count() > 0:
+                    page.fill("input#fam", rep_fam)
+                if rep_nam and page.locator("input#nam:visible").count() > 0:
+                    page.fill("input#nam", rep_nam)
+                if rep_otch and page.locator("input#otch:visible").count() > 0:
+                    page.fill("input#otch", rep_otch)
+                if ifns_code:
+                    opt = page.locator(f"a:has-text('{ifns_code}')").first
+                    if opt.count() > 0 and opt.is_visible():
+                        opt.click()
+                next_btn2 = page.locator("button:has-text('Далее')").first
+                if next_btn2.count() > 0 and next_btn2.is_visible():
+                    next_btn2.click()
+                    page.wait_for_timeout(2200)
 
-            if ifns_code:
-                opt = page.locator(f"a:has-text('{ifns_code}')").first
-                if opt.count() > 0:
-                    opt.click()
-
-            page.locator("button:has-text('Далее')").first.click()
-            page.wait_for_timeout(2500)
-
+            # Step 4 (reg.html): Read Регистрационный номер, ФИО заявителя, Адресована в ИФНС
             tds = page.locator("table tbody tr td")
             app_no = tds.nth(0).inner_text().strip() if tds.count() >= 1 else ""
-            app_code = tds.nth(1).inner_text().strip() if tds.count() >= 2 else ""
+            applicant_fio = tds.nth(1).inner_text().strip() if tds.count() >= 2 else ""
+            ifns_text = tds.nth(2).inner_text().strip() if tds.count() >= 3 else ""
+
+            # Fallback match by Cyrillic FIO shown on Step 4 table!
+            if not matched_rec and applicant_fio:
+                fio_norm = re.sub(r"\s+", " ", applicant_fio).strip().upper()
+                matched_rec = rec_by_fio.get(fio_norm)
+                if not matched_rec:
+                    # Partial match on first 2 words (Surname + Name)
+                    fio_parts = fio_norm.split(" ")
+                    if len(fio_parts) >= 2:
+                        prefix = f"{fio_parts[0]} {fio_parts[1]}"
+                        for k_fio, r in rec_by_fio.items():
+                            if k_fio.startswith(prefix):
+                                matched_rec = r
+                                break
+
+            # Click final registration link: 'Зарегистрировать заявку и направить ее в ИФНС'
+            reg_link = page.locator("a:has-text('Зарегистрировать заявку'), button:has-text('Зарегистрировать заявку')").first
+            if reg_link.count() > 0 and reg_link.is_visible():
+                logger.info(f"  -> Clicking 'Зарегистрировать заявку и направить ее в ИФНС' (AppNo={app_no})...")
+                reg_link.click(force=True)
+                page.wait_for_timeout(2800)
+
             shot_b64 = capture_page_png_b64(page)
 
             if matched_rec:
@@ -670,10 +715,13 @@ def run_inn_zayavka_2(page: Page, records: List[Dict[str, Any]], cfg: Dict[str, 
                     "tam_adi_kiril": matched_rec.get("tam_adi_kiril", ""),
                     "inn_status": "APPLIED_STEP2",
                     "inn_application_no": app_no,
-                    "inn_application_code": app_code,
+                    "inn_application_code": ifns_text or applicant_fio,
+                    "inn_error": "",
                     "inn_screenshot_base64": shot_b64,
                 })
-            logger.info(f"  -> Zayavka 2 completed! AppNo={app_no} Code={app_code}")
+                logger.info(f"  -> Zayavka 2 saved to Pondera HR! Sicil={matched_rec.get('sicil_no')} AppNo={app_no} IFNS={ifns_text}")
+            else:
+                logger.warning(f"  -> Zayavka 2 finished (AppNo={app_no}, FIO={applicant_fio}) but could not match Sicil.")
         except Exception as e:
             logger.error(f"  -> Zayavka 2 error: {e}")
 
