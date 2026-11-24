@@ -607,14 +607,17 @@ export default function PatentNdflView() {
       if (activeTab === 'vozvrat') {
         if (!r.is_active || Number(r.additional_offset_potential || 0) <= 0 || r.root_cause === 'REGION_CHANGED') return false;
         if (vozvratOnlyGuaranteed && Number(r.guaranteed_vozvrat || 0) <= 0) return false;
+      } else {
+        if (activeFilter === 'active' && !r.is_active) return false;
+        if (activeFilter === 'dismissed' && r.is_active) return false;
       }
-      if (activeFilter === 'active' && !r.is_active) return false;
-      if (activeFilter === 'dismissed' && r.is_active) return false;
-      if (causeFilter !== 'all' && r.root_cause !== causeFilter) return false;
-      if (notifFilter === 'no_notif' && r.has_notification) return false;
-      if (notifFilter === 'with_notif' && !r.has_notification) return false;
-      if (notifFilter === 'has_potential' && Number(r.additional_offset_potential || 0) <= 0) return false;
-      if (notifFilter === 'zero_offset' && !(Number(r.patent_advances || 0) > 0 && Number(r.patent_offset_used || 0) === 0)) return false;
+      if (activeTab === 'reconciliation') {
+        if (causeFilter !== 'all' && r.root_cause !== causeFilter) return false;
+        if (notifFilter === 'no_notif' && r.has_notification) return false;
+        if (notifFilter === 'with_notif' && !r.has_notification) return false;
+        if (notifFilter === 'has_potential' && Number(r.additional_offset_potential || 0) <= 0) return false;
+        if (notifFilter === 'zero_offset' && !(Number(r.patent_advances || 0) > 0 && Number(r.patent_offset_used || 0) === 0)) return false;
+      }
       if (q) {
         const hay = `${r.tabel_no} ${r.full_name} ${r.citizenship} ${r.site_name} ${r.notification_no} ${r.ifns_code} ${r.priority_label}`.toLowerCase();
         if (!hay.includes(q)) return false;
