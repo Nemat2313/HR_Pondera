@@ -936,8 +936,9 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       }
     }
 
-    // 5. Patent Advances & Offsets (AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType)
-    // Track both yearly totals AND per-employee monthly (1..12) breakdown!
+    // 5a. Real Monthly Patent Payment Documents (Document_АвансовыйПлатежИностранцаПоНДФЛ)
+    // In 1C:ZUP, AccumulationRegister posts patent receipts on 01.01.YYYY (tax year start),
+    // while Document_АвансовыйПлатежИностранцаПоНДФЛ stores the ACTUAL receipt payment date (ДатаПлатежа / Date) per month!
     type MonthBucket = { patent_paid: number; ndfl_calc: number; offset_used: number; ndfl_withheld: number };
     const monthlyByFiz = new Map<string, Map<number, MonthBucket>>();
     const ensureMonth = (fk: string, m: number): MonthBucket => {
@@ -953,16 +954,66 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       }
       return b;
     };
-    const parseMonth = (dtStr: any): number => {
-      const m = /^\d{4}-(\d{2})/.exec(String(dtStr || ''));
-      const num = m ? parseInt(m[1], 10) : 0;
+    const parseMonthForYear = (dtStr: any): number => {
+      const m = /^(\d{4})-(\d{2})/.exec(String(dtStr || ''));
+      if (!m) return 0;
+      const y = parseInt(m[1], 10);
+      const num = parseInt(m[2], 10);
+      if (y < year) return 1; // Paid in Dec of prev year for Jan of taxYear
+      if (y > year) return 12;
       return num >= 1 && num <= 12 ? num : 0;
     };
 
+    const advDocEntity =
+      (hasEntity('Document_АвансовыйПлатежИностранцаПоНДФЛ')
+        ? 'Document_АвансовыйПлатежИностранцаПоНДФЛ'
+        : findEntity(/^Document_АвансовыйПлатеж.*НДФЛ$/i)) || '';
+    const docAdvByFiz = new Map<string, number>();
+    let advDocCount = 0;
+    if (advDocEntity) {
+      let dRows = await fetchODataPaged(
+        base,
+        `${advDocEntity}?$filter=Posted eq true and НалоговыйПериод eq ${year}`,
+        headers,
+        25
+      );
+      if (dRows.length === 0) {
+        dRows = await fetchODataPaged(
+          base,
+          `${advDocEntity}?$filter=Posted eq true and Date ge datetime'${year - 1}-11-01T00:00:00' and Date lt datetime'${yearEnd}'`,
+          headers,
+          25
+        );
+      }
+      for (const row of dRows) {
+        if (row.DeletionMark) continue;
+        const rowTaxYear = Number(row.НалоговыйПериод || 0);
+        if (rowTaxYear && rowTaxYear !== year) continue;
+        const fk =
+          String(row.ФизическоеЛицо_Key || '').trim() ||
+          fizByEmpRef.get(String(row.Сотрудник_Key || '').trim()) ||
+          '';
+        if (!fk) continue;
+        const amt = toNum(row.Сумма || row.СуммаПлатежа || row.СуммаАвансовогоПлатежа);
+        if (amt <= 0) continue;
+        const payDt =
+          (row.ДатаПлатежа && !String(row.ДатаПлатежа).startsWith('0001') ? row.ДатаПлатежа : '') ||
+          (row.ДатаОплаты && !String(row.ДатаОплаты).startsWith('0001') ? row.ДатаОплаты : '') ||
+          row.Date;
+        const mNum = parseMonthForYear(payDt) || 1;
+        ensureAgg(fk);
+        ensureMonth(fk, mNum).patent_paid += amt;
+        docAdvByFiz.set(fk, (docAdvByFiz.get(fk) || 0) + amt);
+        advDocCount++;
+      }
+    }
+
+    // 5b. Patent Advances & Offsets (AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType)
     const advRegEntity =
       (hasEntity('AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType')
         ? 'AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType'
         : findEntity(/AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType/i)) || '';
+    const regAdvMonthByFiz = new Map<string, number>();
     let advRegCount = 0;
     if (advRegEntity) {
       const aRows = await fetchODataPaged(
@@ -977,15 +1028,27 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const cur = ensureAgg(fk);
         const amt = toNum(row.Сумма || row.СуммаПлатежа || row.СуммаАвансовогоПлатежа);
         const recType = String(row.RecordType || '').toLowerCase();
-        const mNum = parseMonth(row.МесяцНалоговогоПериода || row.Period);
+        const mNum = parseMonthForYear(row.МесяцНалоговогоПериода || row.Period) || 1;
         if (recType === 'expense') {
           cur.used += amt;
-          if (mNum) ensureMonth(fk, mNum).offset_used += amt;
+          ensureMonth(fk, mNum).offset_used += amt;
         } else {
           cur.adv += amt;
-          if (mNum) ensureMonth(fk, mNum).patent_paid += amt;
+          if (!regAdvMonthByFiz.has(fk)) regAdvMonthByFiz.set(fk, mNum);
         }
         advRegCount++;
+      }
+    }
+
+    // Reconcile monthly patent_paid with official register totals:
+    // If an employee had no Document rows (or register has additional carry-over), add the difference to the register month
+    for (const [fk, vals] of Array.from(byFiz.entries())) {
+      const docSum = docAdvByFiz.get(fk) || 0;
+      if (vals.adv === 0 && docSum > 0) {
+        vals.adv = docSum;
+      } else if (vals.adv > docSum + 1) {
+        const fallbackMonth = regAdvMonthByFiz.get(fk) || 1;
+        ensureMonth(fk, fallbackMonth).patent_paid += vals.adv - docSum;
       }
     }
 
@@ -1007,7 +1070,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const cur = byFiz.get(fk)!;
         const recType = String(row.RecordType || '').toLowerCase();
         const amt = toNum(row.Сумма);
-        const mNum = parseMonth(row.МесяцНалоговогоПериода || row.Period);
+        const mNum = parseMonthForYear(row.МесяцНалоговогоПериода || row.Period);
         if (recType === 'receipt') {
           cur.ndflCalc += amt;
           if (mNum) ensureMonth(fk, mNum).ndfl_calc += amt;
@@ -1098,7 +1161,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     }
 
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi (Bildirim: ${notifCount}, Başvuru: ${appCount}, Avans Hareketi: ${advRegCount}).`;
+    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi (Bildirim: ${notifCount}, Patent Makbuzu: ${advDocCount}, Avans Hareketi: ${advRegCount}).`;
     savePatentODataConfig(db, { lastSyncAt: nowStr, lastSyncMessage: msg });
     return { success: true, synced, message: msg };
   } catch (err: any) {

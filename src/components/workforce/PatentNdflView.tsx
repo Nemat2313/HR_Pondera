@@ -40,6 +40,10 @@ interface EmployeeMonthRow {
   offset_used: number;
   ndfl_withheld: number;
   unoffset_gap: number;
+  is_notif_month?: boolean;
+  is_after_notif?: boolean;
+  status_code?: string;
+  analysis_note?: string;
 }
 
 interface CompanyMonthTotal {
@@ -82,9 +86,10 @@ interface PatentNdflRow {
   manual_status: string;
   notes: string;
   excluded_region_change?: number;
+  notif_month?: number;
   root_cause?: 'NO_NOTIFICATION' | 'REGION_CHANGED' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'FULL_OFFSET';
   months?: EmployeeMonthRow[];
-  missing_months?: Array<{ month: number; label: string; gap: number }>;
+  missing_months?: Array<{ month: number; label: string; gap: number; phase?: string }>;
   source_file: string;
 }
 
@@ -577,11 +582,13 @@ export default function PatentNdflView() {
           'Bildirim No': r.notification_no || 'YOK',
           'Bildirim Tarihi': r.notification_date || '',
           Ay: `${String(m.month).padStart(2, '0')} - ${m.label}`,
+          'İzin Dönemi': m.is_notif_month ? 'Уведомление Alındı' : m.is_after_notif ? 'İzin Sonrası (Mahsup Dönemi)' : 'İzin Öncesi / İzinsiz',
           'Ödenen Patent (₽)': m.patent_paid,
           'Hesaplanan НДФЛ (₽)': m.ndfl_calc,
           'Mahsup Edilen (₽)': m.offset_used,
           'Kesilen НДФЛ (₽)': m.ndfl_withheld,
           'Aylık Eksik Mahsup (₽)': m.unoffset_gap,
+          'Aylık Analiz': m.analysis_note || '',
         });
       }
     }
@@ -1277,12 +1284,16 @@ export default function PatentNdflView() {
                         </td>
                         <td className="py-2 px-2.5">
                           {missingMonths.length > 0 ? (
-                            <div className="flex flex-wrap gap-1 max-w-[170px]">
+                            <div className="flex flex-wrap gap-1 max-w-[185px]">
                               {missingMonths.slice(0, 6).map((mm) => (
                                 <span
                                   key={mm.month}
-                                  className="px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300/70 dark:border-amber-700/70"
-                                  title={`${mm.label}: ${fmtRub(mm.gap)} eksik mahsup`}
+                                  className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono border ${
+                                    mm.phase === 'post_notif' || mm.phase === 'no_notif'
+                                      ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300/80 dark:border-rose-700/70'
+                                      : 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-300/70 dark:border-amber-700/70'
+                                  }`}
+                                  title={`${mm.label}: ${fmtRub(mm.gap)} eksik mahsup (${mm.phase === 'post_notif' ? 'İzin varken mahsup edilmedi' : mm.phase === 'pre_notif' ? 'İzin öncesi dönem' : 'ФНС izni yok'})`}
                                 >
                                   {mm.label}
                                 </span>
@@ -1354,52 +1365,117 @@ export default function PatentNdflView() {
                                   Bu çalışan için henüz aylık (Ocak–Aralık) kırılım verisi yok — <strong>5. 1C OData</strong> sekmesinden <em>1C OData&apos;dan Çek</em> butonuna basıldığında tüm aylık Patent &amp; 2-НДФЛ detayları otomatik dolar.
                                 </p>
                               ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left text-[11px] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-                                    <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
-                                      <tr>
-                                        <th className="py-1.5 px-2.5">Ay ({taxYear})</th>
-                                        <th className="py-1.5 px-2.5 text-right">Ödenen Patent</th>
-                                        <th className="py-1.5 px-2.5 text-right">Hesaplanan НДФЛ</th>
-                                        <th className="py-1.5 px-2.5 text-right text-emerald-600">Mahsup Edilen</th>
-                                        <th className="py-1.5 px-2.5 text-right">Kesilen НДФЛ</th>
-                                        <th className="py-1.5 px-2.5 text-right text-amber-600">Aylık Eksik Mahsup</th>
-                                        <th className="py-1.5 px-2.5">Aylık Analiz</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
-                                      {empMonths.map((em) => {
-                                        const isMissing = em.unoffset_gap > 0 || (em.patent_paid > 0 && em.offset_used === 0);
-                                        const statusLabel = !r.has_notification
-                                          ? '⚠ ФНС İzni Yok'
-                                          : isMissing
-                                          ? '⚠ Eksik Mahsup (İzin Öncesi / Gecikmiş)'
-                                          : em.patent_paid > em.ndfl_calc && em.ndfl_calc > 0 && em.offset_used >= em.ndfl_calc
-                                          ? 'ℹ НДФЛ Az (Avans > НДФЛ)'
-                                          : '✓ Mahsup Edildi';
-                                        return (
-                                          <tr
-                                            key={em.month}
-                                            className={isMissing ? 'bg-amber-50/70 dark:bg-amber-950/25' : ''}
-                                          >
-                                            <td className="py-1.5 px-2.5 font-semibold font-mono">
-                                              {String(em.month).padStart(2, '0')} · {em.label}
-                                            </td>
-                                            <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.patent_paid)}</td>
-                                            <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.ndfl_calc)}</td>
-                                            <td className="py-1.5 px-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">
-                                              {fmtRub(em.offset_used)}
-                                            </td>
-                                            <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.ndfl_withheld)}</td>
-                                            <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-amber-600 dark:text-amber-400">
-                                              {em.unoffset_gap > 0 ? fmtRub(em.unoffset_gap) : '—'}
-                                            </td>
-                                            <td className="py-1.5 px-2.5 text-[10.5px]">{statusLabel}</td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-600 dark:text-slate-400">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="w-3 h-3 rounded-sm bg-emerald-100 dark:bg-emerald-950/70 border-l-2 border-emerald-500 inline-block" />
+                                      Уведомление Alındı &amp; Mahsup Dönemi (Bu aydan itibaren mahsup zorunlu)
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="w-3 h-3 rounded-sm bg-amber-100 dark:bg-amber-950/60 border border-amber-300 inline-block" />
+                                      İzin Öncesi Kesilen НДФЛ (Geriye dönük mahsup / Возврат)
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="w-3 h-3 rounded-sm bg-rose-100 dark:bg-rose-950/60 border-l-2 border-rose-500 inline-block" />
+                                      İzin Varken Mahsup Yapılmadı!
+                                    </span>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-[11px] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                                      <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
+                                        <tr>
+                                          <th className="py-1.5 px-2.5">Ay ({taxYear})</th>
+                                          <th className="py-1.5 px-2.5 text-right">Ödenen Patent</th>
+                                          <th className="py-1.5 px-2.5 text-right">Hesaplanan НДФЛ</th>
+                                          <th className="py-1.5 px-2.5 text-right text-emerald-600">Mahsup Edilen</th>
+                                          <th className="py-1.5 px-2.5 text-right">Kesilen НДФЛ</th>
+                                          <th className="py-1.5 px-2.5 text-right text-amber-600">Aylık Eksik Mahsup</th>
+                                          <th className="py-1.5 px-2.5">Aylık Analiz</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
+                                        {empMonths.map((em) => {
+                                          const sc = em.status_code || '';
+                                          const rowCls =
+                                            sc === 'post_notif_missed' || sc === 'partial_missed'
+                                              ? 'bg-rose-50/80 dark:bg-rose-950/35 border-l-4 border-l-rose-500'
+                                              : sc === 'no_notif'
+                                              ? 'bg-rose-50/50 dark:bg-rose-950/25'
+                                              : em.is_notif_month
+                                              ? 'bg-emerald-50/80 dark:bg-emerald-950/35 border-l-4 border-l-emerald-500'
+                                              : em.is_after_notif
+                                              ? 'bg-emerald-50/35 dark:bg-emerald-950/15 border-l-4 border-l-emerald-400/70'
+                                              : sc === 'pre_notif_missed'
+                                              ? 'bg-amber-50/70 dark:bg-amber-950/25'
+                                              : '';
+                                          const noteCls =
+                                            sc === 'post_notif_missed' || sc === 'partial_missed' || sc === 'no_notif'
+                                              ? 'text-rose-700 dark:text-rose-300 font-medium'
+                                              : sc === 'pre_notif_missed'
+                                              ? 'text-amber-800 dark:text-amber-300'
+                                              : sc === 'full_offset' || sc === 'retro_offset'
+                                              ? 'text-emerald-700 dark:text-emerald-300 font-medium'
+                                              : 'text-slate-600 dark:text-slate-300';
+                                          return (
+                                            <tr key={em.month} className={rowCls}>
+                                              <td className="py-1.5 px-2.5 font-semibold font-mono whitespace-nowrap">
+                                                <span>{String(em.month).padStart(2, '0')} · {em.label}</span>
+                                                {em.is_notif_month && (
+                                                  <span className="ml-2 px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-sans font-semibold">
+                                                    ✓ İzin Alındı ({r.notification_date || 'OK'})
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.patent_paid)}</td>
+                                              <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.ndfl_calc)}</td>
+                                              <td className="py-1.5 px-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                                                {fmtRub(em.offset_used)}
+                                              </td>
+                                              <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.ndfl_withheld)}</td>
+                                              <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-amber-600 dark:text-amber-400">
+                                                {em.unoffset_gap > 0 ? fmtRub(em.unoffset_gap) : '—'}
+                                              </td>
+                                              <td className={`py-1.5 px-2.5 text-[10.5px] ${noteCls}`}>
+                                                {em.analysis_note || '—'}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                      <tfoot className="bg-slate-100/90 dark:bg-slate-800/90 font-semibold border-t border-slate-300 dark:border-slate-700">
+                                        {(() => {
+                                          const sumPatent = empMonths.reduce((s, m) => s + m.patent_paid, 0);
+                                          const sumNdfl = empMonths.reduce((s, m) => s + m.ndfl_calc, 0);
+                                          const sumOffset = empMonths.reduce((s, m) => s + m.offset_used, 0);
+                                          const sumWithheld = empMonths.reduce((s, m) => s + m.ndfl_withheld, 0);
+                                          const lowNdflExcess = Math.max(0, r.patent_advance_balance - r.additional_offset_potential);
+                                          return (
+                                            <tr>
+                                              <td className="py-2 px-2.5 font-mono">TOPLAM ({taxYear})</td>
+                                              <td className="py-2 px-2.5 text-right font-mono">{fmtRub(sumPatent)}</td>
+                                              <td className="py-2 px-2.5 text-right font-mono">{fmtRub(sumNdfl)}</td>
+                                              <td className="py-2 px-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                                                {fmtRub(sumOffset)}
+                                              </td>
+                                              <td className="py-2 px-2.5 text-right font-mono">{fmtRub(sumWithheld)}</td>
+                                              <td className="py-2 px-2.5 text-right font-mono text-indigo-600 dark:text-indigo-400">
+                                                {r.additional_offset_potential > 0 ? fmtRub(r.additional_offset_potential) : '—'}
+                                              </td>
+                                              <td className="py-2 px-2.5 text-[10.5px] font-normal text-slate-700 dark:text-slate-200">
+                                                Kalan Avans: <strong>{fmtRub(r.patent_advance_balance)}</strong>
+                                                {r.additional_offset_potential > 0 && (
+                                                  <> · Ek Mahsup / Возврат: <strong className="text-indigo-600 dark:text-indigo-400">{fmtRub(r.additional_offset_potential)}</strong></>
+                                                )}
+                                                {lowNdflExcess > 0 && (
+                                                  <> · НДФЛ Yetersiz Kalan: <strong className="text-amber-600 dark:text-amber-400">{fmtRub(lowNdflExcess)}</strong></>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })()}
+                                      </tfoot>
+                                    </table>
+                                  </div>
                                 </div>
                               )}
                             </div>

@@ -41,7 +41,40 @@ export async function GET(request: Request) {
       .all(taxYear) as any[];
 
     const MONTH_SHORT_TR = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-    const monthlyByNorm = new Map<string, any[]>();
+    const fmtRubInline = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
+    const parseNotifMonth = (rawDate: string): number => {
+      const s = String(rawDate || '').trim();
+      const iso = /^\d{4}-(\d{2})/.exec(s);
+      if (iso) {
+        const m = parseInt(iso[1], 10);
+        if (m >= 1 && m <= 12) return m;
+      }
+      const dot = /^\d{2}\.(\d{2})\.\d{4}/.exec(s);
+      if (dot) {
+        const m = parseInt(dot[1], 10);
+        if (m >= 1 && m <= 12) return m;
+      }
+      return 0;
+    };
+
+    const rawMonthlyByNorm = new Map<string, Map<number, { patent_paid: number; ndfl_calc: number; offset_used: number; ndfl_withheld: number }>>();
+    for (const m of rawMonthly) {
+      const nn = String(m.norm_name || '');
+      const mNum = Number(m.month_num || 0);
+      if (!nn || mNum < 1 || mNum > 12) continue;
+      let mp = rawMonthlyByNorm.get(nn);
+      if (!mp) {
+        mp = new Map();
+        rawMonthlyByNorm.set(nn, mp);
+      }
+      mp.set(mNum, {
+        patent_paid: Math.round(Number(m.patent_paid || 0)),
+        ndfl_calc: Math.round(Number(m.ndfl_calc || 0)),
+        offset_used: Math.round(Number(m.offset_used || 0)),
+        ndfl_withheld: Math.round(Number(m.ndfl_withheld || 0)),
+      });
+    }
+
     const companyMonths = Array.from({ length: 12 }, (_, i) => ({
       month: i + 1,
       label: MONTH_SHORT_TR[i + 1],
@@ -52,48 +85,151 @@ export async function GET(request: Request) {
       missing_employees: 0,
     }));
 
-    for (const m of rawMonthly) {
-      const nn = String(m.norm_name || '');
-      const mNum = Number(m.month_num || 0);
-      if (!nn || mNum < 1 || mNum > 12) continue;
-      const patentPaid = Number(m.patent_paid || 0);
-      const ndflCalc = Number(m.ndfl_calc || 0);
-      const offsetUsed = Number(m.offset_used || 0);
-      const ndflWithheld = Number(m.ndfl_withheld || 0);
-      const expectedOffset = ndflCalc > 0 ? Math.min(patentPaid, ndflCalc) : patentPaid;
-      const unoffsetGap = patentPaid > 0 && offsetUsed < expectedOffset ? Math.max(0, expectedOffset - offsetUsed) : 0;
-
-      const arr = monthlyByNorm.get(nn) || [];
-      arr.push({
-        month: mNum,
-        label: MONTH_SHORT_TR[mNum],
-        patent_paid: Math.round(patentPaid),
-        ndfl_calc: Math.round(ndflCalc),
-        offset_used: Math.round(offsetUsed),
-        ndfl_withheld: Math.round(ndflWithheld),
-        unoffset_gap: Math.round(unoffsetGap),
-      });
-      monthlyByNorm.set(nn, arr);
-
-      const cm = companyMonths[mNum - 1];
-      cm.patent_paid += Math.round(patentPaid);
-      cm.ndfl_calc += Math.round(ndflCalc);
-      cm.offset_used += Math.round(offsetUsed);
-      cm.ndfl_withheld += Math.round(ndflWithheld);
-      if (unoffsetGap > 0) cm.missing_employees++;
-    }
-
     const records = rawRecords.map((r) => {
-      const months = monthlyByNorm.get(String(r.norm_name || '')) || [];
+      const nn = String(r.norm_name || '');
+      const mp = rawMonthlyByNorm.get(nn);
+      const hasNotif = Boolean(r.has_notification);
+      const notifMonth = hasNotif ? parseNotifMonth(r.notification_date) : 0;
+      const totalAdvances = Math.round(Number(r.patent_advances || 0));
+
+      const months: Array<{
+        month: number;
+        label: string;
+        patent_paid: number;
+        ndfl_calc: number;
+        offset_used: number;
+        ndfl_withheld: number;
+        unoffset_gap: number;
+        is_notif_month: boolean;
+        is_after_notif: boolean;
+        status_code: string;
+        analysis_note: string;
+      }> = [];
+
+      if (mp && mp.size > 0) {
+        let cumOffsetUsed = 0;
+        for (let mNum = 1; mNum <= 12; mNum++) {
+          const row = mp.get(mNum);
+          const isNotifMonth = hasNotif && notifMonth > 0 && mNum === notifMonth;
+          if (!row && !isNotifMonth) continue;
+
+          const patentPaid = row?.patent_paid || 0;
+          const ndflCalc = row?.ndfl_calc || 0;
+          const offsetUsed = row?.offset_used || 0;
+          const ndflWithheld = row?.ndfl_withheld || 0;
+          const isAfterNotif = hasNotif && (notifMonth === 0 || mNum >= notifMonth);
+          const isBeforeNotif = hasNotif && notifMonth > 0 && mNum < notifMonth;
+
+          const remainingAdvanceBefore = Math.max(0, totalAdvances - cumOffsetUsed);
+          const maxOffsetable = Math.min(ndflCalc, remainingAdvanceBefore);
+          const unoffsetGap = ndflCalc > 0 && offsetUsed < maxOffsetable ? Math.round(maxOffsetable - offsetUsed) : 0;
+
+          let statusCode = 'no_ndfl';
+          let analysisNote = 'НДФЛ yok';
+
+          if (!hasNotif) {
+            if (ndflCalc > 0 && offsetUsed === 0) {
+              statusCode = 'no_notif';
+              analysisNote = `ФНС izni yok — ${fmtRubInline(ndflCalc)} НДФЛ kesildi, mahsup yapılamadı`;
+            } else if (patentPaid > 0 && ndflCalc === 0) {
+              statusCode = 'patent_only';
+              analysisNote = `Patent ödendi (${fmtRubInline(patentPaid)}), НДФЛ yok · ФНС izni eksik`;
+            } else {
+              statusCode = 'no_ndfl';
+              analysisNote = 'НДФЛ yok · ФНС izni eksik';
+            }
+          } else if (isBeforeNotif) {
+            if (ndflCalc > 0 && offsetUsed === 0) {
+              statusCode = 'pre_notif_missed';
+              analysisNote = `İzin öncesi — ${fmtRubInline(ndflCalc)} НДФЛ kesildi (izin ${MONTH_SHORT_TR[notifMonth]}'da alındı → geriye dönük mahsup/iade)`;
+            } else if (offsetUsed > 0 && offsetUsed >= ndflCalc) {
+              statusCode = 'full_offset';
+              analysisNote = `✓ Geriye dönük tam mahsup edildi (${fmtRubInline(offsetUsed)})`;
+            } else if (offsetUsed > 0) {
+              statusCode = 'partial_missed';
+              analysisNote = `İzin öncesi kısmi mahsup (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — ${fmtRubInline(ndflCalc - offsetUsed)} kesildi`;
+            } else if (patentPaid > 0) {
+              statusCode = 'patent_only';
+              analysisNote = `İzin öncesi — Patent ödendi (${fmtRubInline(patentPaid)}), bu ay НДФЛ yok`;
+            } else {
+              statusCode = 'no_ndfl';
+              analysisNote = 'İzin öncesi — НДФЛ yok';
+            }
+          } else {
+            // Notification month and after (mahsup eligible period)
+            if (offsetUsed > 0 && ndflCalc === 0) {
+              statusCode = 'retro_offset';
+              analysisNote = `✓ Geçmiş ay mahsubu uygulandı (+${fmtRubInline(offsetUsed)})`;
+            } else if (offsetUsed > 0 && offsetUsed > ndflCalc) {
+              statusCode = 'retro_offset';
+              analysisNote = `✓ НДФЛ kadar (${fmtRubInline(ndflCalc)}) + geçmiş ay mahsubu (+${fmtRubInline(offsetUsed - ndflCalc)})`;
+            } else if (offsetUsed > 0 && offsetUsed >= ndflCalc) {
+              statusCode = 'full_offset';
+              analysisNote = `✓ НДФЛ kadar tam mahsup edildi (${fmtRubInline(offsetUsed)})`;
+            } else if (offsetUsed > 0 && offsetUsed < ndflCalc) {
+              if (unoffsetGap === 0) {
+                statusCode = 'patent_cap';
+                analysisNote = `Patent avansı kadar mahsup edildi (${fmtRubInline(offsetUsed)}), kalan ${fmtRubInline(ndflCalc - offsetUsed)} НДФЛ kesildi`;
+              } else {
+                statusCode = 'partial_missed';
+                analysisNote = `⚠ Kısmi mahsup (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — ${fmtRubInline(unoffsetGap)} eksik mahsup`;
+              }
+            } else if (offsetUsed === 0 && ndflCalc > 0) {
+              if (unoffsetGap > 0) {
+                statusCode = 'post_notif_missed';
+                analysisNote = `⚠ Mahsup YAPILMADI! İzin var & avans bakiyesi yeterli, ${fmtRubInline(ndflCalc)} НДФЛ kesildi`;
+              } else {
+                statusCode = 'advance_exhausted';
+                analysisNote = `Patent avansı tükendi — ${fmtRubInline(ndflCalc)} НДФЛ kesildi`;
+              }
+            } else if (patentPaid > 0) {
+              statusCode = 'patent_only';
+              analysisNote = isNotifMonth
+                ? `Уведомление alındı · Patent ödendi (${fmtRubInline(patentPaid)}), bu ay НДФЛ yok`
+                : `Patent ödendi (${fmtRubInline(patentPaid)}), bu ay НДФЛ yok`;
+            } else {
+              statusCode = 'no_ndfl';
+              analysisNote = isNotifMonth ? 'Уведомление bu ay alındı — bu ay НДФЛ yok' : 'НДФЛ yok';
+            }
+          }
+
+          cumOffsetUsed += offsetUsed;
+
+          months.push({
+            month: mNum,
+            label: MONTH_SHORT_TR[mNum],
+            patent_paid: patentPaid,
+            ndfl_calc: ndflCalc,
+            offset_used: offsetUsed,
+            ndfl_withheld: ndflWithheld,
+            unoffset_gap: unoffsetGap,
+            is_notif_month: isNotifMonth,
+            is_after_notif: isAfterNotif,
+            status_code: statusCode,
+            analysis_note: analysisNote,
+          });
+
+          const cm = companyMonths[mNum - 1];
+          cm.patent_paid += patentPaid;
+          cm.ndfl_calc += ndflCalc;
+          cm.offset_used += offsetUsed;
+          cm.ndfl_withheld += ndflWithheld;
+          if (unoffsetGap > 0) cm.missing_employees++;
+        }
+      }
+
       const missingMonths = months
-        .filter((m) => m.unoffset_gap > 0 || (m.patent_paid > 0 && m.offset_used === 0))
+        .filter((m) => m.unoffset_gap > 0)
         .map((m) => ({
           month: m.month,
           label: m.label,
-          gap: m.unoffset_gap || m.patent_paid,
+          gap: m.unoffset_gap,
+          phase: m.is_after_notif ? 'post_notif' : hasNotif ? 'pre_notif' : 'no_notif',
         }));
+
       return {
         ...r,
+        notif_month: notifMonth,
         root_cause: classifyPatentRootCause(r),
         months,
         missing_months: missingMonths,
