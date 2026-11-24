@@ -19,6 +19,8 @@ import {
   TrendingUp,
   FileSpreadsheet,
   X,
+  RotateCcw,
+  Ban,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -53,8 +55,46 @@ interface PatentNdflRow {
   responsible_person: string;
   manual_status: string;
   notes: string;
+  excluded_region_change?: number;
+  root_cause?: 'NO_NOTIFICATION' | 'REGION_CHANGED' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'FULL_OFFSET';
   source_file: string;
 }
+
+const CAUSE_META: Record<
+  'NO_NOTIFICATION' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'REGION_CHANGED' | 'FULL_OFFSET',
+  { label: string; short: string; cls: string; hint: string }
+> = {
+  NO_NOTIFICATION: {
+    label: 'Acil: ФНС İzni Yok',
+    short: 'ФНС İzni Yok',
+    cls: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700',
+    hint: 'Muhasebe acil İFNS başvurusu yapmalı / ТКС kontrol etmeli',
+  },
+  LATE_NOTIFICATION_VOZVRAT: {
+    label: 'Gecikmiş İzin → Mahsup / Возврат',
+    short: 'Возврат / Ek Mahsup',
+    cls: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700',
+    hint: 'Kalan aylarda mahsup edilmezse yıl sonunda ст. 231 НК РФ ile iade istenmeli',
+  },
+  LOW_NDFL: {
+    label: 'НДФЛ Yetersiz (Avans > НДФЛ)',
+    short: 'НДФЛ Az',
+    cls: 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700',
+    hint: 'Muhasebe hatası değil; ст. 227.1 п. 7 gereği НДФЛ üstü avans iade edilmez',
+  },
+  REGION_CHANGED: {
+    label: 'Bölge Değişikliği (Plan Dışı)',
+    short: 'Bölge Değişikliği',
+    cls: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600',
+    hint: 'Yılda sadece 1 bölge izni verilir — mahsup planından çıkarıldı',
+  },
+  FULL_OFFSET: {
+    label: 'Tam Mahsup Edildi (%100)',
+    short: 'Tam Mahsup',
+    cls: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700',
+    hint: 'Sorun yok, avans tamamen mahsup edildi',
+  },
+};
 
 interface DiscrepancyRow {
   id: number;
@@ -76,7 +116,7 @@ export default function PatentNdflView() {
   const { getAuthHeaders } = useAuth();
   const { lang } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'notifications' | 'reconciliation' | 'import_odata'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'notifications' | 'reconciliation' | 'vozvrat' | 'import_odata'>('overview');
   const [taxYear, setTaxYear] = useState<number>(2026);
   const [records, setRecords] = useState<PatentNdflRow[]>([]);
   const [discrepancies, setDiscrepancies] = useState<DiscrepancyRow[]>([]);
@@ -97,6 +137,24 @@ export default function PatentNdflView() {
     offsetPct: 0,
     discrepancyCount: 0,
     totalDiscrepancy: 0,
+    causeCounts: {
+      NO_NOTIFICATION: 0,
+      REGION_CHANGED: 0,
+      LATE_NOTIFICATION_VOZVRAT: 0,
+      LOW_NDFL: 0,
+      FULL_OFFSET: 0,
+    },
+    causeRub: {
+      NO_NOTIFICATION: 0,
+      REGION_CHANGED: 0,
+      LATE_NOTIFICATION_VOZVRAT: 0,
+      LOW_NDFL: 0,
+      FULL_OFFSET: 0,
+    },
+    vozvratActiveRub: 0,
+    vozvratActiveCount: 0,
+    vozvratDismissedRub: 0,
+    vozvratDismissedCount: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -107,6 +165,9 @@ export default function PatentNdflView() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'dismissed'>('all');
   const [notifFilter, setNotifFilter] = useState<'all' | 'no_notif' | 'with_notif' | 'has_potential' | 'zero_offset'>('all');
+  const [causeFilter, setCauseFilter] = useState<
+    'all' | 'NO_NOTIFICATION' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'REGION_CHANGED' | 'FULL_OFFSET'
+  >('all');
   const [visibleCount, setVisibleCount] = useState(150);
 
   // OData config
@@ -233,12 +294,32 @@ export default function PatentNdflView() {
     }
   };
 
+  const handleToggleRegionExcluded = async (row: PatentNdflRow) => {
+    try {
+      const nextExcluded = row.excluded_region_change ? 0 : 1;
+      const res = await fetch('/api/patent-ndfl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ action: 'toggle_region_excluded', id: row.id, excluded: nextExcluded }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setFeedback({ type: 'info', text: data.message });
+        await fetchData();
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'Durum güncellenemedi.' });
+    }
+  };
+
   const filteredRecords = useMemo(() => {
     const q = search.trim().toLowerCase();
     return records.filter((r) => {
-      if (activeTab === 'notifications' && r.has_notification) return false;
+      if (activeTab === 'notifications' && (r.has_notification || r.root_cause === 'REGION_CHANGED')) return false;
+      if (activeTab === 'vozvrat' && r.root_cause !== 'LATE_NOTIFICATION_VOZVRAT') return false;
       if (activeFilter === 'active' && !r.is_active) return false;
       if (activeFilter === 'dismissed' && r.is_active) return false;
+      if (causeFilter !== 'all' && r.root_cause !== causeFilter) return false;
       if (notifFilter === 'no_notif' && r.has_notification) return false;
       if (notifFilter === 'with_notif' && !r.has_notification) return false;
       if (notifFilter === 'has_potential' && Number(r.additional_offset_potential || 0) <= 0) return false;
@@ -249,7 +330,7 @@ export default function PatentNdflView() {
       }
       return true;
     });
-  }, [records, search, activeFilter, notifFilter, activeTab]);
+  }, [records, search, activeFilter, notifFilter, causeFilter, activeTab]);
 
   const analytics = useMemo(() => {
     const byCit = new Map<string, { name: string; count: number; advances: number; used: number; potential: number; noNotif: number }>();
@@ -322,13 +403,19 @@ export default function PatentNdflView() {
             },
             {
               id: 'reconciliation',
-              label: lang === 'ru' ? '3. Сверка по сотрудникам' : '3. Kişi Bazlı Mahsup & Farklar',
+              label: lang === 'ru' ? '3. Сверка и причины' : '3. Kişi Bazlı Mahsup & Nedenler',
               badge: summary.totalEmployees,
               icon: <Receipt className="w-3.5 h-3.5" />,
             },
             {
+              id: 'vozvrat',
+              label: lang === 'ru' ? '4. Возврат НДФЛ (ст. 231)' : '4. Возврат НДФЛ (Yıl Sonu İade)',
+              badge: (summary.vozvratActiveCount || 0) + (summary.vozvratDismissedCount || 0),
+              icon: <RotateCcw className="w-3.5 h-3.5" />,
+            },
+            {
               id: 'import_odata',
-              label: lang === 'ru' ? '4. Импорт 1С / OData и Нормы' : '4. 1C Yükle / OData & Mevzuat',
+              label: lang === 'ru' ? '5. 1С OData и Нормы' : '5. 1C OData & Mevzuat',
               icon: <Globe className="w-3.5 h-3.5" />,
             },
           ]}
@@ -480,6 +567,44 @@ export default function PatentNdflView() {
                     </div>
                   </div>
 
+                  {/* Root-Cause Analysis Breakdown (5 Clickable Cards) */}
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                        Mahsup Edilmeme Nedenleri (Kök Neden Analizi — Tıklayarak Filtrele)
+                      </h3>
+                      <span className="text-[10.5px] text-slate-500">
+                        Bölge değiştirenler yılda 1 izin kuralı gereği mahsup planından otomatik çıkarılır
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                      {(
+                        ['NO_NOTIFICATION', 'LATE_NOTIFICATION_VOZVRAT', 'LOW_NDFL', 'REGION_CHANGED', 'FULL_OFFSET'] as const
+                      ).map((ck) => {
+                        const meta = CAUSE_META[ck];
+                        const cnt = summary.causeCounts?.[ck] || 0;
+                        const rub = summary.causeRub?.[ck] || 0;
+                        return (
+                          <button
+                            key={ck}
+                            type="button"
+                            onClick={() => {
+                              setCauseFilter(ck);
+                              setNotifFilter('all');
+                              setActiveTab(ck === 'LATE_NOTIFICATION_VOZVRAT' ? 'vozvrat' : 'reconciliation');
+                            }}
+                            className={`p-3 rounded-xl border text-left cursor-pointer hover:opacity-90 transition ${meta.cls}`}
+                          >
+                            <div className="text-[11px] font-semibold">{meta.short}</div>
+                            <div className="text-lg font-mono font-bold mt-0.5">{cnt} kişi</div>
+                            <div className="text-[10.5px] font-mono opacity-90">{fmtRub(rub)}</div>
+                            <div className="text-[9.5px] opacity-80 mt-1 leading-tight">{meta.hint}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Site / Org Breakdown & Citizenship Breakdown */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="lg:col-span-2 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
@@ -553,9 +678,51 @@ export default function PatentNdflView() {
             </div>
           )}
 
-          {/* TAB 2 & 3: NOTIFICATIONS & RECONCILIATION TABLE */}
-          {(activeTab === 'notifications' || activeTab === 'reconciliation') && (
+          {/* TAB 2, 3 & 4: NOTIFICATIONS, RECONCILIATION & VOZVRAT TABLE */}
+          {(activeTab === 'notifications' || activeTab === 'reconciliation' || activeTab === 'vozvrat') && (
             <div className="space-y-3">
+              {activeTab === 'vozvrat' && (
+                <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-700/70 bg-indigo-50/40 dark:bg-indigo-950/30 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-semibold text-indigo-950 dark:text-indigo-100 flex items-center gap-1.5">
+                        <RotateCcw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>Yıl Sonu Fazla Kesilen НДФЛ İadesi (Возврат НДФЛ — ст. 231 НК РФ)</span>
+                      </h3>
+                      <p className="text-[11px] text-indigo-900/80 dark:text-indigo-200/80 mt-0.5">
+                        ФНС izni geç geldiği için önceki aylarda kesilen ve yıl sonuna kadar yeni НДФЛ&apos;den mahsup edilemeyen tutarlar, muhasebe tarafından çalışanın banka hesabına iade edilip İFNS/ЕНС üzerinden geri alınmalıdır.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs font-mono">
+                      <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">
+                        Aktif İade Adayı: <strong>{summary.vozvratActiveCount}</strong> ({fmtRub(summary.vozvratActiveRub)})
+                      </span>
+                      <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300">
+                        Çıkışlı İade Adayı: <strong>{summary.vozvratDismissedCount}</strong> ({fmtRub(summary.vozvratDismissedRub)})
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-[11px]">
+                    <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
+                      <strong className="text-indigo-700 dark:text-indigo-300">1. Bildirim (10 iş günü)</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">İşveren, fazla kesilen НДФЛ tutarını çalışana yazılı bildirir.</p>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
+                      <strong className="text-indigo-700 dark:text-indigo-300">2. Dilekçe + Banka IBAN</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">Çalışan <em>Заявление на возврат НДФЛ</em> ve banka hesap bilgilerini verir (nakit yasak).</p>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
+                      <strong className="text-indigo-700 dark:text-indigo-300">3. İade &amp; ЕНС Mahsubu</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">İşveren 3 ay içinde banka hesabına öder; diğer çalışanların НДФЛ&apos;sinden düşer veya İFNS&apos;den iade alır.</p>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
+                      <strong className="text-indigo-700 dark:text-indigo-300">4. 6-НДФЛ &amp; Çıkışlılar</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">6-НДФЛ (satır 190)&apos;a işlenir. Ulaşılamayan çıkışlılar yıl bitiminde İFNS&apos;ye 3-НДФЛ ile başvurabilir.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="relative">
@@ -565,7 +732,7 @@ export default function PatentNdflView() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Sicil, Ad Soyad, Bildirim No, İFNS..."
-                      className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600 w-64"
+                      className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600 w-60"
                     />
                   </div>
                   <select
@@ -578,17 +745,31 @@ export default function PatentNdflView() {
                     <option value="dismissed">Sadece Çıkışlılar</option>
                   </select>
                   {activeTab === 'reconciliation' && (
-                    <select
-                      value={notifFilter}
-                      onChange={(e) => setNotifFilter(e.target.value as any)}
-                      className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
-                    >
-                      <option value="all">Tüm Kayıtlar</option>
-                      <option value="has_potential">Ek Mahsup Potansiyeli Olanlar</option>
-                      <option value="zero_offset">Avans Var ama Mahsup = 0</option>
-                      <option value="with_notif">ФНС Bildirimi Var</option>
-                      <option value="no_notif">ФНС Bildirimi Yok</option>
-                    </select>
+                    <>
+                      <select
+                        value={causeFilter}
+                        onChange={(e) => setCauseFilter(e.target.value as any)}
+                        className="px-2.5 py-1.5 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700"
+                      >
+                        <option value="all">Tüm Kök Nedenler</option>
+                        <option value="NO_NOTIFICATION">Acil: ФНС İzni Yok</option>
+                        <option value="LATE_NOTIFICATION_VOZVRAT">Gecikmiş İzin / Возврат</option>
+                        <option value="LOW_NDFL">НДФЛ Yetersiz (Avans &gt; НДФЛ)</option>
+                        <option value="REGION_CHANGED">Bölge Değişikliği (Plan Dışı)</option>
+                        <option value="FULL_OFFSET">Tam Mahsup (%100)</option>
+                      </select>
+                      <select
+                        value={notifFilter}
+                        onChange={(e) => setNotifFilter(e.target.value as any)}
+                        className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
+                      >
+                        <option value="all">Tüm Kayıtlar</option>
+                        <option value="has_potential">Ek Mahsup Potansiyeli Olanlar</option>
+                        <option value="zero_offset">Avans Var ama Mahsup = 0</option>
+                        <option value="with_notif">ФНС Bildirimi Var</option>
+                        <option value="no_notif">ФНС Bildirimi Yok</option>
+                      </select>
+                    </>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -622,12 +803,21 @@ export default function PatentNdflView() {
                       <th className="py-2.5 px-2.5 text-right">Mahsup Edilen</th>
                       <th className="py-2.5 px-2.5 text-right">Kalan Avans</th>
                       <th className="py-2.5 px-2.5 text-right">Ek Potansiyel</th>
-                      <th className="py-2.5 px-2.5">Öncelik / Aksiyon</th>
+                      <th className="py-2.5 px-2.5">Kök Neden / Plan Durumu</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                    {filteredRecords.slice(0, visibleCount).map((r) => (
-                      <tr key={r.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                    {filteredRecords.slice(0, visibleCount).map((r) => {
+                      const cMeta = CAUSE_META[r.root_cause || 'FULL_OFFSET'];
+                      return (
+                      <tr
+                        key={r.id}
+                        className={
+                          r.root_cause === 'REGION_CHANGED'
+                            ? 'opacity-65 bg-slate-50/70 dark:bg-slate-900/40'
+                            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                        }
+                      >
                         <td className="py-2 px-2.5 font-mono">{r.tabel_no || '—'}</td>
                         <td className="py-2 px-2.5">
                           <div className="font-medium text-slate-900 dark:text-white">{r.full_name}</div>
@@ -676,11 +866,36 @@ export default function PatentNdflView() {
                         <td className="py-2 px-2.5 text-right font-mono font-semibold text-indigo-600 dark:text-indigo-400">
                           {fmtRub(r.additional_offset_potential)}
                         </td>
-                        <td className="py-2 px-2.5 max-w-[240px] truncate text-[11px] text-slate-600 dark:text-slate-300" title={r.recommended_action || r.priority_label}>
-                          {r.priority_label || r.recommended_action || '—'}
+                        <td className="py-2 px-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`} title={cMeta.hint}>
+                              {cMeta.short}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRegionExcluded(r)}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
+                              title={
+                                r.excluded_region_change
+                                  ? 'Bölge değişikliği işaretini kaldır (mahsup planına geri al)'
+                                  : 'Bölge Değişikliği olarak işaretle (mahsup planından çıkar)'
+                              }
+                            >
+                              <Ban className="w-3 h-3" />
+                            </button>
+                          </div>
+                          {(r.priority_label || r.recommended_action) && (
+                            <div
+                              className="text-[10px] text-slate-500 max-w-[230px] truncate mt-0.5"
+                              title={r.recommended_action || r.priority_label}
+                            >
+                              {r.priority_label || r.recommended_action}
+                            </div>
+                          )}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {filteredRecords.length === 0 && (
                       <tr>
                         <td colSpan={9} className="py-8 text-center text-slate-500">

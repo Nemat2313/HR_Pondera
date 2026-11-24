@@ -33,8 +33,53 @@ export interface PatentNdflRecord {
   responsible_person: string;
   manual_status: string;
   notes: string;
+  excluded_region_change?: number; // 1 = changed region / used offset elsewhere this year (excluded from plan)
+  root_cause?: string;
   source_file: string;
   updated_at?: string;
+}
+
+export type PatentRootCause =
+  | 'NO_NOTIFICATION'
+  | 'REGION_CHANGED'
+  | 'LATE_NOTIFICATION_VOZVRAT'
+  | 'LOW_NDFL'
+  | 'FULL_OFFSET';
+
+export function classifyPatentRootCause(r: {
+  has_notification: number;
+  excluded_region_change?: number;
+  application_status?: string;
+  recommended_action?: string;
+  notes?: string;
+  patent_advances: number;
+  ndfl_before_offset: number;
+  patent_offset_used: number;
+  patent_advance_balance: number;
+  additional_offset_potential: number;
+  ndfl_withheld: number;
+}): PatentRootCause {
+  const combinedText = `${r.application_status || ''} ${r.recommended_action || ''} ${r.notes || ''}`.toLowerCase();
+  if (
+    r.excluded_region_change === 1 ||
+    /другой регион|другого агента|другом регионе|смена региона|повторное уведомление|bölge değiş/i.test(combinedText)
+  ) {
+    return 'REGION_CHANGED';
+  }
+  if (!r.has_notification) {
+    return 'NO_NOTIFICATION';
+  }
+  if (Number(r.additional_offset_potential || 0) > 0) {
+    return 'LATE_NOTIFICATION_VOZVRAT';
+  }
+  if (
+    Number(r.patent_advance_balance || 0) > 0 &&
+    Number(r.ndfl_before_offset || 0) > 0 &&
+    Number(r.patent_advances || 0) > Number(r.ndfl_before_offset || 0)
+  ) {
+    return 'LOW_NDFL';
+  }
+  return 'FULL_OFFSET';
 }
 
 export interface PatentNdflDiscrepancy {
@@ -105,12 +150,25 @@ export function ensurePatentNdflTables(db: DbLike): void {
       responsible_person TEXT DEFAULT '',
       manual_status TEXT DEFAULT '',
       notes TEXT DEFAULT '',
+      excluded_region_change INTEGER DEFAULT 0,
       source_file TEXT DEFAULT '',
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(tax_year, norm_name)
     );
     CREATE INDEX IF NOT EXISTS idx_patent_ndfl_year ON patent_ndfl_records(tax_year);
     CREATE INDEX IF NOT EXISTS idx_patent_ndfl_notif ON patent_ndfl_records(has_notification);
+
+    CREATE TABLE IF NOT EXISTS patent_ndfl_monthly (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tax_year INTEGER NOT NULL DEFAULT 2026,
+      norm_name TEXT NOT NULL,
+      month_num INTEGER NOT NULL,
+      patent_paid REAL DEFAULT 0,
+      ndfl_calc REAL DEFAULT 0,
+      offset_used REAL DEFAULT 0,
+      ndfl_withheld REAL DEFAULT 0,
+      UNIQUE(tax_year, norm_name, month_num)
+    );
 
     CREATE TABLE IF NOT EXISTS patent_ndfl_discrepancies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,6 +183,9 @@ export function ensurePatentNdflTables(db: DbLike): void {
       action_note TEXT DEFAULT ''
     );
   `);
+  try {
+    db.exec('ALTER TABLE patent_ndfl_records ADD COLUMN excluded_region_change INTEGER DEFAULT 0');
+  } catch {}
 }
 
 function normName(s: any): string {
