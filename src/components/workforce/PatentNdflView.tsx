@@ -35,6 +35,8 @@ import WindowsTabBar from '@/components/common/WindowsTabBar';
 interface EmployeeMonthRow {
   month: number;
   label: string;
+  receipt_1c_entered?: number;
+  receipt_1c_items?: Array<{ number: string; date: string; opDate: string; amount: number; comment: string }>;
   patent_paid: number;
   ndfl_calc: number;
   offset_used: number;
@@ -586,6 +588,8 @@ export default function PatentNdflView() {
           'Bildirim Tarihi': r.notification_date || '',
           Ay: `${String(m.month).padStart(2, '0')} - ${m.label}`,
           'İzin Dönemi': m.is_notif_month ? 'Уведомление Alındı' : m.is_after_notif ? 'İzin Sonrası (Mahsup Dönemi)' : 'İzin Öncesi / İzinsiz',
+          '1C Fiş Girişi (₽)': m.receipt_1c_entered || 0,
+          '1C Fiş Detayı': (m.receipt_1c_items || []).map((rc) => `${rc.date}: ${rc.amount}₽${rc.comment ? ` (${rc.comment})` : ''}`).join(' | '),
           'Ödenen Patent (₽)': m.patent_paid,
           'Hesaplanan НДФЛ (₽)': m.ndfl_calc,
           'Mahsup Edilen (₽)': m.offset_used,
@@ -1375,38 +1379,14 @@ export default function PatentNdflView() {
                                   </span>
                                 </div>
 
-                                {(r.receipts && r.receipts.length > 0) || (r.missing_receipt_months && r.missing_receipt_months.length > 0) ? (
+                                {r.missing_receipt_months && r.missing_receipt_months.length > 0 && (
                                   <div className="flex flex-wrap items-center gap-1.5 text-[10.5px]">
-                                    {r.receipts && r.receipts.length > 0 && (
-                                      <>
-                                        <span className="font-semibold text-slate-700 dark:text-slate-200 mr-1">
-                                          1C Patent Fişleri ({r.receipts.length}):
-                                        </span>
-                                        {r.receipts.map((rc, idx) => (
-                                          <span
-                                            key={`${rc.number}-${idx}`}
-                                            className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[10px] text-slate-700 dark:text-slate-200"
-                                            title={`Belge № ${rc.number} · Ödeme (Дата операции): ${rc.opDate} · 1C Giriş Tarihi: ${rc.date}${rc.comment ? ` · Not: ${rc.comment}` : ''}`}
-                                          >
-                                            {rc.opDate || rc.date}: <strong>{fmtRub(rc.amount)}</strong>
-                                            {rc.comment ? ` (${rc.comment})` : ''}
-                                            {rc.date && rc.opDate && rc.date.slice(0, 7) > rc.opDate.slice(0, 7) && (
-                                              <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">
-                                                [1C: {rc.date}]
-                                              </span>
-                                            )}
-                                          </span>
-                                        ))}
-                                      </>
-                                    )}
-                                    {r.missing_receipt_months && r.missing_receipt_months.length > 0 && (
-                                      <span className="px-2 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 text-[10px]">
-                                        ⚠ Fişi 1C&apos;ye girilmemiş aylar:{' '}
-                                        <strong>{r.missing_receipt_months.map((x) => x.label).join(', ')}</strong> (ödendiyse fiş yüklenmeli)
-                                      </span>
-                                    )}
+                                    <span className="px-2 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 text-[10px]">
+                                      ⚠ Fişi 1C&apos;ye girilmemiş aylar:{' '}
+                                      <strong>{r.missing_receipt_months.map((x) => x.label).join(', ')}</strong> (ödendiyse fiş yüklenmeli)
+                                    </span>
                                   </div>
-                                ) : null}
+                                )}
 
                               {empMonths.length === 0 ? (
                                 <p className="text-[11px] text-slate-500">
@@ -1433,7 +1413,8 @@ export default function PatentNdflView() {
                                       <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
                                         <tr>
                                           <th className="py-1.5 px-2.5">Ay ({taxYear})</th>
-                                          <th className="py-1.5 px-2.5 text-right">Ödenen Patent</th>
+                                          <th className="py-1.5 px-2.5 text-right text-sky-700 dark:text-sky-300">1C Fiş Girişi (Tarih)</th>
+                                          <th className="py-1.5 px-2.5 text-right">Aylık Patent</th>
                                           <th className="py-1.5 px-2.5 text-right">Hesaplanan НДФЛ</th>
                                           <th className="py-1.5 px-2.5 text-right text-emerald-600">Mahsup Edilen</th>
                                           <th className="py-1.5 px-2.5 text-right">Kesilen НДФЛ</th>
@@ -1474,6 +1455,35 @@ export default function PatentNdflView() {
                                                   </span>
                                                 )}
                                               </td>
+                                              <td
+                                                className="py-1.5 px-2.5 text-right font-mono whitespace-nowrap"
+                                                title={
+                                                  em.receipt_1c_items && em.receipt_1c_items.length > 0
+                                                    ? em.receipt_1c_items
+                                                        .map(
+                                                          (rc) =>
+                                                            `1C Giriş: ${rc.date} · Ödeme: ${rc.opDate} · ${fmtRub(rc.amount)}${rc.comment ? ` (${rc.comment})` : ''} [№ ${rc.number}]`
+                                                        )
+                                                        .join('\n')
+                                                    : 'Bu ayda 1C\'ye patent fişi girilmedi'
+                                                }
+                                              >
+                                                {em.receipt_1c_entered && em.receipt_1c_entered > 0 ? (
+                                                  <div className="inline-flex flex-col items-end">
+                                                    <span className="font-semibold text-sky-700 dark:text-sky-300">
+                                                      {fmtRub(em.receipt_1c_entered)}
+                                                    </span>
+                                                    <span className="text-[9px] font-sans text-slate-500 dark:text-slate-400">
+                                                      {(em.receipt_1c_items || []).length} fiş
+                                                      {em.receipt_1c_items && em.receipt_1c_items[0]?.comment
+                                                        ? ` · ${em.receipt_1c_items.map((x) => x.comment).filter(Boolean).join(', ').slice(0, 26)}`
+                                                        : ''}
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-slate-400">—</span>
+                                                )}
+                                              </td>
                                               <td className="py-1.5 px-2.5 text-right font-mono">
                                                 {em.patent_paid > 0 ? (
                                                   fmtRub(em.patent_paid)
@@ -1505,6 +1515,7 @@ export default function PatentNdflView() {
                                       </tbody>
                                       <tfoot className="bg-slate-100/90 dark:bg-slate-800/90 font-semibold border-t border-slate-300 dark:border-slate-700">
                                         {(() => {
+                                          const sum1cEntered = empMonths.reduce((s, m) => s + (m.receipt_1c_entered || 0), 0);
                                           const sumPatent = empMonths.reduce((s, m) => s + m.patent_paid, 0);
                                           const sumNdfl = empMonths.reduce((s, m) => s + m.ndfl_calc, 0);
                                           const sumOffset = empMonths.reduce((s, m) => s + m.offset_used, 0);
@@ -1513,6 +1524,9 @@ export default function PatentNdflView() {
                                           return (
                                             <tr>
                                               <td className="py-2 px-2.5 font-mono">TOPLAM ({taxYear})</td>
+                                              <td className="py-2 px-2.5 text-right font-mono text-sky-700 dark:text-sky-300">
+                                                {fmtRub(sum1cEntered)}
+                                              </td>
                                               <td className="py-2 px-2.5 text-right font-mono">{fmtRub(sumPatent)}</td>
                                               <td className="py-2 px-2.5 text-right font-mono">{fmtRub(sumNdfl)}</td>
                                               <td className="py-2 px-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">

@@ -134,9 +134,38 @@ export async function GET(request: Request) {
       const notifMonth = hasNotif ? parseNotifMonth(r.notification_date) : 0;
       const totalAdvances = Math.round(Number(r.patent_advances || 0));
 
+      let receipts: Array<{ number: string; date: string; opDate: string; amount: number; comment: string; months: number[] }> = [];
+      try {
+        if (r.receipts_json) receipts = JSON.parse(String(r.receipts_json));
+      } catch {}
+
+      // Group 1C receipts by their 1C entry month (Document Date column in 1C)
+      const receiptsByEntryMonth = new Map<
+        number,
+        { total: number; items: Array<{ number: string; date: string; opDate: string; amount: number; comment: string }> }
+      >();
+      let firstLateEntryMonth = 0;
+      for (const rc of receipts) {
+        const em = parseNotifMonth(rc.date || rc.opDate);
+        if (em >= 1 && em <= 12) {
+          const cur = receiptsByEntryMonth.get(em) || { total: 0, items: [] };
+          cur.total += Math.round(Number(rc.amount || 0));
+          cur.items.push({
+            number: rc.number,
+            date: rc.date,
+            opDate: rc.opDate,
+            amount: Math.round(Number(rc.amount || 0)),
+            comment: rc.comment,
+          });
+          receiptsByEntryMonth.set(em, cur);
+        }
+      }
+
       const months: Array<{
         month: number;
         label: string;
+        receipt_1c_entered: number;
+        receipt_1c_items: Array<{ number: string; date: string; opDate: string; amount: number; comment: string }>;
         patent_paid: number;
         ndfl_calc: number;
         offset_used: number;
@@ -148,12 +177,18 @@ export async function GET(request: Request) {
         analysis_note: string;
       }> = [];
 
-      if (mp && mp.size > 0) {
+      if ((mp && mp.size > 0) || receiptsByEntryMonth.size > 0) {
         let cumOffsetUsed = 0;
+        let cumEntered1c = 0;
         for (let mNum = 1; mNum <= 12; mNum++) {
-          const row = mp.get(mNum);
+          const row = mp?.get(mNum);
+          const entryRec = receiptsByEntryMonth.get(mNum);
           const isNotifMonth = hasNotif && notifMonth > 0 && mNum === notifMonth;
-          if (!row && !isNotifMonth) continue;
+          if (!row && !entryRec && !isNotifMonth) continue;
+
+          const receipt1cEntered = entryRec?.total || 0;
+          const receipt1cItems = entryRec?.items || [];
+          cumEntered1c += receipt1cEntered;
 
           const patentPaid = row?.patent_paid || 0;
           const ndflCalc = row?.ndfl_calc || 0;
@@ -163,8 +198,23 @@ export async function GET(request: Request) {
           const isBeforeNotif = hasNotif && notifMonth > 0 && mNum < notifMonth;
 
           const remainingAdvanceBefore = Math.max(0, totalAdvances - cumOffsetUsed);
+          const enteredAvailBefore = Math.max(0, cumEntered1c - cumOffsetUsed);
           const maxOffsetable = Math.min(ndflCalc, remainingAdvanceBefore);
           const unoffsetGap = ndflCalc > 0 && offsetUsed < maxOffsetable ? Math.round(maxOffsetable - offsetUsed) : 0;
+
+          // Check if a future month has 1C receipt entries that explain why this month had 0 entered balance
+          if (firstLateEntryMonth === 0) {
+            for (const em of Array.from(receiptsByEntryMonth.keys()).sort((a, b) => a - b)) {
+              if (em > mNum) {
+                firstLateEntryMonth = em;
+                break;
+              }
+            }
+          }
+          const nextEntryMonth = Array.from(receiptsByEntryMonth.keys())
+            .sort((a, b) => a - b)
+            .find((em) => em > mNum);
+          const isLate1cEntry = receipts.length > 0 && unoffsetGap > 0 && enteredAvailBefore < ndflCalc && Boolean(nextEntryMonth);
 
           let statusCode = 'no_ndfl';
           let analysisNote = 'НДФЛ yok';
@@ -212,6 +262,9 @@ export async function GET(request: Request) {
               if (unoffsetGap === 0) {
                 statusCode = 'patent_cap';
                 analysisNote = `Patent avansı kadar mahsup edildi (${fmtRubInline(offsetUsed)}), kalan ${fmtRubInline(ndflCalc - offsetUsed)} НДФЛ kesildi`;
+              } else if (isLate1cEntry && nextEntryMonth) {
+                statusCode = 'partial_missed';
+                analysisNote = `⚠ Kısmi mahsup (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — fişler 1C'ye ${MONTH_SHORT_TR[nextEntryMonth]}'da geç girildi (${fmtRubInline(unoffsetGap)} eksik)`;
               } else {
                 statusCode = 'partial_missed';
                 analysisNote = `⚠ Kısmi mahsup (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — ${fmtRubInline(unoffsetGap)} eksik mahsup`;
@@ -219,7 +272,10 @@ export async function GET(request: Request) {
             } else if (offsetUsed === 0 && ndflCalc > 0) {
               if (unoffsetGap > 0) {
                 statusCode = 'post_notif_missed';
-                analysisNote = `⚠ Mahsup YAPILMADI! İzin var & avans bakiyesi yeterli, ${fmtRubInline(ndflCalc)} НДФЛ kesildi`;
+                analysisNote =
+                  isLate1cEntry && nextEntryMonth
+                    ? `⚠ Mahsup YAPILMADI (Fiş 1C'ye ${MONTH_SHORT_TR[nextEntryMonth]}'da geç girildi) — ${fmtRubInline(ndflCalc)} НДФЛ kesildi`
+                    : `⚠ Mahsup YAPILMADI! İzin & 1C avansı varken ${fmtRubInline(ndflCalc)} НДФЛ kesildi`;
               } else {
                 statusCode = 'advance_exhausted';
                 analysisNote = `Patent avansı tükendi — ${fmtRubInline(ndflCalc)} НДФЛ kesildi`;
@@ -240,6 +296,8 @@ export async function GET(request: Request) {
           months.push({
             month: mNum,
             label: MONTH_SHORT_TR[mNum],
+            receipt_1c_entered: receipt1cEntered,
+            receipt_1c_items: receipt1cItems,
             patent_paid: patentPaid,
             ndfl_calc: ndflCalc,
             offset_used: offsetUsed,
@@ -272,11 +330,6 @@ export async function GET(request: Request) {
       const missingReceiptMonths = months
         .filter((m) => m.ndfl_calc > 0 && m.patent_paid === 0)
         .map((m) => ({ month: m.month, label: m.label }));
-
-      let receipts: Array<{ number: string; date: string; opDate: string; amount: number; comment: string; months: number[] }> = [];
-      try {
-        if (r.receipts_json) receipts = JSON.parse(String(r.receipts_json));
-      } catch {}
 
       return {
         ...r,
