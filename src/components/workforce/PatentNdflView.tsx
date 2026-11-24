@@ -943,61 +943,85 @@ export default function PatentNdflView() {
                 <>
                   {/* ROW 1: DONUT CHART + TWO-GROUP ROOT-CAUSE BAR CHARTS (CLICKABLE DRILL-DOWN TO TAB 2) */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                    {/* Donut Chart Card */}
-                    <div className="lg:col-span-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                    {/* Speedometer Gauge Card */}
+                    <div className="lg:col-span-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-2.5">
                       <div>
                         <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                          {L(`Genel Patent Mahsup Dağılımı (${taxYear})`, `Общая структура зачёта патентов (${taxYear})`)}
+                          {L(`Genel Patent Mahsup Hız Göstergesi (${taxYear})`, `Индикатор зачёта патентов (${taxYear})`)}
                         </h3>
                         <p className="text-[10.5px] text-slate-500">
-                          {L('Ödenen patentin mahsup ve kalan kırılımı', 'Доля зачтённых и незачтённых авансов')}
+                          {L('Ödenen patentin vergiden mahsup gerçekleşme oranı', 'Фактическая доля зачёта оплаченных патентов')}
                         </p>
                       </div>
                       {(() => {
-                        const tot = Math.max(1, summary.totalAdvances);
-                        const pUsed = Math.min(100, (summary.totalOffsetUsed / tot) * 100);
-                        const pGroupB = Math.min(100 - pUsed, ((summary.groupB?.rub || 0) / tot) * 100);
-                        const pGroupA = Math.max(0, 100 - pUsed - pGroupB);
-                        const r = 46;
-                        const c = 2 * Math.PI * r;
-                        const dUsed = (pUsed / 100) * c;
-                        const dB = (pGroupB / 100) * c;
-                        const dA = (pGroupA / 100) * c;
+                        const pct = Math.max(0, Math.min(100, Number(summary.offsetPct || 0)));
+                        // Needle angle: -90 deg (0%) to +90 deg (100%)
+                        const needleDeg = -90 + (pct / 100) * 180;
+                        const gaugeColor = pct >= 80 ? '#10b981' : pct >= 55 ? '#f59e0b' : '#f43f5e';
+                        // Semi-circle path radius = 92, center = (140, 128), circumference/2 = pi * 92 = 289.03
+                        const semiLen = Math.PI * 92;
+                        const activeLen = (pct / 100) * semiLen;
                         return (
-                          <div className="flex items-center justify-center gap-5 py-1">
-                            <div className="relative w-32 h-32 shrink-0">
-                              <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-                                <circle cx="60" cy="60" r={r} fill="none" stroke="currentColor" strokeWidth="14" className="text-slate-200 dark:text-slate-800" />
-                                <circle cx="60" cy="60" r={r} fill="none" stroke="#10b981" strokeWidth="14" strokeDasharray={`${dUsed} ${c}`} strokeDashoffset={0} />
-                                <circle cx="60" cy="60" r={r} fill="none" stroke="#6366f1" strokeWidth="14" strokeDasharray={`${dB} ${c}`} strokeDashoffset={-dUsed} />
-                                <circle cx="60" cy="60" r={r} fill="none" stroke="#f59e0b" strokeWidth="14" strokeDasharray={`${dA} ${c}`} strokeDashoffset={-(dUsed + dB)} />
-                              </svg>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                                <span className="text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">%{summary.offsetPct}</span>
-                                <span className="text-[9.5px] text-slate-500">{L('Mahsup', 'Зачтено')}</span>
+                          <div className="flex flex-col items-center">
+                            <svg viewBox="0 0 280 156" className="w-full max-w-[270px] h-auto overflow-visible">
+                              <defs>
+                                <linearGradient id="speedoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                  <stop offset="0%" stopColor="#f43f5e" />
+                                  <stop offset="50%" stopColor="#f59e0b" />
+                                  <stop offset="100%" stopColor="#10b981" />
+                                </linearGradient>
+                              </defs>
+                              {/* Background Track */}
+                              <path
+                                d="M 48 128 A 92 92 0 0 1 232 128"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="18"
+                                strokeLinecap="round"
+                                className="text-slate-200 dark:text-slate-800"
+                              />
+                              {/* Active Colored Arc */}
+                              <path
+                                d="M 48 128 A 92 92 0 0 1 232 128"
+                                fill="none"
+                                stroke="url(#speedoGrad)"
+                                strokeWidth="18"
+                                strokeLinecap="round"
+                                strokeDasharray={`${activeLen} ${semiLen}`}
+                              />
+                              {/* Scale Labels */}
+                              <text x="36" y="146" fontSize="10" className="fill-slate-400 font-mono" textAnchor="middle">0%</text>
+                              <text x="70" y="54" fontSize="9.5" className="fill-slate-400 font-mono" textAnchor="middle">25%</text>
+                              <text x="140" y="24" fontSize="9.5" className="fill-slate-400 font-mono" textAnchor="middle">50%</text>
+                              <text x="210" y="54" fontSize="9.5" className="fill-slate-400 font-mono" textAnchor="middle">75%</text>
+                              <text x="244" y="146" fontSize="10" className="fill-slate-400 font-mono" textAnchor="middle">100%</text>
+                              {/* Needle */}
+                              <g transform={`translate(140, 128) rotate(${needleDeg})`}>
+                                <polygon points="-4,6 0,-74 4,6" fill={gaugeColor} />
+                                <circle cx="0" cy="0" r="8" fill={gaugeColor} />
+                                <circle cx="0" cy="0" r="3.5" fill="#ffffff" />
+                              </g>
+                              {/* Center Readout */}
+                              <text x="140" y="106" fontSize="24" fontWeight="700" textAnchor="middle" fill={gaugeColor} className="font-mono">
+                                %{summary.offsetPct}
+                              </text>
+                              <text x="140" y="152" fontSize="10" textAnchor="middle" className="fill-slate-500 dark:fill-slate-400">
+                                {L('Mahsup Oranı', 'Доля зачёта')} ({fmtRub(summary.totalOffsetUsed)})
+                              </text>
+                            </svg>
+
+                            <div className="w-full grid grid-cols-3 gap-1.5 text-center pt-1 text-[10px]">
+                              <div className="p-1.5 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/30">
+                                <div className="text-slate-500">{L('Mahsup', 'Зачтено')}</div>
+                                <div className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{fmtRub(summary.totalOffsetUsed)}</div>
                               </div>
-                            </div>
-                            <div className="space-y-2 text-[11px] flex-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                                  {L('Mahsup Edilen', 'Зачтено')}
-                                </span>
-                                <span className="font-mono font-semibold text-emerald-600">{fmtRub(summary.totalOffsetUsed)}</span>
+                              <div className="p-1.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30">
+                                <div className="text-slate-500">{L('Muh./İK', 'Бух./Кадры')}</div>
+                                <div className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{fmtRub(summary.groupB?.rub || 0)}</div>
                               </div>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0" />
-                                  {L('Muhasebe / İK Kaynaklı', 'Бухгалтерия / Кадры')}
-                                </span>
-                                <span className="font-mono font-semibold text-indigo-600">{fmtRub(summary.groupB?.rub || 0)}</span>
-                              </div>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
-                                  {L('Çalışan / Mevzuat', 'Сотрудник / Закон')}
-                                </span>
-                                <span className="font-mono font-semibold text-amber-600">{fmtRub(summary.groupA?.rub || 0)}</span>
+                              <div className="p-1.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/30">
+                                <div className="text-slate-500">{L('Çalışan', 'Сотрудник')}</div>
+                                <div className="font-mono font-semibold text-amber-600 dark:text-amber-400">{fmtRub(summary.groupA?.rub || 0)}</div>
                               </div>
                             </div>
                           </div>
@@ -1120,95 +1144,98 @@ export default function PatentNdflView() {
                     </div>
                   </div>
 
-                  {/* ROW 2: 12-MONTH GROUPED BAR CHART + TABLE */}
-                  {monthlyTotals.some((m) => m.patent_paid > 0 || m.offset_used > 0 || m.ndfl_calc > 0) && (
-                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                  {/* ROW 2: PROJECT / SITE-BASED OFFSET PERFORMANCE CHART (CLICK TO DRILL DOWN TO TAB 2) */}
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
                         <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                          <Calendar className="w-4 h-4 text-indigo-500" />
-                          <span>{L(`Aylar Bazında Patent Avansı, 2-НДФЛ ve Mahsup Grafiği (${taxYear})`, `Помесячный график: Патенты, 2-НДФЛ и Зачёт (${taxYear})`)}</span>
+                          <TrendingUp className="w-4 h-4 text-emerald-500" />
+                          <span>
+                            {L(
+                              `Proje / Şantiye Bazlı Patent İade & Mahsup Oranı Analizi (${taxYear})`,
+                              `Анализ доли зачёта и возврата патентов по проектам / объектам (${taxYear})`
+                            )}
+                          </span>
                         </h3>
-                        <div className="flex items-center gap-3 text-[10.5px] text-slate-600 dark:text-slate-300">
-                          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500" /> {L('Ödenen Patent', 'Оплачено патентов')}</span>
-                          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400" /> {L('Hesaplanan НДФЛ', 'Начислено НДФЛ')}</span>
-                          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> {L('Mahsup Edilen', 'Зачтено')}</span>
-                        </div>
+                        <p className="text-[10.5px] text-slate-500">
+                          {L(
+                            'Her şantiyenin ödenen patentten mahsup ettiği yüzde oranı — tıklayarak o şantiyenin personellerine gidin',
+                            'Процент зачёта патентов по каждому объекту — нажмите на проект для детализации по сотрудникам'
+                          )}
+                        </p>
                       </div>
-                      {(() => {
-                        const activeMonths = monthlyTotals.filter((m) => m.patent_paid > 0 || m.offset_used > 0 || m.ndfl_calc > 0);
-                        const maxVal = Math.max(1, ...activeMonths.map((m) => Math.max(m.patent_paid, m.ndfl_calc, m.offset_used)));
-                        return (
-                          <div className="grid grid-cols-6 sm:grid-cols-12 gap-2 items-end h-40 pt-3 px-2 bg-slate-50/70 dark:bg-slate-900/40 rounded-xl border border-slate-200/70 dark:border-slate-800">
-                            {activeMonths.map((m) => {
-                              const hPat = Math.max(2, Math.round((m.patent_paid / maxVal) * 100));
-                              const hNdfl = Math.max(2, Math.round((m.ndfl_calc / maxVal) * 100));
-                              const hOff = Math.max(m.offset_used > 0 ? 3 : 0, Math.round((m.offset_used / maxVal) * 100));
-                              return (
-                                <div
-                                  key={m.month}
-                                  className="flex flex-col items-center h-full justify-end gap-1"
-                                  title={`${m.label}: ${L('Patent', 'Патент')} ${fmtRub(m.patent_paid)} | НДФЛ ${fmtRub(m.ndfl_calc)} | ${L('Mahsup', 'Зачёт')} ${fmtRub(m.offset_used)}`}
-                                >
-                                  <div className="flex items-end gap-0.5 h-28 w-full justify-center">
-                                    <div style={{ height: `${hPat}%` }} className="w-2.5 rounded-t bg-sky-500/85" />
-                                    <div style={{ height: `${hNdfl}%` }} className="w-2.5 rounded-t bg-amber-400/90" />
-                                    <div style={{ height: `${hOff}%` }} className="w-2.5 rounded-t bg-emerald-500" />
-                                  </div>
-                                  <span className="text-[10px] font-mono text-slate-600 dark:text-slate-300">{m.label}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs whitespace-nowrap">
-                          <thead className="text-[10.5px] text-slate-500 border-b border-slate-200 dark:border-slate-700">
-                            <tr>
-                              <th className="py-1.5 pr-2">{L('Ay', 'Месяц')}</th>
-                              <th className="py-1.5 px-2 text-right">{L('Ödenen Patent (₽)', 'Оплачено патент (₽)')}</th>
-                              <th className="py-1.5 px-2 text-right">{L('Hesaplanan НДФЛ (₽)', 'Начислено НДФЛ (₽)')}</th>
-                              <th className="py-1.5 px-2 text-right text-emerald-600">{L('Mahsup Edilen (₽)', 'Зачтено (₽)')}</th>
-                              <th className="py-1.5 px-2 text-right">{L('Mahsup %', 'Зачёт %')}</th>
-                              <th className="py-1.5 pl-2 text-right text-amber-600">{L('Eksik Mahsuplu Kişi', 'Сотр. с недозачётом')}</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {monthlyTotals
-                              .filter((m) => m.patent_paid > 0 || m.offset_used > 0 || m.ndfl_calc > 0)
-                              .map((m) => {
-                                const pct = m.patent_paid > 0 ? Math.round((m.offset_used / m.patent_paid) * 100) : 0;
-                                const isZeroAnomaly = m.patent_paid > 0 && m.offset_used === 0;
-                                return (
-                                  <tr
-                                    key={m.month}
-                                    className={isZeroAnomaly ? 'bg-rose-50/70 dark:bg-rose-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'}
-                                  >
-                                    <td className="py-1.5 pr-2 font-semibold">
-                                      {String(m.month).padStart(2, '0')} · {m.label}
-                                      {isZeroAnomaly && (
-                                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9.5px] bg-rose-100 dark:bg-rose-900/70 text-rose-700 dark:text-rose-200">
-                                          {L('Mahsup = 0!', 'Зачёт = 0!')}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="py-1.5 px-2 text-right font-mono">{fmtRub(m.patent_paid)}</td>
-                                    <td className="py-1.5 px-2 text-right font-mono">{fmtRub(m.ndfl_calc)}</td>
-                                    <td className="py-1.5 px-2 text-right font-mono text-emerald-600 dark:text-emerald-400">
-                                      {fmtRub(m.offset_used)}
-                                    </td>
-                                    <td className="py-1.5 px-2 text-right font-mono">%{pct}</td>
-                                    <td className="py-1.5 pl-2 text-right font-mono text-amber-600 dark:text-amber-400">
-                                      {m.missing_employees} {L('kişi', 'чел.')}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                          </tbody>
-                        </table>
+                      <div className="flex items-center gap-3 text-[10.5px] text-slate-600 dark:text-slate-300">
+                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> {L('≥ %80 İyi', '≥ 80% Отлично')}</span>
+                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> {L('%50–79 Orta', '50–79% Средне')}</span>
+                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" /> {L('< %50 Düşük', '< 50% Низко')}</span>
+                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-400" /> {L('Ek Potansiyel', 'Потенциал')}</span>
                       </div>
                     </div>
-                  )}
+
+                    <div className="space-y-2.5">
+                      {analytics.bySite.map((s) => {
+                        const pct = s.advances > 0 ? Math.round((s.used / s.advances) * 1000) / 10 : 0;
+                        const potPct = s.advances > 0 ? Math.min(100 - pct, Math.round((s.potential / s.advances) * 1000) / 10) : 0;
+                        const barCls = pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-rose-500';
+                        const badgeCls =
+                          pct >= 80
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                            : pct >= 50
+                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                            : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+                        return (
+                          <button
+                            key={s.name}
+                            type="button"
+                            onClick={() => {
+                              setSearch(s.name === 'Genel' ? '' : s.name);
+                              setCauseFilter('all');
+                              setActiveFilter('all');
+                              setActiveTab('reconciliation');
+                            }}
+                            className="w-full text-left p-3 rounded-xl bg-slate-50/70 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800 hover:border-indigo-400 transition cursor-pointer space-y-2"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-semibold text-slate-900 dark:text-white truncate">{s.name}</span>
+                                <span className="text-[10.5px] font-mono text-slate-500 shrink-0">
+                                  ({s.count} {L('kişi', 'чел.')})
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-mono font-bold border shrink-0 ${badgeCls}`}>
+                                  %{pct}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono shrink-0">
+                                <span className="text-slate-600 dark:text-slate-300">
+                                  {L('Avans', 'Аванс')}: <strong>{fmtRub(s.advances)}</strong>
+                                </span>
+                                <span className="text-emerald-600 dark:text-emerald-400">
+                                  {L('Mahsup', 'Зачтено')}: <strong>{fmtRub(s.used)}</strong>
+                                </span>
+                                <span className="text-indigo-600 dark:text-indigo-400">
+                                  {L('Potansiyel', 'Потенциал')}: <strong>{fmtRub(s.potential)}</strong>
+                                </span>
+                              </div>
+                            </div>
+                            <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
+                              <div
+                                style={{ width: `${Math.min(100, pct)}%` }}
+                                className={`h-full ${barCls} transition-all`}
+                                title={`${L('Mahsup Edilen', 'Зачтено')}: %${pct} (${fmtRub(s.used)})`}
+                              />
+                              {potPct > 0 && (
+                                <div
+                                  style={{ width: `${potPct}%` }}
+                                  className="h-full bg-indigo-400/90"
+                                  title={`${L('Ek Potansiyel', 'Потенциал')}: ${fmtRub(s.potential)}`}
+                                />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   {/* Site / Org Breakdown & Citizenship Breakdown */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

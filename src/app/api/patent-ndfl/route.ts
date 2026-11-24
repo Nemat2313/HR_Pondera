@@ -97,11 +97,11 @@ export async function GET(request: Request) {
     // Enrich with Patent dates, payment day, and hire/exit dates from Pondera personnel DB if matched
     const patentInfoByNorm = new Map<
       string,
-      { patent_no: string; patent_start: string; patent_end: string; payment_day: number; hire_date: string; exit_date: string }
+      { patent_no: string; patent_start: string; patent_end: string; payment_day: number; hire_date: string; exit_date: string; site_name: string }
     >();
     try {
       const pRows = db
-        .prepare('SELECT sicil_no, ad_soyad, tam_adi_kiril, ise_giris_tarihi, isten_cikis_tarihi, patent_bitis_tarihi, all_data_json FROM personnel')
+        .prepare('SELECT sicil_no, ad_soyad, tam_adi_kiril, proje_adi, ise_giris_tarihi, isten_cikis_tarihi, patent_bitis_tarihi, all_data_json FROM personnel')
         .all() as any[];
       const extractDay = (dt: string): number => {
         const s = String(dt || '').trim();
@@ -117,6 +117,7 @@ export async function GET(request: Request) {
         let patentEnd = String(p.patent_bitis_tarihi || '').trim();
         const pHire = String(p.ise_giris_tarihi || '').trim();
         const pExit = String(p.isten_cikis_tarihi || '').trim();
+        const pSite = String(p.proje_adi || '').trim();
         if (p.all_data_json) {
           try {
             const j = JSON.parse(p.all_data_json);
@@ -125,7 +126,7 @@ export async function GET(request: Request) {
             if (!patentEnd) patentEnd = String(j['Patent Bitiş Tarihi'] || '').trim();
           } catch {}
         }
-        if (!patentNo && !patentStart && !patentEnd && !pHire && !pExit) continue;
+        if (!patentNo && !patentStart && !patentEnd && !pHire && !pExit && !pSite) continue;
         const payDay = extractDay(patentStart) || extractDay(patentEnd);
         const info = {
           patent_no: patentNo,
@@ -134,6 +135,7 @@ export async function GET(request: Request) {
           payment_day: payDay,
           hire_date: pHire,
           exit_date: pExit,
+          site_name: pSite,
         };
         const normKey = (v: any) => String(v || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
         if (p.tam_adi_kiril) patentInfoByNorm.set(normKey(p.tam_adi_kiril), info);
@@ -390,12 +392,14 @@ export async function GET(request: Request) {
 
       const rootCause = classifyPatentRootCause({
         ...r,
+        site_name: String(r.site_name || pInfo?.site_name || '').trim(),
         is_active: effectiveActive,
         has_late_1c_entry: hasLate1cEntry,
       });
 
       return {
         ...r,
+        site_name: String(r.site_name || pInfo?.site_name || '').trim(),
         is_active: effectiveActive,
         hire_date: hireDate,
         exit_date: exitDate,

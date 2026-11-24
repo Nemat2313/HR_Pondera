@@ -958,7 +958,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       headers,
       35
     );
-    const empByFiz = new Map<string, { code: string; name: string; active: boolean; hireDate: string; exitDate: string }>();
+    const empByFiz = new Map<string, { code: string; name: string; active: boolean; hireDate: string; exitDate: string; siteName: string }>();
     const fizByEmpRef = new Map<string, string>();
     for (const e of empRows) {
       const fk = String(e.ФизическоеЛицо_Key || '').trim();
@@ -976,22 +976,39 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           active: active || Boolean(prev?.active),
           hireDate: prev?.hireDate || '',
           exitDate: prev?.exitDate || '',
+          siteName: prev?.siteName || '',
         });
       }
     }
 
-    // 2b. Fetch Hire & Exit dates from InformationRegister_ТекущиеКадровыеДанныеСотрудников
+    // 2a. Fetch Projects / Departments (Catalog_ПодразделенияОрганизаций)
+    const deptNameByKey = new Map<string, string>();
+    if (hasEntity('Catalog_ПодразделенияОрганизаций')) {
+      const deptRows = await fetchODataPaged(
+        base,
+        'Catalog_ПодразделенияОрганизаций?$select=Ref_Key,Description',
+        headers,
+        5
+      );
+      for (const d of deptRows) {
+        const dk = String(d.Ref_Key || '').trim();
+        const dn = String(d.Description || '').trim().replace(/\s+/g, ' ');
+        if (dk && dn) deptNameByKey.set(dk, dn);
+      }
+    }
+
+    // 2b. Fetch Hire, Exit & Project/Site from InformationRegister_ТекущиеКадровыеДанныеСотрудников
     const hrEntity = hasEntity('InformationRegister_ТекущиеКадровыеДанныеСотрудников')
       ? 'InformationRegister_ТекущиеКадровыеДанныеСотрудников'
       : '';
     if (hrEntity) {
       const hrRows = await fetchODataPaged(
         base,
-        `${hrEntity}?$select=ФизическоеЛицо_Key,ДатаПриема,ДатаУвольнения`,
+        `${hrEntity}?$select=ФизическоеЛицо_Key,ДатаПриема,ДатаУвольнения,ТекущееПодразделение_Key`,
         headers,
         35
       );
-      const hrByFiz = new Map<string, { hireDate: string; exitDate: string; hasActiveEmployment: boolean }>();
+      const hrByFiz = new Map<string, { hireDate: string; exitDate: string; hasActiveEmployment: boolean; siteName: string }>();
       for (const h of hrRows) {
         const fk = String(h.ФизическоеЛицо_Key || '').trim();
         if (!fk) continue;
@@ -999,16 +1016,18 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const edRaw = String(h.ДатаУвольнения || '');
         const hd = hdRaw && !hdRaw.startsWith('0001') ? hdRaw.slice(0, 10) : '';
         const ed = edRaw && !edRaw.startsWith('0001') ? edRaw.slice(0, 10) : '';
+        const deptKey = String(h.ТекущееПодразделение_Key || '').trim();
+        const deptName = deptKey && !deptKey.startsWith('00000000') ? deptNameByKey.get(deptKey) || '' : '';
         const isRowActive = Boolean(hd) && !ed;
         const prev = hrByFiz.get(fk);
         if (!prev) {
-          hrByFiz.set(fk, { hireDate: hd, exitDate: ed, hasActiveEmployment: isRowActive });
+          hrByFiz.set(fk, { hireDate: hd, exitDate: ed, hasActiveEmployment: isRowActive, siteName: deptName });
         } else {
-          // Prefer active employment record, otherwise latest hire/exit dates
           const nextActive = prev.hasActiveEmployment || isRowActive;
           const nextHire = isRowActive ? hd : hd > prev.hireDate ? hd : prev.hireDate;
           const nextExit = nextActive ? '' : ed > prev.exitDate ? ed : prev.exitDate;
-          hrByFiz.set(fk, { hireDate: nextHire, exitDate: nextExit, hasActiveEmployment: nextActive });
+          const nextSite = isRowActive && deptName ? deptName : prev.siteName || deptName;
+          hrByFiz.set(fk, { hireDate: nextHire, exitDate: nextExit, hasActiveEmployment: nextActive, siteName: nextSite });
         }
       }
       for (const [fk, hr] of Array.from(hrByFiz.entries())) {
@@ -1017,6 +1036,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           if (hr.hireDate) emp.hireDate = hr.hireDate;
           emp.exitDate = hr.hasActiveEmployment ? '' : hr.exitDate;
           emp.active = hr.hasActiveEmployment;
+          if (hr.siteName) emp.siteName = hr.siteName;
         }
       }
     }
@@ -1285,7 +1305,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           batch.map((rng) =>
             fetchODataPaged(
               base,
-              `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${rng.start}' and Period lt datetime'${rng.end}'&$select=ФизическоеЛицо_Key,RecordType,Сумма,Period,МесяцНалоговогоПериода,ВариантУдержания`,
+              `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${rng.start}' and Period lt datetime'${rng.end}'&$select=ФизическоеЛицо_Key,RecordType,Сумма,Period,МесяцНалоговогоПериода,ВариантУдержания,Подразделение`,
               headers,
               40
             )
@@ -1296,6 +1316,11 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           for (const row of regRows) {
             const fk = String(row.ФизическоеЛицо_Key || '').trim();
             if (!fk || !byFiz.has(fk)) continue;
+            const empObj = empByFiz.get(fk);
+            if (empObj && !empObj.siteName && row.Подразделение) {
+              const dn = deptNameByKey.get(String(row.Подразделение).trim());
+              if (dn) empObj.siteName = dn;
+            }
             const cur = byFiz.get(fk)!;
             const recType = String(row.RecordType || '').toLowerCase();
             const variant = String(row.ВариантУдержания || '').trim();
@@ -1343,7 +1368,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           full_name: emp.name,
           citizenship: '',
           is_active: emp.active ? 1 : 0,
-          site_name: '',
+          site_name: emp.siteName || '',
           region: '',
           hire_date: emp.hireDate || '',
           exit_date: emp.exitDate || '',
