@@ -27,6 +27,7 @@ import {
   Settings,
   GitFork,
   Sparkles,
+  Receipt,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -190,6 +191,13 @@ export default function Sidebar({
           icon: ShieldCheck,
           badge: lang === 'ru' ? 'ФНС • СФР' : 'FNS • Yeni',
           badgeColor: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-700/50',
+        },
+        {
+          id: 'patent_ndfl',
+          label: lang === 'ru' ? 'Патент и НДФЛ' : 'SNG Patent & НДФЛ',
+          icon: Receipt,
+          badge: lang === 'ru' ? 'Зачёт • 1С' : 'Mahsup • Yeni',
+          badgeColor: 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-700/50',
         },
         {
           id: 'sites',

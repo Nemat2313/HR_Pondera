@@ -127,6 +127,10 @@ const OfficialVsRealView = dynamicWithRetry(
   () => import('@/components/workforce/OfficialVsRealView'),
   '1C ZUP & eBA Karşılaştırma yükleniyor...'
 );
+const PatentNdflView = dynamicWithRetry(
+  () => import('@/components/workforce/PatentNdflView'),
+  'SNG Patent & НДФЛ Mahsup yükleniyor...'
+);
 const QuotaTrackingView = dynamicWithRetry(
   () => import('@/components/quotas/QuotaTrackingView'),
   'Kota Takibi yükleniyor...'
@@ -543,6 +547,8 @@ export default function Home() {
             onNavigateToPersonnel={isIdariOnly ? undefined : handleNavigateToPersonnel}
           />
         )}
+
+        {effectiveTab === 'patent_ndfl' && <PatentNdflView />}
 
         {effectiveTab === 'compliance' && (
           <ComplianceAnalyticsView
