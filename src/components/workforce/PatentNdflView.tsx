@@ -24,10 +24,33 @@ import {
   FileCode2,
   Printer,
   FileUp,
+  ChevronDown,
+  ChevronRight,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import WindowsTabBar from '@/components/common/WindowsTabBar';
+
+interface EmployeeMonthRow {
+  month: number;
+  label: string;
+  patent_paid: number;
+  ndfl_calc: number;
+  offset_used: number;
+  ndfl_withheld: number;
+  unoffset_gap: number;
+}
+
+interface CompanyMonthTotal {
+  month: number;
+  label: string;
+  patent_paid: number;
+  ndfl_calc: number;
+  offset_used: number;
+  ndfl_withheld: number;
+  missing_employees: number;
+}
 
 interface PatentNdflRow {
   id: number;
@@ -60,6 +83,8 @@ interface PatentNdflRow {
   notes: string;
   excluded_region_change?: number;
   root_cause?: 'NO_NOTIFICATION' | 'REGION_CHANGED' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'FULL_OFFSET';
+  months?: EmployeeMonthRow[];
+  missing_months?: Array<{ month: number; label: string; gap: number }>;
   source_file: string;
 }
 
@@ -122,6 +147,8 @@ export default function PatentNdflView() {
   const [activeTab, setActiveTab] = useState<'overview' | 'notifications' | 'reconciliation' | 'vozvrat' | 'import_odata'>('overview');
   const [taxYear, setTaxYear] = useState<number>(2026);
   const [records, setRecords] = useState<PatentNdflRow[]>([]);
+  const [monthlyTotals, setMonthlyTotals] = useState<CompanyMonthTotal[]>([]);
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [discrepancies, setDiscrepancies] = useState<DiscrepancyRow[]>([]);
   const [patentRates, setPatentRates] = useState<Array<{ region: string; siteHint: string; monthlyRub: number }>>([]);
   const [summary, setSummary] = useState({
@@ -347,6 +374,7 @@ export default function PatentNdflView() {
       const data = await res.json();
       if (data?.success) {
         setRecords(data.records || []);
+        setMonthlyTotals(data.monthlyTotals || []);
         setDiscrepancies(data.discrepancies || []);
         setPatentRates(data.patentRates2026 || []);
         if (data.summary) setSummary(data.summary);
@@ -534,12 +562,38 @@ export default function PatentNdflView() {
       'Mahsup Edilen (₽)': r.patent_offset_used,
       'Kalan Avans (₽)': r.patent_advance_balance,
       'Ek Mahsup Potansiyeli (₽)': r.additional_offset_potential,
+      'Eksik Mahsup Ayları': (r.missing_months || []).map((m) => `${m.label} (${m.gap}₽)`).join(', '),
+      'Kök Neden': CAUSE_META[r.root_cause || 'FULL_OFFSET']?.label || '',
       'Öncelik / Aksiyon': r.priority_label || r.recommended_action,
     }));
+
+    const monthlyDetailRows: any[] = [];
+    for (const r of filteredRecords) {
+      for (const m of r.months || []) {
+        monthlyDetailRows.push({
+          'Sicil / Tabel No': r.tabel_no,
+          'Ad Soyad (ФИО)': r.full_name,
+          Durum: r.is_active ? 'Aktif' : 'Çıkışlı',
+          'Bildirim No': r.notification_no || 'YOK',
+          'Bildirim Tarihi': r.notification_date || '',
+          Ay: `${String(m.month).padStart(2, '0')} - ${m.label}`,
+          'Ödenen Patent (₽)': m.patent_paid,
+          'Hesaplanan НДФЛ (₽)': m.ndfl_calc,
+          'Mahsup Edilen (₽)': m.offset_used,
+          'Kesilen НДФЛ (₽)': m.ndfl_withheld,
+          'Aylık Eksik Mahsup (₽)': m.unoffset_gap,
+        });
+      }
+    }
+
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, `Patent_NDFL_${taxYear}`);
-    XLSX.writeFile(wb, `Pondera_SNG_Patent_NDFL_${taxYear}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, `Kisi_Ozet_${taxYear}`);
+    if (monthlyDetailRows.length > 0) {
+      const wsM = XLSX.utils.json_to_sheet(monthlyDetailRows);
+      XLSX.utils.book_append_sheet(wb, wsM, `Aylik_Detay_${taxYear}`);
+    }
+    XLSX.writeFile(wb, `Pondera_SNG_Patent_NDFL_Aylik_${taxYear}.xlsx`);
   };
 
   return (
@@ -764,6 +818,67 @@ export default function PatentNdflView() {
                       })}
                     </div>
                   </div>
+
+                  {/* 12-Month Company Patent vs 2-NDFL vs Offset Breakdown */}
+                  {monthlyTotals.some((m) => m.patent_paid > 0 || m.offset_used > 0 || m.ndfl_calc > 0) && (
+                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                          <Calendar className="w-4 h-4 text-indigo-500" />
+                          <span>Aylar Bazında Patent Avansı, 2-НДФЛ ve Mahsup Karşılaştırması ({taxYear})</span>
+                        </h3>
+                        <span className="text-[10.5px] text-slate-500">
+                          Sıfır mahsup veya eksik mahsup yaşanan aylar kırmızı/turuncu vurgulanır
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs whitespace-nowrap">
+                          <thead className="text-[10.5px] text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                              <th className="py-1.5 pr-2">Ay</th>
+                              <th className="py-1.5 px-2 text-right">Ödenen Patent (₽)</th>
+                              <th className="py-1.5 px-2 text-right">Hesaplanan НДФЛ (₽)</th>
+                              <th className="py-1.5 px-2 text-right text-emerald-600">Mahsup Edilen (₽)</th>
+                              <th className="py-1.5 px-2 text-right">Mahsup %</th>
+                              <th className="py-1.5 pl-2 text-right text-amber-600">Eksik Mahsuplu Kişi</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {monthlyTotals
+                              .filter((m) => m.patent_paid > 0 || m.offset_used > 0 || m.ndfl_calc > 0)
+                              .map((m) => {
+                                const pct = m.patent_paid > 0 ? Math.round((m.offset_used / m.patent_paid) * 100) : 0;
+                                const isZeroAnomaly = m.patent_paid > 0 && m.offset_used === 0;
+                                return (
+                                  <tr
+                                    key={m.month}
+                                    className={isZeroAnomaly ? 'bg-rose-50/70 dark:bg-rose-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'}
+                                  >
+                                    <td className="py-1.5 pr-2 font-semibold">
+                                      {String(m.month).padStart(2, '0')} · {m.label}
+                                      {isZeroAnomaly && (
+                                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9.5px] bg-rose-100 dark:bg-rose-900/70 text-rose-700 dark:text-rose-200">
+                                          Mahsup = 0!
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-right font-mono">{fmtRub(m.patent_paid)}</td>
+                                    <td className="py-1.5 px-2 text-right font-mono">{fmtRub(m.ndfl_calc)}</td>
+                                    <td className="py-1.5 px-2 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                                      {fmtRub(m.offset_used)}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-right font-mono">%{pct}</td>
+                                    <td className="py-1.5 pl-2 text-right font-mono text-amber-600 dark:text-amber-400">
+                                      {m.missing_employees} kişi
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Site / Org Breakdown & Citizenship Breakdown */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1085,22 +1200,34 @@ export default function PatentNdflView() {
                       <th className="py-2.5 px-2.5 text-right">Mahsup Edilen</th>
                       <th className="py-2.5 px-2.5 text-right">Kalan Avans</th>
                       <th className="py-2.5 px-2.5 text-right">Ek Potansiyel</th>
+                      <th className="py-2.5 px-2.5">Eksik Mahsup Ayları</th>
                       <th className="py-2.5 px-2.5">Kök Neden / Plan Durumu</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                     {filteredRecords.slice(0, visibleCount).map((r) => {
                       const cMeta = CAUSE_META[r.root_cause || 'FULL_OFFSET'];
+                      const isExpanded = expandedRowId === r.id;
+                      const empMonths = r.months || [];
+                      const missingMonths = r.missing_months || [];
                       return (
+                      <React.Fragment key={r.id}>
                       <tr
-                        key={r.id}
-                        className={
+                        onClick={() => setExpandedRowId(isExpanded ? null : r.id)}
+                        className={`cursor-pointer ${
                           r.root_cause === 'REGION_CHANGED'
                             ? 'opacity-65 bg-slate-50/70 dark:bg-slate-900/40'
+                            : isExpanded
+                            ? 'bg-indigo-50/60 dark:bg-indigo-950/40'
                             : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
-                        }
+                        }`}
                       >
-                        <td className="py-2 px-2.5 font-mono">{r.tabel_no || '—'}</td>
+                        <td className="py-2 px-2.5 font-mono">
+                          <span className="inline-flex items-center gap-1">
+                            {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-indigo-500" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                            {r.tabel_no || '—'}
+                          </span>
+                        </td>
                         <td className="py-2 px-2.5">
                           <div className="font-medium text-slate-900 dark:text-white">{r.full_name}</div>
                           <div className="text-[10px] text-slate-500">
@@ -1149,6 +1276,28 @@ export default function PatentNdflView() {
                           {fmtRub(r.additional_offset_potential)}
                         </td>
                         <td className="py-2 px-2.5">
+                          {missingMonths.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 max-w-[170px]">
+                              {missingMonths.slice(0, 6).map((mm) => (
+                                <span
+                                  key={mm.month}
+                                  className="px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300/70 dark:border-amber-700/70"
+                                  title={`${mm.label}: ${fmtRub(mm.gap)} eksik mahsup`}
+                                >
+                                  {mm.label}
+                                </span>
+                              ))}
+                              {missingMonths.length > 6 && (
+                                <span className="text-[9.5px] text-slate-500">+{missingMonths.length - 6}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">
+                              {empMonths.length > 0 ? 'Eksik ay yok' : 'Aylık veri yok'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2.5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-1.5">
                             <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`} title={cMeta.hint}>
                               {cMeta.short}
@@ -1176,11 +1325,93 @@ export default function PatentNdflView() {
                           )}
                         </td>
                       </tr>
+                      {isExpanded && (
+                        <tr className="bg-slate-50/90 dark:bg-[#0B1528]">
+                          <td colSpan={10} className="p-3 sm:p-4">
+                            <div className="space-y-2.5 whitespace-normal">
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] pb-2 border-b border-slate-200 dark:border-slate-700">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <span className="font-semibold text-slate-900 dark:text-white">{r.full_name}</span>
+                                  <span>
+                                    <strong>Уведомление ФНС:</strong>{' '}
+                                    {r.has_notification
+                                      ? `№ ${r.notification_no} (${r.notification_date || 'OK'})${r.ifns_code ? ` · İFNS ${r.ifns_code}` : ''}`
+                                      : 'YOK (Alınmamış)'}
+                                  </span>
+                                  {r.application_date && (
+                                    <span>
+                                      <strong>1C Başvuru:</strong> {r.application_date}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`}>
+                                  {cMeta.label}
+                                </span>
+                              </div>
+
+                              {empMonths.length === 0 ? (
+                                <p className="text-[11px] text-slate-500">
+                                  Bu çalışan için henüz aylık (Ocak–Aralık) kırılım verisi yok — <strong>5. 1C OData</strong> sekmesinden <em>1C OData&apos;dan Çek</em> butonuna basıldığında tüm aylık Patent &amp; 2-НДФЛ detayları otomatik dolar.
+                                </p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-[11px] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                                    <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
+                                      <tr>
+                                        <th className="py-1.5 px-2.5">Ay ({taxYear})</th>
+                                        <th className="py-1.5 px-2.5 text-right">Ödenen Patent</th>
+                                        <th className="py-1.5 px-2.5 text-right">Hesaplanan НДФЛ</th>
+                                        <th className="py-1.5 px-2.5 text-right text-emerald-600">Mahsup Edilen</th>
+                                        <th className="py-1.5 px-2.5 text-right">Kesilen НДФЛ</th>
+                                        <th className="py-1.5 px-2.5 text-right text-amber-600">Aylık Eksik Mahsup</th>
+                                        <th className="py-1.5 px-2.5">Aylık Analiz</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
+                                      {empMonths.map((em) => {
+                                        const isMissing = em.unoffset_gap > 0 || (em.patent_paid > 0 && em.offset_used === 0);
+                                        const statusLabel = !r.has_notification
+                                          ? '⚠ ФНС İzni Yok'
+                                          : isMissing
+                                          ? '⚠ Eksik Mahsup (İzin Öncesi / Gecikmiş)'
+                                          : em.patent_paid > em.ndfl_calc && em.ndfl_calc > 0 && em.offset_used >= em.ndfl_calc
+                                          ? 'ℹ НДФЛ Az (Avans > НДФЛ)'
+                                          : '✓ Mahsup Edildi';
+                                        return (
+                                          <tr
+                                            key={em.month}
+                                            className={isMissing ? 'bg-amber-50/70 dark:bg-amber-950/25' : ''}
+                                          >
+                                            <td className="py-1.5 px-2.5 font-semibold font-mono">
+                                              {String(em.month).padStart(2, '0')} · {em.label}
+                                            </td>
+                                            <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.patent_paid)}</td>
+                                            <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.ndfl_calc)}</td>
+                                            <td className="py-1.5 px-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                                              {fmtRub(em.offset_used)}
+                                            </td>
+                                            <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.ndfl_withheld)}</td>
+                                            <td className="py-1.5 px-2.5 text-right font-mono font-semibold text-amber-600 dark:text-amber-400">
+                                              {em.unoffset_gap > 0 ? fmtRub(em.unoffset_gap) : '—'}
+                                            </td>
+                                            <td className="py-1.5 px-2.5 text-[10.5px]">{statusLabel}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                       );
                     })}
                     {filteredRecords.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="py-8 text-center text-slate-500">
+                        <td colSpan={10} className="py-8 text-center text-slate-500">
                           Gösterilecek kayıt bulunamadı.
                         </td>
                       </tr>

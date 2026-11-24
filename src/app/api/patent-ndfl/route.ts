@@ -36,10 +36,69 @@ export async function GET(request: Request) {
       .prepare('SELECT * FROM patent_ndfl_records WHERE tax_year = ? ORDER BY additional_offset_potential DESC, ndfl_withheld DESC')
       .all(taxYear) as any[];
 
-    const records = rawRecords.map((r) => ({
-      ...r,
-      root_cause: classifyPatentRootCause(r),
+    const rawMonthly = db
+      .prepare('SELECT * FROM patent_ndfl_monthly WHERE tax_year = ? ORDER BY month_num ASC')
+      .all(taxYear) as any[];
+
+    const MONTH_SHORT_TR = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+    const monthlyByNorm = new Map<string, any[]>();
+    const companyMonths = Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1,
+      label: MONTH_SHORT_TR[i + 1],
+      patent_paid: 0,
+      ndfl_calc: 0,
+      offset_used: 0,
+      ndfl_withheld: 0,
+      missing_employees: 0,
     }));
+
+    for (const m of rawMonthly) {
+      const nn = String(m.norm_name || '');
+      const mNum = Number(m.month_num || 0);
+      if (!nn || mNum < 1 || mNum > 12) continue;
+      const patentPaid = Number(m.patent_paid || 0);
+      const ndflCalc = Number(m.ndfl_calc || 0);
+      const offsetUsed = Number(m.offset_used || 0);
+      const ndflWithheld = Number(m.ndfl_withheld || 0);
+      const expectedOffset = ndflCalc > 0 ? Math.min(patentPaid, ndflCalc) : patentPaid;
+      const unoffsetGap = patentPaid > 0 && offsetUsed < expectedOffset ? Math.max(0, expectedOffset - offsetUsed) : 0;
+
+      const arr = monthlyByNorm.get(nn) || [];
+      arr.push({
+        month: mNum,
+        label: MONTH_SHORT_TR[mNum],
+        patent_paid: Math.round(patentPaid),
+        ndfl_calc: Math.round(ndflCalc),
+        offset_used: Math.round(offsetUsed),
+        ndfl_withheld: Math.round(ndflWithheld),
+        unoffset_gap: Math.round(unoffsetGap),
+      });
+      monthlyByNorm.set(nn, arr);
+
+      const cm = companyMonths[mNum - 1];
+      cm.patent_paid += Math.round(patentPaid);
+      cm.ndfl_calc += Math.round(ndflCalc);
+      cm.offset_used += Math.round(offsetUsed);
+      cm.ndfl_withheld += Math.round(ndflWithheld);
+      if (unoffsetGap > 0) cm.missing_employees++;
+    }
+
+    const records = rawRecords.map((r) => {
+      const months = monthlyByNorm.get(String(r.norm_name || '')) || [];
+      const missingMonths = months
+        .filter((m) => m.unoffset_gap > 0 || (m.patent_paid > 0 && m.offset_used === 0))
+        .map((m) => ({
+          month: m.month,
+          label: m.label,
+          gap: m.unoffset_gap || m.patent_paid,
+        }));
+      return {
+        ...r,
+        root_cause: classifyPatentRootCause(r),
+        months,
+        missing_months: missingMonths,
+      };
+    });
 
     const discrepancies = db
       .prepare('SELECT * FROM patent_ndfl_discrepancies WHERE tax_year = ? ORDER BY unexplained_amount DESC')
@@ -136,6 +195,7 @@ export async function GET(request: Request) {
       success: true,
       taxYear,
       records,
+      monthlyTotals: companyMonths,
       discrepancies,
       patentRates2026: PATENT_RATES_2026,
       odataConfig: {

@@ -937,6 +937,28 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     }
 
     // 5. Patent Advances & Offsets (AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType)
+    // Track both yearly totals AND per-employee monthly (1..12) breakdown!
+    type MonthBucket = { patent_paid: number; ndfl_calc: number; offset_used: number; ndfl_withheld: number };
+    const monthlyByFiz = new Map<string, Map<number, MonthBucket>>();
+    const ensureMonth = (fk: string, m: number): MonthBucket => {
+      let mm = monthlyByFiz.get(fk);
+      if (!mm) {
+        mm = new Map<number, MonthBucket>();
+        monthlyByFiz.set(fk, mm);
+      }
+      let b = mm.get(m);
+      if (!b) {
+        b = { patent_paid: 0, ndfl_calc: 0, offset_used: 0, ndfl_withheld: 0 };
+        mm.set(m, b);
+      }
+      return b;
+    };
+    const parseMonth = (dtStr: any): number => {
+      const m = /^\d{4}-(\d{2})/.exec(String(dtStr || ''));
+      const num = m ? parseInt(m[1], 10) : 0;
+      return num >= 1 && num <= 12 ? num : 0;
+    };
+
     const advRegEntity =
       (hasEntity('AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType')
         ? 'AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType'
@@ -955,8 +977,14 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const cur = ensureAgg(fk);
         const amt = toNum(row.Сумма || row.СуммаПлатежа || row.СуммаАвансовогоПлатежа);
         const recType = String(row.RecordType || '').toLowerCase();
-        if (recType === 'expense') cur.used += amt;
-        else cur.adv += amt;
+        const mNum = parseMonth(row.МесяцНалоговогоПериода || row.Period);
+        if (recType === 'expense') {
+          cur.used += amt;
+          if (mNum) ensureMonth(fk, mNum).offset_used += amt;
+        } else {
+          cur.adv += amt;
+          if (mNum) ensureMonth(fk, mNum).patent_paid += amt;
+        }
         advRegCount++;
       }
     }
@@ -969,7 +997,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     if (ndflRegEntity) {
       const regRows = await fetchODataPaged(
         base,
-        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'&$select=ФизическоеЛицо_Key,RecordType,Сумма`,
+        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'&$select=ФизическоеЛицо_Key,RecordType,Сумма,Period,МесяцНалоговогоПериода`,
         headers,
         50
       );
@@ -979,10 +1007,13 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const cur = byFiz.get(fk)!;
         const recType = String(row.RecordType || '').toLowerCase();
         const amt = toNum(row.Сумма);
+        const mNum = parseMonth(row.МесяцНалоговогоПериода || row.Period);
         if (recType === 'receipt') {
           cur.ndflCalc += amt;
+          if (mNum) ensureMonth(fk, mNum).ndfl_calc += amt;
         } else if (recType === 'expense') {
           cur.ndflWithheld += amt;
+          if (mNum) ensureMonth(fk, mNum).ndfl_withheld += amt;
         }
       }
     }
@@ -990,6 +1021,20 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     let synced = 0;
     db.exec('BEGIN');
     try {
+      // Replace year cleanly on full OData sync so there are never stale Excel/OData duplicates
+      db.prepare('DELETE FROM patent_ndfl_records WHERE tax_year = ?').run(year);
+      db.prepare('DELETE FROM patent_ndfl_monthly WHERE tax_year = ?').run(year);
+
+      const insMonth = db.prepare(`
+        INSERT INTO patent_ndfl_monthly (tax_year, norm_name, month_num, patent_paid, ndfl_calc, offset_used, ndfl_withheld)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(tax_year, norm_name, month_num) DO UPDATE SET
+          patent_paid = patent_ndfl_monthly.patent_paid + excluded.patent_paid,
+          ndfl_calc = patent_ndfl_monthly.ndfl_calc + excluded.ndfl_calc,
+          offset_used = patent_ndfl_monthly.offset_used + excluded.offset_used,
+          ndfl_withheld = patent_ndfl_monthly.ndfl_withheld + excluded.ndfl_withheld
+      `);
+
       for (const [fk, vals] of Array.from(byFiz.entries())) {
         const emp = empByFiz.get(fk);
         if (!emp?.name) continue;
@@ -1026,6 +1071,22 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           notes: '',
           source_file: '1C:Fresh OData',
         });
+
+        const nn = normName(emp.name);
+        const mMap = monthlyByFiz.get(fk);
+        if (mMap) {
+          for (const [mNum, mb] of Array.from(mMap.entries())) {
+            insMonth.run(
+              year,
+              nn,
+              mNum,
+              Math.round(mb.patent_paid),
+              Math.round(mb.ndfl_calc),
+              Math.round(mb.offset_used),
+              Math.round(mb.ndfl_withheld)
+            );
+          }
+        }
         synced++;
       }
       db.exec('COMMIT');
