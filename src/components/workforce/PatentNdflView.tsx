@@ -1634,7 +1634,7 @@ export default function PatentNdflView() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700 max-h-[540px] overflow-y-auto">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700 max-h-[700px] overflow-y-auto">
                 <table className="w-full text-left text-xs whitespace-nowrap">
                   <thead className="bg-slate-50 dark:bg-[#0D192E] text-[11px] text-slate-600 dark:text-slate-300 sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700">
                     <tr>
@@ -1854,9 +1854,9 @@ export default function PatentNdflView() {
                                       İzin Varken Mahsup Yapılmadı!
                                     </span>
                                   </div>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-[11px] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-                                      <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
+                                  <div className="overflow-x-auto max-h-[440px] overflow-y-auto rounded-xl border border-indigo-200 dark:border-indigo-800/70 shadow-sm bg-white dark:bg-slate-900">
+                                    <table className="w-full text-left text-[11px]">
+                                      <thead className="bg-indigo-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 sticky top-0 z-[5] border-b border-indigo-200 dark:border-slate-700">
                                         <tr>
                                           <th className="py-1.5 px-2.5">{L(`Ay (${taxYear})`, `Месяц (${taxYear})`)}</th>
                                           <th className="py-1.5 px-2.5 text-right text-sky-700 dark:text-sky-300">{L('1C Fiş Girişi (Tarih)', 'Ввод чеков в 1С (дата)')}</th>
