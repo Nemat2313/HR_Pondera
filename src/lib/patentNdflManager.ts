@@ -185,14 +185,11 @@ export function ensurePatentNdflTables(db: DbLike): void {
   `);
   try {
     db.exec('ALTER TABLE patent_ndfl_records ADD COLUMN excluded_region_change INTEGER DEFAULT 0');
-  } catch {}
-  try {
-    db.exec("ALTER TABLE patent_ndfl_records ADD COLUMN receipts_json TEXT DEFAULT '[]'");
-  } catch {}
+  } catch { }
   // Clean up any duplicate Latin-suffixed OData rows created before stripTrailingLatin()
   try {
     db.exec("DELETE FROM patent_ndfl_records WHERE source_file = '1C:Fresh OData' AND patent_advances = 0 AND ndfl_before_offset = 0");
-  } catch {}
+  } catch { }
 }
 
 function normName(s: any): string {
@@ -346,7 +343,7 @@ export function importPatentNdflWorkbook(
       if (p.ad_soyad) siteByNorm.set(normName(p.ad_soyad), info);
       if (p.sicil_no) siteByNorm.set(String(p.sicil_no).trim(), info);
     }
-  } catch {}
+  } catch { }
 
   let importedRecords = 0;
   let importedDiscrepancies = 0;
@@ -495,7 +492,7 @@ export function importPatentNdflWorkbook(
     } catch (err) {
       try {
         db.exec('ROLLBACK');
-      } catch {}
+      } catch { }
       throw err;
     }
     mainImported = true;
@@ -640,7 +637,7 @@ export function buildFnsKnd1110055Xml(
             parsed['Pasaport Düzenleme Tarihi'] || parsed['Pasaport Veriliş Tarihi'] || ''
           ).trim();
           passBy = String(parsed['Pasaport Veren Makam'] || '').trim();
-        } catch {}
+        } catch { }
       }
       const info = {
         inn: String(p.verified_inn || p.inn_no || '').replace(/\D/g, ''),
@@ -653,7 +650,7 @@ export function buildFnsKnd1110055Xml(
       if (p.ad_soyad) personMap.set(normName(p.ad_soyad), info);
       if (p.sicil_no) personMap.set(String(p.sicil_no).trim(), info);
     }
-  } catch {}
+  } catch { }
 
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, '0');
@@ -702,9 +699,9 @@ export function buildFnsKnd1110055Xml(
 
     personXmlNodes.push(
       `\t\t\t\t<СвНПФЛ${innAttr}${bdateAttr}>\r\n` +
-        `\t\t\t\t\t<ФИО Фамилия="${xmlEsc(fam)}" Имя="${xmlEsc(nam)}"${otchAttr}/>\r\n` +
-        `\t\t\t\t\t<УдЛичнФЛ ${docAttrs}/>\r\n` +
-        `\t\t\t\t</СвНПФЛ>`
+      `\t\t\t\t\t<ФИО Фамилия="${xmlEsc(fam)}" Имя="${xmlEsc(nam)}"${otchAttr}/>\r\n` +
+      `\t\t\t\t\t<УдЛичнФЛ ${docAttrs}/>\r\n` +
+      `\t\t\t\t</СвНПФЛ>`
     );
   }
 
@@ -742,9 +739,8 @@ async function fetchODataPaged(
 ): Promise<any[]> {
   const all: any[] = [];
   const sep = entityPath.includes('?') ? '&' : '?';
-  const encodedPath = encodeURI(entityPath);
   for (let page = 0; page < maxPages; page++) {
-    const url = `${base}/${encodedPath}${sep}$top=1000&$skip=${page * 1000}&$format=json`;
+    const url = `${base}/${entityPath}${sep}$top=1000&$skip=${page * 1000}&$format=json`;
     const res = await fetch(url, { headers }).catch(() => null);
     if (!res || !res.ok) break;
     const json: any = await res.json().catch(() => null);
@@ -753,77 +749,6 @@ async function fetchODataPaged(
     if (rows.length < 1000) break;
   }
   return all;
-}
-
-function parseCoveredMonthsFromComment(comment: string, opDateStr: string, amount: number, taxYear: number): number[] {
-  const c = String(comment || '').toLowerCase().replace(/ё/g, 'е').trim();
-  const ruMonths: Array<{ re: RegExp; num: number }> = [
-    { re: /январ|янв\b/, num: 1 },
-    { re: /феврал|фев\b/, num: 2 },
-    { re: /март|мар\b/, num: 3 },
-    { re: /апрел|апр\b/, num: 4 },
-    { re: /май|мая|мае/, num: 5 },
-    { re: /июн/, num: 6 },
-    { re: /июл/, num: 7 },
-    { re: /август|авг\b/, num: 8 },
-    { re: /сентябр|сент|сен\b/, num: 9 },
-    { re: /октябр|окт\b/, num: 10 },
-    { re: /ноябр|нояб|ноя\b/, num: 11 },
-    { re: /декабр|дек\b/, num: 12 },
-  ];
-
-  // 1. Look for explicit Russian month names in comment (e.g. "январь-февраль-март", "май-июль", "июнь, июль")
-  const found: Array<{ idx: number; num: number }> = [];
-  for (const rm of ruMonths) {
-    const m = rm.re.exec(c);
-    if (m) found.push({ idx: m.index, num: rm.num });
-  }
-  found.sort((a, b) => a.idx - b.idx);
-  if (found.length >= 2) {
-    // Check if it's a dash range like "май-июль" (2 endpoints separated by -)
-    if (found.length === 2 && found[1].num > found[0].num && /[-–—]/.test(c.slice(found[0].idx, found[1].idx + 4))) {
-      const range: number[] = [];
-      for (let m = found[0].num; m <= found[1].num; m++) range.push(m);
-      return range;
-    }
-    return Array.from(new Set(found.map((f) => f.num))).sort((a, b) => a - b);
-  }
-  if (found.length === 1) {
-    return [found[0].num];
-  }
-
-  // 2. Fallback: use ДатаОперации (or Date) + detect multi-month lump sum (e.g., 16000=2mo, 24000=3mo)
-  const dm = /^(\d{4})-(\d{2})/.exec(String(opDateStr || ''));
-  let startMonth = 1;
-  if (dm) {
-    const y = parseInt(dm[1], 10);
-    const mo = parseInt(dm[2], 10);
-    if (y < taxYear) startMonth = 1; // Paid in Dec of prev year for Jan+ of taxYear
-    else if (y > taxYear) startMonth = 12;
-    else startMonth = mo >= 1 && mo <= 12 ? mo : 1;
-  }
-
-  // Check if comment specifies "за N мес"
-  const nMesMatch = /за\s*(\d{1,2})\s*мес/.exec(c);
-  if (nMesMatch) {
-    const cnt = Math.min(12, Math.max(1, parseInt(nMesMatch[1], 10)));
-    const out: number[] = [];
-    for (let i = 0; i < cnt && startMonth + i <= 12; i++) out.push(startMonth + i);
-    return out;
-  }
-
-  // Heuristic for multi-month payment without comment (e.g. 16000 / 8000 = 2 months, 24000 / 8000 = 3 months)
-  const typicalRate = 8000;
-  if (amount >= 14000) {
-    const estMonths = Math.round(amount / typicalRate);
-    if (estMonths >= 2 && estMonths <= 6 && Math.abs(amount - estMonths * typicalRate) <= 2000) {
-      const out: number[] = [];
-      for (let i = 0; i < estMonths && startMonth + i <= 12; i++) out.push(startMonth + i);
-      return out;
-    }
-  }
-
-  return [startMonth];
 }
 
 function stripTrailingLatin(name: string): string {
@@ -861,7 +786,7 @@ export async function discoverODataNdflEntities(
     let parsed: any = null;
     try {
       parsed = JSON.parse(txt);
-    } catch {}
+    } catch { }
     return {
       success: r.ok,
       status: r.status,
@@ -888,7 +813,7 @@ export async function discoverODataNdflEntities(
         const row = Array.isArray(j?.value) && j.value.length > 0 ? j.value[0] : null;
         samples[ent] = row ? Object.keys(row) : ['(empty)'];
       }
-    } catch {}
+    } catch { }
   }
   return { success: true, entities: matching, samples };
 }
@@ -918,12 +843,12 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     const hasEntity = (name: string) => entityNames.includes(name);
     const findEntity = (re: RegExp) => entityNames.find((n) => re.test(n)) || '';
 
-    // 2. Fetch Employees (Catalog_Сотрудники) — fetch up to 35,000 rows so all historical & 2026 Сотрудник_Key map cleanly
+    // 2. Fetch Employees (Catalog_Сотрудники)
     const empRows = await fetchODataPaged(
       base,
       'Catalog_Сотрудники?$select=Ref_Key,Code,Description,ФизическоеЛицо_Key,ВАрхиве',
       headers,
-      35
+      15
     );
     const empByFiz = new Map<string, { code: string; name: string; active: boolean }>();
     const fizByEmpRef = new Map<string, string>();
@@ -1022,10 +947,10 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         for (const r of appRows) {
           const docDt = docDateByRef.get(String(r.Ref_Key || ''));
           if (!docDt) continue;
+          const rawEmpKey = String(r.Сотрудник_Key || '').trim();
           const fk =
             String(r.ФизическоеЛицо_Key || '').trim() ||
-            fizByEmpRef.get(String(r.Сотрудник_Key || '').trim()) ||
-            '';
+            (empByFiz.has(rawEmpKey) ? rawEmpKey : fizByEmpRef.get(rawEmpKey) || rawEmpKey);
           if (!fk) continue;
           const cur = ensureAgg(fk);
           if (!cur.appDate || docDt > cur.appDate) cur.appDate = docDt;
@@ -1053,13 +978,8 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       }
       return b;
     };
-    const validDateStr = (dt: any): string => {
-      const s = String(dt || '').trim();
-      return s && !s.startsWith('0001') ? s : '';
-    };
     const parseMonthForYear = (dtStr: any): number => {
-      const s = validDateStr(dtStr);
-      const m = /^(\d{4})-(\d{2})/.exec(s);
+      const m = /^(\d{4})-(\d{2})/.exec(String(dtStr || ''));
       if (!m) return 0;
       const y = parseInt(m[1], 10);
       const num = parseInt(m[2], 10);
@@ -1073,58 +993,42 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         ? 'Document_АвансовыйПлатежИностранцаПоНДФЛ'
         : findEntity(/^Document_АвансовыйПлатеж.*НДФЛ$/i)) || '';
     const docAdvByFiz = new Map<string, number>();
-    const receiptsByFiz = new Map<
-      string,
-      Array<{ number: string; date: string; opDate: string; amount: number; comment: string; months: number[] }>
-    >();
     let advDocCount = 0;
     if (advDocEntity) {
-      const selectFields = 'Ref_Key,Number,Date,Posted,DeletionMark,ДатаОперации,НалоговыйПериод,Сотрудник_Key,Сумма,Комментарий';
       let dRows = await fetchODataPaged(
         base,
-        `${advDocEntity}?$filter=Posted eq true and НалоговыйПериод eq ${year}&$select=${selectFields}`,
+        `${advDocEntity}?$filter=Posted eq true and НалоговыйПериод eq ${year}`,
         headers,
-        30
+        25
       );
       if (dRows.length === 0) {
         dRows = await fetchODataPaged(
           base,
-          `${advDocEntity}?$filter=НалоговыйПериод eq ${year}&$select=${selectFields}`,
+          `${advDocEntity}?$filter=Posted eq true and Date ge datetime'${year - 1}-11-01T00:00:00' and Date lt datetime'${yearEnd}'`,
           headers,
-          30
+          25
         );
       }
       for (const row of dRows) {
-        if (row.DeletionMark || row.Posted === false) continue;
+        if (row.DeletionMark) continue;
         const rowTaxYear = Number(row.НалоговыйПериод || 0);
         if (rowTaxYear && rowTaxYear !== year) continue;
+        const rawEmpKey = String(row.Сотрудник_Key || '').trim();
+        // In 1C:ZUP 3.1, Document_АвансовыйПлатежИностранцаПоНДФЛ.Сотрудник_Key actually references Catalog_ФизическиеЛица!
         const fk =
           String(row.ФизическоеЛицо_Key || '').trim() ||
-          fizByEmpRef.get(String(row.Сотрудник_Key || '').trim()) ||
-          '';
+          (empByFiz.has(rawEmpKey) ? rawEmpKey : fizByEmpRef.get(rawEmpKey) || rawEmpKey);
         if (!fk) continue;
         const amt = toNum(row.Сумма || row.СуммаПлатежа || row.СуммаАвансовогоПлатежа);
         if (amt <= 0) continue;
-        const opDt = validDateStr(row.ДатаОперации) || validDateStr(row.Date);
-        const comment = String(row.Комментарий || '').trim();
-        const coveredMonths = parseCoveredMonthsFromComment(comment, opDt, amt, year);
-        const perMonth = Math.floor(amt / coveredMonths.length);
-        const remainder = Math.round(amt - perMonth * coveredMonths.length);
+        const payDt =
+          (row.ДатаПлатежа && !String(row.ДатаПлатежа).startsWith('0001') ? row.ДатаПлатежа : '') ||
+          (row.ДатаОплаты && !String(row.ДатаОплаты).startsWith('0001') ? row.ДатаОплаты : '') ||
+          row.Date;
+        const mNum = parseMonthForYear(payDt) || 1;
         ensureAgg(fk);
-        coveredMonths.forEach((mNum, idx) => {
-          ensureMonth(fk, mNum).patent_paid += perMonth + (idx === coveredMonths.length - 1 ? remainder : 0);
-        });
+        ensureMonth(fk, mNum).patent_paid += amt;
         docAdvByFiz.set(fk, (docAdvByFiz.get(fk) || 0) + amt);
-        const rArr = receiptsByFiz.get(fk) || [];
-        rArr.push({
-          number: String(row.Number || '').trim(),
-          date: validDateStr(row.Date).slice(0, 10),
-          opDate: opDt.slice(0, 10),
-          amount: Math.round(amt),
-          comment,
-          months: coveredMonths,
-        });
-        receiptsByFiz.set(fk, rArr);
         advDocCount++;
       }
     }
@@ -1149,8 +1053,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const cur = ensureAgg(fk);
         const amt = toNum(row.Сумма || row.СуммаПлатежа || row.СуммаАвансовогоПлатежа);
         const recType = String(row.RecordType || '').toLowerCase();
-        // IMPORTANT: Ignore 0001-01-01 in МесяцНалоговогоПериода — fall back to actual Period!
-        const mNum = parseMonthForYear(validDateStr(row.МесяцНалоговогоПериода) || validDateStr(row.Period)) || 1;
+        const mNum = parseMonthForYear(row.МесяцНалоговогоПериода || row.Period) || 1;
         if (recType === 'expense') {
           cur.used += amt;
           ensureMonth(fk, mNum).offset_used += amt;
@@ -1192,7 +1095,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const cur = byFiz.get(fk)!;
         const recType = String(row.RecordType || '').toLowerCase();
         const amt = toNum(row.Сумма);
-        const mNum = parseMonthForYear(validDateStr(row.МесяцНалоговогоПериода) || validDateStr(row.Period));
+        const mNum = parseMonthForYear(row.МесяцНалоговогоПериода || row.Period);
         if (recType === 'receipt') {
           cur.ndflCalc += amt;
           if (mNum) ensureMonth(fk, mNum).ndfl_calc += amt;
@@ -1258,15 +1161,6 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         });
 
         const nn = normName(emp.name);
-        const recs = receiptsByFiz.get(fk) || [];
-        if (recs.length > 0) {
-          recs.sort((a, b) => (a.opDate || a.date).localeCompare(b.opDate || b.date));
-          db.prepare('UPDATE patent_ndfl_records SET receipts_json = ? WHERE tax_year = ? AND norm_name = ?').run(
-            JSON.stringify(recs),
-            year,
-            nn
-          );
-        }
         const mMap = monthlyByFiz.get(fk);
         if (mMap) {
           for (const [mNum, mb] of Array.from(mMap.entries())) {
@@ -1287,7 +1181,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     } catch (e) {
       try {
         db.exec('ROLLBACK');
-      } catch {}
+      } catch { }
       throw e;
     }
 
