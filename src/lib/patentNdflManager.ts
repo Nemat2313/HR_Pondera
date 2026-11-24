@@ -906,7 +906,12 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       : '';
     let appCount = 0;
     if (appDocEntity && appEmpEntity) {
-      const docs = await fetchODataPaged(base, `${appDocEntity}?$filter=НалоговыйПериод eq ${year}`, headers, 2);
+      const docs = await fetchODataPaged(
+        base,
+        `${appDocEntity}?$filter=Date ge datetime'${yearStart}' and Date lt datetime'${yearEnd}'`,
+        headers,
+        2
+      );
       const docDateByRef = new Map<string, string>();
       for (const d of docs) {
         if (d.Ref_Key && !d.DeletionMark) {
@@ -931,42 +936,42 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       }
     }
 
-    // 5. Registered Patent Advances (Document_АвансовыйПлатежПоНДФЛ or AccumulationRegister_*Аванс*НДФЛ*_RecordType)
-    const advDocEntity = hasEntity('Document_АвансовыйПлатежПоНДФЛ')
-      ? 'Document_АвансовыйПлатежПоНДФЛ'
-      : findEntity(/^Document_АвансовыйПлатежПоНДФЛ/i);
-    let advDocCount = 0;
-    if (advDocEntity) {
-      const aDocs = await fetchODataPaged(
+    // 5. Patent Advances & Offsets (AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType)
+    const advRegEntity =
+      (hasEntity('AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType')
+        ? 'AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType'
+        : findEntity(/AccumulationRegister_АвансовыеПлатежиИностранцевПоНДФЛ_RecordType/i)) || '';
+    let advRegCount = 0;
+    if (advRegEntity) {
+      const aRows = await fetchODataPaged(
         base,
-        `${advDocEntity}?$filter=Date ge datetime'${yearStart}' and Date lt datetime'${yearEnd}'`,
+        `${advRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'`,
         headers,
-        10
+        35
       );
-      for (const d of aDocs) {
-        if (d.DeletionMark || d.Posted === false) continue;
-        const fk =
-          String(d.ФизическоеЛицо_Key || '').trim() ||
-          fizByEmpRef.get(String(d.Сотрудник_Key || '').trim()) ||
-          '';
+      for (const row of aRows) {
+        const fk = String(row.ФизическоеЛицо_Key || '').trim();
         if (!fk) continue;
         const cur = ensureAgg(fk);
-        cur.adv += toNum(d.Сумма || d.СуммаПлатежа || d.СуммаАвансовогоПлатежа);
-        advDocCount++;
+        const amt = toNum(row.Сумма || row.СуммаПлатежа || row.СуммаАвансовогоПлатежа);
+        const recType = String(row.RecordType || '').toLowerCase();
+        if (recType === 'expense') cur.used += amt;
+        else cur.adv += amt;
+        advRegCount++;
       }
     }
 
-    // 6. AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType (Offset Used, Calculated & Withheld NDFL)
+    // 6. Calculated & Withheld NDFL (AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType)
     const ndflRegEntity =
       (hasEntity('AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType')
         ? 'AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType'
-        : findEntity(/AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ/i)) || '';
+        : findEntity(/AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType/i)) || '';
     if (ndflRegEntity) {
       const regRows = await fetchODataPaged(
         base,
-        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'`,
+        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'&$select=ФизическоеЛицо_Key,RecordType,Сумма`,
         headers,
-        35
+        50
       );
       for (const row of regRows) {
         const fk = String(row.ФизическоеЛицо_Key || '').trim();
@@ -974,14 +979,11 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         const cur = byFiz.get(fk)!;
         const recType = String(row.RecordType || '').toLowerCase();
         const amt = toNum(row.Сумма);
-        const isAdvanceOffset = Boolean(row.ЗачтеноАвансов) || /аванс|патент/i.test(String(row.ВидСтроки || row.СпособЗачета || ''));
         if (recType === 'receipt') {
           cur.ndflCalc += amt;
         } else if (recType === 'expense') {
-          if (isAdvanceOffset) cur.used += amt;
-          else cur.ndflWithheld += amt;
+          cur.ndflWithheld += amt;
         }
-        if (row.СуммаЗачтенногоАванса) cur.used += toNum(row.СуммаЗачтенногоАванса);
       }
     }
 
@@ -1035,7 +1037,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     }
 
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi (Bildirim: ${notifCount}, Başvuru: ${appCount}, Avans Belgesi: ${advDocCount}).`;
+    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi (Bildirim: ${notifCount}, Başvuru: ${appCount}, Avans Hareketi: ${advRegCount}).`;
     savePatentODataConfig(db, { lastSyncAt: nowStr, lastSyncMessage: msg });
     return { success: true, synced, message: msg };
   } catch (err: any) {
