@@ -154,6 +154,7 @@ export default function PatentNdflView() {
     setFeedback(null);
     let totalImp = 0;
     let totalDisc = 0;
+    const errors: string[] = [];
     try {
       for (const file of Array.from(files)) {
         const fd = new FormData();
@@ -169,13 +170,17 @@ export default function PatentNdflView() {
           totalImp += Number(data.importedRecords || 0);
           totalDisc += Number(data.importedDiscrepancies || 0);
         } else {
-          setFeedback({ type: 'error', text: data?.message || `${file.name} yüklenemedi.` });
+          errors.push(data?.message || `${file.name} yüklenemedi.`);
         }
       }
-      setFeedback({
-        type: 'success',
-        text: `${files.length} dosya başarıyla işlendi: ${totalImp} çalışan kaydı${totalDisc ? ` ve ${totalDisc} uyuşmazlık` : ''} güncellendi.`,
-      });
+      if (errors.length > 0 && totalImp === 0) {
+        setFeedback({ type: 'error', text: errors.join(' | ') });
+      } else {
+        setFeedback({
+          type: errors.length > 0 ? 'info' : 'success',
+          text: `${files.length} dosya işlendi: ${totalImp} çalışan kaydı${totalDisc ? ` ve ${totalDisc} uyuşmazlık` : ''} güncellendi.${errors.length > 0 ? ` Uyarı: ${errors.join(' | ')}` : ''}`,
+        });
+      }
       await fetchData();
     } catch {
       setFeedback({ type: 'error', text: 'Dosya yükleme sırasında bağlantı hatası oluştu.' });

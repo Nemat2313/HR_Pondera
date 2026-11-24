@@ -377,7 +377,8 @@ export function importPatentNdflWorkbook(
     const iPrio = findCol(headers, [/приоритет/i]);
     const iRecAct = findCol(headers, [/действие бухгалт/i]);
 
-    const tx = db.transaction(() => {
+    db.exec('BEGIN');
+    try {
       for (let r = headerIdx + 1; r < matrix.length; r++) {
         const row = matrix[r] || [];
         const fullName = String(row[iFio] || '').trim();
@@ -422,8 +423,13 @@ export function importPatentNdflWorkbook(
         upsertPatentNdflRecord(db, rec);
         importedRecords++;
       }
-    });
-    tx();
+      db.exec('COMMIT');
+    } catch (err) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+      throw err;
+    }
     mainImported = true;
     detectedSheet = sn;
   }
