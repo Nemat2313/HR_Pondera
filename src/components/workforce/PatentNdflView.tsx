@@ -298,6 +298,7 @@ export default function PatentNdflView() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'dismissed'>('all');
   const [notifFilter, setNotifFilter] = useState<'all' | 'no_notif' | 'with_notif' | 'has_potential' | 'zero_offset'>('all');
   const [causeFilter, setCauseFilter] = useState<'all' | RootCauseKey>('all');
+  const [bandFilter, setBandFilter] = useState<'all' | '100' | '80_99' | '50_79' | '1_49' | '0'>('all');
   const [visibleCount, setVisibleCount] = useState(150);
 
   // OData config
@@ -613,6 +614,16 @@ export default function PatentNdflView() {
       }
       if (activeTab === 'reconciliation') {
         if (causeFilter !== 'all' && r.root_cause !== causeFilter) return false;
+        if (bandFilter !== 'all') {
+          const adv = Number(r.patent_advances || 0);
+          const used = Number(r.patent_offset_used || 0);
+          const pct = adv > 0 ? (used / adv) * 100 : 0;
+          if (bandFilter === '100' && pct < 99.5) return false;
+          if (bandFilter === '80_99' && !(pct >= 80 && pct < 99.5)) return false;
+          if (bandFilter === '50_79' && !(pct >= 50 && pct < 80)) return false;
+          if (bandFilter === '1_49' && !(pct > 0 && pct < 50)) return false;
+          if (bandFilter === '0' && pct > 0) return false;
+        }
         if (notifFilter === 'no_notif' && r.has_notification) return false;
         if (notifFilter === 'with_notif' && !r.has_notification) return false;
         if (notifFilter === 'has_potential' && Number(r.additional_offset_potential || 0) <= 0) return false;
@@ -624,7 +635,7 @@ export default function PatentNdflView() {
       }
       return true;
     });
-  }, [records, search, activeFilter, notifFilter, causeFilter, activeTab, vozvratOnlyGuaranteed]);
+  }, [records, search, activeFilter, notifFilter, causeFilter, bandFilter, activeTab, vozvratOnlyGuaranteed]);
 
   const handlePrintVozvratKit = () => {
     const targets = filteredRecords.filter((r) => r.is_active && Number(r.additional_offset_potential || 0) > 0);
@@ -1237,44 +1248,89 @@ export default function PatentNdflView() {
                     </div>
                   </div>
 
-                  {/* Site / Org Breakdown & Citizenship Breakdown */}
+                  {/* 5-Band Offset Rate Distribution Table + Citizenship Breakdown */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="lg:col-span-2 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
-                      <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                        Şantiye / Organizasyon Bazlı Patent Mahsup Analizi
-                      </h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="text-[10.5px] text-slate-500 border-b border-slate-200 dark:border-slate-700">
-                            <tr>
-                              <th className="py-2 pr-2">Şantiye / Birim</th>
-                              <th className="py-2 px-2 text-right">Kişi</th>
-                              <th className="py-2 px-2 text-right">Avans</th>
-                              <th className="py-2 px-2 text-right text-emerald-600">Mahsup</th>
-                              <th className="py-2 px-2 text-right text-indigo-600">Ek Potansiyel</th>
-                              <th className="py-2 pl-2 text-right text-rose-600">Bildirimsiz</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {analytics.bySite.map((s) => (
-                              <tr key={s.name} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                                <td className="py-2 pr-2 font-medium text-slate-800 dark:text-slate-200">{s.name}</td>
-                                <td className="py-2 px-2 text-right font-mono">{s.count}</td>
-                                <td className="py-2 px-2 text-right font-mono">{fmtRub(s.advances)}</td>
-                                <td className="py-2 px-2 text-right font-mono text-emerald-600 dark:text-emerald-400">{fmtRub(s.used)}</td>
-                                <td className="py-2 px-2 text-right font-mono text-indigo-600 dark:text-indigo-400">{fmtRub(s.potential)}</td>
-                                <td className="py-2 pl-2 text-right font-mono text-rose-600 dark:text-rose-400">{s.noNotif}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                          {L('Kişi Bazlı Mahsup Oranı Dağılımı (Tıklayarak Filtrele)', 'Распределение сотрудников по доле зачёта (нажмите для фильтра)')}
+                        </h3>
+                        <span className="text-[10.5px] text-slate-500">
+                          {L('Genel ortalama', 'Средний зачёт')}: <strong>%{summary.offsetPct}</strong>
+                        </span>
                       </div>
+                      {(() => {
+                        const bands: Array<{
+                          key: '100' | '80_99' | '50_79' | '1_49' | '0';
+                          label: string;
+                          labelRu: string;
+                          cls: string;
+                          count: number;
+                          adv: number;
+                          used: number;
+                        }> = [
+                          { key: '100', label: '%100 (Tam)', labelRu: '100% (Полный)', cls: 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300', count: 0, adv: 0, used: 0 },
+                          { key: '80_99', label: '%80 – %99', labelRu: '80% – 99%', cls: 'bg-teal-100 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300', count: 0, adv: 0, used: 0 },
+                          { key: '50_79', label: '%50 – %79', labelRu: '50% – 79%', cls: 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300', count: 0, adv: 0, used: 0 },
+                          { key: '1_49', label: '%1 – %49', labelRu: '1% – 49%', cls: 'bg-orange-100 dark:bg-orange-950/70 text-orange-800 dark:text-orange-300', count: 0, adv: 0, used: 0 },
+                          { key: '0', label: '%0 (Mahsup Yok)', labelRu: '0% (Нет зачёта)', cls: 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300', count: 0, adv: 0, used: 0 },
+                        ];
+                        for (const r of records) {
+                          const adv = Number(r.patent_advances || 0);
+                          const used = Number(r.patent_offset_used || 0);
+                          const pct = adv > 0 ? (used / adv) * 100 : 0;
+                          const idx = pct >= 99.5 ? 0 : pct >= 80 ? 1 : pct >= 50 ? 2 : pct > 0 ? 3 : 4;
+                          bands[idx].count++;
+                          bands[idx].adv += adv;
+                          bands[idx].used += used;
+                        }
+                        return (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead className="text-[10.5px] text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                                <tr>
+                                  <th className="py-2 pr-2">{L('Mahsup Oranı', 'Доля зачёта')}</th>
+                                  <th className="py-2 px-2 text-right">{L('Kişi Sayısı', 'Сотрудников')}</th>
+                                  <th className="py-2 px-2 text-right">{L('Ödenen Patent', 'Оплачено патент')}</th>
+                                  <th className="py-2 px-2 text-right text-emerald-600">{L('Mahsup Edilen', 'Зачтено')}</th>
+                                  <th className="py-2 pl-2 text-right text-amber-600">{L('Kalan Bakiye', 'Остаток')}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {bands.map((b) => (
+                                  <tr
+                                    key={b.key}
+                                    onClick={() => {
+                                      setBandFilter(b.key);
+                                      setCauseFilter('all');
+                                      setActiveFilter('all');
+                                      setSearch('');
+                                      setActiveTab('reconciliation');
+                                    }}
+                                    className="hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 cursor-pointer transition"
+                                  >
+                                    <td className="py-2 pr-2">
+                                      <span className={`px-2 py-0.5 rounded-md font-mono font-semibold text-[11px] ${b.cls}`}>
+                                        {isRu ? b.labelRu : b.label}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-2 text-right font-mono font-semibold">{b.count} {L('kişi', 'чел.')}</td>
+                                    <td className="py-2 px-2 text-right font-mono">{fmtRub(b.adv)}</td>
+                                    <td className="py-2 px-2 text-right font-mono text-emerald-600 dark:text-emerald-400">{fmtRub(b.used)}</td>
+                                    <td className="py-2 pl-2 text-right font-mono text-amber-600 dark:text-amber-400">{fmtRub(Math.max(0, b.adv - b.used))}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
                       <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>Uyruk Bazlı Dağılım</span>
+                        <span>{L('Uyruk Bazlı Dağılım', 'Распределение по гражданству')}</span>
                       </h3>
                       <div className="space-y-2">
                         {analytics.byCit.map((c) => (
@@ -1600,6 +1656,18 @@ export default function PatentNdflView() {
                         <option value="LOW_NDFL">{L('A. НДФЛ Yetersiz (Avans > НДФЛ)', 'А. Недостаточно НДФЛ')}</option>
                         <option value="REGION_CHANGED">{L('A. Bölge Değişikliği (Plan Dışı)', 'А. Смена региона (вне плана)')}</option>
                         <option value="FULL_OFFSET">{L('✓ Tam Mahsup (%100)', '✓ Полный зачёт (100%)')}</option>
+                      </select>
+                      <select
+                        value={bandFilter}
+                        onChange={(e) => setBandFilter(e.target.value as any)}
+                        className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
+                      >
+                        <option value="all">{L('Tüm Mahsup Oranları', 'Все доли зачёта')}</option>
+                        <option value="100">{L('%100 (Tam)', '100% (Полный)')}</option>
+                        <option value="80_99">%80 – %99</option>
+                        <option value="50_79">%50 – %79</option>
+                        <option value="1_49">%1 – %49</option>
+                        <option value="0">{L('%0 (Mahsup Yok)', '0% (Нет зачёта)')}</option>
                       </select>
                       <select
                         value={notifFilter}

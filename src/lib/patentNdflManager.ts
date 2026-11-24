@@ -981,15 +981,11 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       }
     }
 
-    // 2a. Fetch Projects / Departments (Catalog_ПодразделенияОрганизаций)
+    // 2a. Fetch Projects / Work Sites (Catalog_ТерриторииВыполненияРабот + Catalog_ПодразделенияОрганизаций)
     const deptNameByKey = new Map<string, string>();
-    if (hasEntity('Catalog_ПодразделенияОрганизаций')) {
-      const deptRows = await fetchODataPaged(
-        base,
-        'Catalog_ПодразделенияОрганизаций?$select=Ref_Key,Description',
-        headers,
-        5
-      );
+    for (const catEnt of ['Catalog_ТерриторииВыполненияРабот', 'Catalog_ПодразделенияОрганизаций']) {
+      if (!hasEntity(catEnt)) continue;
+      const deptRows = await fetchODataPaged(base, `${catEnt}?$select=Ref_Key,Description`, headers, 5);
       for (const d of deptRows) {
         const dk = String(d.Ref_Key || '').trim();
         const dn = String(d.Description || '').trim().replace(/\s+/g, ' ');
