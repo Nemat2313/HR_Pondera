@@ -8,6 +8,7 @@ import { getSessionUserFromRequest } from '@/lib/auth';
 import {
   buildFnsKnd1110055Xml,
   classifyPatentRootCause,
+  discoverODataNdflEntities,
   ensurePatentNdflTables,
   getPatentODataConfig,
   importPatentNdflWorkbook,
@@ -25,6 +26,10 @@ export async function GET(request: Request) {
     const db = getDb();
     ensurePatentNdflTables(db);
     const { searchParams } = new URL(request.url);
+    if (searchParams.get('action') === 'discover_odata') {
+      const disc = await discoverODataNdflEntities(db);
+      return NextResponse.json(disc);
+    }
     const taxYear = Number(searchParams.get('year')) || 2026;
 
     const rawRecords = db

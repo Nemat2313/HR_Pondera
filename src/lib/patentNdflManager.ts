@@ -186,6 +186,10 @@ export function ensurePatentNdflTables(db: DbLike): void {
   try {
     db.exec('ALTER TABLE patent_ndfl_records ADD COLUMN excluded_region_change INTEGER DEFAULT 0');
   } catch {}
+  // Clean up any duplicate Latin-suffixed OData rows created before stripTrailingLatin()
+  try {
+    db.exec("DELETE FROM patent_ndfl_records WHERE source_file = '1C:Fresh OData' AND patent_advances = 0 AND ndfl_before_offset = 0");
+  } catch {}
 }
 
 function normName(s: any): string {
@@ -747,6 +751,49 @@ async function fetchODataPaged(
   return all;
 }
 
+function stripTrailingLatin(name: string): string {
+  // 1C:ZUP Catalog_Сотрудники.Description often appends Latin transliteration: "Абаев Азат Azat Abaev"
+  const s = String(name || '').trim();
+  if (/[А-ЯЁа-яё]/.test(s)) {
+    return s.replace(/\s+[A-Za-z][A-Za-z0-9\s.'-]*$/, '').trim();
+  }
+  return s;
+}
+
+export async function discoverODataNdflEntities(db: DbLike): Promise<{
+  success: boolean;
+  entities: string[];
+  samples: Record<string, string[]>;
+  message?: string;
+}> {
+  const cfg = getPatentODataConfig(db);
+  if (!cfg.odataUrl || !cfg.username || !cfg.password) {
+    return { success: false, entities: [], samples: {}, message: 'OData ayarları eksik.' };
+  }
+  const auth = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
+  const headers = { Authorization: auth, Accept: 'application/json' };
+  const base = cfg.odataUrl.replace(/\/+$/, '');
+  const svcRes = await fetch(`${base}/?$format=json`, { headers });
+  if (!svcRes.ok) {
+    return { success: false, entities: [], samples: {}, message: `HTTP ${svcRes.status}` };
+  }
+  const svcJson: any = await svcRes.json().catch(() => ({}));
+  const allNames: string[] = (svcJson?.value || []).map((v: any) => String(v?.name || v?.url || ''));
+  const matching = allNames.filter((n) => /НДФЛ|Аванс|Патент|Уведомлени/i.test(n));
+  const samples: Record<string, string[]> = {};
+  for (const ent of matching.slice(0, 18)) {
+    try {
+      const r = await fetch(`${base}/${encodeURIComponent(ent)}?$top=1&$format=json`, { headers });
+      if (r.ok) {
+        const j: any = await r.json().catch(() => ({}));
+        const row = Array.isArray(j?.value) && j.value.length > 0 ? j.value[0] : null;
+        samples[ent] = row ? Object.keys(row) : ['(empty)'];
+      }
+    } catch {}
+  }
+  return { success: true, entities: matching, samples };
+}
+
 export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: boolean; synced: number; message: string }> {
   const cfg = getPatentODataConfig(db);
   if (!cfg.odataUrl || !cfg.username || !cfg.password) {
@@ -785,7 +832,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       const fk = String(e.ФизическоеЛицо_Key || '').trim();
       const ref = String(e.Ref_Key || '').trim();
       const code = String(e.Code || '').trim();
-      const desc = String(e.Description || '').trim();
+      const desc = stripTrailingLatin(String(e.Description || '').trim());
       const active = !Boolean(e.ВАрхиве);
       if (ref && fk) fizByEmpRef.set(ref, fk);
       if (!fk || !desc) continue;
