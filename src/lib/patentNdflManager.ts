@@ -108,7 +108,7 @@ export interface PatentODataConfig {
 export const PATENT_RATES_2026: Array<{ region: string; siteHint: string; monthlyRub: number }> = [
   { region: 'Москва', siteHint: 'Merkez Ofis', monthlyRub: 8900 },
   { region: 'Московская область', siteHint: 'Moskova Bölgesi', monthlyRub: 8900 },
-  { region: 'Санкт-Петербург / Ленинградская обл.', siteHint: 'Ust-Luga / IZP', monthlyRub: 6000 },
+  { region: 'Санкт-Петербург / Ленинградская обл.', siteHint: 'Ust-Luga / IZP / МЭС', monthlyRub: 8000 },
   { region: 'Республика Татарстан', siteHint: 'Kazan / Nizhnekamsk', monthlyRub: 7500 },
   { region: 'Амурская область', siteHint: 'Svobodny-AGHK / Amur', monthlyRub: 9600 },
   { region: 'Тюменская область', siteHint: 'Tobolsk / DGP', monthlyRub: 9400 },
@@ -116,6 +116,25 @@ export const PATENT_RATES_2026: Array<{ region: string; siteHint: string; monthl
   { region: 'Мурманская область', siteHint: 'Murmansk', monthlyRub: 9100 },
   { region: 'Нижегородская область', siteHint: 'Nizhny Novgorod / Kstovo', monthlyRub: 8200 },
 ];
+
+const IFNS_PREFIX_MONTHLY_RATE_2026: Record<string, number> = {
+  '47': 8000, // Ленинградская область (2026)
+  '78': 8000, // Санкт-Петербург (2026)
+  '77': 8900, // Москва
+  '50': 8900, // Московская область
+  '16': 7500, // Республика Татарстан
+  '28': 9600, // Амурская область
+  '72': 9400, // Тюменская область
+  '38': 10900, // Иркутская область
+  '51': 9100, // Мурманская область
+  '52': 8200, // Нижегородская область
+};
+
+function getMonthlyPatentRate(ifnsCode: string, taxYear: number): number {
+  const prefix = String(ifnsCode || '').trim().slice(0, 2);
+  if (taxYear <= 2025 && (prefix === '47' || prefix === '78')) return 6000;
+  return IFNS_PREFIX_MONTHLY_RATE_2026[prefix] || 8000;
+}
 
 export function ensurePatentNdflTables(db: DbLike): void {
   db.exec(`
@@ -185,14 +204,14 @@ export function ensurePatentNdflTables(db: DbLike): void {
   `);
   try {
     db.exec('ALTER TABLE patent_ndfl_records ADD COLUMN excluded_region_change INTEGER DEFAULT 0');
-  } catch {}
+  } catch { }
   try {
     db.exec("ALTER TABLE patent_ndfl_records ADD COLUMN receipts_json TEXT DEFAULT '[]'");
-  } catch {}
+  } catch { }
   // Clean up any duplicate Latin-suffixed OData rows created before stripTrailingLatin()
   try {
     db.exec("DELETE FROM patent_ndfl_records WHERE source_file = '1C:Fresh OData' AND patent_advances = 0 AND ndfl_before_offset = 0");
-  } catch {}
+  } catch { }
 }
 
 function normName(s: any): string {
@@ -346,7 +365,7 @@ export function importPatentNdflWorkbook(
       if (p.ad_soyad) siteByNorm.set(normName(p.ad_soyad), info);
       if (p.sicil_no) siteByNorm.set(String(p.sicil_no).trim(), info);
     }
-  } catch {}
+  } catch { }
 
   let importedRecords = 0;
   let importedDiscrepancies = 0;
@@ -495,7 +514,7 @@ export function importPatentNdflWorkbook(
     } catch (err) {
       try {
         db.exec('ROLLBACK');
-      } catch {}
+      } catch { }
       throw err;
     }
     mainImported = true;
@@ -640,7 +659,7 @@ export function buildFnsKnd1110055Xml(
             parsed['Pasaport Düzenleme Tarihi'] || parsed['Pasaport Veriliş Tarihi'] || ''
           ).trim();
           passBy = String(parsed['Pasaport Veren Makam'] || '').trim();
-        } catch {}
+        } catch { }
       }
       const info = {
         inn: String(p.verified_inn || p.inn_no || '').replace(/\D/g, ''),
@@ -653,7 +672,7 @@ export function buildFnsKnd1110055Xml(
       if (p.ad_soyad) personMap.set(normName(p.ad_soyad), info);
       if (p.sicil_no) personMap.set(String(p.sicil_no).trim(), info);
     }
-  } catch {}
+  } catch { }
 
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, '0');
@@ -702,9 +721,9 @@ export function buildFnsKnd1110055Xml(
 
     personXmlNodes.push(
       `\t\t\t\t<СвНПФЛ${innAttr}${bdateAttr}>\r\n` +
-        `\t\t\t\t\t<ФИО Фамилия="${xmlEsc(fam)}" Имя="${xmlEsc(nam)}"${otchAttr}/>\r\n` +
-        `\t\t\t\t\t<УдЛичнФЛ ${docAttrs}/>\r\n` +
-        `\t\t\t\t</СвНПФЛ>`
+      `\t\t\t\t\t<ФИО Фамилия="${xmlEsc(fam)}" Имя="${xmlEsc(nam)}"${otchAttr}/>\r\n` +
+      `\t\t\t\t\t<УдЛичнФЛ ${docAttrs}/>\r\n` +
+      `\t\t\t\t</СвНПФЛ>`
     );
   }
 
@@ -755,24 +774,32 @@ async function fetchODataPaged(
   return all;
 }
 
-function parseCoveredMonthsFromComment(comment: string, opDateStr: string, amount: number, taxYear: number): number[] {
+function parseCoveredMonthsFromComment(
+  comment: string,
+  opDateStr: string,
+  amount: number,
+  taxYear: number,
+  monthlyRate = 8000,
+  nextAvailableMonth = 1
+): number[] {
   const c = String(comment || '').toLowerCase().replace(/ё/g, 'е').trim();
+  // Cyrillic-safe month patterns (NOTE: JS \b does NOT work on Cyrillic!)
   const ruMonths: Array<{ re: RegExp; num: number }> = [
-    { re: /январ|янв\b/, num: 1 },
-    { re: /феврал|фев\b/, num: 2 },
-    { re: /март|мар\b/, num: 3 },
-    { re: /апрел|апр\b/, num: 4 },
+    { re: /январ|янв(?![а-я])/, num: 1 },
+    { re: /феврал|фев(?![а-я])/, num: 2 },
+    { re: /март|мар(?![а-я])/, num: 3 },
+    { re: /апрел|апр(?![а-я])/, num: 4 },
     { re: /май|мая|мае/, num: 5 },
     { re: /июн/, num: 6 },
     { re: /июл/, num: 7 },
-    { re: /август|авг\b/, num: 8 },
-    { re: /сентябр|сент|сен\b/, num: 9 },
-    { re: /октябр|окт\b/, num: 10 },
-    { re: /ноябр|нояб|ноя\b/, num: 11 },
-    { re: /декабр|дек\b/, num: 12 },
+    { re: /август|авг(?![а-я])/, num: 8 },
+    { re: /сентябр|сент|сен(?![а-я])/, num: 9 },
+    { re: /октябр|окт(?![а-я])/, num: 10 },
+    { re: /ноябр|нояб|ноя(?![а-я])/, num: 11 },
+    { re: /декабр|дек(?![а-я])/, num: 12 },
   ];
 
-  // 1. Look for explicit Russian month names in comment (e.g. "январь-февраль-март", "май-июль", "июнь, июль")
+  // 1. Explicit Russian month names in comment (e.g. "январь-февраль-март", "апр-май-июнь", "авг-сент-окт")
   const found: Array<{ idx: number; num: number }> = [];
   for (const rm of ruMonths) {
     const m = rm.re.exec(c);
@@ -780,7 +807,7 @@ function parseCoveredMonthsFromComment(comment: string, opDateStr: string, amoun
   }
   found.sort((a, b) => a.idx - b.idx);
   if (found.length >= 2) {
-    // Check if it's a dash range like "май-июль" (2 endpoints separated by -)
+    // Handle dash range like "май-июль" (2 endpoints separated by -)
     if (found.length === 2 && found[1].num > found[0].num && /[-–—]/.test(c.slice(found[0].idx, found[1].idx + 4))) {
       const range: number[] = [];
       for (let m = found[0].num; m <= found[1].num; m++) range.push(m);
@@ -792,18 +819,17 @@ function parseCoveredMonthsFromComment(comment: string, opDateStr: string, amoun
     return [found[0].num];
   }
 
-  // 2. Fallback: use ДатаОперации (or Date) + detect multi-month lump sum (e.g., 16000=2mo, 24000=3mo)
+  // 2. Power BI 1aylik Regional Rate math: AySayisi = round(amount / monthlyRate)
   const dm = /^(\d{4})-(\d{2})/.exec(String(opDateStr || ''));
-  let startMonth = 1;
+  let startMonth = Math.max(1, Math.min(12, nextAvailableMonth));
   if (dm) {
     const y = parseInt(dm[1], 10);
     const mo = parseInt(dm[2], 10);
-    if (y < taxYear) startMonth = 1; // Paid in Dec of prev year for Jan+ of taxYear
+    if (y < taxYear) startMonth = 1; // Paid in Dec of previous year for Jan+ of taxYear
     else if (y > taxYear) startMonth = 12;
-    else startMonth = mo >= 1 && mo <= 12 ? mo : 1;
+    else startMonth = Math.max(mo >= 1 && mo <= 12 ? mo : 1, nextAvailableMonth <= 12 ? nextAvailableMonth : 1);
   }
 
-  // Check if comment specifies "за N мес"
   const nMesMatch = /за\s*(\d{1,2})\s*мес/.exec(c);
   if (nMesMatch) {
     const cnt = Math.min(12, Math.max(1, parseInt(nMesMatch[1], 10)));
@@ -812,15 +838,12 @@ function parseCoveredMonthsFromComment(comment: string, opDateStr: string, amoun
     return out;
   }
 
-  // Heuristic for multi-month payment without comment (e.g. 16000 / 8000 = 2 months, 24000 / 8000 = 3 months)
-  const typicalRate = 8000;
-  if (amount >= 14000) {
-    const estMonths = Math.round(amount / typicalRate);
-    if (estMonths >= 2 && estMonths <= 6 && Math.abs(amount - estMonths * typicalRate) <= 2000) {
-      const out: number[] = [];
-      for (let i = 0; i < estMonths && startMonth + i <= 12; i++) out.push(startMonth + i);
-      return out;
-    }
+  const rate = monthlyRate > 0 ? monthlyRate : 8000;
+  const estMonths = Math.max(1, Math.min(12, Math.round(amount / rate)));
+  if (estMonths >= 2 && Math.abs(amount - estMonths * rate) <= rate * 0.35) {
+    const out: number[] = [];
+    for (let i = 0; i < estMonths && startMonth + i <= 12; i++) out.push(startMonth + i);
+    return out;
   }
 
   return [startMonth];
@@ -861,7 +884,7 @@ export async function discoverODataNdflEntities(
     let parsed: any = null;
     try {
       parsed = JSON.parse(txt);
-    } catch {}
+    } catch { }
     return {
       success: r.ok,
       status: r.status,
@@ -888,7 +911,7 @@ export async function discoverODataNdflEntities(
         const row = Array.isArray(j?.value) && j.value.length > 0 ? j.value[0] : null;
         samples[ent] = row ? Object.keys(row) : ['(empty)'];
       }
-    } catch {}
+    } catch { }
   }
   return { success: true, entities: matching, samples };
 }
@@ -1094,6 +1117,13 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           30
         );
       }
+      // Sort receipts chronologically by ДатаОперации so sequential multi-month allocation works accurately
+      dRows.sort((a, b) =>
+        (validDateStr(a.ДатаОперации) || validDateStr(a.Date)).localeCompare(
+          validDateStr(b.ДатаОперации) || validDateStr(b.Date)
+        )
+      );
+      const nextMonthByFiz = new Map<string, number>();
       for (const row of dRows) {
         if (row.DeletionMark || row.Posted === false) continue;
         const rowTaxYear = Number(row.НалоговыйПериод || 0);
@@ -1108,10 +1138,14 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         if (amt <= 0) continue;
         const opDt = validDateStr(row.ДатаОперации) || validDateStr(row.Date);
         const comment = String(row.Комментарий || '').trim();
-        const coveredMonths = parseCoveredMonthsFromComment(comment, opDt, amt, year);
+        const cur = ensureAgg(fk);
+        const monthlyRate = getMonthlyPatentRate(cur.ifns, year);
+        const nextAvail = nextMonthByFiz.get(fk) || 1;
+        const coveredMonths = parseCoveredMonthsFromComment(comment, opDt, amt, year, monthlyRate, nextAvail);
+        const maxCovered = coveredMonths[coveredMonths.length - 1] || nextAvail;
+        nextMonthByFiz.set(fk, Math.min(12, maxCovered + 1));
         const perMonth = Math.floor(amt / coveredMonths.length);
         const remainder = Math.round(amt - perMonth * coveredMonths.length);
-        ensureAgg(fk);
         coveredMonths.forEach((mNum, idx) => {
           ensureMonth(fk, mNum).patent_paid += perMonth + (idx === coveredMonths.length - 1 ? remainder : 0);
         });
@@ -1176,6 +1210,8 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     }
 
     // 6. Calculated & Withheld NDFL (AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType)
+    // CRITICAL: RecordType='Expense' includes BOTH 'Удержано' (actually withheld from salary) AND 'ЗачетАвансовыхПлатежей' (patent offset)!
+    // We MUST exclude 'ЗачетАвансовыхПлатежей' from ndfl_withheld so Hesaplanan = Mahsup + Kesilen reconciles accurately!
     const ndflRegEntity =
       (hasEntity('AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType')
         ? 'AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType'
@@ -1183,7 +1219,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     if (ndflRegEntity) {
       const regRows = await fetchODataPaged(
         base,
-        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'&$select=ФизическоеЛицо_Key,RecordType,Сумма,Period,МесяцНалоговогоПериода`,
+        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'&$select=ФизическоеЛицо_Key,RecordType,Сумма,Period,МесяцНалоговогоПериода,ВариантУдержания`,
         headers,
         50
       );
@@ -1192,12 +1228,15 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         if (!fk || !byFiz.has(fk)) continue;
         const cur = byFiz.get(fk)!;
         const recType = String(row.RecordType || '').toLowerCase();
+        const variant = String(row.ВариантУдержания || '').trim();
         const amt = toNum(row.Сумма);
         const mNum = parseMonthForYear(validDateStr(row.МесяцНалоговогоПериода) || validDateStr(row.Period));
         if (recType === 'receipt') {
           cur.ndflCalc += amt;
           if (mNum) ensureMonth(fk, mNum).ndfl_calc += amt;
         } else if (recType === 'expense') {
+          // Exclude patent advance offset entries from actual cash-withheld NDFL
+          if (/зачетавансовых/i.test(variant)) continue;
           cur.ndflWithheld += amt;
           if (mNum) ensureMonth(fk, mNum).ndfl_withheld += amt;
         }
@@ -1288,7 +1327,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     } catch (e) {
       try {
         db.exec('ROLLBACK');
-      } catch {}
+      } catch { }
       throw e;
     }
 

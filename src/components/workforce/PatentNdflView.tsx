@@ -1386,10 +1386,15 @@ export default function PatentNdflView() {
                                           <span
                                             key={`${rc.number}-${idx}`}
                                             className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[10px] text-slate-700 dark:text-slate-200"
-                                            title={`Belge № ${rc.number} · İşlem: ${rc.opDate} · Belge Tarihi: ${rc.date}${rc.comment ? ` · Not: ${rc.comment}` : ''}`}
+                                            title={`Belge № ${rc.number} · Ödeme (Дата операции): ${rc.opDate} · 1C Giriş Tarihi: ${rc.date}${rc.comment ? ` · Not: ${rc.comment}` : ''}`}
                                           >
                                             {rc.opDate || rc.date}: <strong>{fmtRub(rc.amount)}</strong>
                                             {rc.comment ? ` (${rc.comment})` : ''}
+                                            {rc.date && rc.opDate && rc.date.slice(0, 7) > rc.opDate.slice(0, 7) && (
+                                              <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">
+                                                [1C: {rc.date}]
+                                              </span>
+                                            )}
                                           </span>
                                         ))}
                                       </>
