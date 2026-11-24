@@ -21,6 +21,9 @@ import {
   X,
   RotateCcw,
   Ban,
+  FileCode2,
+  Printer,
+  FileUp,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -179,6 +182,163 @@ export default function PatentNdflView() {
   const [odataBusy, setOdataBusy] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const notifPdfInputRef = useRef<HTMLInputElement>(null);
+
+  // Official FNS XML (КНД 1110055) & Employee Statement (Заявление) company metadata
+  const [xmlOrgName, setXmlOrgName] = useState('Общество с ограниченной ответственностью "МОНТАЖЭНЕРГОСТРОЙ"');
+  const [xmlDirectorDative, setXmlDirectorDative] = useState('Акчаму Месуту');
+  const [xmlInnUl, setXmlInnUl] = useState('7702424557');
+  const [xmlKpp, setXmlKpp] = useState('470745001');
+  const [xmlKodNO, setXmlKodNO] = useState('4707');
+  const [xmlAppNo, setXmlAppNo] = useState('14');
+  const [xmlSignerInn, setXmlSignerInn] = useState('526005515667');
+  const [xmlSignerFam, setXmlSignerFam] = useState('Акчам');
+  const [xmlSignerNam, setXmlSignerNam] = useState('Месут');
+  const [xmlBusy, setXmlBusy] = useState(false);
+
+  const handleGenerateFnsXml = async () => {
+    setXmlBusy(true);
+    setFeedback(null);
+    try {
+      const targetIds = filteredRecords.filter((r) => !r.has_notification && r.root_cause !== 'REGION_CHANGED').map((r) => r.id);
+      const res = await fetch('/api/patent-ndfl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          action: 'generate_fns_xml',
+          taxYear,
+          kodNO: xmlKodNO,
+          appNo: xmlAppNo,
+          orgName: xmlOrgName,
+          innUl: xmlInnUl,
+          kpp: xmlKpp,
+          signerInn: xmlSignerInn,
+          signerFam: xmlSignerFam,
+          signerNam: xmlSignerNam,
+          recordIds: targetIds.length > 0 ? targetIds : undefined,
+        }),
+      });
+      if (!res.ok) {
+        setFeedback({ type: 'error', text: 'ФНС XML (КНД 1110055) oluşturulamadı.' });
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const fnMatch = /filename="([^"]+)"/.exec(cd);
+      const fname = fnMatch?.[1] || `SR_ZPRUMNAL_${xmlKodNO}_${taxYear}.XML`;
+      const included = res.headers.get('X-Included-Count') || String(targetIds.length);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setFeedback({
+        type: 'success',
+        text: `Resmi ФНС XML (КНД 1110055, windows-1251) indirildi: ${fname} (${included} çalışan).`,
+      });
+    } catch {
+      setFeedback({ type: 'error', text: 'XML oluşturma sırasında hata oluştu.' });
+    } finally {
+      setXmlBusy(false);
+    }
+  };
+
+  const handlePrintStatements = () => {
+    const targets = filteredRecords.filter((r) => !r.has_notification && r.root_cause !== 'REGION_CHANGED');
+    if (targets.length === 0) {
+      setFeedback({ type: 'info', text: 'Dilekçe üretilecek bildirimsiz çalışan bulunamadı.' });
+      return;
+    }
+    const esc = (s: string) =>
+      String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    const pages = targets
+      .map(
+        (r) => `
+      <div class="page">
+        <div class="header">
+          <div>Генеральному директору</div>
+          <div>${esc(xmlOrgName)}</div>
+          <div>${esc(xmlDirectorDative)}</div>
+          <div style="margin-top:8px;">От <strong>${esc(r.full_name)}</strong></div>
+          ${r.tabel_no ? `<div style="font-size:11px;color:#555;">(Таб. № ${esc(r.tabel_no)})</div>` : ''}
+        </div>
+        <h2>Заявление</h2>
+        <p class="body">
+          Прошу уменьшить НДФЛ, удерживаемый из моего дохода за <strong>${taxYear}</strong> год,
+          на суммы уплачиваемых мною фиксированных авансовых платежей на основании предоставленных
+          квитанций об оплате патента за период его действия в <strong>${taxYear}</strong> году.
+        </p>
+        <div class="footer">
+          <div>Дата: «____» ______________ ${taxYear} г.</div>
+          <div>Подпись: ___________________ / ${esc(r.full_name)} /</div>
+        </div>
+      </div>`
+      )
+      .join('\n');
+
+    const w = window.open('', '_blank');
+    if (!w) {
+      setFeedback({ type: 'error', text: 'Tarayıcı açılır pencereyi (popup) engelledi.' });
+      return;
+    }
+    w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Заявления на уменьшение НДФЛ (${taxYear})</title>
+      <style>
+        body { font-family: "Times New Roman", serif; margin: 0; color: #111; }
+        .page { width: 210mm; min-height: 280mm; padding: 25mm 20mm; box-sizing: border-box; page-break-after: always; }
+        .header { width: 52%; margin-left: auto; font-size: 14pt; line-height: 1.45; }
+        h2 { text-align: center; margin: 38mm 0 12mm; font-size: 16pt; font-weight: bold; }
+        .body { font-size: 14pt; line-height: 1.75; text-indent: 12mm; text-align: justify; }
+        .footer { display: flex; justify-content: space-between; margin-top: 32mm; font-size: 13pt; }
+        @media print { .no-print { display: none; } }
+      </style></head><body>
+      <div class="no-print" style="padding:10px 16px;background:#1e293b;color:#fff;font-family:sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
+        <span>Toplu Çalışan Dilekçesi (${targets.length} sayfa — her çalışan 1 A4)</span>
+        <button onclick="window.print()" style="padding:6px 14px;background:#10b981;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Yazdır / PDF Kaydet</button>
+      </div>
+      ${pages}
+      </body></html>`);
+    w.document.close();
+  };
+
+  const handleUploadNotifPdfs = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setXmlBusy(true);
+    setFeedback(null);
+    let ok = 0;
+    const errs: string[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('mode', 'notification_pdf');
+        fd.append('taxYear', String(taxYear));
+        const res = await fetch('/api/patent-ndfl', {
+          method: 'POST',
+          headers: { ...getAuthHeaders() },
+          body: fd,
+        });
+        const data = await res.json();
+        if (data?.success) ok++;
+        else errs.push(data?.message || `${file.name} okunamadı`);
+      }
+      setFeedback({
+        type: ok > 0 ? 'success' : 'error',
+        text: `${ok}/${files.length} Уведомление ИФНС PDF okunup işlendi.${errs.length ? ` Uyarı: ${errs.slice(0, 2).join(' | ')}` : ''}`,
+      });
+      await fetchData();
+    } catch {
+      setFeedback({ type: 'error', text: 'PDF bildirim yükleme hatası.' });
+    } finally {
+      setXmlBusy(false);
+      if (notifPdfInputRef.current) notifPdfInputRef.current.value = '';
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -681,6 +841,128 @@ export default function PatentNdflView() {
           {/* TAB 2, 3 & 4: NOTIFICATIONS, RECONCILIATION & VOZVRAT TABLE */}
           {(activeTab === 'notifications' || activeTab === 'reconciliation' || activeTab === 'vozvrat') && (
             <div className="space-y-3">
+              {activeTab === 'notifications' && (
+                <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-700/70 bg-indigo-50/40 dark:bg-indigo-950/30 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-semibold text-indigo-950 dark:text-indigo-100">
+                        ФНС Başvuru &amp; Bildirim Otomasyon Araçları (КНД 1110055 XML · Dilekçe · КНД 1125023 PDF)
+                      </h3>
+                      <p className="text-[11px] text-indigo-900/80 dark:text-indigo-200/80">
+                        Aşağıdaki bildirimsiz {filteredRecords.length} çalışan için tek tıkla resmi ФНС XML oluşturun, toplu çalışan dilekçesi yazdırın veya gelen İFNS PDF bildirimlerini otomatik işleyin.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleGenerateFnsXml}
+                        disabled={xmlBusy || filteredRecords.length === 0}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer disabled:opacity-50"
+                      >
+                        <FileCode2 className="w-3.5 h-3.5" />
+                        <span>ФНС XML İndir (КНД 1110055)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePrintStatements}
+                        disabled={filteredRecords.length === 0}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Toplu Dilekçe Yazdır ({filteredRecords.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => notifPdfInputRef.current?.click()}
+                        disabled={xmlBusy}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white cursor-pointer disabled:opacity-50"
+                      >
+                        <FileUp className="w-3.5 h-3.5" />
+                        <span>Уведомление PDF Yükle</span>
+                      </button>
+                      <input
+                        ref={notifPdfInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf"
+                        onChange={(e) => handleUploadNotifPdfs(e.target.files)}
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-[11px]">
+                    <div className="col-span-2">
+                      <label className="block text-[10px] text-slate-600 dark:text-slate-300 mb-0.5">Organizasyon (НаимОрг)</label>
+                      <input
+                        type="text"
+                        value={xmlOrgName}
+                        onChange={(e) => setXmlOrgName(e.target.value)}
+                        className="w-full px-2 py-1 text-[11px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-600 dark:text-slate-300 mb-0.5">ИННЮЛ</label>
+                      <input
+                        type="text"
+                        value={xmlInnUl}
+                        onChange={(e) => setXmlInnUl(e.target.value)}
+                        className="w-full px-2 py-1 text-[11px] font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-600 dark:text-slate-300 mb-0.5">КПП</label>
+                      <input
+                        type="text"
+                        value={xmlKpp}
+                        onChange={(e) => setXmlKpp(e.target.value)}
+                        className="w-full px-2 py-1 text-[11px] font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-600 dark:text-slate-300 mb-0.5">КодНО / №</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="text"
+                          value={xmlKodNO}
+                          onChange={(e) => setXmlKodNO(e.target.value)}
+                          className="w-1/2 px-1.5 py-1 text-[11px] font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                          title="Код ИФНС"
+                        />
+                        <input
+                          type="text"
+                          value={xmlAppNo}
+                          onChange={(e) => setXmlAppNo(e.target.value)}
+                          className="w-1/2 px-1.5 py-1 text-[11px] font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                          title="НомЗаяв"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-600 dark:text-slate-300 mb-0.5">İmzalayan (Директор)</label>
+                      <input
+                        type="text"
+                        value={`${xmlSignerFam} ${xmlSignerNam}`}
+                        onChange={(e) => {
+                          const p = e.target.value.trim().split(/\s+/);
+                          setXmlSignerFam(p[0] || '');
+                          setXmlSignerNam(p.slice(1).join(' ') || '');
+                        }}
+                        className="w-full px-2 py-1 text-[11px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-600 dark:text-slate-300 mb-0.5">Dilekçe Hitap</label>
+                      <input
+                        type="text"
+                        value={xmlDirectorDative}
+                        onChange={(e) => setXmlDirectorDative(e.target.value)}
+                        className="w-full px-2 py-1 text-[11px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'vozvrat' && (
                 <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-700/70 bg-indigo-50/40 dark:bg-indigo-950/30 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">

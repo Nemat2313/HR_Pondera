@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { spawnSync } from 'child_process';
 import { getDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
 import {
+  buildFnsKnd1110055Xml,
   classifyPatentRootCause,
   ensurePatentNdflTables,
   getPatentODataConfig,
@@ -9,6 +14,7 @@ import {
   PATENT_RATES_2026,
   savePatentODataConfig,
   syncPatentNdflFromOData,
+  upsertPatentNdflRecord,
 } from '@/lib/patentNdflManager';
 
 export const runtime = 'nodejs';
@@ -186,13 +192,81 @@ export async function POST(request: Request) {
 
     if (contentType.includes('multipart/form-data')) {
       const fd = await request.formData();
+      const uploadMode = String(fd.get('mode') || 'excel').trim();
       const file = fd.get('file') as File | null;
       const taxYear = Number(fd.get('taxYear')) || 2026;
       const orgName = String(fd.get('orgName') || '').trim();
       if (!file) {
-        return NextResponse.json({ success: false, message: 'Lütfen bir Excel (.xlsx/.xls) dosyası seçin.' }, { status: 400 });
+        return NextResponse.json({ success: false, message: 'Lütfen bir dosya seçin.' }, { status: 400 });
       }
       const buf = Buffer.from(await file.arrayBuffer());
+
+      // Mode: Parse official FNS Notification PDF (КНД 1125023)
+      if (uploadMode === 'notification_pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        const tmpPath = path.join(os.tmpdir(), `fns_notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pdf`);
+        fs.writeFileSync(tmpPath, buf);
+        const scriptPath = path.join(process.cwd(), 'scripts', 'parse_fns_notification_pdf.py');
+        const bins = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
+        let parsed: any = null;
+        for (const bin of bins) {
+          try {
+            const res = spawnSync(bin, [scriptPath, tmpPath], { encoding: 'utf-8', timeout: 25000 });
+            if (res.stdout && res.stdout.trim()) {
+              parsed = JSON.parse(res.stdout.trim());
+              break;
+            }
+          } catch {}
+        }
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+
+        if (!parsed || !parsed.success || !parsed.full_name) {
+          return NextResponse.json(
+            { success: false, message: parsed?.message || `${file.name}: Уведомление ИФНС metni okunamadı.` },
+            { status: 400 }
+          );
+        }
+
+        upsertPatentNdflRecord(db, {
+          tax_year: taxYear,
+          org_name: orgName || 'Уведомление ИФНС',
+          tabel_no: '',
+          full_name: parsed.full_name,
+          citizenship: '',
+          is_active: 1,
+          site_name: '',
+          region: '',
+          hire_date: '',
+          exit_date: '',
+          has_notification: 1,
+          notification_no: parsed.notification_no || '',
+          notification_date: parsed.notification_date || '',
+          ifns_code: parsed.ifns_name ? String(parsed.ifns_name).slice(0, 60) : '',
+          application_date: '',
+          application_status: 'Уведомление получено (PDF)',
+          ndfl_before_offset: 0,
+          patent_advances: 0,
+          patent_offset_used: 0,
+          patent_advance_balance: 0,
+          additional_offset_potential: 0,
+          ndfl_withheld: 0,
+          discrepancy_amount: 0,
+          priority_label: '',
+          recommended_action: '',
+          responsible_person: '',
+          manual_status: '',
+          notes: parsed.inn ? `ИНН: ${parsed.inn}` : '',
+          source_file: file.name,
+        });
+
+        return NextResponse.json({
+          success: true,
+          parsed,
+          message: `Уведомление № ${parsed.notification_no || '?'} (${parsed.notification_date || ''}) → ${parsed.full_name} işlendi!`,
+        });
+      }
+
       const res = importPatentNdflWorkbook(db, buf, file.name, taxYear, orgName);
       return NextResponse.json({
         success: true,
@@ -253,6 +327,30 @@ export async function POST(request: Request) {
         message: excluded
           ? 'Kayıt "Bölge Değişikliği (Mahsup Planı Dışı)" olarak işaretlendi.'
           : 'Kayıt tekrar mahsup planına dahil edildi.',
+      });
+    }
+
+    if (action === 'generate_fns_xml') {
+      const xmlRes = buildFnsKnd1110055Xml(db, {
+        taxYear: Number(body?.taxYear) || 2026,
+        kodNO: String(body?.kodNO || '4707'),
+        appNo: String(body?.appNo || '1'),
+        orgName: String(body?.orgName || 'Общество с ограниченной ответственностью "МОНТАЖЭНЕРГОСТРОЙ"'),
+        innUl: String(body?.innUl || '7702424557'),
+        kpp: String(body?.kpp || '470745001'),
+        signerInn: String(body?.signerInn || '526005515667'),
+        signerFam: String(body?.signerFam || 'Акчам'),
+        signerNam: String(body?.signerNam || 'Месут'),
+        recordIds: Array.isArray(body?.recordIds) ? body.recordIds : undefined,
+      });
+      return new NextResponse(new Uint8Array(xmlRes.buffer), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml; charset=windows-1251',
+          'Content-Disposition': `attachment; filename="${xmlRes.fileName}"`,
+          'X-Included-Count': String(xmlRes.includedCount),
+          'X-Missing-Inn-Count': String(xmlRes.skippedMissingInn),
+        },
       });
     }
 

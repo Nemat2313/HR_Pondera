@@ -541,6 +541,192 @@ export function savePatentODataConfig(db: DbLike, incoming: Partial<PatentODataC
   return merged;
 }
 
+export function encodeWindows1251(str: string): Buffer {
+  const bytes: number[] = [];
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code >= 0x0410 && code <= 0x044f) {
+      bytes.push(code - 0x0410 + 0xc0);
+    } else if (code === 0x0401) {
+      bytes.push(0xa8); // Ё
+    } else if (code === 0x0451) {
+      bytes.push(0xb8); // ё
+    } else if (code === 0x2116) {
+      bytes.push(0xb9); // №
+    } else if (code === 0x00ab) {
+      bytes.push(0xab); // «
+    } else if (code === 0x00bb) {
+      bytes.push(0xbb); // »
+    } else if (code === 0x2013 || code === 0x2014) {
+      bytes.push(0x2d); // -
+    } else {
+      bytes.push(0x3f); // ?
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function xmlEsc(s: string): string {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function toRuDateDot(raw: string): string {
+  const s = String(raw || '').trim();
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) return s;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  return s;
+}
+
+export function buildFnsKnd1110055Xml(
+  db: DbLike,
+  params: {
+    taxYear: number;
+    kodNO: string;
+    appNo: string;
+    orgName: string;
+    innUl: string;
+    kpp: string;
+    signerInn: string;
+    signerFam: string;
+    signerNam: string;
+    recordIds?: number[];
+  }
+): { fileName: string; buffer: Buffer; includedCount: number; skippedMissingInn: number } {
+  ensurePatentNdflTables(db);
+  const allRows = db
+    .prepare('SELECT * FROM patent_ndfl_records WHERE tax_year = ? AND has_notification = 0 AND COALESCE(excluded_region_change, 0) = 0')
+    .all(params.taxYear) as any[];
+
+  const targetRows =
+    Array.isArray(params.recordIds) && params.recordIds.length > 0
+      ? allRows.filter((r) => params.recordIds!.includes(Number(r.id)))
+      : allRows;
+
+  // Build personnel lookup for INN, Birth Date, Passport No, Issue Date, Issued By
+  const personMap = new Map<
+    string,
+    { inn: string; bdate: string; passNo: string; passDate: string; passBy: string }
+  >();
+  try {
+    const pRows = db
+      .prepare(
+        `SELECT p.sicil_no, p.ad_soyad, p.tam_adi_kiril, p.dogum_tarihi, p.pasaport_no, p.inn_no, p.all_data_json,
+                v.verified_inn
+         FROM personnel p
+         LEFT JOIN inn_snils_verifications v ON TRIM(v.sicil_no) = TRIM(p.sicil_no)`
+      )
+      .all() as any[];
+    for (const p of pRows) {
+      let passDate = '';
+      let passBy = '';
+      if (p.all_data_json) {
+        try {
+          const parsed = JSON.parse(p.all_data_json);
+          passDate = String(
+            parsed['Pasaport Düzenleme Tarihi'] || parsed['Pasaport Veriliş Tarihi'] || ''
+          ).trim();
+          passBy = String(parsed['Pasaport Veren Makam'] || '').trim();
+        } catch {}
+      }
+      const info = {
+        inn: String(p.verified_inn || p.inn_no || '').replace(/\D/g, ''),
+        bdate: toRuDateDot(String(p.dogum_tarihi || '')),
+        passNo: String(p.pasaport_no || '').trim(),
+        passDate: toRuDateDot(passDate),
+        passBy,
+      };
+      if (p.tam_adi_kiril) personMap.set(normName(p.tam_adi_kiril), info);
+      if (p.ad_soyad) personMap.set(normName(p.ad_soyad), info);
+      if (p.sicil_no) personMap.set(String(p.sicil_no).trim(), info);
+    }
+  } catch {}
+
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(now.getFullYear());
+  const dateDot = `${dd}.${mm}.${yyyy}`;
+  const dateCompact = `${yyyy}${mm}${dd}`;
+  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+
+  const kodNO = (params.kodNO || '4707').trim();
+  const innUl = (params.innUl || '7702424557').trim();
+  const kpp = (params.kpp || '470745001').trim();
+  const idFile = `SR_ZPRUMNAL_${kodNO}_${kodNO}_${innUl}${kpp}_${dateCompact}_${uuid}`;
+
+  const personXmlNodes: string[] = [];
+  let skippedMissingInn = 0;
+
+  for (const r of targetRows) {
+    const info =
+      personMap.get(normName(r.full_name)) ||
+      (r.tabel_no ? personMap.get(String(r.tabel_no).split(';')[0].trim()) : undefined);
+    const inn = info?.inn || '';
+    const parts = String(r.full_name || '')
+      .trim()
+      .split(/\s+/);
+    const fam = parts[0] || '';
+    const nam = parts[1] || '';
+    const otch = parts.slice(2).join(' ');
+    if (!fam || !nam) continue;
+    if (!inn) skippedMissingInn++;
+
+    const innAttr = inn ? ` ИННФЛ="${xmlEsc(inn)}"` : '';
+    const bdateAttr = info?.bdate ? ` ДатаРожд="${xmlEsc(info.bdate)}"` : '';
+    const otchAttr = otch ? ` Отчество="${xmlEsc(otch)}"` : '';
+    const docAttrs = [
+      'КодВидДок="10"',
+      info?.passNo ? `СерНомДок=" ${xmlEsc(info.passNo)}"` : 'СерНомДок=""',
+      info?.passDate ? `ДатаДок="${xmlEsc(info.passDate)}"` : '',
+      info?.passBy ? `ВыдДок="${xmlEsc(info.passBy)}"` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    personXmlNodes.push(
+      `\t\t\t\t<СвНПФЛ${innAttr}${bdateAttr}>\r\n` +
+        `\t\t\t\t\t<ФИО Фамилия="${xmlEsc(fam)}" Имя="${xmlEsc(nam)}"${otchAttr}/>\r\n` +
+        `\t\t\t\t\t<УдЛичнФЛ ${docAttrs}/>\r\n` +
+        `\t\t\t\t</СвНПФЛ>`
+    );
+  }
+
+  const xml =
+    `<?xml version="1.0" encoding="windows-1251"?>\r\n` +
+    `<Файл xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ВерсФорм="5.01" ВерсПрог="Pondera HR" ИдФайл="${xmlEsc(idFile)}">\r\n` +
+    `\t<Документ КНД="1110055" ДатаДок="${dateDot}" НомЗаяв="${xmlEsc(params.appNo || '1')}" КодНО="${xmlEsc(kodNO)}">\r\n` +
+    `\t\t<СвНП>\r\n` +
+    `\t\t\t<НПЮЛ НаимОрг="${xmlEsc(params.orgName)}" ИННЮЛ="${xmlEsc(innUl)}" КПП="${xmlEsc(kpp)}"/>\r\n` +
+    `\t\t</СвНП>\r\n` +
+    `\t\t<Подписант ПрПодп="1" ИННФЛ="${xmlEsc(params.signerInn)}">\r\n` +
+    `\t\t\t<ФИО Фамилия="${xmlEsc(params.signerFam)}" Имя="${xmlEsc(params.signerNam)}"/>\r\n` +
+    `\t\t</Подписант>\r\n` +
+    `\t\t<ЗаявПрвУмНал ГодУмНал="${params.taxYear}">\r\n` +
+    `\t\t\t<СвНППртд>\r\n` +
+    personXmlNodes.join('\r\n') +
+    `\r\n\t\t\t</СвНППртд>\r\n` +
+    `\t\t</ЗаявПрвУмНал>\r\n` +
+    `\t</Документ>\r\n` +
+    `</Файл>\r\n`;
+
+  return {
+    fileName: `${idFile}.XML`,
+    buffer: encodeWindows1251(xml),
+    includedCount: personXmlNodes.length,
+    skippedMissingInn,
+  };
+}
+
 export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: boolean; synced: number; message: string }> {
   const cfg = getPatentODataConfig(db);
   if (!cfg.odataUrl || !cfg.username || !cfg.password) {
