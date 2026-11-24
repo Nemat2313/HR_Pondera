@@ -90,6 +90,9 @@ interface PatentNdflRow {
   root_cause?: 'NO_NOTIFICATION' | 'REGION_CHANGED' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'FULL_OFFSET';
   months?: EmployeeMonthRow[];
   missing_months?: Array<{ month: number; label: string; gap: number; phase?: string }>;
+  missing_receipt_months?: Array<{ month: number; label: string }>;
+  receipts?: Array<{ number: string; date: string; opDate: string; amount: number; comment: string; months: number[] }>;
+  patent_info?: { patent_no: string; patent_start: string; patent_end: string; payment_day: number } | null;
   source_file: string;
 }
 
@@ -1349,16 +1352,56 @@ export default function PatentNdflView() {
                                       ? `№ ${r.notification_no} (${r.notification_date || 'OK'})${r.ifns_code ? ` · İFNS ${r.ifns_code}` : ''}`
                                       : 'YOK (Alınmamış)'}
                                   </span>
-                                  {r.application_date && (
-                                    <span>
-                                      <strong>1C Başvuru:</strong> {r.application_date}
-                                    </span>
-                                  )}
+                                    {r.application_date && (
+                                      <span>
+                                        <strong>1C Başvuru:</strong> {r.application_date}
+                                      </span>
+                                    )}
+                                    {r.patent_info && (
+                                      <span>
+                                        <strong>Patent:</strong>{' '}
+                                        {r.patent_info.patent_no || 'Kayıtlı'}
+                                        {r.patent_info.patent_start ? ` (${r.patent_info.patent_start} – ${r.patent_info.patent_end || '?'})` : r.patent_info.patent_end ? ` (Bitiş: ${r.patent_info.patent_end})` : ''}
+                                        {r.patent_info.payment_day > 0 && (
+                                          <strong className="ml-1 text-indigo-600 dark:text-indigo-400">
+                                            · Ödeme Günü: Her ayın {r.patent_info.payment_day}&apos;i
+                                          </strong>
+                                        )}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`}>
+                                    {cMeta.label}
+                                  </span>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`}>
-                                  {cMeta.label}
-                                </span>
-                              </div>
+
+                                {(r.receipts && r.receipts.length > 0) || (r.missing_receipt_months && r.missing_receipt_months.length > 0) ? (
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                                    {r.receipts && r.receipts.length > 0 && (
+                                      <>
+                                        <span className="font-semibold text-slate-700 dark:text-slate-200 mr-1">
+                                          1C Patent Fişleri ({r.receipts.length}):
+                                        </span>
+                                        {r.receipts.map((rc, idx) => (
+                                          <span
+                                            key={`${rc.number}-${idx}`}
+                                            className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[10px] text-slate-700 dark:text-slate-200"
+                                            title={`Belge № ${rc.number} · İşlem: ${rc.opDate} · Belge Tarihi: ${rc.date}${rc.comment ? ` · Not: ${rc.comment}` : ''}`}
+                                          >
+                                            {rc.opDate || rc.date}: <strong>{fmtRub(rc.amount)}</strong>
+                                            {rc.comment ? ` (${rc.comment})` : ''}
+                                          </span>
+                                        ))}
+                                      </>
+                                    )}
+                                    {r.missing_receipt_months && r.missing_receipt_months.length > 0 && (
+                                      <span className="px-2 py-0.5 rounded-md bg-amber-100/90 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 text-[10px]">
+                                        ⚠ Fişi 1C&apos;ye girilmemiş aylar:{' '}
+                                        <strong>{r.missing_receipt_months.map((x) => x.label).join(', ')}</strong> (ödendiyse fiş yüklenmeli)
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : null}
 
                               {empMonths.length === 0 ? (
                                 <p className="text-[11px] text-slate-500">
@@ -1426,7 +1469,20 @@ export default function PatentNdflView() {
                                                   </span>
                                                 )}
                                               </td>
-                                              <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.patent_paid)}</td>
+                                              <td className="py-1.5 px-2.5 text-right font-mono">
+                                                {em.patent_paid > 0 ? (
+                                                  fmtRub(em.patent_paid)
+                                                ) : em.ndfl_calc > 0 ? (
+                                                  <span className="inline-flex items-center gap-1 text-slate-400">
+                                                    <span>0 ₽</span>
+                                                    <span className="px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 text-[9px] font-sans">
+                                                      Fiş yok
+                                                    </span>
+                                                  </span>
+                                                ) : (
+                                                  '0 ₽'
+                                                )}
+                                              </td>
                                               <td className="py-1.5 px-2.5 text-right font-mono">{fmtRub(em.ndfl_calc)}</td>
                                               <td className="py-1.5 px-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">
                                                 {fmtRub(em.offset_used)}

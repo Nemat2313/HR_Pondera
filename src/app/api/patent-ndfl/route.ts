@@ -89,6 +89,44 @@ export async function GET(request: Request) {
       missing_employees: 0,
     }));
 
+    // Enrich with Patent dates & payment day from Pondera personnel DB if matched
+    const patentInfoByNorm = new Map<
+      string,
+      { patent_no: string; patent_start: string; patent_end: string; payment_day: number }
+    >();
+    try {
+      const pRows = db
+        .prepare('SELECT sicil_no, ad_soyad, tam_adi_kiril, patent_bitis_tarihi, all_data_json FROM personnel')
+        .all() as any[];
+      const extractDay = (dt: string): number => {
+        const s = String(dt || '').trim();
+        const iso = /^\d{4}-\d{2}-(\d{2})/.exec(s);
+        if (iso) return parseInt(iso[1], 10);
+        const dot = /^(\d{2})\.\d{2}\.\d{4}/.exec(s);
+        if (dot) return parseInt(dot[1], 10);
+        return 0;
+      };
+      for (const p of pRows) {
+        let patentNo = '';
+        let patentStart = '';
+        let patentEnd = String(p.patent_bitis_tarihi || '').trim();
+        if (p.all_data_json) {
+          try {
+            const j = JSON.parse(p.all_data_json);
+            patentNo = String(j['Patent No'] || j['Patent Form No'] || '').trim();
+            patentStart = String(j['Patent Başlangıç Tarihi'] || j['Patent Veriliş Tarihi'] || j['Patent Düzenleme Tarihi'] || '').trim();
+            if (!patentEnd) patentEnd = String(j['Patent Bitiş Tarihi'] || '').trim();
+          } catch {}
+        }
+        if (!patentNo && !patentStart && !patentEnd) continue;
+        const payDay = extractDay(patentStart) || extractDay(patentEnd);
+        const info = { patent_no: patentNo, patent_start: patentStart, patent_end: patentEnd, payment_day: payDay };
+        const normKey = (v: any) => String(v || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
+        if (p.tam_adi_kiril) patentInfoByNorm.set(normKey(p.tam_adi_kiril), info);
+        if (p.ad_soyad) patentInfoByNorm.set(normKey(p.ad_soyad), info);
+      }
+    } catch {}
+
     const records = rawRecords.map((r) => {
       const nn = String(r.norm_name || '');
       const mp = rawMonthlyByNorm.get(nn);
@@ -231,12 +269,24 @@ export async function GET(request: Request) {
           phase: m.is_after_notif ? 'post_notif' : hasNotif ? 'pre_notif' : 'no_notif',
         }));
 
+      const missingReceiptMonths = months
+        .filter((m) => m.ndfl_calc > 0 && m.patent_paid === 0)
+        .map((m) => ({ month: m.month, label: m.label }));
+
+      let receipts: Array<{ number: string; date: string; opDate: string; amount: number; comment: string; months: number[] }> = [];
+      try {
+        if (r.receipts_json) receipts = JSON.parse(String(r.receipts_json));
+      } catch {}
+
       return {
         ...r,
         notif_month: notifMonth,
         root_cause: classifyPatentRootCause(r),
         months,
         missing_months: missingMonths,
+        missing_receipt_months: missingReceiptMonths,
+        receipts,
+        patent_info: patentInfoByNorm.get(nn) || null,
       };
     });
 
