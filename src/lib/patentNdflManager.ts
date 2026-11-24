@@ -1263,35 +1263,53 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     }
 
     // 6. Calculated & Withheld NDFL (AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType)
+    // Fetch month-by-month (Jan..Dec) in 3-month parallel batches so 1C OData never truncates at 50k rows (Sep/Oct/Nov!)
+    // and stays fast (small $skip per month).
     // CRITICAL: RecordType='Expense' includes BOTH 'Удержано' (actually withheld from salary) AND 'ЗачетАвансовыхПлатежей' (patent offset)!
     // We MUST exclude 'ЗачетАвансовыхПлатежей' from ndfl_withheld so Hesaplanan = Mahsup + Kesilen reconciles accurately!
     const ndflRegEntity =
       (hasEntity('AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType')
         ? 'AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType'
         : findEntity(/AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType/i)) || '';
+    let ndflRegCount = 0;
     if (ndflRegEntity) {
-      const regRows = await fetchODataPaged(
-        base,
-        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'&$select=ФизическоеЛицо_Key,RecordType,Сумма,Period,МесяцНалоговогоПериода,ВариантУдержания`,
-        headers,
-        50
-      );
-      for (const row of regRows) {
-        const fk = String(row.ФизическоеЛицо_Key || '').trim();
-        if (!fk || !byFiz.has(fk)) continue;
-        const cur = byFiz.get(fk)!;
-        const recType = String(row.RecordType || '').toLowerCase();
-        const variant = String(row.ВариантУдержания || '').trim();
-        const amt = toNum(row.Сумма);
-        const mNum = parseMonthForYear(validDateStr(row.МесяцНалоговогоПериода) || validDateStr(row.Period));
-        if (recType === 'receipt') {
-          cur.ndflCalc += amt;
-          if (mNum) ensureMonth(fk, mNum).ndfl_calc += amt;
-        } else if (recType === 'expense') {
-          // Exclude patent advance offset entries from actual cash-withheld NDFL
-          if (/зачетавансовых/i.test(variant)) continue;
-          cur.ndflWithheld += amt;
-          if (mNum) ensureMonth(fk, mNum).ndfl_withheld += amt;
+      const monthRanges: Array<{ start: string; end: string }> = [];
+      for (let m = 1; m <= 12; m++) {
+        const mStart = `${year}-${String(m).padStart(2, '0')}-01T00:00:00`;
+        const mEnd = m === 12 ? `${year + 1}-01-01T00:00:00` : `${year}-${String(m + 1).padStart(2, '0')}-01T00:00:00`;
+        monthRanges.push({ start: mStart, end: mEnd });
+      }
+      for (let i = 0; i < monthRanges.length; i += 3) {
+        const batch = monthRanges.slice(i, i + 3);
+        const results = await Promise.all(
+          batch.map((rng) =>
+            fetchODataPaged(
+              base,
+              `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${rng.start}' and Period lt datetime'${rng.end}'&$select=ФизическоеЛицо_Key,RecordType,Сумма,Period,МесяцНалоговогоПериода,ВариантУдержания`,
+              headers,
+              40
+            )
+          )
+        );
+        for (const regRows of results) {
+          ndflRegCount += regRows.length;
+          for (const row of regRows) {
+            const fk = String(row.ФизическоеЛицо_Key || '').trim();
+            if (!fk || !byFiz.has(fk)) continue;
+            const cur = byFiz.get(fk)!;
+            const recType = String(row.RecordType || '').toLowerCase();
+            const variant = String(row.ВариантУдержания || '').trim();
+            const amt = toNum(row.Сумма);
+            const mNum = parseMonthForYear(validDateStr(row.МесяцНалоговогоПериода) || validDateStr(row.Period));
+            if (recType === 'receipt') {
+              cur.ndflCalc += amt;
+              if (mNum) ensureMonth(fk, mNum).ndfl_calc += amt;
+            } else if (recType === 'expense') {
+              if (/зачетавансовых/i.test(variant)) continue;
+              cur.ndflWithheld += amt;
+              if (mNum) ensureMonth(fk, mNum).ndfl_withheld += amt;
+            }
+          }
         }
       }
     }
@@ -1385,7 +1403,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     }
 
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi (Bildirim: ${notifCount}, Patent Makbuzu: ${advDocCount}, Avans Hareketi: ${advRegCount}).`;
+    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi (Bildirim: ${notifCount}, Patent Makbuzu: ${advDocCount}, Avans Hareketi: ${advRegCount}, НДФЛ Hareketi: ${ndflRegCount}).`;
     savePatentODataConfig(db, { lastSyncAt: nowStr, lastSyncMessage: msg });
     return { success: true, synced, message: msg };
   } catch (err: any) {
