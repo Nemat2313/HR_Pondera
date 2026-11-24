@@ -41,14 +41,18 @@ export interface PatentNdflRecord {
 
 export type PatentRootCause =
   | 'NO_NOTIFICATION'
+  | 'LATE_NOTIFICATION'
+  | 'LATE_RECEIPT_ENTRY'
+  | 'DISMISSED_UNRECOVERED'
   | 'REGION_CHANGED'
-  | 'LATE_NOTIFICATION_VOZVRAT'
   | 'LOW_NDFL'
   | 'FULL_OFFSET';
 
 export function classifyPatentRootCause(r: {
   has_notification: number;
+  is_active?: number;
   excluded_region_change?: number;
+  has_late_1c_entry?: boolean;
   application_status?: string;
   recommended_action?: string;
   notes?: string;
@@ -70,7 +74,13 @@ export function classifyPatentRootCause(r: {
     return 'NO_NOTIFICATION';
   }
   if (Number(r.additional_offset_potential || 0) > 0) {
-    return 'LATE_NOTIFICATION_VOZVRAT';
+    if (r.is_active === 0) {
+      return 'DISMISSED_UNRECOVERED';
+    }
+    if (r.has_late_1c_entry) {
+      return 'LATE_RECEIPT_ENTRY';
+    }
+    return 'LATE_NOTIFICATION';
   }
   if (
     Number(r.patent_advance_balance || 0) > 0 &&
@@ -948,7 +958,7 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
       headers,
       35
     );
-    const empByFiz = new Map<string, { code: string; name: string; active: boolean }>();
+    const empByFiz = new Map<string, { code: string; name: string; active: boolean; hireDate: string; exitDate: string }>();
     const fizByEmpRef = new Map<string, string>();
     for (const e of empRows) {
       const fk = String(e.ФизическоеЛицо_Key || '').trim();
@@ -964,7 +974,50 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           code: prev?.code && prev.code !== code ? `${prev.code}; ${code}` : code,
           name: desc,
           active: active || Boolean(prev?.active),
+          hireDate: prev?.hireDate || '',
+          exitDate: prev?.exitDate || '',
         });
+      }
+    }
+
+    // 2b. Fetch Hire & Exit dates from InformationRegister_ТекущиеКадровыеДанныеСотрудников
+    const hrEntity = hasEntity('InformationRegister_ТекущиеКадровыеДанныеСотрудников')
+      ? 'InformationRegister_ТекущиеКадровыеДанныеСотрудников'
+      : '';
+    if (hrEntity) {
+      const hrRows = await fetchODataPaged(
+        base,
+        `${hrEntity}?$select=ФизическоеЛицо_Key,ДатаПриема,ДатаУвольнения`,
+        headers,
+        35
+      );
+      const hrByFiz = new Map<string, { hireDate: string; exitDate: string; hasActiveEmployment: boolean }>();
+      for (const h of hrRows) {
+        const fk = String(h.ФизическоеЛицо_Key || '').trim();
+        if (!fk) continue;
+        const hdRaw = String(h.ДатаПриема || '');
+        const edRaw = String(h.ДатаУвольнения || '');
+        const hd = hdRaw && !hdRaw.startsWith('0001') ? hdRaw.slice(0, 10) : '';
+        const ed = edRaw && !edRaw.startsWith('0001') ? edRaw.slice(0, 10) : '';
+        const isRowActive = Boolean(hd) && !ed;
+        const prev = hrByFiz.get(fk);
+        if (!prev) {
+          hrByFiz.set(fk, { hireDate: hd, exitDate: ed, hasActiveEmployment: isRowActive });
+        } else {
+          // Prefer active employment record, otherwise latest hire/exit dates
+          const nextActive = prev.hasActiveEmployment || isRowActive;
+          const nextHire = isRowActive ? hd : hd > prev.hireDate ? hd : prev.hireDate;
+          const nextExit = nextActive ? '' : ed > prev.exitDate ? ed : prev.exitDate;
+          hrByFiz.set(fk, { hireDate: nextHire, exitDate: nextExit, hasActiveEmployment: nextActive });
+        }
+      }
+      for (const [fk, hr] of Array.from(hrByFiz.entries())) {
+        const emp = empByFiz.get(fk);
+        if (emp) {
+          if (hr.hireDate) emp.hireDate = hr.hireDate;
+          emp.exitDate = hr.hasActiveEmployment ? '' : hr.exitDate;
+          emp.active = hr.hasActiveEmployment;
+        }
       }
     }
 
@@ -1274,8 +1327,8 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
           is_active: emp.active ? 1 : 0,
           site_name: '',
           region: '',
-          hire_date: '',
-          exit_date: '',
+          hire_date: emp.hireDate || '',
+          exit_date: emp.exitDate || '',
           has_notification: vals.notifNo ? 1 : 0,
           notification_no: vals.notifNo,
           notification_date: vals.notifDate,

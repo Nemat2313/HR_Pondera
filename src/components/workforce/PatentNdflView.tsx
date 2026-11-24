@@ -35,6 +35,7 @@ import WindowsTabBar from '@/components/common/WindowsTabBar';
 interface EmployeeMonthRow {
   month: number;
   label: string;
+  label_ru?: string;
   receipt_1c_entered?: number;
   receipt_1c_items?: Array<{ number: string; date: string; opDate: string; amount: number; comment: string }>;
   patent_paid: number;
@@ -46,7 +47,17 @@ interface EmployeeMonthRow {
   is_after_notif?: boolean;
   status_code?: string;
   analysis_note?: string;
+  analysis_note_ru?: string;
 }
+
+type RootCauseKey =
+  | 'NO_NOTIFICATION'
+  | 'LATE_NOTIFICATION'
+  | 'LATE_RECEIPT_ENTRY'
+  | 'DISMISSED_UNRECOVERED'
+  | 'REGION_CHANGED'
+  | 'LOW_NDFL'
+  | 'FULL_OFFSET';
 
 interface CompanyMonthTotal {
   month: number;
@@ -89,48 +100,110 @@ interface PatentNdflRow {
   notes: string;
   excluded_region_change?: number;
   notif_month?: number;
-  root_cause?: 'NO_NOTIFICATION' | 'REGION_CHANGED' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'FULL_OFFSET';
+  root_cause?: RootCauseKey;
+  has_late_1c_entry?: boolean;
+  avg_monthly_ndfl?: number;
+  expected_remaining_ndfl?: number;
+  payroll_absorbable?: number;
+  guaranteed_vozvrat?: number;
   months?: EmployeeMonthRow[];
-  missing_months?: Array<{ month: number; label: string; gap: number; phase?: string }>;
-  missing_receipt_months?: Array<{ month: number; label: string }>;
+  missing_months?: Array<{ month: number; label: string; label_ru?: string; gap: number; phase?: string }>;
+  missing_receipt_months?: Array<{ month: number; label: string; label_ru?: string }>;
   receipts?: Array<{ number: string; date: string; opDate: string; amount: number; comment: string; months: number[] }>;
   patent_info?: { patent_no: string; patent_start: string; patent_end: string; payment_day: number } | null;
   source_file: string;
 }
 
 const CAUSE_META: Record<
-  'NO_NOTIFICATION' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'REGION_CHANGED' | 'FULL_OFFSET',
-  { label: string; short: string; cls: string; hint: string }
+  RootCauseKey,
+  {
+    group: 'A' | 'B' | 'OK';
+    label: string;
+    labelRu: string;
+    short: string;
+    shortRu: string;
+    cls: string;
+    barCls: string;
+    hint: string;
+    hintRu: string;
+  }
 > = {
-  NO_NOTIFICATION: {
-    label: 'Acil: ФНС İzni Yok',
-    short: 'ФНС İzni Yok',
-    cls: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700',
-    hint: 'Muhasebe acil İFNS başvurusu yapmalı / ТКС kontrol etmeli',
-  },
-  LATE_NOTIFICATION_VOZVRAT: {
-    label: 'Gecikmiş İzin → Mahsup / Возврат',
-    short: 'Возврат / Ek Mahsup',
-    cls: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700',
-    hint: 'Kalan aylarda mahsup edilmezse yıl sonunda ст. 231 НК РФ ile iade istenmeli',
+  REGION_CHANGED: {
+    group: 'A',
+    label: 'Bölge Değişikliği (Plan Dışı)',
+    labelRu: 'Смена региона (вне плана зачёта)',
+    short: 'Bölge Değişikliği',
+    shortRu: 'Смена региона',
+    cls: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600',
+    barCls: 'bg-slate-500',
+    hint: 'Yılda sadece 1 bölge izni verilir — mahsup planından çıkarıldı',
+    hintRu: 'Уведомление ФНС выдаётся на 1 регион в год — исключено из плана',
   },
   LOW_NDFL: {
+    group: 'A',
     label: 'НДФЛ Yetersiz (Avans > НДФЛ)',
-    short: 'НДФЛ Az',
+    labelRu: 'Недостаточно НДФЛ (аванс > НДФЛ)',
+    short: 'НДФЛ Yetersiz',
+    shortRu: 'Мало НДФЛ',
     cls: 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700',
+    barCls: 'bg-amber-500',
     hint: 'Muhasebe hatası değil; ст. 227.1 п. 7 gereği НДФЛ üstü avans iade edilmez',
+    hintRu: 'Не ошибка бухгалтерии: по п. 7 ст. 227.1 НК РФ превышение аванса не возвращается',
   },
-  REGION_CHANGED: {
-    label: 'Bölge Değişikliği (Plan Dışı)',
-    short: 'Bölge Değişikliği',
-    cls: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600',
-    hint: 'Yılda sadece 1 bölge izni verilir — mahsup planından çıkarıldı',
+  NO_NOTIFICATION: {
+    group: 'B',
+    label: 'Acil: ФНС İzni Alınmamış',
+    labelRu: 'Срочно: нет уведомления ФНС',
+    short: 'ФНС İzni Yok',
+    shortRu: 'Нет увед. ФНС',
+    cls: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700',
+    barCls: 'bg-rose-500',
+    hint: 'Muhasebe acil İFNS başvurusu yapmalı / ТКС kontrol etmeli',
+    hintRu: 'Бухгалтерии срочно подать КНД 1110055 в ИФНС / проверить ТКС',
+  },
+  LATE_NOTIFICATION: {
+    group: 'B',
+    label: 'ФНС İzni Geç Alınmış',
+    labelRu: 'Уведомление ФНС получено поздно',
+    short: 'Geç ФНС İzni',
+    shortRu: 'Позднее увед.',
+    cls: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700',
+    barCls: 'bg-indigo-500',
+    hint: 'İzin öncesi aylarda kesilen НДФЛ kalan aylarda mahsup veya Возврат (ст. 231) edilmeli',
+    hintRu: 'НДФЛ до уведомления подлежит зачёту до конца года или возврату по ст. 231 НК РФ',
+  },
+  LATE_RECEIPT_ENTRY: {
+    group: 'B',
+    label: 'Fişler 1C\'ye Geç Girilmiş',
+    labelRu: 'Чеки внесены в 1С с опозданием',
+    short: 'Geç 1C Fiş Girişi',
+    shortRu: 'Поздний ввод чеков',
+    cls: 'bg-orange-50 dark:bg-orange-950/60 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-700',
+    barCls: 'bg-orange-500',
+    hint: 'İzin varken fişler 1C\'ye geç işlendiği için mahsup kaçırılmış — kalan aylarda/Возврат ile alınmalı',
+    hintRu: 'Уведомление было, но чеки ввели в 1С позже — оформить дозачёт или возврат по ст. 231',
+  },
+  DISMISSED_UNRECOVERED: {
+    group: 'B',
+    label: 'Çıkışlı — İade Alınmadan Gönderilmiş',
+    labelRu: 'Уволен без возврата НДФЛ (потеря)',
+    short: 'Çıkışlı (İade Edilemez)',
+    shortRu: 'Уволен (невозвр.)',
+    cls: 'bg-fuchsia-50 dark:bg-fuchsia-950/60 text-fuchsia-800 dark:text-fuchsia-300 border-fuchsia-300 dark:border-fuchsia-700',
+    barCls: 'bg-fuchsia-500',
+    hint: 'Çıkış öncesi Возврат yapılmadan gönderilmiş — işveren üzerinden geri alınamaz',
+    hintRu: 'Сотрудник уволен без возврата по ст. 231 — возврат через работодателя невозможен',
   },
   FULL_OFFSET: {
+    group: 'OK',
     label: 'Tam Mahsup Edildi (%100)',
+    labelRu: 'Полностью зачтено (100%)',
     short: 'Tam Mahsup',
+    shortRu: 'Полный зачёт',
     cls: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700',
+    barCls: 'bg-emerald-500',
     hint: 'Sorun yok, avans tamamen mahsup edildi',
+    hintRu: 'Без замечаний, аванс полностью зачтён',
   },
 };
 
@@ -153,8 +226,11 @@ function fmtRub(val: number): string {
 export default function PatentNdflView() {
   const { getAuthHeaders } = useAuth();
   const { lang } = useLanguage();
+  const isRu = lang === 'ru';
+  const L = (tr: string, ru: string) => (isRu ? ru : tr);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'notifications' | 'reconciliation' | 'vozvrat' | 'import_odata'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'reconciliation' | 'notifications' | 'vozvrat' | 'import_odata'>('overview');
+  const [vozvratOnlyGuaranteed, setVozvratOnlyGuaranteed] = useState(true);
   const [taxYear, setTaxYear] = useState<number>(2026);
   const [records, setRecords] = useState<PatentNdflRow[]>([]);
   const [monthlyTotals, setMonthlyTotals] = useState<CompanyMonthTotal[]>([]);
@@ -179,17 +255,33 @@ export default function PatentNdflView() {
     totalDiscrepancy: 0,
     causeCounts: {
       NO_NOTIFICATION: 0,
+      LATE_NOTIFICATION: 0,
+      LATE_RECEIPT_ENTRY: 0,
+      DISMISSED_UNRECOVERED: 0,
       REGION_CHANGED: 0,
-      LATE_NOTIFICATION_VOZVRAT: 0,
       LOW_NDFL: 0,
       FULL_OFFSET: 0,
     },
     causeRub: {
       NO_NOTIFICATION: 0,
+      LATE_NOTIFICATION: 0,
+      LATE_RECEIPT_ENTRY: 0,
+      DISMISSED_UNRECOVERED: 0,
       REGION_CHANGED: 0,
-      LATE_NOTIFICATION_VOZVRAT: 0,
       LOW_NDFL: 0,
       FULL_OFFSET: 0,
+    },
+    groupA: { count: 0, rub: 0 },
+    groupB: { count: 0, rub: 0 },
+    vozvratForecast: {
+      remainingMonths: 1,
+      activeEligibleCount: 0,
+      activeEligibleRub: 0,
+      payrollAbsorbableRub: 0,
+      guaranteedVozvratCount: 0,
+      guaranteedVozvratRub: 0,
+      dismissedLostCount: 0,
+      dismissedLostRub: 0,
     },
     vozvratActiveRub: 0,
     vozvratActiveCount: 0,
@@ -205,9 +297,7 @@ export default function PatentNdflView() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'dismissed'>('all');
   const [notifFilter, setNotifFilter] = useState<'all' | 'no_notif' | 'with_notif' | 'has_potential' | 'zero_offset'>('all');
-  const [causeFilter, setCauseFilter] = useState<
-    'all' | 'NO_NOTIFICATION' | 'LATE_NOTIFICATION_VOZVRAT' | 'LOW_NDFL' | 'REGION_CHANGED' | 'FULL_OFFSET'
-  >('all');
+  const [causeFilter, setCauseFilter] = useState<'all' | RootCauseKey>('all');
   const [visibleCount, setVisibleCount] = useState(150);
 
   // OData config
@@ -514,7 +604,10 @@ export default function PatentNdflView() {
     const q = search.trim().toLowerCase();
     return records.filter((r) => {
       if (activeTab === 'notifications' && (r.has_notification || r.root_cause === 'REGION_CHANGED')) return false;
-      if (activeTab === 'vozvrat' && r.root_cause !== 'LATE_NOTIFICATION_VOZVRAT') return false;
+      if (activeTab === 'vozvrat') {
+        if (!r.is_active || Number(r.additional_offset_potential || 0) <= 0 || r.root_cause === 'REGION_CHANGED') return false;
+        if (vozvratOnlyGuaranteed && Number(r.guaranteed_vozvrat || 0) <= 0) return false;
+      }
       if (activeFilter === 'active' && !r.is_active) return false;
       if (activeFilter === 'dismissed' && r.is_active) return false;
       if (causeFilter !== 'all' && r.root_cause !== causeFilter) return false;
@@ -528,7 +621,91 @@ export default function PatentNdflView() {
       }
       return true;
     });
-  }, [records, search, activeFilter, notifFilter, causeFilter, activeTab]);
+  }, [records, search, activeFilter, notifFilter, causeFilter, activeTab, vozvratOnlyGuaranteed]);
+
+  const handlePrintVozvratKit = () => {
+    const targets = filteredRecords.filter((r) => r.is_active && Number(r.additional_offset_potential || 0) > 0);
+    if (targets.length === 0) {
+      setFeedback({ type: 'error', text: L('Yazdırılacak aktif Возврат adayı bulunamadı.', 'Нет активных сотрудников для печати комплекта на возврат.') });
+      return;
+    }
+    const todayDot = new Date().toLocaleDateString('ru-RU');
+    const pages = targets
+      .map((r) => {
+        const amt = vozvratOnlyGuaranteed ? Number(r.guaranteed_vozvrat || 0) : Number(r.additional_offset_potential || 0);
+        return `
+        <div class="page">
+          <div class="header-right">
+            <div>Генеральному директору ${xmlOrgName}</div>
+            <div>${xmlDirectorDative}</div>
+            <div style="margin-top:8px;">от <strong>${r.full_name}</strong></div>
+            <div>Табельный №: ${r.tabel_no || '__________'}</div>
+          </div>
+          <h2>ЗАЯВЛЕНИЕ<br/><span style="font-size:12px;font-weight:400;">о возврате излишне удержанного НДФЛ (в порядке ст. 231 НК РФ)</span></h2>
+          <p>В соответствии со статьей 231 Налогового кодекса Российской Федерации и на основании Уведомления ИФНС № <strong>${r.notification_no || '_______'}</strong> от <strong>${r.notification_date || '__________'}</strong> (Код ИФНС: ${r.ifns_code || xmlKodNO}) прошу произвести возврат излишне удержанной за ${taxYear} год суммы налога на доходы физических лиц (НДФЛ) в размере <strong>${Math.round(amt).toLocaleString('ru-RU')} руб. 00 коп.</strong> в связи с уплатой мною фиксированных авансовых платежей по патенту.</p>
+          <p>Денежные средства прошу перечислить в безналичном порядке на мой банковский счет по следующим реквизитам (выплата наличными не допускается согласно п. 1 ст. 231 НК РФ):</p>
+          <table class="req">
+            <tr><td>Получатель (ФИО):</td><td>${r.full_name}</td></tr>
+            <tr><td>Наименование банка:</td><td>________________________________________________</td></tr>
+            <tr><td>БИК банка:</td><td>______________________</td></tr>
+            <tr><td>Расчетный счет (20 знаков):</td><td>________________________________________________</td></tr>
+            <tr><td>Корреспондентский счет:</td><td>________________________________________________</td></tr>
+          </table>
+          <p style="font-size:11px;color:#444;">Приложение: копии квитанций об уплате фиксированных авансовых платежей по патенту за ${taxYear} год.</p>
+          <div class="sig">
+            <span>Дата: «____» ____________ ${taxYear} г.</span>
+            <span>Подпись: _______________ / ${r.full_name} /</span>
+          </div>
+          <hr style="margin:26px 0;border:none;border-top:1px dashed #999;" />
+          <div style="font-size:11.5px;">
+            <div style="text-align:center;font-weight:700;margin-bottom:8px;">УВЕДОМЛЕНИЕ РАБОТОДАТЕЛЯ О ФАКТЕ ИЗЛИШНЕГО УДЕРЖАНИЯ НДФЛ (п. 1 ст. 231 НК РФ)</div>
+            <p>${xmlOrgName} (ИНН ${xmlInnUl}, КПП ${xmlKpp}) настоящим уведомляет работника <strong>${r.full_name}</strong> о факте излишнего удержания НДФЛ за ${taxYear} налоговый период в сумме <strong>${Math.round(amt).toLocaleString('ru-RU')} руб. 00 коп.</strong> Просим представить заявление на возврат с указанием банковских реквизитов.</p>
+            <div class="sig" style="margin-top:14px;">
+              <span>Дата вручения: ${todayDot}</span>
+              <span>Ознакомлен(а): _______________ / ${r.full_name} /</span>
+            </div>
+          </div>
+        </div>`;
+      })
+      .join('');
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Возврат НДФЛ — Комплект документов (${taxYear})</title><style>
+      body{font-family:"Times New Roman",serif;font-size:13px;line-height:1.45;color:#111;margin:0;padding:0}
+      .page{padding:24px 36px;page-break-after:always}
+      .header-right{width:54%;margin-left:auto;text-align:left;margin-bottom:18px;font-size:12.5px}
+      h2{text-align:center;font-size:15px;margin:14px 0}
+      p{text-indent:28px;text-align:justify;margin:8px 0}
+      table.req{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+      table.req td{border:1px solid #999;padding:5px 8px}
+      .sig{display:flex;justify-content:space-between;margin-top:24px;font-size:12.5px}
+      @media print{.page{page-break-after:always}}
+    </style></head><body>${pages}<script>window.onload=function(){window.print()}</script></body></html>`);
+    w.document.close();
+  };
+
+  const handleExportVozvratReestr = () => {
+    const rows = filteredRecords.map((r) => ({
+      'Табельный № / Sicil': r.tabel_no,
+      'ФИО / Ad Soyad': r.full_name,
+      'Дата приема / İşe Giriş': r.hire_date || '',
+      'Уведомление ФНС №': r.notification_no || '',
+      'Дата уведомления': r.notification_date || '',
+      'Код ИФНС': r.ifns_code || '',
+      'Оплачено патента (₽)': r.patent_advances,
+      'Зачтено (₽)': r.patent_offset_used,
+      'Общий потенциал (₽)': r.additional_offset_potential,
+      'Средний НДФЛ/мес (₽)': r.avg_monthly_ndfl || 0,
+      'Прогноз НДФЛ до конца года (₽)': r.expected_remaining_ndfl || 0,
+      'Зачтётся в зарплате (₽)': r.payroll_absorbable || 0,
+      'ОБЯЗАТЕЛЬНЫЙ ВОЗВРАТ ст. 231 (₽)': r.guaranteed_vozvrat || 0,
+      'Причина / Kök Neden': isRu ? CAUSE_META[r.root_cause || 'LATE_NOTIFICATION']?.labelRu : CAUSE_META[r.root_cause || 'LATE_NOTIFICATION']?.label,
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, `Reestr_Vozvrat_${taxYear}`);
+    XLSX.writeFile(wb, `Reestr_Vozvrat_NDFL_st231_${taxYear}.xlsx`);
+  };
 
   const analytics = useMemo(() => {
     const byCit = new Map<string, { name: string; count: number; advances: number; used: number; potential: number; noNotif: number }>();
@@ -619,31 +796,31 @@ export default function PatentNdflView() {
           tabs={[
             {
               id: 'overview',
-              label: lang === 'ru' ? '1. Сводка и Потенциал' : '1. Finansal Özet & Analitik',
+              label: L('1. Patent İade Özeti', '1. Сводка возврата патентов'),
               badge: summary.totalEmployees,
               icon: <TrendingUp className="w-3.5 h-3.5" />,
             },
             {
-              id: 'notifications',
-              label: lang === 'ru' ? '2. Без уведомления ФНС' : '2. ФНС Bildirim Takip',
-              badge: summary.noNotifTotal,
-              icon: <ShieldAlert className="w-3.5 h-3.5" />,
-            },
-            {
               id: 'reconciliation',
-              label: lang === 'ru' ? '3. Сверка и причины' : '3. Kişi Bazlı Mahsup & Nedenler',
+              label: L('2. Kişi Bazlı Detay', '2. Детализация по сотрудникам'),
               badge: summary.totalEmployees,
               icon: <Receipt className="w-3.5 h-3.5" />,
             },
             {
+              id: 'notifications',
+              label: L('3. ФНС Bildirim Takip', '3. Уведомления ФНС'),
+              badge: summary.noNotifTotal,
+              icon: <ShieldAlert className="w-3.5 h-3.5" />,
+            },
+            {
               id: 'vozvrat',
-              label: lang === 'ru' ? '4. Возврат НДФЛ (ст. 231)' : '4. Возврат НДФЛ (Yıl Sonu İade)',
-              badge: (summary.vozvratActiveCount || 0) + (summary.vozvratDismissedCount || 0),
+              label: L('4. Возврат НДФЛ (İade Dosyası)', '4. Возврат НДФЛ (ст. 231 НК РФ)'),
+              badge: summary.vozvratForecast?.guaranteedVozvratCount || summary.vozvratActiveCount || 0,
               icon: <RotateCcw className="w-3.5 h-3.5" />,
             },
             {
               id: 'import_odata',
-              label: lang === 'ru' ? '5. 1С OData и Нормы' : '5. 1C OData & Mevzuat',
+              label: L('5. 1C OData & Mevzuat', '5. 1С OData и Регламент'),
               icon: <Globe className="w-3.5 h-3.5" />,
             },
           ]}
@@ -665,7 +842,7 @@ export default function PatentNdflView() {
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50"
               >
                 <Upload className="w-3.5 h-3.5" />
-                <span>{uploading ? 'Yükleniyor...' : '1C / МЭС Excel Yükle'}</span>
+                <span>{uploading ? L('Yükleniyor...', 'Загрузка...') : L('1C / МЭС Excel Yükle', 'Загрузить Excel 1С / МЭС')}</span>
               </button>
               <input
                 ref={fileInputRef}
@@ -700,161 +877,297 @@ export default function PatentNdflView() {
           {/* KPI Strip */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <p className="text-[11px] text-slate-500 dark:text-slate-300">Kayıtlı Patent Avansı ({taxYear})</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-300">{L(`Toplam Ödenen Patent (${taxYear})`, `Всего оплачено по патентам (${taxYear})`)}</p>
               <p className="text-lg font-semibold text-slate-900 dark:text-white mt-0.5 font-mono">{fmtRub(summary.totalAdvances)}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{summary.totalEmployees} patentli personel</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{summary.totalEmployees} {L('patentli personel', 'сотр. с патентом')}</p>
             </div>
             <div className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/30 dark:bg-emerald-950/20">
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-300">Mahsup Edilen (Зачтено)</p>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{L('Vergiden Mahsup Edilen (Зачтено)', 'Зачтено в счёт НДФЛ')}</p>
               <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">{fmtRub(summary.totalOffsetUsed)}</p>
-              <p className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 mt-0.5">Mahsup Oranı: %{summary.offsetPct}</p>
+              <p className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 mt-0.5">{L('Mahsup Oranı', 'Доля зачёта')}: %{summary.offsetPct}</p>
             </div>
             <div className="p-3.5 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/30 dark:bg-amber-950/20">
-              <p className="text-[11px] text-amber-800 dark:text-amber-300">Kullanılmayan Avans Bakiyesi</p>
+              <p className="text-[11px] text-amber-800 dark:text-amber-300">{L('Mahsup Edilmeyen Kalan', 'Незачтённый остаток аванса')}</p>
               <p className="text-lg font-semibold text-amber-600 dark:text-amber-400 mt-0.5 font-mono">{fmtRub(summary.totalBalance)}</p>
-              <p className="text-[10px] text-amber-700/80 dark:text-amber-300/80 mt-0.5">İncelenmesi gereken bakiye</p>
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-300/80 mt-0.5">
+                {L('Çalışan/Mevzuat', 'Сотрудник/закон')}: {fmtRub(summary.groupA?.rub || 0)}
+              </p>
             </div>
             <div
               onClick={() => {
-                setNotifFilter('has_potential');
-                setActiveTab('reconciliation');
+                setVozvratOnlyGuaranteed(true);
+                setActiveTab('vozvrat');
               }}
               className="p-3.5 rounded-2xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/40 dark:bg-indigo-950/30 cursor-pointer hover:ring-1 hover:ring-indigo-400 transition"
             >
-              <p className="text-[11px] text-indigo-800 dark:text-indigo-300">Ek Mahsup Potansiyeli</p>
-              <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5 font-mono">{fmtRub(summary.totalPotential)}</p>
+              <p className="text-[11px] text-indigo-800 dark:text-indigo-300">{L('Kesin Возврат (ст. 231 НК РФ)', 'Обязательный возврат (ст. 231)')}</p>
+              <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5 font-mono">
+                {fmtRub(summary.vozvratForecast?.guaranteedVozvratRub || 0)}
+              </p>
               <p className="text-[10px] text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">
-                Aktiflerde: {fmtRub(summary.activePotential)} ({summary.activePotentialCount} kişi)
+                {summary.vozvratForecast?.guaranteedVozvratCount || 0} {L('aktif kişi', 'акт. сотр.')} · {L('Toplam aktif', 'Всего акт.')}: {fmtRub(summary.activePotential)}
               </p>
             </div>
             <div
               onClick={() => setActiveTab('notifications')}
               className="p-3.5 rounded-2xl border border-rose-200 dark:border-rose-800/70 bg-rose-50/40 dark:bg-rose-950/30 cursor-pointer hover:ring-1 hover:ring-rose-400 transition"
             >
-              <p className="text-[11px] text-rose-800 dark:text-rose-300">ФНС Bildirimi Eksik</p>
+              <p className="text-[11px] text-rose-800 dark:text-rose-300">{L('ФНС İzni Eksik / Çıkışlı Kayıp', 'Нет увед. ФНС / Потери уволенных')}</p>
               <p className="text-lg font-semibold text-rose-600 dark:text-rose-400 mt-0.5 font-mono">{summary.noNotifTotal}</p>
               <p className="text-[10px] text-rose-700/80 dark:text-rose-300/80 mt-0.5">
-                Aktif: {summary.noNotifActive} · Çıkışlı: {summary.noNotifDismissed} · Başvurusuz: {summary.noNotifNoApp}
+                {L('Çıkışlı kayıp', 'Уволены без возвр.')}: {summary.vozvratDismissedCount} ({fmtRub(summary.vozvratDismissedRub)})
               </p>
             </div>
           </div>
 
-          {/* TAB 1: OVERVIEW */}
+          {/* TAB 1: PATENT IADE OZETI (CHARTS + TWO-GROUP ROOT CAUSE + DRILL-DOWN) */}
           {activeTab === 'overview' && (
             <div className="space-y-4">
               {summary.totalEmployees === 0 ? (
                 <div className="p-8 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 text-center space-y-2">
                   <FileSpreadsheet className="w-10 h-10 mx-auto text-indigo-500 opacity-70" />
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    {taxYear} yılı için henüz Patent &amp; НДФЛ verisi yüklenmemiş
+                    {L(`${taxYear} yılı için henüz Patent & НДФЛ verisi yüklenmemiş`, `Нет данных по патентам и НДФЛ за ${taxYear} год`)}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-lg mx-auto">
-                    Sağ üstteki <strong>1C / МЭС Excel Yükle</strong> butonuyla 1C ZUP patent/2-НДФЛ dökümünü (veya МЭС 193 &amp; 710 raporlarını) yükleyebilir ya da <strong>4. 1C OData</strong> sekmesinden canlı bağlantı kurabilirsiniz.
+                    {L(
+                      'Sağ üstteki 1C / МЭС Excel Yükle butonuyla verileri yükleyebilir veya 5. 1C OData sekmesinden canlı çekebilirsiniz.',
+                      'Загрузите отчёт 1С Excel сверху справа или подключите 1С OData на вкладке 5.'
+                    )}
                   </p>
                 </div>
               ) : (
                 <>
-                  {/* Overall Offset Progress Bar */}
-                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-800 dark:text-slate-100">
-                        Genel Patent Avansı Mahsup Gerçekleşme Oranı ({taxYear})
-                      </span>
-                      <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                        %{summary.offsetPct} ({fmtRub(summary.totalOffsetUsed)} / {fmtRub(summary.totalAdvances)})
-                      </span>
-                    </div>
-                    <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
-                      <div
-                        style={{ width: `${Math.min(100, summary.offsetPct)}%` }}
-                        className="bg-emerald-500 h-full"
-                        title={`Mahsup Edilen: ${fmtRub(summary.totalOffsetUsed)}`}
-                      />
-                      <div
-                        style={{
-                          width: `${
-                            summary.totalAdvances > 0
-                              ? Math.min(100 - summary.offsetPct, (summary.totalPotential / summary.totalAdvances) * 100)
-                              : 0
-                          }%`,
-                        }}
-                        className="bg-indigo-500 h-full"
-                        title={`Ek Mahsup Potansiyeli: ${fmtRub(summary.totalPotential)}`}
-                      />
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Mahsup Edilen
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> Ek Mahsup Potansiyeli
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" /> Mahsup Dışı / Fazla Avans
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Root-Cause Analysis Breakdown (5 Clickable Cards) */}
-                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                        Mahsup Edilmeme Nedenleri (Kök Neden Analizi — Tıklayarak Filtrele)
-                      </h3>
-                      <span className="text-[10.5px] text-slate-500">
-                        Bölge değiştirenler yılda 1 izin kuralı gereği mahsup planından otomatik çıkarılır
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-                      {(
-                        ['NO_NOTIFICATION', 'LATE_NOTIFICATION_VOZVRAT', 'LOW_NDFL', 'REGION_CHANGED', 'FULL_OFFSET'] as const
-                      ).map((ck) => {
-                        const meta = CAUSE_META[ck];
-                        const cnt = summary.causeCounts?.[ck] || 0;
-                        const rub = summary.causeRub?.[ck] || 0;
+                  {/* ROW 1: DONUT CHART + TWO-GROUP ROOT-CAUSE BAR CHARTS (CLICKABLE DRILL-DOWN TO TAB 2) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                    {/* Donut Chart Card */}
+                    <div className="lg:col-span-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                          {L(`Genel Patent Mahsup Dağılımı (${taxYear})`, `Общая структура зачёта патентов (${taxYear})`)}
+                        </h3>
+                        <p className="text-[10.5px] text-slate-500">
+                          {L('Ödenen patentin mahsup ve kalan kırılımı', 'Доля зачтённых и незачтённых авансов')}
+                        </p>
+                      </div>
+                      {(() => {
+                        const tot = Math.max(1, summary.totalAdvances);
+                        const pUsed = Math.min(100, (summary.totalOffsetUsed / tot) * 100);
+                        const pGroupB = Math.min(100 - pUsed, ((summary.groupB?.rub || 0) / tot) * 100);
+                        const pGroupA = Math.max(0, 100 - pUsed - pGroupB);
+                        const r = 46;
+                        const c = 2 * Math.PI * r;
+                        const dUsed = (pUsed / 100) * c;
+                        const dB = (pGroupB / 100) * c;
+                        const dA = (pGroupA / 100) * c;
                         return (
-                          <button
-                            key={ck}
-                            type="button"
-                            onClick={() => {
-                              setCauseFilter(ck);
-                              setNotifFilter('all');
-                              setActiveTab(ck === 'LATE_NOTIFICATION_VOZVRAT' ? 'vozvrat' : 'reconciliation');
-                            }}
-                            className={`p-3 rounded-xl border text-left cursor-pointer hover:opacity-90 transition ${meta.cls}`}
-                          >
-                            <div className="text-[11px] font-semibold">{meta.short}</div>
-                            <div className="text-lg font-mono font-bold mt-0.5">{cnt} kişi</div>
-                            <div className="text-[10.5px] font-mono opacity-90">{fmtRub(rub)}</div>
-                            <div className="text-[9.5px] opacity-80 mt-1 leading-tight">{meta.hint}</div>
-                          </button>
+                          <div className="flex items-center justify-center gap-5 py-1">
+                            <div className="relative w-32 h-32 shrink-0">
+                              <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                                <circle cx="60" cy="60" r={r} fill="none" stroke="currentColor" strokeWidth="14" className="text-slate-200 dark:text-slate-800" />
+                                <circle cx="60" cy="60" r={r} fill="none" stroke="#10b981" strokeWidth="14" strokeDasharray={`${dUsed} ${c}`} strokeDashoffset={0} />
+                                <circle cx="60" cy="60" r={r} fill="none" stroke="#6366f1" strokeWidth="14" strokeDasharray={`${dB} ${c}`} strokeDashoffset={-dUsed} />
+                                <circle cx="60" cy="60" r={r} fill="none" stroke="#f59e0b" strokeWidth="14" strokeDasharray={`${dA} ${c}`} strokeDashoffset={-(dUsed + dB)} />
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                                <span className="text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">%{summary.offsetPct}</span>
+                                <span className="text-[9.5px] text-slate-500">{L('Mahsup', 'Зачтено')}</span>
+                              </div>
+                            </div>
+                            <div className="space-y-2 text-[11px] flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                  {L('Mahsup Edilen', 'Зачтено')}
+                                </span>
+                                <span className="font-mono font-semibold text-emerald-600">{fmtRub(summary.totalOffsetUsed)}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0" />
+                                  {L('Muhasebe / İK Kaynaklı', 'Бухгалтерия / Кадры')}
+                                </span>
+                                <span className="font-mono font-semibold text-indigo-600">{fmtRub(summary.groupB?.rub || 0)}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                                  {L('Çalışan / Mevzuat', 'Сотрудник / Закон')}
+                                </span>
+                                <span className="font-mono font-semibold text-amber-600">{fmtRub(summary.groupA?.rub || 0)}</span>
+                              </div>
+                            </div>
+                          </div>
                         );
-                      })}
+                      })()}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCauseFilter('FULL_OFFSET');
+                          setActiveFilter('all');
+                          setActiveTab('reconciliation');
+                        }}
+                        className="w-full px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-200 flex items-center justify-between cursor-pointer hover:opacity-90"
+                      >
+                        <span>✓ {L('Tam Mahsup (%100)', 'Полный зачёт (100%)')}: <strong>{summary.causeCounts?.FULL_OFFSET || 0}</strong> {L('kişi', 'чел.')}</span>
+                        <span className="font-mono font-semibold">{fmtRub(summary.causeRub?.FULL_OFFSET || 0)} →</span>
+                      </button>
+                    </div>
+
+                    {/* Two-Group Horizontal Bar Charts (Click to drill down into Tab 2) */}
+                    <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* GROUP A: Employee / Law Caused */}
+                      <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/20 dark:bg-amber-950/10 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="text-xs font-semibold text-slate-900 dark:text-white">
+                              {L('A. Çalışan / Mevzuat Kaynaklı (Muhasebe Dışı)', 'А. Причины сотрудника / закона (вне контроля бухгалтерии)')}
+                            </h3>
+                            <p className="text-[10.5px] text-slate-500">
+                              {L('Tıklayarak Kişi Bazlı Detay listesine gidin', 'Нажмите для перехода к списку сотрудников')}
+                            </p>
+                          </div>
+                          <span className="font-mono text-xs font-bold text-amber-700 dark:text-amber-300 shrink-0">
+                            {fmtRub(summary.groupA?.rub || 0)}
+                          </span>
+                        </div>
+                        <div className="space-y-2.5">
+                          {(['LOW_NDFL', 'REGION_CHANGED'] as const).map((ck) => {
+                            const meta = CAUSE_META[ck];
+                            const cnt = summary.causeCounts?.[ck] || 0;
+                            const rub = summary.causeRub?.[ck] || 0;
+                            const maxRub = Math.max(1, summary.totalBalance, summary.groupA?.rub || 1);
+                            const pct = Math.min(100, Math.round((rub / maxRub) * 100));
+                            return (
+                              <button
+                                key={ck}
+                                type="button"
+                                onClick={() => {
+                                  setCauseFilter(ck);
+                                  setActiveFilter('all');
+                                  setNotifFilter('all');
+                                  setActiveTab('reconciliation');
+                                }}
+                                className="w-full text-left p-2.5 rounded-xl bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 hover:border-amber-400 transition cursor-pointer space-y-1.5"
+                              >
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="font-semibold text-slate-800 dark:text-slate-100">{isRu ? meta.labelRu : meta.label}</span>
+                                  <span className="font-mono font-bold text-amber-700 dark:text-amber-300">
+                                    {cnt} {L('kişi', 'чел.')} · {fmtRub(rub)}
+                                  </span>
+                                </div>
+                                <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                  <div style={{ width: `${Math.max(rub > 0 ? 4 : 0, pct)}%` }} className={`h-full ${meta.barCls}`} />
+                                </div>
+                                <p className="text-[10px] text-slate-500 leading-tight">{isRu ? meta.hintRu : meta.hint}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* GROUP B: Accounting / HR Caused (Actionable & Refundable) */}
+                      <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/20 dark:bg-indigo-950/10 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="text-xs font-semibold text-slate-900 dark:text-white">
+                              {L('B. Muhasebe / İK Kaynaklı (Aksiyon & İade)', 'Б. Причины бухгалтерии / кадров (требует действий)')}
+                            </h3>
+                            <p className="text-[10.5px] text-slate-500">
+                              {L('Barlara tıklayarak sorumlu kişileri açın', 'Нажмите на строку для детализации')}
+                            </p>
+                          </div>
+                          <span className="font-mono text-xs font-bold text-indigo-700 dark:text-indigo-300 shrink-0">
+                            {fmtRub(summary.groupB?.rub || 0)}
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {(['LATE_RECEIPT_ENTRY', 'LATE_NOTIFICATION', 'DISMISSED_UNRECOVERED', 'NO_NOTIFICATION'] as const).map((ck) => {
+                            const meta = CAUSE_META[ck];
+                            const cnt = summary.causeCounts?.[ck] || 0;
+                            const rub = summary.causeRub?.[ck] || 0;
+                            const maxRub = Math.max(1, summary.groupB?.rub || 1);
+                            const pct = Math.min(100, Math.round((rub / maxRub) * 100));
+                            return (
+                              <button
+                                key={ck}
+                                type="button"
+                                onClick={() => {
+                                  setCauseFilter(ck);
+                                  setActiveFilter('all');
+                                  setNotifFilter('all');
+                                  setActiveTab(ck === 'NO_NOTIFICATION' ? 'notifications' : 'reconciliation');
+                                }}
+                                className="w-full text-left p-2 rounded-xl bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition cursor-pointer space-y-1"
+                              >
+                                <div className="flex items-center justify-between text-[11px] gap-2">
+                                  <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">{isRu ? meta.labelRu : meta.label}</span>
+                                  <span className="font-mono font-bold text-slate-900 dark:text-white shrink-0">
+                                    {cnt} {L('kişi', 'чел.')} · {fmtRub(rub)}
+                                  </span>
+                                </div>
+                                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                  <div style={{ width: `${Math.max(rub > 0 ? 4 : 0, pct)}%` }} className={`h-full ${meta.barCls}`} />
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* 12-Month Company Patent vs 2-NDFL vs Offset Breakdown */}
+                  {/* ROW 2: 12-MONTH GROUPED BAR CHART + TABLE */}
                   {monthlyTotals.some((m) => m.patent_paid > 0 || m.offset_used > 0 || m.ndfl_calc > 0) && (
-                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
-                      <div className="flex items-center justify-between">
+                    <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                           <Calendar className="w-4 h-4 text-indigo-500" />
-                          <span>Aylar Bazında Patent Avansı, 2-НДФЛ ve Mahsup Karşılaştırması ({taxYear})</span>
+                          <span>{L(`Aylar Bazında Patent Avansı, 2-НДФЛ ve Mahsup Grafiği (${taxYear})`, `Помесячный график: Патенты, 2-НДФЛ и Зачёт (${taxYear})`)}</span>
                         </h3>
-                        <span className="text-[10.5px] text-slate-500">
-                          Sıfır mahsup veya eksik mahsup yaşanan aylar kırmızı/turuncu vurgulanır
-                        </span>
+                        <div className="flex items-center gap-3 text-[10.5px] text-slate-600 dark:text-slate-300">
+                          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500" /> {L('Ödenen Patent', 'Оплачено патентов')}</span>
+                          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400" /> {L('Hesaplanan НДФЛ', 'Начислено НДФЛ')}</span>
+                          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> {L('Mahsup Edilen', 'Зачтено')}</span>
+                        </div>
                       </div>
+                      {(() => {
+                        const activeMonths = monthlyTotals.filter((m) => m.patent_paid > 0 || m.offset_used > 0 || m.ndfl_calc > 0);
+                        const maxVal = Math.max(1, ...activeMonths.map((m) => Math.max(m.patent_paid, m.ndfl_calc, m.offset_used)));
+                        return (
+                          <div className="grid grid-cols-6 sm:grid-cols-12 gap-2 items-end h-40 pt-3 px-2 bg-slate-50/70 dark:bg-slate-900/40 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                            {activeMonths.map((m) => {
+                              const hPat = Math.max(2, Math.round((m.patent_paid / maxVal) * 100));
+                              const hNdfl = Math.max(2, Math.round((m.ndfl_calc / maxVal) * 100));
+                              const hOff = Math.max(m.offset_used > 0 ? 3 : 0, Math.round((m.offset_used / maxVal) * 100));
+                              return (
+                                <div
+                                  key={m.month}
+                                  className="flex flex-col items-center h-full justify-end gap-1"
+                                  title={`${m.label}: ${L('Patent', 'Патент')} ${fmtRub(m.patent_paid)} | НДФЛ ${fmtRub(m.ndfl_calc)} | ${L('Mahsup', 'Зачёт')} ${fmtRub(m.offset_used)}`}
+                                >
+                                  <div className="flex items-end gap-0.5 h-28 w-full justify-center">
+                                    <div style={{ height: `${hPat}%` }} className="w-2.5 rounded-t bg-sky-500/85" />
+                                    <div style={{ height: `${hNdfl}%` }} className="w-2.5 rounded-t bg-amber-400/90" />
+                                    <div style={{ height: `${hOff}%` }} className="w-2.5 rounded-t bg-emerald-500" />
+                                  </div>
+                                  <span className="text-[10px] font-mono text-slate-600 dark:text-slate-300">{m.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs whitespace-nowrap">
                           <thead className="text-[10.5px] text-slate-500 border-b border-slate-200 dark:border-slate-700">
                             <tr>
-                              <th className="py-1.5 pr-2">Ay</th>
-                              <th className="py-1.5 px-2 text-right">Ödenen Patent (₽)</th>
-                              <th className="py-1.5 px-2 text-right">Hesaplanan НДФЛ (₽)</th>
-                              <th className="py-1.5 px-2 text-right text-emerald-600">Mahsup Edilen (₽)</th>
-                              <th className="py-1.5 px-2 text-right">Mahsup %</th>
-                              <th className="py-1.5 pl-2 text-right text-amber-600">Eksik Mahsuplu Kişi</th>
+                              <th className="py-1.5 pr-2">{L('Ay', 'Месяц')}</th>
+                              <th className="py-1.5 px-2 text-right">{L('Ödenen Patent (₽)', 'Оплачено патент (₽)')}</th>
+                              <th className="py-1.5 px-2 text-right">{L('Hesaplanan НДФЛ (₽)', 'Начислено НДФЛ (₽)')}</th>
+                              <th className="py-1.5 px-2 text-right text-emerald-600">{L('Mahsup Edilen (₽)', 'Зачтено (₽)')}</th>
+                              <th className="py-1.5 px-2 text-right">{L('Mahsup %', 'Зачёт %')}</th>
+                              <th className="py-1.5 pl-2 text-right text-amber-600">{L('Eksik Mahsuplu Kişi', 'Сотр. с недозачётом')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -872,7 +1185,7 @@ export default function PatentNdflView() {
                                       {String(m.month).padStart(2, '0')} · {m.label}
                                       {isZeroAnomaly && (
                                         <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9.5px] bg-rose-100 dark:bg-rose-900/70 text-rose-700 dark:text-rose-200">
-                                          Mahsup = 0!
+                                          {L('Mahsup = 0!', 'Зачёт = 0!')}
                                         </span>
                                       )}
                                     </td>
@@ -883,7 +1196,7 @@ export default function PatentNdflView() {
                                     </td>
                                     <td className="py-1.5 px-2 text-right font-mono">%{pct}</td>
                                     <td className="py-1.5 pl-2 text-right font-mono text-amber-600 dark:text-amber-400">
-                                      {m.missing_employees} kişi
+                                      {m.missing_employees} {L('kişi', 'чел.')}
                                     </td>
                                   </tr>
                                 );
@@ -1098,37 +1411,113 @@ export default function PatentNdflView() {
                     <div>
                       <h3 className="text-xs font-semibold text-indigo-950 dark:text-indigo-100 flex items-center gap-1.5">
                         <RotateCcw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                        <span>Yıl Sonu Fazla Kesilen НДФЛ İadesi (Возврат НДФЛ — ст. 231 НК РФ)</span>
+                        <span>
+                          {L(
+                            'Yıl Sonu Fazla Kesilen НДФЛ İade Dosyası (Возврат НДФЛ — ст. 231 НК РФ)',
+                            'Возврат излишне удержанного НДФЛ (ст. 231 НК РФ, ЕНС / КНД 1112542 / 6-НДФЛ)'
+                          )}
+                        </span>
                       </h3>
                       <p className="text-[11px] text-indigo-900/80 dark:text-indigo-200/80 mt-0.5">
-                        ФНС izni geç geldiği için önceki aylarda kesilen ve yıl sonuna kadar yeni НДФЛ&apos;den mahsup edilemeyen tutarlar, muhasebe tarafından çalışanın banka hesabına iade edilip İFNS/ЕНС üzerinden geri alınmalıdır.
+                        {L(
+                          `Kalan ${summary.vozvratForecast?.remainingMonths ?? 1} ay için çalışanın aylık ortalama НДФЛ'sine göre yıl sonuna kadar bordrodan mahsup edilemeyeceği KESİN olan aktif çalışanlar ayrıştırılır. Çıkışlılar işveren üzerinden iade edilemediği için bu listeden otomatik çıkarılmıştır.`,
+                          `На основе среднего НДФЛ/мес и оставшихся ${summary.vozvratForecast?.remainingMonths ?? 1} мес. выделены активные сотрудники, чей остаток гарантированно не зачтётся до конца года. Уволенные исключены (возврат через работодателя невозможен).`
+                        )}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2 text-xs font-mono">
-                      <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">
-                        Aktif İade Adayı: <strong>{summary.vozvratActiveCount}</strong> ({fmtRub(summary.vozvratActiveRub)})
-                      </span>
-                      <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300">
-                        Çıkışlı İade Adayı: <strong>{summary.vozvratDismissedCount}</strong> ({fmtRub(summary.vozvratDismissedRub)})
-                      </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePrintVozvratKit}
+                        disabled={filteredRecords.length === 0}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer disabled:opacity-50"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>{L(`İade Dilekçesi + Bildirim Yazdır (${filteredRecords.length})`, `Печать комплекта возврата (${filteredRecords.length})`)}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExportVozvratReestr}
+                        disabled={filteredRecords.length === 0}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{L('Реестр на возврат (Excel)', 'Реестр на возврат (Excel)')}</span>
+                      </button>
                     </div>
                   </div>
+
+                  {/* Forecast KPI Strip */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800">
+                      <div className="text-[10.5px] text-slate-500">{L('Aktif Toplam İade Potansiyeli', 'Общий потенциал (активные)')}</div>
+                      <div className="text-base font-mono font-bold text-slate-900 dark:text-white mt-0.5">
+                        {fmtRub(summary.vozvratForecast?.activeEligibleRub || 0)}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{summary.vozvratForecast?.activeEligibleCount || 0} {L('aktif çalışan', 'акт. сотр.')}</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800">
+                      <div className="text-[10.5px] text-emerald-700 dark:text-emerald-300">{L('Kalan Bordrodan Mahsup Edilebilir', 'Зачтётся в оставшихся месяцах')}</div>
+                      <div className="text-base font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        {fmtRub(summary.vozvratForecast?.payrollAbsorbableRub || 0)}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{L('Aylık ort. НДФЛ tahmini', 'Прогноз по среднему НДФЛ')}</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-700">
+                      <div className="text-[10.5px] text-rose-700 dark:text-rose-300 font-semibold">{L('KESİN Возврат Gerekli (ст. 231)', 'ОБЯЗАТЕЛЬНЫЙ ВОЗВРАТ (ст. 231)')}</div>
+                      <div className="text-base font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">
+                        {fmtRub(summary.vozvratForecast?.guaranteedVozvratRub || 0)}
+                      </div>
+                      <div className="text-[10px] text-rose-700/80 dark:text-rose-300/80">
+                        {summary.vozvratForecast?.guaranteedVozvratCount || 0} {L('kişi — dilekçe ile iade şart', 'чел. — оформить возврат')}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-700">
+                      <div className="text-[10.5px] text-slate-600 dark:text-slate-300">{L('Çıkışlı — Geri Alınamaz (Plan Dışı)', 'Уволены — возврат невозможен')}</div>
+                      <div className="text-base font-mono font-bold text-fuchsia-600 dark:text-fuchsia-400 mt-0.5">
+                        {fmtRub(summary.vozvratForecast?.dismissedLostRub || 0)}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{summary.vozvratForecast?.dismissedLostCount || 0} {L('çıkışlı (3-НДФЛ)', 'уволенных (только 3-НДФЛ)')}</div>
+                    </div>
+                  </div>
+
+                  {/* Official 4-Step 2026 FNS / ЕНС / 6-НДФЛ Procedure */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-[11px]">
                     <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
-                      <strong className="text-indigo-700 dark:text-indigo-300">1. Bildirim (10 iş günü)</strong>
-                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">İşveren, fazla kesilen НДФЛ tutarını çalışana yazılı bildirir.</p>
+                      <strong className="text-indigo-700 dark:text-indigo-300">{L('1. Yazılı Bildirim (10 iş günü)', '1. Уведомление работника (10 дней)')}</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">
+                        {L(
+                          'İşveren п. 1 ст. 231 НК РФ gereği fazla kesilen НДФЛ tutarını 10 iş günü içinde çalışana yazılı bildirir.',
+                          'Работодатель письменно уведомляет сотрудника об излишне удержанном НДФЛ в течение 10 рабочих дней (п. 1 ст. 231 НК РФ).'
+                        )}
+                      </p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
-                      <strong className="text-indigo-700 dark:text-indigo-300">2. Dilekçe + Banka IBAN</strong>
-                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">Çalışan <em>Заявление на возврат НДФЛ</em> ve banka hesap bilgilerini verir (nakit yasak).</p>
+                      <strong className="text-indigo-700 dark:text-indigo-300">{L('2. Dilekçe + Banka Hesabı', '2. Заявление + реквизиты банка')}</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">
+                        {L(
+                          'Çalışan Заявление на возврат НДФЛ + banka hesap (р/с, БИК) bilgilerini verir. Nakit ödeme kesinlikle yasaktır.',
+                          'Работник подаёт заявление на возврат НДФЛ с банковскими реквизитами (наличными возвращать запрещено).'
+                        )}
+                      </p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
-                      <strong className="text-indigo-700 dark:text-indigo-300">3. İade &amp; ЕНС Mahsubu</strong>
-                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">İşveren 3 ay içinde banka hesabına öder; diğer çalışanların НДФЛ&apos;sinden düşer veya İFNS&apos;den iade alır.</p>
+                      <strong className="text-indigo-700 dark:text-indigo-300">{L('3. 3 Ay İçinde İade & ЕНС (КНД 1112542)', '3. Возврат за 3 мес. и ЕНС (КНД 1112542)')}</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">
+                        {L(
+                          '1C\'de «Перерасчет НДФЛ» + «Возврат НДФЛ» yapılır; çalışanın hesabına ödenir, şirketin diğer НДФЛ ödemelerinden düşülür veya ЕНС fazlalığı КНД 1112542 ile İFNS\'den istenir.',
+                          'В 1С проводятся «Перерасчёт НДФЛ» и «Возврат НДФЛ», деньги перечисляются на счёт работника за счёт текущих удержаний НДФЛ или возвращаются с ЕНС по форме КНД 1112542.'
+                        )}
+                      </p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-800/60">
-                      <strong className="text-indigo-700 dark:text-indigo-300">4. 6-НДФЛ &amp; Çıkışlılar</strong>
-                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">6-НДФЛ (satır 190)&apos;a işlenir. Ulaşılamayan çıkışlılar yıl bitiminde İFNS&apos;ye 3-НДФЛ ile başvurabilir.</p>
+                      <strong className="text-indigo-700 dark:text-indigo-300">{L('4. 6-НДФЛ (Satır 030 & 190)', '4. Отражение в 6-НДФЛ (стр. 030 и 190)')}</strong>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">
+                        {L(
+                          'İade yapılan çeyrekte 6-НДФЛ Bölüm 1 (satır 030–036) ve Bölüm 2 (satır 190)\'da bildirilir; satır 160 azaltılmaz, tutar satır 180\'den 190\'a taşınır.',
+                          'Отражается в 6-НДФЛ за квартал возврата: Раздел 1 (стр. 030–036) и Раздел 2 (стр. 190); стр. 160 не уменьшается, сумма переносится из стр. 180 в 190.'
+                        )}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1142,19 +1531,30 @@ export default function PatentNdflView() {
                       type="text"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Sicil, Ad Soyad, Bildirim No, İFNS..."
+                      placeholder={L('Sicil, Ad Soyad, Bildirim No, İFNS...', 'Таб. №, ФИО, № увед., ИФНС...')}
                       className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600 w-60"
                     />
                   </div>
-                  <select
-                    value={activeFilter}
-                    onChange={(e) => setActiveFilter(e.target.value as any)}
-                    className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
-                  >
-                    <option value="all">Tümü (Aktif + Çıkışlı)</option>
-                    <option value="active">Sadece Aktif Çalışanlar</option>
-                    <option value="dismissed">Sadece Çıkışlılar</option>
-                  </select>
+                  {activeTab === 'vozvrat' ? (
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-xl border border-rose-300 dark:border-rose-700 bg-rose-50/50 dark:bg-rose-950/30 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={vozvratOnlyGuaranteed}
+                        onChange={(e) => setVozvratOnlyGuaranteed(e.target.checked)}
+                      />
+                      <span>{L('Sadece Kesin Возврат Gerekli Olanlar', 'Только обязательный возврат (ст. 231)')}</span>
+                    </label>
+                  ) : (
+                    <select
+                      value={activeFilter}
+                      onChange={(e) => setActiveFilter(e.target.value as any)}
+                      className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
+                    >
+                      <option value="all">{L('Tümü (Aktif + Çıkışlı)', 'Все (активные + уволенные)')}</option>
+                      <option value="active">{L('Sadece Aktif Çalışanlar', 'Только активные')}</option>
+                      <option value="dismissed">{L('Sadece Çıkışlılar', 'Только уволенные')}</option>
+                    </select>
+                  )}
                   {activeTab === 'reconciliation' && (
                     <>
                       <select
@@ -1162,23 +1562,25 @@ export default function PatentNdflView() {
                         onChange={(e) => setCauseFilter(e.target.value as any)}
                         className="px-2.5 py-1.5 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700"
                       >
-                        <option value="all">Tüm Kök Nedenler</option>
-                        <option value="NO_NOTIFICATION">Acil: ФНС İzni Yok</option>
-                        <option value="LATE_NOTIFICATION_VOZVRAT">Gecikmiş İzin / Возврат</option>
-                        <option value="LOW_NDFL">НДФЛ Yetersiz (Avans &gt; НДФЛ)</option>
-                        <option value="REGION_CHANGED">Bölge Değişikliği (Plan Dışı)</option>
-                        <option value="FULL_OFFSET">Tam Mahsup (%100)</option>
+                        <option value="all">{L('Tüm Kök Nedenler', 'Все причины')}</option>
+                        <option value="LATE_RECEIPT_ENTRY">{L('B. Fişler 1C\'ye Geç Girilmiş', 'Б. Чеки внесены в 1С поздно')}</option>
+                        <option value="LATE_NOTIFICATION">{L('B. ФНС İzni Geç Alınmış', 'Б. Уведомление получено поздно')}</option>
+                        <option value="NO_NOTIFICATION">{L('B. ФНС İzni Alınmamış', 'Б. Нет уведомления ФНС')}</option>
+                        <option value="DISMISSED_UNRECOVERED">{L('B. Çıkışlı (İade Edilemez)', 'Б. Уволен без возврата')}</option>
+                        <option value="LOW_NDFL">{L('A. НДФЛ Yetersiz (Avans > НДФЛ)', 'А. Недостаточно НДФЛ')}</option>
+                        <option value="REGION_CHANGED">{L('A. Bölge Değişikliği (Plan Dışı)', 'А. Смена региона (вне плана)')}</option>
+                        <option value="FULL_OFFSET">{L('✓ Tam Mahsup (%100)', '✓ Полный зачёт (100%)')}</option>
                       </select>
                       <select
                         value={notifFilter}
                         onChange={(e) => setNotifFilter(e.target.value as any)}
                         className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
                       >
-                        <option value="all">Tüm Kayıtlar</option>
-                        <option value="has_potential">Ek Mahsup Potansiyeli Olanlar</option>
-                        <option value="zero_offset">Avans Var ama Mahsup = 0</option>
-                        <option value="with_notif">ФНС Bildirimi Var</option>
-                        <option value="no_notif">ФНС Bildirimi Yok</option>
+                        <option value="all">{L('Tüm Kayıtlar', 'Все записи')}</option>
+                        <option value="has_potential">{L('Ek Mahsup Potansiyeli Olanlar', 'С потенциалом дозачёта')}</option>
+                        <option value="zero_offset">{L('Avans Var ama Mahsup = 0', 'Есть аванс, но зачёт = 0')}</option>
+                        <option value="with_notif">{L('ФНС Bildirimi Var', 'Есть уведомление ФНС')}</option>
+                        <option value="no_notif">{L('ФНС Bildirimi Yok', 'Нет уведомления ФНС')}</option>
                       </select>
                     </>
                   )}
@@ -1202,20 +1604,20 @@ export default function PatentNdflView() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700 max-h-[520px] overflow-y-auto">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700 max-h-[540px] overflow-y-auto">
                 <table className="w-full text-left text-xs whitespace-nowrap">
                   <thead className="bg-slate-50 dark:bg-[#0D192E] text-[11px] text-slate-600 dark:text-slate-300 sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700">
                     <tr>
-                      <th className="py-2.5 px-2.5">Sicil / Tabel</th>
-                      <th className="py-2.5 px-2.5">Ad Soyad (ФИО)</th>
-                      <th className="py-2.5 px-2.5">Durum</th>
-                      <th className="py-2.5 px-2.5">ФНС Bildirim / Başvuru</th>
-                      <th className="py-2.5 px-2.5 text-right">Patent Avansı</th>
-                      <th className="py-2.5 px-2.5 text-right">Mahsup Edilen</th>
-                      <th className="py-2.5 px-2.5 text-right">Kalan Avans</th>
-                      <th className="py-2.5 px-2.5 text-right">Ek Potansiyel</th>
-                      <th className="py-2.5 px-2.5">Eksik Mahsup Ayları</th>
-                      <th className="py-2.5 px-2.5">Kök Neden / Plan Durumu</th>
+                      <th className="py-2.5 px-2.5">{L('Sicil / Tabel', 'Таб. №')}</th>
+                      <th className="py-2.5 px-2.5">{L('Ad Soyad (ФИО)', 'ФИО')}</th>
+                      <th className="py-2.5 px-2.5">{L('İşe Giriş / Çıkış', 'Приём / Увольнение')}</th>
+                      <th className="py-2.5 px-2.5">{L('ФНС Bildirim', 'Уведомление ФНС')}</th>
+                      <th className="py-2.5 px-2.5 text-right">{L('Patent Avansı', 'Аванс патент')}</th>
+                      <th className="py-2.5 px-2.5 text-right">{L('Mahsup Edilen', 'Зачтено')}</th>
+                      <th className="py-2.5 px-2.5 text-right">{activeTab === 'vozvrat' ? L('Ort. НДФЛ / Ay', 'Средн. НДФЛ/мес') : L('Kalan Avans', 'Остаток')}</th>
+                      <th className="py-2.5 px-2.5 text-right">{activeTab === 'vozvrat' ? L('Kesin Возврат', 'Обяз. возврат') : L('Ek Potansiyel', 'Потенциал')}</th>
+                      <th className="py-2.5 px-2.5">{L('Eksik Mahsup Ayları', 'Месяцы недозачёта')}</th>
+                      <th className="py-2.5 px-2.5">{L('Kök Neden / Plan', 'Причина / Статус')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -1249,15 +1651,23 @@ export default function PatentNdflView() {
                           </div>
                         </td>
                         <td className="py-2 px-2.5">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] border ${
-                              r.is_active
-                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                            }`}
-                          >
-                            {r.is_active ? 'Aktif' : 'Çıkışlı'}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] border w-fit ${
+                                r.is_active
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                                  : 'bg-fuchsia-50 dark:bg-fuchsia-950/60 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-300 dark:border-fuchsia-700'
+                              }`}
+                            >
+                              {r.is_active ? L('Aktif', 'Активен') : L('Çıkışlı', 'Уволен')}
+                            </span>
+                            {(r.hire_date || r.exit_date) && (
+                              <span className="text-[9.5px] font-mono text-slate-500">
+                                {r.hire_date ? `${L('Giriş', 'Приём')}: ${r.hire_date}` : ''}
+                                {r.exit_date ? ` · ${L('Çıkış', 'Увол.')}: ${r.exit_date}` : ''}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2 px-2.5">
                           {r.has_notification ? (
@@ -1284,10 +1694,16 @@ export default function PatentNdflView() {
                           {fmtRub(r.patent_offset_used)}
                         </td>
                         <td className="py-2 px-2.5 text-right font-mono text-amber-600 dark:text-amber-400">
-                          {fmtRub(r.patent_advance_balance)}
+                          {activeTab === 'vozvrat' ? fmtRub(r.avg_monthly_ndfl || 0) : fmtRub(r.patent_advance_balance)}
                         </td>
                         <td className="py-2 px-2.5 text-right font-mono font-semibold text-indigo-600 dark:text-indigo-400">
-                          {fmtRub(r.additional_offset_potential)}
+                          {activeTab === 'vozvrat' ? (
+                            <span className={Number(r.guaranteed_vozvrat || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}>
+                              {fmtRub(r.guaranteed_vozvrat || 0)}
+                            </span>
+                          ) : (
+                            fmtRub(r.additional_offset_potential)
+                          )}
                         </td>
                         <td className="py-2 px-2.5">
                           {missingMonths.length > 0 ? (
@@ -1317,8 +1733,8 @@ export default function PatentNdflView() {
                         </td>
                         <td className="py-2 px-2.5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-1.5">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`} title={cMeta.hint}>
-                              {cMeta.short}
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`} title={isRu ? cMeta.hintRu : cMeta.hint}>
+                              {isRu ? cMeta.shortRu : cMeta.short}
                             </span>
                             <button
                               type="button"
@@ -1412,14 +1828,14 @@ export default function PatentNdflView() {
                                     <table className="w-full text-left text-[11px] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
                                       <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
                                         <tr>
-                                          <th className="py-1.5 px-2.5">Ay ({taxYear})</th>
-                                          <th className="py-1.5 px-2.5 text-right text-sky-700 dark:text-sky-300">1C Fiş Girişi (Tarih)</th>
-                                          <th className="py-1.5 px-2.5 text-right">Aylık Patent</th>
-                                          <th className="py-1.5 px-2.5 text-right">Hesaplanan НДФЛ</th>
-                                          <th className="py-1.5 px-2.5 text-right text-emerald-600">Mahsup Edilen</th>
-                                          <th className="py-1.5 px-2.5 text-right">Kesilen НДФЛ</th>
-                                          <th className="py-1.5 px-2.5 text-right text-amber-600">Aylık Eksik Mahsup</th>
-                                          <th className="py-1.5 px-2.5">Aylık Analiz</th>
+                                          <th className="py-1.5 px-2.5">{L(`Ay (${taxYear})`, `Месяц (${taxYear})`)}</th>
+                                          <th className="py-1.5 px-2.5 text-right text-sky-700 dark:text-sky-300">{L('1C Fiş Girişi (Tarih)', 'Ввод чеков в 1С (дата)')}</th>
+                                          <th className="py-1.5 px-2.5 text-right">{L('Aylık Patent', 'Патент/мес')}</th>
+                                          <th className="py-1.5 px-2.5 text-right">{L('Hesaplanan НДФЛ', 'Начислено НДФЛ')}</th>
+                                          <th className="py-1.5 px-2.5 text-right text-emerald-600">{L('Mahsup Edilen', 'Зачтено')}</th>
+                                          <th className="py-1.5 px-2.5 text-right">{L('Kesilen НДФЛ', 'Удержано НДФЛ')}</th>
+                                          <th className="py-1.5 px-2.5 text-right text-amber-600">{L('Aylık Eksik Mahsup', 'Недозачёт/мес')}</th>
+                                          <th className="py-1.5 px-2.5">{L('Aylık Analiz', 'Анализ по месяцу')}</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800">
@@ -1507,7 +1923,7 @@ export default function PatentNdflView() {
                                                 {em.unoffset_gap > 0 ? fmtRub(em.unoffset_gap) : '—'}
                                               </td>
                                               <td className={`py-1.5 px-2.5 text-[10.5px] ${noteCls}`}>
-                                                {em.analysis_note || '—'}
+                                                {(isRu ? em.analysis_note_ru : em.analysis_note) || '—'}
                                               </td>
                                             </tr>
                                           );
@@ -1627,10 +2043,13 @@ export default function PatentNdflView() {
               <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-700/70 space-y-3">
                 <h3 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <Globe className="w-4 h-4 text-indigo-500" />
-                  <span>1C ZUP Canlı OData Bağlantısı (StandardODATA)</span>
+                  <span>{L('1C ZUP Canlı OData Bağlantısı (StandardODATA)', 'Подключение 1С:ЗУП OData (StandardODATA)')}</span>
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  1C:ЗУП salt-okunur (read-only) OData erişimi tanımlandığında patent avansları, НДФЛ mahsupları ve ФНС bildirimleri tek tıkla otomatik çekilir.
+                  {L(
+                    '1C:ЗУП salt-okunur (read-only) OData erişimi tanımlandığında patent avansları, fişler, işe giriş/çıkış tarihleri, НДФЛ mahsupları ve ФНС bildirimleri tek tıkla otomatik çekilir.',
+                    'При подключении 1С:ЗУП OData (только чтение) авансы по патентам, чеки, даты приёма/увольнения, зачёты НДФЛ и уведомления ФНС загружаются автоматически в 1 клик.'
+                  )}
                 </p>
                 <div className="space-y-2.5">
                   <div>
@@ -1645,7 +2064,7 @@ export default function PatentNdflView() {
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Kullanıcı Adı</label>
+                      <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">{L('Kullanıcı Adı', 'Логин 1С')}</label>
                       <input
                         type="text"
                         value={odataUser}
@@ -1654,7 +2073,7 @@ export default function PatentNdflView() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Şifre</label>
+                      <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">{L('Şifre', 'Пароль')}</label>
                       <input
                         type="password"
                         value={odataPass}
@@ -1664,17 +2083,17 @@ export default function PatentNdflView() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">Organizasyon Filtresi (Opsiyonel)</label>
+                    <label className="block text-[11px] text-slate-600 dark:text-slate-300 mb-1">{L('Organizasyon Filtresi (Opsiyonel)', 'Организация (опционально)')}</label>
                     <input
                       type="text"
                       value={odataOrg}
                       onChange={(e) => setOdataOrg(e.target.value)}
-                      placeholder="ООО «Пондера Индастри»"
+                      placeholder="ООО «МОНТАЖЭНЕРГОСТРОЙ»"
                       className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600"
                     />
                   </div>
                   {odataLastSync && (
-                    <div className="text-[11px] text-slate-500">Son OData senkronizasyonu: <strong>{odataLastSync}</strong></div>
+                    <div className="text-[11px] text-slate-500">{L('Son OData senkronizasyonu', 'Последняя синхронизация')}: <strong>{odataLastSync}</strong></div>
                   )}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
@@ -1684,7 +2103,7 @@ export default function PatentNdflView() {
                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 cursor-pointer disabled:opacity-50"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      <span>Ayarları Kaydet</span>
+                      <span>{L('Ayarları Kaydet', 'Сохранить настройки')}</span>
                     </button>
                     <button
                       type="button"
@@ -1693,24 +2112,91 @@ export default function PatentNdflView() {
                       className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer disabled:opacity-50"
                     >
                       <Play className="w-3.5 h-3.5" />
-                      <span>1C OData&apos;dan Çek</span>
+                      <span>{L("1C OData'dan Çek", 'Загрузить из 1С OData')}</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
-                <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <BookOpen className="w-4 h-4 text-emerald-500" />
-                  <span>Rusya Patent НДФЛ Mahsup Mevzuatı (НК РФ ст. 227.1)</span>
-                </h3>
-                <ul className="list-disc pl-4 space-y-1.5 text-[11.5px]">
-                  <li><strong>Mahsup Kuralı:</strong> Yıl içinde ödenen sabit patent avansları, çalışanın aynı yıl hesaplanan НДФЛ vergisinden düşülür (ikisinin küçüğü kadar: <code>min(Avans, НДФЛ)</code>).</li>
-                  <li><strong>ФНС Bildirimi (Уведомление):</strong> İşveren mahsup yapabilmek için İFNS&apos;ye başvurur; ФНС&apos;nin yasal yanıt süresi <strong>10 iş günüdür</strong>.</li>
-                  <li><strong>Geriye Dönük Mahsup:</strong> Bildirim yıl ortasında gelse dahi, ФНС açıklamasına göre mahsup sadece bildirim tarihinden değil <strong>yıl başından (Ocak) itibaren</strong> geriye dönük uygulanabilir.</li>
-                  <li><strong>Yıl Geçişli Fişler &amp; КБК Kontrolü:</strong> Aralık ayında 3 aylık ödenen fişler eski/yeni yıl olarak bölünmeli; fişte <strong>КБК ЕНП</strong> yerine patent avans КБК&apos;sı olduğu doğrulanmalıdır.</li>
-                  <li><strong>Yıl Sonu Kuralı (ФНС № БС-4-11/3920@):</strong> Başvuru ilgili yılda yapılıp bildirim ertesi yıl gelirse önceki yıl için düzeltme/iade yapılabilir.</li>
-                </ul>
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-700/70 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
+                  <h3 className="font-semibold text-indigo-950 dark:text-indigo-100 flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-indigo-500" />
+                    <span>
+                      {L(
+                        'МЭС Resmi Mahsup İş Akışı & Zorunlu Dilekçe Kuralları (Ульяна Москалец, 24.11.2026)',
+                        'Официальный регламент зачёта НДФЛ по патенту в ООО «МЭС» (Ульяна Москалец, 24.11.2026)'
+                      )}
+                    </span>
+                  </h3>
+                  <ol className="list-decimal pl-4 space-y-1.5 text-[11.5px]">
+                    <li>
+                      <strong>{L('Çalışandan Dilekçe Alınması (Zorunlu!):', 'Сбор заявления от работника (обязательно!):')}</strong>{' '}
+                      {L(
+                        'Yabancı çalışandan serbest formda «Заявление об уменьшении НДФЛ» alınmalıdır. Muhasebe notu: Bu dilekçeler bugüne kadar muhasebeye hiç iletilmemiştir! 3. sekmeden toplu dilekçe yazdırılıp işe girişte/patent alımında imzalatılmalıdır.',
+                        'Необходимо получить от работника заявление в свободной форме об уменьшении НДФЛ. Примечание бухгалтерии: ранее такие заявления в бухгалтерию ни разу не поступали — используйте печать бланков на вкладке 3.'
+                      )}
+                    </li>
+                    <li>
+                      <strong>{L('İFNS Başvurusu (КНД 1110055 + PDF Liste):', 'Подача заявления в ИФНС (КНД 1110055 + список PDF):')}</strong>{' '}
+                      {L(
+                        'İşe alınan patentli çalışanların listesiyle İFNS\'ye XML başvuru gönderilir (3. sekmeden tek tıkla üretilir).',
+                        'В ИФНС направляется XML-заявление КНД 1110055 со списком принятых сотрудников (формируется в 1 клик на вкладке 3).'
+                      )}
+                    </li>
+                    <li>
+                      <strong>{L('ФНС Bildiriminin Alınması (Уведомление — 10 iş günü):', 'Получение Уведомления от ФНС (срок — 10 рабочих дней):')}</strong>{' '}
+                      {L(
+                        'Vergi dairesi yasal olarak 10 iş günü içinde bildirim göndermelidir (bazen gecikebilir). Gelen PDF 3. sekmeden sisteme otomatik okutulur.',
+                        'Налоговая инспекция обязана направить уведомление в течение 10 рабочих дней (возможны задержки). Полученный PDF загружается на вкладке 3.'
+                      )}
+                    </li>
+                    <li>
+                      <strong>{L('Ödeme Fişlerinin Her Ay Düzenli 1C\'ye Girilmesi:', 'Ежемесячный своевременный ввод чеков в 1С:ЗУП:')}</strong>{' '}
+                      {L(
+                        'Fiş taramaları ve listeleri her ay düzenli iletilip 1C\'ye (Авансовый платеж по НДФЛ) zamanında işlenmelidir. Düzensiz gelen listeler yüzünden fişler aylarca geç girilmekte ve o aylarda НДФЛ mahsup edilemeden kesilmektedir.',
+                        'Чеки и списки оплат должны передаваться регулярно каждый месяц для своевременного ввода в 1С. Задержки с вводом чеков приводят к удержанию НДФЛ без зачёта и необходимости возврата в конце года.'
+                      )}
+                    </li>
+                  </ol>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
+                  <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4 text-emerald-500" />
+                    <span>{L('Rusya Patent НДФЛ Mahsup Mevzuatı (НК РФ ст. 227.1 ve ст. 231)', 'Законодательство РФ по зачёту и возврату НДФЛ (ст. 227.1 и ст. 231 НК РФ)')}</span>
+                  </h3>
+                  <ul className="list-disc pl-4 space-y-1.5 text-[11.5px]">
+                    <li>
+                      <strong>{L('Mahsup Kuralı:', 'Правило зачёта:')}</strong>{' '}
+                      {L(
+                        'Yıl içinde ödenen sabit patent avansları, çalışanın aynı yıl hesaplanan НДФЛ vergisinden düşülür (min(Avans, НДФЛ)). НДФЛ\'yi aşan avans iade edilmez (п. 7 ст. 227.1).',
+                        'Фиксированные авансы по патенту уменьшают НДФЛ за тот же налоговый период (min(Аванс, НДФЛ)). Превышение аванса над НДФЛ не возвращается (п. 7 ст. 227.1 НК РФ).'
+                      )}
+                    </li>
+                    <li>
+                      <strong>{L('Geriye Dönük Mahsup:', 'Ретроспективный зачёт:')}</strong>{' '}
+                      {L(
+                        'Уведомление ФНС yıl ortasında gelse dahi mahsup sadece bildirim tarihinden değil yıl başından (Ocak) itibaren geriye dönük uygulanır.',
+                        'Даже если уведомление получено в середине года, зачёт применяется с начала налогового периода (с января).'
+                      )}
+                    </li>
+                    <li>
+                      <strong>{L('Yıl Geçişli Fişler & Bölge Kuralı:', 'Переходящие чеки и смена региона:')}</strong>{' '}
+                      {L(
+                        'Aralık ayında 3 aylık ödenen fişler eski/yeni yıl olarak bölünür. Bir çalışana yılda sadece 1 bölge için Уведомление verilir.',
+                        'Чеки, оплаченные в декабре за несколько месяцев, распределяются по годам. В течение года уведомление выдаётся только по одному региону.'
+                      )}
+                    </li>
+                    <li>
+                      <strong>{L('Yıl Sonu İade (ст. 231 НК РФ):', 'Возврат в конце года (ст. 231 НК РФ):')}</strong>{' '}
+                      {L(
+                        'Kalan aylarda mahsup edilemeyen tutarlar çalışanın banka hesabına iade edilir, 6-НДФЛ (satır 030 & 190)\'da gösterilir ve ЕНС / КНД 1112542 üzerinden kapatılır.',
+                        'Незачтённый к концу года НДФЛ возвращается на банковский счёт работника, отражается в 6-НДФЛ (стр. 030 и 190) и зачитывается/возвращается через ЕНС (КНД 1112542).'
+                      )}
+                    </li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}

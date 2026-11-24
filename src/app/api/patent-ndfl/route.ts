@@ -45,7 +45,12 @@ export async function GET(request: Request) {
       .all(taxYear) as any[];
 
     const MONTH_SHORT_TR = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+    const MONTH_SHORT_RU = ['', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
     const fmtRubInline = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
+    const nowDate = new Date();
+    const currentYear = nowDate.getFullYear();
+    const currentMonth = nowDate.getMonth() + 1;
+    const remainingMonthsInYear = taxYear === currentYear ? Math.max(0, 12 - currentMonth) : taxYear < currentYear ? 0 : 12;
     const parseNotifMonth = (rawDate: string): number => {
       const s = String(rawDate || '').trim();
       const iso = /^\d{4}-(\d{2})/.exec(s);
@@ -89,14 +94,14 @@ export async function GET(request: Request) {
       missing_employees: 0,
     }));
 
-    // Enrich with Patent dates & payment day from Pondera personnel DB if matched
+    // Enrich with Patent dates, payment day, and hire/exit dates from Pondera personnel DB if matched
     const patentInfoByNorm = new Map<
       string,
-      { patent_no: string; patent_start: string; patent_end: string; payment_day: number }
+      { patent_no: string; patent_start: string; patent_end: string; payment_day: number; hire_date: string; exit_date: string }
     >();
     try {
       const pRows = db
-        .prepare('SELECT sicil_no, ad_soyad, tam_adi_kiril, patent_bitis_tarihi, all_data_json FROM personnel')
+        .prepare('SELECT sicil_no, ad_soyad, tam_adi_kiril, ise_giris_tarihi, isten_cikis_tarihi, patent_bitis_tarihi, all_data_json FROM personnel')
         .all() as any[];
       const extractDay = (dt: string): number => {
         const s = String(dt || '').trim();
@@ -110,6 +115,8 @@ export async function GET(request: Request) {
         let patentNo = '';
         let patentStart = '';
         let patentEnd = String(p.patent_bitis_tarihi || '').trim();
+        const pHire = String(p.ise_giris_tarihi || '').trim();
+        const pExit = String(p.isten_cikis_tarihi || '').trim();
         if (p.all_data_json) {
           try {
             const j = JSON.parse(p.all_data_json);
@@ -118,9 +125,16 @@ export async function GET(request: Request) {
             if (!patentEnd) patentEnd = String(j['Patent Bitiş Tarihi'] || '').trim();
           } catch {}
         }
-        if (!patentNo && !patentStart && !patentEnd) continue;
+        if (!patentNo && !patentStart && !patentEnd && !pHire && !pExit) continue;
         const payDay = extractDay(patentStart) || extractDay(patentEnd);
-        const info = { patent_no: patentNo, patent_start: patentStart, patent_end: patentEnd, payment_day: payDay };
+        const info = {
+          patent_no: patentNo,
+          patent_start: patentStart,
+          patent_end: patentEnd,
+          payment_day: payDay,
+          hire_date: pHire,
+          exit_date: pExit,
+        };
         const normKey = (v: any) => String(v || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
         if (p.tam_adi_kiril) patentInfoByNorm.set(normKey(p.tam_adi_kiril), info);
         if (p.ad_soyad) patentInfoByNorm.set(normKey(p.ad_soyad), info);
@@ -164,6 +178,7 @@ export async function GET(request: Request) {
       const months: Array<{
         month: number;
         label: string;
+        label_ru: string;
         receipt_1c_entered: number;
         receipt_1c_items: Array<{ number: string; date: string; opDate: string; amount: number; comment: string }>;
         patent_paid: number;
@@ -175,7 +190,10 @@ export async function GET(request: Request) {
         is_after_notif: boolean;
         status_code: string;
         analysis_note: string;
+        analysis_note_ru: string;
       }> = [];
+
+      let hasLate1cEntry = false;
 
       if ((mp && mp.size > 0) || receiptsByEntryMonth.size > 0) {
         let cumOffsetUsed = 0;
@@ -202,7 +220,6 @@ export async function GET(request: Request) {
           const maxOffsetable = Math.min(ndflCalc, remainingAdvanceBefore);
           const unoffsetGap = ndflCalc > 0 && offsetUsed < maxOffsetable ? Math.round(maxOffsetable - offsetUsed) : 0;
 
-          // Check if a future month has 1C receipt entries that explain why this month had 0 entered balance
           if (firstLateEntryMonth === 0) {
             for (const em of Array.from(receiptsByEntryMonth.keys()).sort((a, b) => a - b)) {
               if (em > mNum) {
@@ -215,59 +232,74 @@ export async function GET(request: Request) {
             .sort((a, b) => a - b)
             .find((em) => em > mNum);
           const isLate1cEntry = receipts.length > 0 && unoffsetGap > 0 && enteredAvailBefore < ndflCalc && Boolean(nextEntryMonth);
+          if (isAfterNotif && isLate1cEntry) hasLate1cEntry = true;
 
           let statusCode = 'no_ndfl';
           let analysisNote = 'НДФЛ yok';
+          let analysisNoteRu = 'Нет НДФЛ';
 
           if (!hasNotif) {
             if (ndflCalc > 0 && offsetUsed === 0) {
               statusCode = 'no_notif';
               analysisNote = `ФНС izni yok — ${fmtRubInline(ndflCalc)} НДФЛ kesildi, mahsup yapılamadı`;
+              analysisNoteRu = `Нет уведомления ФНС — удержано ${fmtRubInline(ndflCalc)} НДФЛ, зачёт невозможен`;
             } else if (patentPaid > 0 && ndflCalc === 0) {
               statusCode = 'patent_only';
               analysisNote = `Patent ödendi (${fmtRubInline(patentPaid)}), НДФЛ yok · ФНС izni eksik`;
+              analysisNoteRu = `Патент оплачен (${fmtRubInline(patentPaid)}), НДФЛ нет · нет уведомления ФНС`;
             } else {
               statusCode = 'no_ndfl';
               analysisNote = 'НДФЛ yok · ФНС izni eksik';
+              analysisNoteRu = 'Нет НДФЛ · нет уведомления ФНС';
             }
           } else if (isBeforeNotif) {
             if (ndflCalc > 0 && offsetUsed === 0) {
               statusCode = 'pre_notif_missed';
               analysisNote = `İzin öncesi — ${fmtRubInline(ndflCalc)} НДФЛ kesildi (izin ${MONTH_SHORT_TR[notifMonth]}'da alındı → geriye dönük mahsup/iade)`;
+              analysisNoteRu = `До уведомления — удержано ${fmtRubInline(ndflCalc)} НДФЛ (увед. получено в ${MONTH_SHORT_RU[notifMonth]} → перерасчёт/возврат)`;
             } else if (offsetUsed > 0 && offsetUsed >= ndflCalc) {
               statusCode = 'full_offset';
               analysisNote = `✓ Geriye dönük tam mahsup edildi (${fmtRubInline(offsetUsed)})`;
+              analysisNoteRu = `✓ Полный ретро-зачёт (${fmtRubInline(offsetUsed)})`;
             } else if (offsetUsed > 0) {
               statusCode = 'partial_missed';
               analysisNote = `İzin öncesi kısmi mahsup (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — ${fmtRubInline(ndflCalc - offsetUsed)} kesildi`;
+              analysisNoteRu = `Частичный зачёт до увед. (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — удержано ${fmtRubInline(ndflCalc - offsetUsed)}`;
             } else if (patentPaid > 0) {
               statusCode = 'patent_only';
               analysisNote = `İzin öncesi — Patent ödendi (${fmtRubInline(patentPaid)}), bu ay НДФЛ yok`;
+              analysisNoteRu = `До уведомления — патент оплачен (${fmtRubInline(patentPaid)}), НДФЛ нет`;
             } else {
               statusCode = 'no_ndfl';
               analysisNote = 'İzin öncesi — НДФЛ yok';
+              analysisNoteRu = 'До уведомления — нет НДФЛ';
             }
           } else {
-            // Notification month and after (mahsup eligible period)
             if (offsetUsed > 0 && ndflCalc === 0) {
               statusCode = 'retro_offset';
               analysisNote = `✓ Geçmiş ay mahsubu uygulandı (+${fmtRubInline(offsetUsed)})`;
+              analysisNoteRu = `✓ Применён зачёт за прошлые месяцы (+${fmtRubInline(offsetUsed)})`;
             } else if (offsetUsed > 0 && offsetUsed > ndflCalc) {
               statusCode = 'retro_offset';
               analysisNote = `✓ НДФЛ kadar (${fmtRubInline(ndflCalc)}) + geçmiş ay mahsubu (+${fmtRubInline(offsetUsed - ndflCalc)})`;
+              analysisNoteRu = `✓ Зачтён НДФЛ (${fmtRubInline(ndflCalc)}) + прошлые месяцы (+${fmtRubInline(offsetUsed - ndflCalc)})`;
             } else if (offsetUsed > 0 && offsetUsed >= ndflCalc) {
               statusCode = 'full_offset';
               analysisNote = `✓ НДФЛ kadar tam mahsup edildi (${fmtRubInline(offsetUsed)})`;
+              analysisNoteRu = `✓ Полный зачёт в пределах НДФЛ (${fmtRubInline(offsetUsed)})`;
             } else if (offsetUsed > 0 && offsetUsed < ndflCalc) {
               if (unoffsetGap === 0) {
                 statusCode = 'patent_cap';
                 analysisNote = `Patent avansı kadar mahsup edildi (${fmtRubInline(offsetUsed)}), kalan ${fmtRubInline(ndflCalc - offsetUsed)} НДФЛ kesildi`;
+                analysisNoteRu = `Зачтён остаток аванса (${fmtRubInline(offsetUsed)}), удержано ${fmtRubInline(ndflCalc - offsetUsed)} НДФЛ`;
               } else if (isLate1cEntry && nextEntryMonth) {
                 statusCode = 'partial_missed';
                 analysisNote = `⚠ Kısmi mahsup (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — fişler 1C'ye ${MONTH_SHORT_TR[nextEntryMonth]}'da geç girildi (${fmtRubInline(unoffsetGap)} eksik)`;
+                analysisNoteRu = `⚠ Частичный зачёт (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — чеки внесены в 1С поздно (${MONTH_SHORT_RU[nextEntryMonth]}), недозачёт ${fmtRubInline(unoffsetGap)}`;
               } else {
                 statusCode = 'partial_missed';
                 analysisNote = `⚠ Kısmi mahsup (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — ${fmtRubInline(unoffsetGap)} eksik mahsup`;
+                analysisNoteRu = `⚠ Частичный зачёт (${fmtRubInline(offsetUsed)} / ${fmtRubInline(ndflCalc)}) — недозачёт ${fmtRubInline(unoffsetGap)}`;
               }
             } else if (offsetUsed === 0 && ndflCalc > 0) {
               if (unoffsetGap > 0) {
@@ -276,18 +308,27 @@ export async function GET(request: Request) {
                   isLate1cEntry && nextEntryMonth
                     ? `⚠ Mahsup YAPILMADI (Fiş 1C'ye ${MONTH_SHORT_TR[nextEntryMonth]}'da geç girildi) — ${fmtRubInline(ndflCalc)} НДФЛ kesildi`
                     : `⚠ Mahsup YAPILMADI! İzin & 1C avansı varken ${fmtRubInline(ndflCalc)} НДФЛ kesildi`;
+                analysisNoteRu =
+                  isLate1cEntry && nextEntryMonth
+                    ? `⚠ Зачёт НЕ выполнен (чек внесён в 1С поздно, в ${MONTH_SHORT_RU[nextEntryMonth]}) — удержано ${fmtRubInline(ndflCalc)} НДФЛ`
+                    : `⚠ Зачёт НЕ выполнен при наличии уведомления и аванса — удержано ${fmtRubInline(ndflCalc)} НДФЛ`;
               } else {
                 statusCode = 'advance_exhausted';
                 analysisNote = `Patent avansı tükendi — ${fmtRubInline(ndflCalc)} НДФЛ kesildi`;
+                analysisNoteRu = `Аванс по патенту исчерпан — удержано ${fmtRubInline(ndflCalc)} НДФЛ`;
               }
             } else if (patentPaid > 0) {
               statusCode = 'patent_only';
               analysisNote = isNotifMonth
                 ? `Уведомление alındı · Patent ödendi (${fmtRubInline(patentPaid)}), bu ay НДФЛ yok`
                 : `Patent ödendi (${fmtRubInline(patentPaid)}), bu ay НДФЛ yok`;
+              analysisNoteRu = isNotifMonth
+                ? `Уведомление получено · патент оплачен (${fmtRubInline(patentPaid)}), НДФЛ нет`
+                : `Патент оплачен (${fmtRubInline(patentPaid)}), НДФЛ нет`;
             } else {
               statusCode = 'no_ndfl';
               analysisNote = isNotifMonth ? 'Уведомление bu ay alındı — bu ay НДФЛ yok' : 'НДФЛ yok';
+              analysisNoteRu = isNotifMonth ? 'Уведомление получено в этом месяце — НДФЛ нет' : 'Нет НДФЛ';
             }
           }
 
@@ -296,6 +337,7 @@ export async function GET(request: Request) {
           months.push({
             month: mNum,
             label: MONTH_SHORT_TR[mNum],
+            label_ru: MONTH_SHORT_RU[mNum],
             receipt_1c_entered: receipt1cEntered,
             receipt_1c_items: receipt1cItems,
             patent_paid: patentPaid,
@@ -307,6 +349,7 @@ export async function GET(request: Request) {
             is_after_notif: isAfterNotif,
             status_code: statusCode,
             analysis_note: analysisNote,
+            analysis_note_ru: analysisNoteRu,
           });
 
           const cm = companyMonths[mNum - 1];
@@ -323,23 +366,51 @@ export async function GET(request: Request) {
         .map((m) => ({
           month: m.month,
           label: m.label,
+          label_ru: m.label_ru,
           gap: m.unoffset_gap,
           phase: m.is_after_notif ? 'post_notif' : hasNotif ? 'pre_notif' : 'no_notif',
         }));
 
       const missingReceiptMonths = months
         .filter((m) => m.ndfl_calc > 0 && m.patent_paid === 0)
-        .map((m) => ({ month: m.month, label: m.label }));
+        .map((m) => ({ month: m.month, label: m.label, label_ru: m.label_ru }));
+
+      const pInfo = patentInfoByNorm.get(nn) || null;
+      const hireDate = String(r.hire_date || pInfo?.hire_date || '').trim();
+      const exitDate = String(r.exit_date || pInfo?.exit_date || '').trim();
+      const effectiveActive = exitDate ? 0 : Number(r.is_active ?? 1);
+
+      // Year-End Vozvrat Forecast based on employee's monthly average NDFL
+      const ndflActiveMonths = months.filter((m) => m.ndfl_calc > 0).length;
+      const avgMonthlyNdfl = ndflActiveMonths > 0 ? Math.round(Number(r.ndfl_before_offset || 0) / ndflActiveMonths) : 0;
+      const expectedRemainingNdfl = effectiveActive ? avgMonthlyNdfl * remainingMonthsInYear : 0;
+      const potNum = Number(r.additional_offset_potential || 0);
+      const payrollAbsorbable = effectiveActive && potNum > 0 ? Math.min(potNum, expectedRemainingNdfl) : 0;
+      const guaranteedVozvrat = effectiveActive && potNum > 0 ? Math.max(0, potNum - expectedRemainingNdfl) : 0;
+
+      const rootCause = classifyPatentRootCause({
+        ...r,
+        is_active: effectiveActive,
+        has_late_1c_entry: hasLate1cEntry,
+      });
 
       return {
         ...r,
+        is_active: effectiveActive,
+        hire_date: hireDate,
+        exit_date: exitDate,
         notif_month: notifMonth,
-        root_cause: classifyPatentRootCause(r),
+        root_cause: rootCause,
+        has_late_1c_entry: hasLate1cEntry,
+        avg_monthly_ndfl: avgMonthlyNdfl,
+        expected_remaining_ndfl: expectedRemainingNdfl,
+        payroll_absorbable: Math.round(payrollAbsorbable),
+        guaranteed_vozvrat: Math.round(guaranteedVozvrat),
         months,
         missing_months: missingMonths,
         missing_receipt_months: missingReceiptMonths,
         receipts,
-        patent_info: patentInfoByNorm.get(nn) || null,
+        patent_info: pInfo,
       };
     });
 
@@ -360,18 +431,22 @@ export async function GET(request: Request) {
     let withNotifTotal = 0;
     let totalDiscrepancy = 0;
 
-    // Root-cause breakdown (excluding region-changed from actionable offset plan)
+    // 7-category Two-Group Root-Cause breakdown
     const causeCounts = {
       NO_NOTIFICATION: 0,
+      LATE_NOTIFICATION: 0,
+      LATE_RECEIPT_ENTRY: 0,
+      DISMISSED_UNRECOVERED: 0,
       REGION_CHANGED: 0,
-      LATE_NOTIFICATION_VOZVRAT: 0,
       LOW_NDFL: 0,
       FULL_OFFSET: 0,
     };
     const causeRub = {
       NO_NOTIFICATION: 0,
+      LATE_NOTIFICATION: 0,
+      LATE_RECEIPT_ENTRY: 0,
+      DISMISSED_UNRECOVERED: 0,
       REGION_CHANGED: 0,
-      LATE_NOTIFICATION_VOZVRAT: 0,
       LOW_NDFL: 0,
       FULL_OFFSET: 0,
     };
@@ -379,6 +454,9 @@ export async function GET(request: Request) {
     let vozvratActiveCount = 0;
     let vozvratDismissedRub = 0;
     let vozvratDismissedCount = 0;
+    let payrollAbsorbableRub = 0;
+    let guaranteedVozvratRub = 0;
+    let guaranteedVozvratCount = 0;
 
     for (const r of records) {
       const adv = Number(r.patent_advances || 0);
@@ -391,7 +469,6 @@ export async function GET(request: Request) {
 
       if (cause === 'REGION_CHANGED') {
         causeRub.REGION_CHANGED += bal;
-        // Excluded from actionable offset plan
         continue;
       }
 
@@ -400,22 +477,33 @@ export async function GET(request: Request) {
       totalBalance += bal;
       totalPotential += pot;
 
-      if (cause === 'NO_NOTIFICATION') causeRub.NO_NOTIFICATION += Number(r.ndfl_withheld || 0);
-      else if (cause === 'LATE_NOTIFICATION_VOZVRAT') {
-        causeRub.LATE_NOTIFICATION_VOZVRAT += pot;
-        if (r.is_active) {
-          vozvratActiveRub += pot;
-          vozvratActiveCount++;
-        } else {
-          vozvratDismissedRub += pot;
-          vozvratDismissedCount++;
-        }
-      } else if (cause === 'LOW_NDFL') causeRub.LOW_NDFL += bal;
-      else if (cause === 'FULL_OFFSET') causeRub.FULL_OFFSET += used;
+      if (cause === 'NO_NOTIFICATION') {
+        causeRub.NO_NOTIFICATION += Math.max(Number(r.ndfl_withheld || 0), pot);
+      } else if (cause === 'LATE_NOTIFICATION') {
+        causeRub.LATE_NOTIFICATION += pot;
+      } else if (cause === 'LATE_RECEIPT_ENTRY') {
+        causeRub.LATE_RECEIPT_ENTRY += pot;
+      } else if (cause === 'DISMISSED_UNRECOVERED') {
+        causeRub.DISMISSED_UNRECOVERED += pot;
+        vozvratDismissedRub += pot;
+        vozvratDismissedCount++;
+      } else if (cause === 'LOW_NDFL') {
+        causeRub.LOW_NDFL += bal;
+      } else if (cause === 'FULL_OFFSET') {
+        causeRub.FULL_OFFSET += used;
+      }
 
       if (r.is_active && pot > 0) {
         activePotential += pot;
         activePotentialCount++;
+        vozvratActiveRub += pot;
+        vozvratActiveCount++;
+        payrollAbsorbableRub += Number(r.payroll_absorbable || 0);
+        const gv = Number(r.guaranteed_vozvrat || 0);
+        if (gv > 0) {
+          guaranteedVozvratRub += gv;
+          guaranteedVozvratCount++;
+        }
       }
       if (r.has_notification) {
         withNotifTotal++;
@@ -433,6 +521,20 @@ export async function GET(request: Request) {
     }
 
     const odata = getPatentODataConfig(db);
+
+    const groupACount = causeCounts.REGION_CHANGED + causeCounts.LOW_NDFL;
+    const groupARub = Math.round(causeRub.REGION_CHANGED + causeRub.LOW_NDFL);
+    const groupBCount =
+      causeCounts.NO_NOTIFICATION +
+      causeCounts.LATE_NOTIFICATION +
+      causeCounts.LATE_RECEIPT_ENTRY +
+      causeCounts.DISMISSED_UNRECOVERED;
+    const groupBRub = Math.round(
+      causeRub.NO_NOTIFICATION +
+        causeRub.LATE_NOTIFICATION +
+        causeRub.LATE_RECEIPT_ENTRY +
+        causeRub.DISMISSED_UNRECOVERED
+    );
 
     return NextResponse.json({
       success: true,
@@ -465,10 +567,24 @@ export async function GET(request: Request) {
         causeCounts,
         causeRub: {
           NO_NOTIFICATION: Math.round(causeRub.NO_NOTIFICATION),
+          LATE_NOTIFICATION: Math.round(causeRub.LATE_NOTIFICATION),
+          LATE_RECEIPT_ENTRY: Math.round(causeRub.LATE_RECEIPT_ENTRY),
+          DISMISSED_UNRECOVERED: Math.round(causeRub.DISMISSED_UNRECOVERED),
           REGION_CHANGED: Math.round(causeRub.REGION_CHANGED),
-          LATE_NOTIFICATION_VOZVRAT: Math.round(causeRub.LATE_NOTIFICATION_VOZVRAT),
           LOW_NDFL: Math.round(causeRub.LOW_NDFL),
           FULL_OFFSET: Math.round(causeRub.FULL_OFFSET),
+        },
+        groupA: { count: groupACount, rub: groupARub },
+        groupB: { count: groupBCount, rub: groupBRub },
+        vozvratForecast: {
+          remainingMonths: remainingMonthsInYear,
+          activeEligibleCount: vozvratActiveCount,
+          activeEligibleRub: Math.round(vozvratActiveRub),
+          payrollAbsorbableRub: Math.round(payrollAbsorbableRub),
+          guaranteedVozvratCount,
+          guaranteedVozvratRub: Math.round(guaranteedVozvratRub),
+          dismissedLostCount: vozvratDismissedCount,
+          dismissedLostRub: Math.round(vozvratDismissedRub),
         },
         vozvratActiveRub: Math.round(vozvratActiveRub),
         vozvratActiveCount,
