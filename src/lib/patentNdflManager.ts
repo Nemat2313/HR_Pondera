@@ -760,10 +760,14 @@ function stripTrailingLatin(name: string): string {
   return s;
 }
 
-export async function discoverODataNdflEntities(db: DbLike): Promise<{
+export async function discoverODataNdflEntities(
+  db: DbLike,
+  opts?: { entity?: string; filter?: string; pattern?: string }
+): Promise<{
   success: boolean;
   entities: string[];
-  samples: Record<string, string[]>;
+  samples: Record<string, any>;
+  status?: number;
   message?: string;
 }> {
   const cfg = getPatentODataConfig(db);
@@ -773,13 +777,33 @@ export async function discoverODataNdflEntities(db: DbLike): Promise<{
   const auth = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
   const headers = { Authorization: auth, Accept: 'application/json' };
   const base = cfg.odataUrl.replace(/\/+$/, '');
+
+  if (opts?.entity) {
+    const flt = opts.filter ? `&$filter=${encodeURIComponent(opts.filter)}` : '';
+    const url = `${base}/${encodeURIComponent(opts.entity)}?$top=5${flt}&$format=json`;
+    const r = await fetch(url, { headers });
+    const txt = await r.text().catch(() => '');
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(txt);
+    } catch {}
+    return {
+      success: r.ok,
+      status: r.status,
+      entities: [opts.entity],
+      samples: { [opts.entity]: parsed?.value ?? txt.slice(0, 800) },
+      message: r.ok ? undefined : `HTTP ${r.status}`,
+    };
+  }
+
   const svcRes = await fetch(`${base}/?$format=json`, { headers });
   if (!svcRes.ok) {
     return { success: false, entities: [], samples: {}, message: `HTTP ${svcRes.status}` };
   }
   const svcJson: any = await svcRes.json().catch(() => ({}));
   const allNames: string[] = (svcJson?.value || []).map((v: any) => String(v?.name || v?.url || ''));
-  const matching = allNames.filter((n) => /НДФЛ|Аванс|Патент|Уведомлени/i.test(n));
+  const rx = opts?.pattern ? new RegExp(opts.pattern, 'i') : /НДФЛ|Аванс|Патент|Уведомлени/i;
+  const matching = allNames.filter((n) => rx.test(n));
   const samples: Record<string, string[]> = {};
   for (const ent of matching.slice(0, 18)) {
     try {

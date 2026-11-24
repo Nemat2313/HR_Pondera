@@ -27,7 +27,11 @@ export async function GET(request: Request) {
     ensurePatentNdflTables(db);
     const { searchParams } = new URL(request.url);
     if (searchParams.get('action') === 'discover_odata') {
-      const disc = await discoverODataNdflEntities(db);
+      const disc = await discoverODataNdflEntities(db, {
+        entity: searchParams.get('entity') || undefined,
+        filter: searchParams.get('filter') || undefined,
+        pattern: searchParams.get('pattern') || undefined,
+      });
       return NextResponse.json(disc);
     }
     const taxYear = Number(searchParams.get('year')) || 2026;
