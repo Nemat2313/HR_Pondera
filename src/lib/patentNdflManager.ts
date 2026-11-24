@@ -727,6 +727,26 @@ export function buildFnsKnd1110055Xml(
   };
 }
 
+async function fetchODataPaged(
+  base: string,
+  entityPath: string,
+  headers: Record<string, string>,
+  maxPages = 25
+): Promise<any[]> {
+  const all: any[] = [];
+  const sep = entityPath.includes('?') ? '&' : '?';
+  for (let page = 0; page < maxPages; page++) {
+    const url = `${base}/${entityPath}${sep}$top=1000&$skip=${page * 1000}&$format=json`;
+    const res = await fetch(url, { headers }).catch(() => null);
+    if (!res || !res.ok) break;
+    const json: any = await res.json().catch(() => null);
+    const rows = Array.isArray(json?.value) ? json.value : [];
+    all.push(...rows);
+    if (rows.length < 1000) break;
+  }
+  return all;
+}
+
 export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: boolean; synced: number; message: string }> {
   const cfg = getPatentODataConfig(db);
   if (!cfg.odataUrl || !cfg.username || !cfg.password) {
@@ -735,100 +755,240 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
   const auth = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
   const headers = { Authorization: auth, Accept: 'application/json' };
   const base = cfg.odataUrl.replace(/\/+$/, '');
-  const yearStart = `${cfg.taxYear}-01-01T00:00:00`;
+  const year = cfg.taxYear || 2026;
+  const yearStart = `${year}-01-01T00:00:00`;
+  const yearEnd = `${year + 1}-01-01T00:00:00`;
 
   try {
-    // 1. Test OData connectivity via Catalog_Сотрудники (top 1)
-    const testRes = await fetch(`${base}/Catalog_Сотрудники?$top=1&$format=json`, { headers });
-    if (!testRes.ok) {
-      const msg = `1C OData bağlantısı reddedildi (HTTP ${testRes.status}). URL ve yetkileri kontrol edin.`;
+    // 1. Fetch OData service document to verify auth & discover exact 1C:ZUP 3.1 entity names
+    const svcRes = await fetch(`${base}/?$format=json`, { headers });
+    if (!svcRes.ok) {
+      const msg = `1C OData bağlantısı reddedildi (HTTP ${svcRes.status}). URL ve yetkileri kontrol edin.`;
       savePatentODataConfig(db, { lastSyncMessage: msg });
       return { success: false, synced: 0, message: msg };
     }
+    const svcJson: any = await svcRes.json().catch(() => ({}));
+    const entityNames: string[] = (svcJson?.value || []).map((v: any) => String(v?.name || v?.url || ''));
+    const hasEntity = (name: string) => entityNames.includes(name);
+    const findEntity = (re: RegExp) => entityNames.find((n) => re.test(n)) || '';
 
-    // 2. Fetch Patent Advance Payments register + FNS Notifications
-    const [advRes, notifRes, empRes] = await Promise.all([
-      fetch(`${base}/AccumulationRegister_АвансовыеПлатежиПоНДФЛ?$filter=Period ge datetime'${yearStart}'&$format=json`, { headers }).catch(() => null),
-      fetch(`${base}/Document_АвансовыйПлатежПоНДФЛ?$filter=Date ge datetime'${yearStart}'&$format=json`, { headers }).catch(() => null),
-      fetch(`${base}/Catalog_Сотрудники?$select=Ref_Key,Code,Description,ФизическоеЛицо_Key&$format=json`, { headers }).catch(() => null),
-    ]);
+    // 2. Fetch Employees (Catalog_Сотрудники)
+    const empRows = await fetchODataPaged(
+      base,
+      'Catalog_Сотрудники?$select=Ref_Key,Code,Description,ФизическоеЛицо_Key,ВАрхиве',
+      headers,
+      15
+    );
+    const empByFiz = new Map<string, { code: string; name: string; active: boolean }>();
+    const fizByEmpRef = new Map<string, string>();
+    for (const e of empRows) {
+      const fk = String(e.ФизическоеЛицо_Key || '').trim();
+      const ref = String(e.Ref_Key || '').trim();
+      const code = String(e.Code || '').trim();
+      const desc = String(e.Description || '').trim();
+      const active = !Boolean(e.ВАрхиве);
+      if (ref && fk) fizByEmpRef.set(ref, fk);
+      if (!fk || !desc) continue;
+      const prev = empByFiz.get(fk);
+      if (!prev || (active && !prev.active)) {
+        empByFiz.set(fk, {
+          code: prev?.code && prev.code !== code ? `${prev.code}; ${code}` : code,
+          name: desc,
+          active: active || Boolean(prev?.active),
+        });
+      }
+    }
 
-    const empMap = new Map<string, { code: string; name: string }>();
-    if (empRes && empRes.ok) {
-      const empJson: any = await empRes.json().catch(() => ({}));
-      for (const e of empJson?.value || []) {
-        if (e.ФизическоеЛицо_Key) {
-          empMap.set(String(e.ФизическоеЛицо_Key), { code: String(e.Code || ''), name: String(e.Description || '') });
+    type Agg = {
+      adv: number;
+      used: number;
+      ndflCalc: number;
+      ndflWithheld: number;
+      notifNo: string;
+      notifDate: string;
+      ifns: string;
+      appDate: string;
+      appStatus: string;
+    };
+    const byFiz = new Map<string, Agg>();
+    const ensureAgg = (fk: string): Agg => {
+      let cur = byFiz.get(fk);
+      if (!cur) {
+        cur = {
+          adv: 0,
+          used: 0,
+          ndflCalc: 0,
+          ndflWithheld: 0,
+          notifNo: '',
+          notifDate: '',
+          ifns: '',
+          appDate: '',
+          appStatus: '',
+        };
+        byFiz.set(fk, cur);
+      }
+      return cur;
+    };
+
+    // 3. FNS Notifications (InformationRegister_РеквизитыУведомленияИФНСНаЗачетАвансовыхПлатежей)
+    const notifEntity =
+      (hasEntity('InformationRegister_РеквизитыУведомленияИФНСНаЗачетАвансовыхПлатежей')
+        ? 'InformationRegister_РеквизитыУведомленияИФНСНаЗачетАвансовыхПлатежей'
+        : findEntity(/InformationRegister_.*Уведомлени.*Аванс/i)) || '';
+    let notifCount = 0;
+    if (notifEntity) {
+      const nRows = await fetchODataPaged(base, `${notifEntity}?$filter=Год eq ${year}`, headers, 5);
+      for (const row of nRows) {
+        const fk = String(row.ФизическоеЛицо_Key || '').trim();
+        if (!fk) continue;
+        const cur = ensureAgg(fk);
+        cur.notifNo = String(row.НомерУведомления || row.Номер || cur.notifNo || '').trim();
+        const dtRaw = String(row.ДатаУведомления || row.Дата || '');
+        if (dtRaw && !dtRaw.startsWith('0001')) cur.notifDate = dtRaw.slice(0, 10);
+        cur.ifns = String(row.КодНалоговогоОргана || row.КодИФНС || cur.ifns || '').trim();
+        notifCount++;
+      }
+    }
+
+    // 4. FNS Applications (Document_ЗаявлениеОПодтвержденииПраваНаЗачетАвансовПоНДФЛ + _Сотрудники)
+    const appDocEntity = hasEntity('Document_ЗаявлениеОПодтвержденииПраваНаЗачетАвансовПоНДФЛ')
+      ? 'Document_ЗаявлениеОПодтвержденииПраваНаЗачетАвансовПоНДФЛ'
+      : '';
+    const appEmpEntity = hasEntity('Document_ЗаявлениеОПодтвержденииПраваНаЗачетАвансовПоНДФЛ_Сотрудники')
+      ? 'Document_ЗаявлениеОПодтвержденииПраваНаЗачетАвансовПоНДФЛ_Сотрудники'
+      : '';
+    let appCount = 0;
+    if (appDocEntity && appEmpEntity) {
+      const docs = await fetchODataPaged(base, `${appDocEntity}?$filter=НалоговыйПериод eq ${year}`, headers, 2);
+      const docDateByRef = new Map<string, string>();
+      for (const d of docs) {
+        if (d.Ref_Key && !d.DeletionMark) {
+          docDateByRef.set(String(d.Ref_Key), String(d.Date || '').slice(0, 10));
+        }
+      }
+      if (docDateByRef.size > 0) {
+        const appRows = await fetchODataPaged(base, appEmpEntity, headers, 5);
+        for (const r of appRows) {
+          const docDt = docDateByRef.get(String(r.Ref_Key || ''));
+          if (!docDt) continue;
+          const fk =
+            String(r.ФизическоеЛицо_Key || '').trim() ||
+            fizByEmpRef.get(String(r.Сотрудник_Key || '').trim()) ||
+            '';
+          if (!fk) continue;
+          const cur = ensureAgg(fk);
+          if (!cur.appDate || docDt > cur.appDate) cur.appDate = docDt;
+          cur.appStatus = 'Включён в заявление 1С';
+          appCount++;
         }
       }
     }
 
-    const byFiz = new Map<string, { adv: number; used: number; notifNo: string; notifDate: string }>();
-    if (advRes && advRes.ok) {
-      const advJson: any = await advRes.json().catch(() => ({}));
-      for (const row of advJson?.value || []) {
-        const fk = String(row.ФизическоеЛицо_Key || '');
+    // 5. Registered Patent Advances (Document_АвансовыйПлатежПоНДФЛ or AccumulationRegister_*Аванс*НДФЛ*_RecordType)
+    const advDocEntity = hasEntity('Document_АвансовыйПлатежПоНДФЛ')
+      ? 'Document_АвансовыйПлатежПоНДФЛ'
+      : findEntity(/^Document_АвансовыйПлатежПоНДФЛ/i);
+    let advDocCount = 0;
+    if (advDocEntity) {
+      const aDocs = await fetchODataPaged(
+        base,
+        `${advDocEntity}?$filter=Date ge datetime'${yearStart}' and Date lt datetime'${yearEnd}'`,
+        headers,
+        10
+      );
+      for (const d of aDocs) {
+        if (d.DeletionMark || d.Posted === false) continue;
+        const fk =
+          String(d.ФизическоеЛицо_Key || '').trim() ||
+          fizByEmpRef.get(String(d.Сотрудник_Key || '').trim()) ||
+          '';
         if (!fk) continue;
-        const cur = byFiz.get(fk) || { adv: 0, used: 0, notifNo: '', notifDate: '' };
-        const amt = toNum(row.Сумма);
-        if (String(row.RecordType || '').toLowerCase() === 'expense') cur.used += amt;
-        else cur.adv += amt;
-        byFiz.set(fk, cur);
+        const cur = ensureAgg(fk);
+        cur.adv += toNum(d.Сумма || d.СуммаПлатежа || d.СуммаАвансовогоПлатежа);
+        advDocCount++;
       }
     }
 
-    if (notifRes && notifRes.ok) {
-      const nJson: any = await notifRes.json().catch(() => ({}));
-      for (const row of nJson?.value || []) {
-        const fk = String(row.ФизическоеЛицо_Key || '');
-        if (!fk) continue;
-        const cur = byFiz.get(fk) || { adv: 0, used: 0, notifNo: '', notifDate: '' };
-        if (row.НомерУведомления) cur.notifNo = String(row.НомерУведомления);
-        if (row.ДатаУведомления) cur.notifDate = String(row.ДатаУведомления).slice(0, 10);
-        byFiz.set(fk, cur);
+    // 6. AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType (Offset Used, Calculated & Withheld NDFL)
+    const ndflRegEntity =
+      (hasEntity('AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType')
+        ? 'AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ_RecordType'
+        : findEntity(/AccumulationRegister_РасчетыНалогоплательщиковСБюджетомПоНДФЛ/i)) || '';
+    if (ndflRegEntity) {
+      const regRows = await fetchODataPaged(
+        base,
+        `${ndflRegEntity}?$filter=Active eq true and Period ge datetime'${yearStart}' and Period lt datetime'${yearEnd}'`,
+        headers,
+        35
+      );
+      for (const row of regRows) {
+        const fk = String(row.ФизическоеЛицо_Key || '').trim();
+        if (!fk || !byFiz.has(fk)) continue;
+        const cur = byFiz.get(fk)!;
+        const recType = String(row.RecordType || '').toLowerCase();
+        const amt = toNum(row.Сумма);
+        const isAdvanceOffset = Boolean(row.ЗачтеноАвансов) || /аванс|патент/i.test(String(row.ВидСтроки || row.СпособЗачета || ''));
+        if (recType === 'receipt') {
+          cur.ndflCalc += amt;
+        } else if (recType === 'expense') {
+          if (isAdvanceOffset) cur.used += amt;
+          else cur.ndflWithheld += amt;
+        }
+        if (row.СуммаЗачтенногоАванса) cur.used += toNum(row.СуммаЗачтенногоАванса);
       }
     }
 
     let synced = 0;
-    for (const [fk, vals] of Array.from(byFiz.entries())) {
-      const emp = empMap.get(fk);
-      if (!emp?.name) continue;
-      upsertPatentNdflRecord(db, {
-        tax_year: cfg.taxYear,
-        org_name: cfg.orgFilter || '1C OData',
-        tabel_no: emp.code,
-        full_name: emp.name,
-        citizenship: '',
-        is_active: 1,
-        site_name: '',
-        region: '',
-        hire_date: '',
-        exit_date: '',
-        has_notification: vals.notifNo ? 1 : 0,
-        notification_no: vals.notifNo,
-        notification_date: vals.notifDate,
-        ifns_code: '',
-        application_date: '',
-        application_status: '',
-        ndfl_before_offset: 0,
-        patent_advances: vals.adv,
-        patent_offset_used: vals.used,
-        patent_advance_balance: Math.max(0, vals.adv - vals.used),
-        additional_offset_potential: Math.max(0, vals.adv - vals.used),
-        ndfl_withheld: 0,
-        discrepancy_amount: 0,
-        priority_label: '',
-        recommended_action: '',
-        responsible_person: '',
-        manual_status: '',
-        notes: '',
-        source_file: '1C ZUP OData',
-      });
-      synced++;
+    db.exec('BEGIN');
+    try {
+      for (const [fk, vals] of Array.from(byFiz.entries())) {
+        const emp = empByFiz.get(fk);
+        if (!emp?.name) continue;
+        const balance = Math.max(0, vals.adv - vals.used);
+        const potential = Math.max(0, Math.min(balance, Math.max(0, vals.ndflCalc - vals.used)));
+        upsertPatentNdflRecord(db, {
+          tax_year: year,
+          org_name: cfg.orgFilter || '1C OData',
+          tabel_no: emp.code,
+          full_name: emp.name,
+          citizenship: '',
+          is_active: emp.active ? 1 : 0,
+          site_name: '',
+          region: '',
+          hire_date: '',
+          exit_date: '',
+          has_notification: vals.notifNo ? 1 : 0,
+          notification_no: vals.notifNo,
+          notification_date: vals.notifDate,
+          ifns_code: vals.ifns,
+          application_date: vals.appDate,
+          application_status: vals.appStatus,
+          ndfl_before_offset: vals.ndflCalc,
+          patent_advances: vals.adv,
+          patent_offset_used: vals.used,
+          patent_advance_balance: balance,
+          additional_offset_potential: potential,
+          ndfl_withheld: vals.ndflWithheld,
+          discrepancy_amount: 0,
+          priority_label: '',
+          recommended_action: '',
+          responsible_person: '',
+          manual_status: '',
+          notes: '',
+          source_file: '1C:Fresh OData',
+        });
+        synced++;
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+      throw e;
     }
 
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi.`;
+    const msg = `1C OData senkronizasyonu tamamlandı: ${synced} patentli çalışan güncellendi (Bildirim: ${notifCount}, Başvuru: ${appCount}, Avans Belgesi: ${advDocCount}).`;
     savePatentODataConfig(db, { lastSyncAt: nowStr, lastSyncMessage: msg });
     return { success: true, synced, message: msg };
   } catch (err: any) {
