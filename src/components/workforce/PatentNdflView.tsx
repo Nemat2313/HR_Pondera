@@ -309,6 +309,61 @@ export default function PatentNdflView() {
   const [odataLastSync, setOdataLastSync] = useState('');
   const [odataBusy, setOdataBusy] = useState(false);
 
+  // Direct 1C OData Receipt Creation (Document_АвансовыйПлатежИностранцаПоНДФЛ)
+  const [newRcEmp, setNewRcEmp] = useState<string | null>(null);
+  const [newRcAmount, setNewRcAmount] = useState('24000');
+  const [newRcOpDate, setNewRcOpDate] = useState(new Date().toISOString().slice(0, 10));
+  const [newRcComment, setNewRcComment] = useState('август-сентябрь-октябрь');
+  const [newRcBusy, setNewRcBusy] = useState(false);
+  const [lastCreated1cDoc, setLastCreated1cDoc] = useState<{ refKey: string; number: string; fullName: string } | null>(null);
+
+  const handleCreate1cReceipt = async (fullName: string) => {
+    setNewRcBusy(true);
+    try {
+      const res = await fetch('/api/patent-ndfl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          action: 'create_1c_receipt',
+          fullName,
+          taxYear,
+          amount: Number(newRcAmount) || 0,
+          opDate: newRcOpDate,
+          comment: newRcComment,
+          postDoc: true,
+        }),
+      });
+      const data = await res.json();
+      setFeedback({ type: data?.success ? 'success' : 'error', text: data?.message || '1C fiş oluşturma sonucu' });
+      if (data?.success && data?.refKey) {
+        setLastCreated1cDoc({ refKey: data.refKey, number: data.number || '', fullName });
+        setNewRcEmp(null);
+      }
+    } catch {
+      setFeedback({ type: 'error', text: '1C fiş gönderme hatası.' });
+    } finally {
+      setNewRcBusy(false);
+    }
+  };
+
+  const handleDelete1cReceipt = async (refKey: string) => {
+    setNewRcBusy(true);
+    try {
+      const res = await fetch('/api/patent-ndfl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ action: 'delete_1c_receipt', refKey }),
+      });
+      const data = await res.json();
+      setFeedback({ type: data?.success ? 'info' : 'error', text: data?.message || '1C fiş silme sonucu' });
+      if (data?.success) setLastCreated1cDoc(null);
+    } catch {
+      setFeedback({ type: 'error', text: '1C fiş silme hatası.' });
+    } finally {
+      setNewRcBusy(false);
+    }
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const notifPdfInputRef = useRef<HTMLInputElement>(null);
 
@@ -1955,10 +2010,70 @@ export default function PatentNdflView() {
                                       </span>
                                     )}
                                   </div>
-                                  <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`}>
-                                    {cMeta.label}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setNewRcEmp(newRcEmp === r.full_name ? null : r.full_name)}
+                                      className="px-2.5 py-1 rounded-lg text-[10.5px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                                    >
+                                      + {L("1C'ye Fiş Gir (OData)", 'Внести чек в 1С (OData)')}
+                                    </button>
+                                    {lastCreated1cDoc && lastCreated1cDoc.fullName === r.full_name && (
+                                      <button
+                                        type="button"
+                                        disabled={newRcBusy}
+                                        onClick={() => handleDelete1cReceipt(lastCreated1cDoc.refKey)}
+                                        className="px-2.5 py-1 rounded-lg text-[10.5px] font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer disabled:opacity-50"
+                                      >
+                                        {L(`Son Fişi Sil (№ ${lastCreated1cDoc.number})`, `Удалить чек (№ ${lastCreated1cDoc.number})`)}
+                                      </button>
+                                    )}
+                                    <span className={`px-2 py-0.5 rounded-md text-[10px] border ${cMeta.cls}`}>
+                                      {isRu ? cMeta.labelRu : cMeta.label}
+                                    </span>
+                                  </div>
                                 </div>
+
+                                {newRcEmp === r.full_name && (
+                                  <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-700 flex flex-wrap items-end gap-2 text-[11px]">
+                                    <div>
+                                      <label className="block text-[10px] text-slate-600 dark:text-slate-300">{L('Tutar (₽)', 'Сумма (₽)')}</label>
+                                      <input
+                                        type="number"
+                                        value={newRcAmount}
+                                        onChange={(e) => setNewRcAmount(e.target.value)}
+                                        className="w-28 px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono text-xs"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[10px] text-slate-600 dark:text-slate-300">{L('Ödeme Tarihi (Дата операции)', 'Дата операции')}</label>
+                                      <input
+                                        type="date"
+                                        value={newRcOpDate}
+                                        onChange={(e) => setNewRcOpDate(e.target.value)}
+                                        className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono text-xs"
+                                      />
+                                    </div>
+                                    <div className="flex-1 min-w-[180px]">
+                                      <label className="block text-[10px] text-slate-600 dark:text-slate-300">{L('Комментарий (Aylar)', 'Комментарий (месяцы)')}</label>
+                                      <input
+                                        type="text"
+                                        value={newRcComment}
+                                        onChange={(e) => setNewRcComment(e.target.value)}
+                                        placeholder="август-сентябрь-октябрь"
+                                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      disabled={newRcBusy}
+                                      onClick={() => handleCreate1cReceipt(r.full_name)}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50"
+                                    >
+                                      {newRcBusy ? L('Gönderiliyor...', 'Отправка...') : L("1C'ye Yaz & Onayla", 'Записать и провести в 1С')}
+                                    </button>
+                                  </div>
+                                )}
 
                                 {r.missing_receipt_months && r.missing_receipt_months.length > 0 && (
                                   <div className="flex flex-wrap items-center gap-1.5 text-[10.5px]">

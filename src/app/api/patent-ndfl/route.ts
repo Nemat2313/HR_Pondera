@@ -8,6 +8,8 @@ import { getSessionUserFromRequest } from '@/lib/auth';
 import {
   buildFnsKnd1110055Xml,
   classifyPatentRootCause,
+  create1cPatentReceipt,
+  delete1cPatentReceipt,
   discoverODataNdflEntities,
   ensurePatentNdflTables,
   getPatentODataConfig,
@@ -723,6 +725,24 @@ export async function POST(request: Request) {
       if (body?.config) savePatentODataConfig(db, body.config);
       const syncRes = await syncPatentNdflFromOData(db);
       return NextResponse.json(syncRes);
+    }
+
+    if (action === 'create_1c_receipt') {
+      const res = await create1cPatentReceipt(db, {
+        fullName: String(body?.fullName || ''),
+        taxYear: Number(body?.taxYear) || 2026,
+        amount: Number(body?.amount) || 0,
+        opDate: String(body?.opDate || ''),
+        docDate: body?.docDate ? String(body.docDate) : undefined,
+        comment: String(body?.comment || ''),
+        postDoc: body?.postDoc !== false,
+      });
+      return NextResponse.json(res, { status: res.success ? 200 : 400 });
+    }
+
+    if (action === 'delete_1c_receipt') {
+      const res = await delete1cPatentReceipt(db, String(body?.refKey || ''));
+      return NextResponse.json(res, { status: res.success ? 200 : 400 });
     }
 
     if (action === 'update_record') {

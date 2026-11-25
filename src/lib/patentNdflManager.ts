@@ -1433,3 +1433,170 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     return { success: false, synced: 0, message: msg };
   }
 }
+
+export async function create1cPatentReceipt(
+  db: DbLike,
+  params: {
+    fullName: string;
+    taxYear: number;
+    amount: number;
+    opDate: string; // YYYY-MM-DD
+    docDate?: string; // YYYY-MM-DD
+    comment: string;
+    postDoc?: boolean;
+  }
+): Promise<{
+  success: boolean;
+  refKey?: string;
+  number?: string;
+  posted?: boolean;
+  message: string;
+}> {
+  const cfg = getPatentODataConfig(db);
+  if (!cfg.odataUrl || !cfg.username || !cfg.password) {
+    return { success: false, message: '1C OData ayarları eksik.' };
+  }
+  const auth = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
+  const headers = { Authorization: auth, Accept: 'application/json', 'Content-Type': 'application/json' };
+  const base = cfg.odataUrl.replace(/\/+$/, '');
+
+  try {
+    // 1. Resolve ФизическоеЛицо_Key from Catalog_ФизическиеЛица by fullName
+    const cleanName = stripTrailingLatin(params.fullName).replace(/'/g, "''");
+    const fizUrl = `${base}/${encodeURI(`Catalog_ФизическиеЛица?$filter=Description eq '${cleanName}'&$select=Ref_Key,Description&$top=5`)}&$format=json`;
+    const fizRes = await fetch(fizUrl, { headers });
+    if (!fizRes.ok) {
+      return { success: false, message: `1C kişi arama hatası (HTTP ${fizRes.status})` };
+    }
+    const fizJson: any = await fizRes.json().catch(() => ({}));
+    let fizKey = fizJson?.value?.[0]?.Ref_Key || '';
+    if (!fizKey) {
+      // Fallback substringof
+      const subUrl = `${base}/${encodeURI(`Catalog_ФизическиеЛица?$filter=substringof('${cleanName.split(/\s+/).slice(0, 2).join(' ')}', Description)&$select=Ref_Key,Description&$top=5`)}&$format=json`;
+      const subRes = await fetch(subUrl, { headers });
+      const subJson: any = await subRes.json().catch(() => ({}));
+      const match = (subJson?.value || []).find((x: any) => normName(stripTrailingLatin(x.Description)) === normName(params.fullName)) || subJson?.value?.[0];
+      fizKey = match?.Ref_Key || '';
+    }
+    if (!fizKey) {
+      return { success: false, message: `1C'de "${params.fullName}" kişisi bulunamadı.` };
+    }
+
+    // 2. Resolve Организация_Key from existing receipt or Catalog_Организации
+    let orgKey = '';
+    const existingRes = await fetch(
+      `${base}/${encodeURI(`Document_АвансовыйПлатежИностранцаПоНДФЛ?$filter=Сотрудник_Key eq guid'${fizKey}'&$select=Организация_Key&$top=1`)}&$format=json`,
+      { headers }
+    ).catch(() => null);
+    if (existingRes && existingRes.ok) {
+      const ej: any = await existingRes.json().catch(() => ({}));
+      orgKey = ej?.value?.[0]?.Организация_Key || '';
+    }
+    if (!orgKey) {
+      const orgRes = await fetch(`${base}/${encodeURI('Catalog_Организации?$select=Ref_Key,Description&$top=5')}&$format=json`, { headers });
+      const oj: any = await orgRes.json().catch(() => ({}));
+      orgKey = oj?.value?.[0]?.Ref_Key || '';
+    }
+    if (!orgKey) {
+      return { success: false, message: '1C organizasyon anahtarı (Организация_Key) bulunamadı.' };
+    }
+
+    // 3. POST new Document_АвансовыйПлатежИностранцаПоНДФЛ
+    const nowIso = new Date().toISOString().slice(0, 19);
+    const docDateIso = params.docDate ? `${params.docDate.slice(0, 10)}T12:00:00` : nowIso;
+    const opDateIso = `${(params.opDate || nowIso.slice(0, 10)).slice(0, 10)}T00:00:00`;
+
+    const payload = {
+      Date: docDateIso,
+      ДатаОперации: opDateIso,
+      НалоговыйПериод: Number(params.taxYear) || 2026,
+      Организация_Key: orgKey,
+      Сотрудник_Key: fizKey,
+      Сумма: Number(params.amount),
+      Комментарий: String(params.comment || '').trim(),
+    };
+
+    const createRes = await fetch(`${base}/${encodeURI('Document_АвансовыйПлатежИностранцаПоНДФЛ')}?$format=json`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const createTxt = await createRes.text().catch(() => '');
+    if (!createRes.ok) {
+      return { success: false, message: `1C belge oluşturma hatası (HTTP ${createRes.status}): ${createTxt.slice(0, 260)}` };
+    }
+    const created: any = JSON.parse(createTxt);
+    const refKey = String(created?.Ref_Key || '');
+    const docNum = String(created?.Number || '');
+
+    // 4. Post (Провести) the document if requested (default true)
+    let posted = false;
+    if (refKey && params.postDoc !== false) {
+      const postRes = await fetch(
+        `${base}/${encodeURI(`Document_АвансовыйПлатежИностранцаПоНДФЛ(guid'${refKey}')/Post()`)}`,
+        { method: 'POST', headers }
+      );
+      posted = postRes.ok;
+      if (!postRes.ok) {
+        const pt = await postRes.text().catch(() => '');
+        return {
+          success: true,
+          refKey,
+          number: docNum,
+          posted: false,
+          message: `1C belgesi oluşturuldu (№ ${docNum}) ancak onaylanamadı (Post HTTP ${postRes.status}): ${pt.slice(0, 200)}`,
+        };
+      }
+    }
+
+    return {
+      success: true,
+      refKey,
+      number: docNum,
+      posted,
+      message: `1C'ye patent fişi başarıyla girildi${posted ? ' ve onaylandı (Проведён)' : ''}: № ${docNum} · ${Number(params.amount).toLocaleString('ru-RU')} ₽ (${params.comment})`,
+    };
+  } catch (err: any) {
+    return { success: false, message: `1C yazma hatası: ${err?.message || String(err)}` };
+  }
+}
+
+export async function delete1cPatentReceipt(
+  db: DbLike,
+  refKey: string
+): Promise<{ success: boolean; message: string }> {
+  const cfg = getPatentODataConfig(db);
+  if (!cfg.odataUrl || !cfg.username || !cfg.password) {
+    return { success: false, message: '1C OData ayarları eksik.' };
+  }
+  const auth = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
+  const headers = { Authorization: auth, Accept: 'application/json', 'Content-Type': 'application/json' };
+  const base = cfg.odataUrl.replace(/\/+$/, '');
+  const cleanKey = String(refKey || '').replace(/[^a-fA-F0-9-]/g, '');
+  if (!cleanKey) return { success: false, message: 'Geçersiz Ref_Key.' };
+
+  try {
+    // 1. Unpost (Отменить проведение)
+    await fetch(`${base}/${encodeURI(`Document_АвансовыйПлатежИностранцаПоНДФЛ(guid'${cleanKey}')/Unpost()`)}`, {
+      method: 'POST',
+      headers,
+    }).catch(() => null);
+
+    // 2. Mark DeletionMark = true (standard 1C safe delete)
+    const patchRes = await fetch(
+      `${base}/${encodeURI(`Document_АвансовыйПлатежИностранцаПоНДФЛ(guid'${cleanKey}')`)}?$format=json`,
+      {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ DeletionMark: true }),
+      }
+    );
+    if (!patchRes.ok) {
+      const t = await patchRes.text().catch(() => '');
+      return { success: false, message: `1C silme/işaretleme hatası (HTTP ${patchRes.status}): ${t.slice(0, 200)}` };
+    }
+    return { success: true, message: `1C belgesi iptal edildi ve silinmek üzere işaretlendi (DeletionMark=true, Ref: ${cleanKey}).` };
+  } catch (err: any) {
+    return { success: false, message: `1C silme hatası: ${err?.message || String(err)}` };
+  }
+}
