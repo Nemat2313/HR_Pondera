@@ -1570,6 +1570,8 @@ export async function create1cPatentReceipt(
           : (params.attachment.mimeType.includes('png') ? 'png' : params.attachment.mimeType.includes('jpeg') ? 'jpg' : 'pdf');
         const safeNamePart = String(params.fullName || 'Чек').trim().split(/\s+/).slice(0, 2).join('_').slice(0, 45);
         const desc = `Чек_Патент_${(params.opDate || nowIso.slice(0, 10)).slice(0, 10)}_${safeNamePart}`.slice(0, 100);
+        const xdtoXml = `<base64Binary xmlns="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${params.attachment.base64Data}</base64Binary>`;
+        const xdtoB64 = Buffer.from(xdtoXml, 'utf8').toString('base64');
         const attachPayload = {
           Description: desc,
           ВладелецФайла_Key: refKey,
@@ -1580,8 +1582,8 @@ export async function create1cPatentReceipt(
           Размер: Number(params.attachment.sizeBytes) || Math.floor((params.attachment.base64Data.length * 3) / 4),
           Расширение: extClean,
           ТипХраненияФайла: 'ВИнформационнойБазе',
-          ФайлХранилище_Type: 'application/octet-stream',
-          ФайлХранилище_Base64Data: params.attachment.base64Data,
+          ФайлХранилище_Type: 'application/xml+xdto',
+          ФайлХранилище_Base64Data: xdtoB64,
           ХранитьВерсии: false,
         };
         const attRes = await fetch(
