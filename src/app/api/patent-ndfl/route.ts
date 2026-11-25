@@ -3,6 +3,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import JSZip from 'jszip';
+import { PDFDocument } from 'pdf-lib';
 import { getDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
 import {
@@ -652,40 +654,107 @@ export async function POST(request: Request) {
       if (uploadMode === 'scan_receipts') {
         const ext = path.extname(file.name || '').toLowerCase() || '.pdf';
         const batchId = `b_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const tmpPath = path.join(os.tmpdir(), `patent_rc_${batchId}${ext}`);
-        const pagesOutDir = path.join(process.cwd(), 'data', 'patent_receipts', batchId);
+        const pagesOutDir = path.join(process.cwd(), 'uploads', 'patent_receipts', batchId);
         fs.mkdirSync(pagesOutDir, { recursive: true });
-        fs.writeFileSync(tmpPath, buf);
-        const scriptPath = path.join(process.cwd(), 'scripts', 'split_receipt_uploads.py');
-        const bins = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
-        let splitRes: any = null;
-        for (const bin of bins) {
-          try {
-            const res = spawnSync(bin, [scriptPath, tmpPath, file.name, pagesOutDir], {
-              encoding: 'utf-8',
-              timeout: 60000,
-              maxBuffer: 64 * 1024 * 1024,
-            });
-            if (res.stdout && res.stdout.trim()) {
-              splitRes = JSON.parse(res.stdout.trim());
-              break;
-            }
-          } catch {}
-        }
-        try {
-          fs.unlinkSync(tmpPath);
-        } catch {}
 
-        if (!splitRes?.success || !Array.isArray(splitRes.items) || splitRes.items.length === 0) {
+        const chunks: Array<{ name: string; mime: string; b64: string; pageStart: number; pageEnd: number }> = [];
+        const savedPages: Array<{ page: number; fileName: string; mime: string; size: number; path: string }> = [];
+        let pageOffset = 0;
+
+        const processPdfBuffer = async (rawBuf: Buffer, srcName: string) => {
+          try {
+            const srcDoc = await PDFDocument.load(rawBuf, { ignoreEncryption: true });
+            const total = srcDoc.getPageCount();
+            for (let p = 0; p < total; p++) {
+              const gPage = pageOffset + p + 1;
+              const singleDoc = await PDFDocument.create();
+              const [copied] = await singleDoc.copyPages(srcDoc, [p]);
+              singleDoc.addPage(copied);
+              const singleBytes = Buffer.from(await singleDoc.save());
+              const outName = `receipt_p${String(gPage).padStart(3, '0')}.pdf`;
+              const outPath = path.join(pagesOutDir, outName);
+              fs.writeFileSync(outPath, singleBytes);
+              savedPages.push({ page: gPage, fileName: outName, mime: 'application/pdf', size: singleBytes.length, path: outPath });
+            }
+            const chunkSize = 8;
+            if (total <= chunkSize) {
+              chunks.push({
+                name: srcName,
+                mime: 'application/pdf',
+                b64: rawBuf.toString('base64'),
+                pageStart: pageOffset + 1,
+                pageEnd: pageOffset + total,
+              });
+            } else {
+              for (let start = 0; start < total; start += chunkSize) {
+                const end = Math.min(total, start + chunkSize);
+                const chunkDoc = await PDFDocument.create();
+                const indices = Array.from({ length: end - start }, (_, k) => start + k);
+                const copiedPages = await chunkDoc.copyPages(srcDoc, indices);
+                for (const cp of copiedPages) chunkDoc.addPage(cp);
+                const chunkBytes = Buffer.from(await chunkDoc.save());
+                chunks.push({
+                  name: `${srcName} (s.${start + 1}-${end})`,
+                  mime: 'application/pdf',
+                  b64: chunkBytes.toString('base64'),
+                  pageStart: pageOffset + start + 1,
+                  pageEnd: pageOffset + end,
+                });
+              }
+            }
+            pageOffset += total;
+          } catch {
+            const gPage = pageOffset + 1;
+            const outName = `receipt_p${String(gPage).padStart(3, '0')}.pdf`;
+            const outPath = path.join(pagesOutDir, outName);
+            fs.writeFileSync(outPath, rawBuf);
+            savedPages.push({ page: gPage, fileName: outName, mime: 'application/pdf', size: rawBuf.length, path: outPath });
+            chunks.push({ name: srcName, mime: 'application/pdf', b64: rawBuf.toString('base64'), pageStart: gPage, pageEnd: gPage });
+            pageOffset += 1;
+          }
+        };
+
+        const processImageBuffer = (rawBuf: Buffer, srcName: string, fext: string) => {
+          const mime = fext === '.png' ? 'image/png' : fext === '.webp' ? 'image/webp' : 'image/jpeg';
+          const cleanExt = fext === '.png' ? '.png' : fext === '.webp' ? '.webp' : '.jpg';
+          const gPage = pageOffset + 1;
+          const outName = `receipt_p${String(gPage).padStart(3, '0')}${cleanExt}`;
+          const outPath = path.join(pagesOutDir, outName);
+          fs.writeFileSync(outPath, rawBuf);
+          savedPages.push({ page: gPage, fileName: outName, mime, size: rawBuf.length, path: outPath });
+          chunks.push({ name: srcName, mime, b64: rawBuf.toString('base64'), pageStart: gPage, pageEnd: gPage });
+          pageOffset += 1;
+        };
+
+        if (ext === '.zip') {
+          const zip = await JSZip.loadAsync(buf);
+          const entries = Object.values(zip.files).filter(
+            (e) => !e.dir && !e.name.includes('__MACOSX') && !path.basename(e.name).startsWith('.')
+          );
+          for (const entry of entries) {
+            const bn = path.basename(entry.name);
+            const fext = path.extname(bn).toLowerCase();
+            if (fext === '.pdf') {
+              await processPdfBuffer(Buffer.from(await entry.async('uint8array')), bn);
+            } else if (['.jpg', '.jpeg', '.png', '.webp'].includes(fext)) {
+              processImageBuffer(Buffer.from(await entry.async('uint8array')), bn, fext);
+            }
+          }
+        } else if (ext === '.pdf') {
+          await processPdfBuffer(buf, file.name);
+        } else if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+          processImageBuffer(buf, file.name, ext);
+        }
+
+        if (chunks.length === 0) {
           return NextResponse.json(
-            { success: false, message: splitRes?.message || 'PDF/ZIP içinden okunabilir fiş bulunamadı.' },
+            { success: false, message: 'PDF/ZIP içinden okunabilir fiş bulunamadı.' },
             { status: 400 }
           );
         }
 
         // Register each individual split 1-page receipt file in SQLite so it can be viewed & attached to 1C
         const pageFileByNum = new Map<number, { id: string; url: string; fileName: string }>();
-        const savedPages = Array.isArray(splitRes.pages) ? splitRes.pages : [];
         const insFileStmt = db.prepare(`
           INSERT OR REPLACE INTO patent_receipt_files (id, tax_year, file_name, mime_type, file_path, file_size)
           VALUES (?, ?, ?, ?, ?, ?)
@@ -694,18 +763,18 @@ export async function POST(request: Request) {
           const pNum = Number(sp.page || 0);
           if (!pNum || !sp.path) continue;
           const fid = `rf_${batchId}_p${pNum}`;
-          insFileStmt.run(fid, taxYear, String(sp.fileName || `receipt_p${pNum}.pdf`), String(sp.mime || 'application/pdf'), String(sp.path), Number(sp.size || 0));
+          insFileStmt.run(fid, taxYear, sp.fileName, sp.mime, sp.path, sp.size);
           pageFileByNum.set(pNum, {
             id: fid,
             url: `/api/patent-ndfl?action=receipt_file&id=${encodeURIComponent(fid)}`,
-            fileName: String(sp.fileName || `receipt_p${pNum}.pdf`),
+            fileName: sp.fileName,
           });
         }
 
         // Read Gemini API key from ai_provider_settings or env
         let geminiKey = process.env.GEMINI_API_KEY || '';
         let geminiBase = 'https://generativelanguage.googleapis.com/v1beta';
-        let geminiModel = 'gemini-flash-latest';
+        let geminiModel = 'gemini-2.5-flash';
         try {
           const aiRow = db
             .prepare('SELECT gemini_api_key, gemini_base_url, gemini_model FROM ai_provider_settings WHERE id = 1')
@@ -728,46 +797,65 @@ export async function POST(request: Request) {
           '{"page": number, "full_name": "ФИО Плательщика in Cyrillic uppercase/titlecase", "inn": "12-digit INN or empty", "op_date": "YYYY-MM-DD", "amount": number, "kbk": "20-digit KBK or empty", "suip": "receipt/SUIP number or empty"}\n' +
           'Important: extract every single page that contains a receipt. Convert Russian dates like "23 ноября 2026" to "2026-11-23".';
 
+        const modelCandidates = Array.from(new Set([geminiModel, 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'].filter(Boolean)));
+        let activeModel = modelCandidates[0];
+        let firstGeminiErr = '';
         const extractedAll: any[] = [];
-        const chunks = splitRes.items as Array<{ name: string; mime: string; b64: string; pageStart: number; pageEnd: number }>;
         for (let i = 0; i < chunks.length; i += 2) {
           const batch = chunks.slice(i, i + 2);
           const batchRes = await Promise.all(
             batch.map(async (ch) => {
-              try {
-                const url = `${geminiBase}/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiKey)}`;
-                const gRes = await fetch(url, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contents: [
-                      {
-                        parts: [
-                          { text: promptText },
-                          { inline_data: { mime_type: ch.mime, data: ch.b64 } },
-                        ],
-                      },
-                    ],
-                    generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
-                  }),
-                });
-                if (!gRes.ok) return [];
-                const gJson: any = await gRes.json().catch(() => null);
-                const rawText = gJson?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-                const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-                const parsedArr = JSON.parse(cleaned);
-                if (!Array.isArray(parsedArr)) return [];
-                return parsedArr.map((item: any, idx: number) => ({
-                  ...item,
-                  source_chunk: ch.name,
-                  page: (ch.pageStart || 1) + (Number(item.page) > 0 ? Number(item.page) - 1 : idx),
-                }));
-              } catch {
-                return [];
+              const tryModels = [activeModel, ...modelCandidates.filter((m) => m !== activeModel)];
+              for (const mdl of tryModels) {
+                try {
+                  const url = `${geminiBase}/models/${encodeURIComponent(mdl)}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+                  const gRes = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      contents: [
+                        {
+                          parts: [
+                            { text: promptText },
+                            { inline_data: { mime_type: ch.mime, data: ch.b64 } },
+                          ],
+                        },
+                      ],
+                      generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+                    }),
+                  });
+                  if (!gRes.ok) {
+                    const errTxt = await gRes.text().catch(() => '');
+                    if (!firstGeminiErr) firstGeminiErr = `Gemini (${mdl}) HTTP ${gRes.status}: ${errTxt.slice(0, 180)}`;
+                    if (gRes.status === 404 || gRes.status === 400) continue;
+                    return [];
+                  }
+                  activeModel = mdl;
+                  const gJson: any = await gRes.json().catch(() => null);
+                  const rawText = gJson?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+                  const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+                  const parsedArr = JSON.parse(cleaned);
+                  if (!Array.isArray(parsedArr)) return [];
+                  return parsedArr.map((item: any, idx: number) => ({
+                    ...item,
+                    source_chunk: ch.name,
+                    page: (ch.pageStart || 1) + (Number(item.page) > 0 ? Number(item.page) - 1 : idx),
+                  }));
+                } catch (e: any) {
+                  if (!firstGeminiErr) firstGeminiErr = `Gemini OCR hatası: ${e?.message || String(e)}`;
+                }
               }
+              return [];
             })
           );
           for (const arr of batchRes) extractedAll.push(...arr);
+        }
+
+        if (extractedAll.length === 0 && firstGeminiErr) {
+          return NextResponse.json(
+            { success: false, message: firstGeminiErr },
+            { status: 502 }
+          );
         }
 
         // Match against existing patent_ndfl_records in DB for smart suggestions & duplicate check

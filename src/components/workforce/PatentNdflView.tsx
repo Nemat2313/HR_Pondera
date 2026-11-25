@@ -398,11 +398,13 @@ export default function PatentNdflView() {
   const [scannedReceipts, setScannedReceipts] = useState<ScannedReceiptItem[]>([]);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
+  const [scanError, setScanError] = useState('');
   const [bulkPushBusy, setBulkPushBusy] = useState(false);
 
   const handleBulkReceiptUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setScanBusy(true);
+    setScanError('');
     setScanModalOpen(true);
     setScannedReceipts([]);
     try {
@@ -421,7 +423,9 @@ export default function PatentNdflView() {
         if (data?.success && Array.isArray(data.receipts)) {
           allItems.push(...data.receipts);
         } else {
-          setFeedback({ type: 'error', text: data?.message || `${f.name} okunamadı.` });
+          const msg = data?.message || `${f.name} okunamadı.`;
+          setScanError(msg);
+          setFeedback({ type: 'error', text: msg });
         }
       }
       setScannedReceipts(allItems);
@@ -2671,8 +2675,13 @@ export default function PatentNdflView() {
                   </p>
                 </div>
               ) : scannedReceipts.length === 0 ? (
-                <div className="py-10 text-center text-xs text-slate-500">
-                  {L('Okunan patent fişi bulunamadı.', 'Чеки не найдены.')}
+                <div className="py-10 text-center space-y-2">
+                  <div className="text-xs text-slate-500">{L('Okunan patent fişi bulunamadı.', 'Чеки не найдены.')}</div>
+                  {scanError && (
+                    <div className="max-w-xl mx-auto p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-[11px] text-rose-700 dark:text-rose-300">
+                      {scanError}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
