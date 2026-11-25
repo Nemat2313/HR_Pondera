@@ -36,6 +36,23 @@ export async function GET(request: Request) {
       });
       return NextResponse.json(disc);
     }
+    if (searchParams.get('action') === 'receipt_file') {
+      const fileId = String(searchParams.get('id') || '').trim();
+      if (!fileId) return NextResponse.json({ success: false, message: 'Missing id' }, { status: 400 });
+      const row = db.prepare('SELECT file_name, mime_type, file_path FROM patent_receipt_files WHERE id = ?').get(fileId) as any;
+      if (!row || !row.file_path || !fs.existsSync(row.file_path)) {
+        return NextResponse.json({ success: false, message: 'Fiş dosyası bulunamadı.' }, { status: 404 });
+      }
+      const dataBuf = fs.readFileSync(row.file_path);
+      return new NextResponse(new Uint8Array(dataBuf), {
+        status: 200,
+        headers: {
+          'Content-Type': String(row.mime_type || 'application/pdf'),
+          'Content-Disposition': `inline; filename="${encodeURIComponent(String(row.file_name || 'receipt.pdf'))}"`,
+          'Cache-Control': 'private, max-age=3600',
+        },
+      });
+    }
     const taxYear = Number(searchParams.get('year')) || 2026;
 
     const rawRecords = db
@@ -634,16 +651,19 @@ export async function POST(request: Request) {
       // Mode: Bulk AI OCR Scan of Patent Payment Receipts (.pdf / .zip / .jpg / .png) -> Ready to push to 1C
       if (uploadMode === 'scan_receipts') {
         const ext = path.extname(file.name || '').toLowerCase() || '.pdf';
-        const tmpPath = path.join(os.tmpdir(), `patent_rc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
+        const batchId = `b_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const tmpPath = path.join(os.tmpdir(), `patent_rc_${batchId}${ext}`);
+        const pagesOutDir = path.join(process.cwd(), 'data', 'patent_receipts', batchId);
+        fs.mkdirSync(pagesOutDir, { recursive: true });
         fs.writeFileSync(tmpPath, buf);
         const scriptPath = path.join(process.cwd(), 'scripts', 'split_receipt_uploads.py');
         const bins = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
         let splitRes: any = null;
         for (const bin of bins) {
           try {
-            const res = spawnSync(bin, [scriptPath, tmpPath, file.name], {
+            const res = spawnSync(bin, [scriptPath, tmpPath, file.name, pagesOutDir], {
               encoding: 'utf-8',
-              timeout: 45000,
+              timeout: 60000,
               maxBuffer: 64 * 1024 * 1024,
             });
             if (res.stdout && res.stdout.trim()) {
@@ -661,6 +681,25 @@ export async function POST(request: Request) {
             { success: false, message: splitRes?.message || 'PDF/ZIP içinden okunabilir fiş bulunamadı.' },
             { status: 400 }
           );
+        }
+
+        // Register each individual split 1-page receipt file in SQLite so it can be viewed & attached to 1C
+        const pageFileByNum = new Map<number, { id: string; url: string; fileName: string }>();
+        const savedPages = Array.isArray(splitRes.pages) ? splitRes.pages : [];
+        const insFileStmt = db.prepare(`
+          INSERT OR REPLACE INTO patent_receipt_files (id, tax_year, file_name, mime_type, file_path, file_size)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        for (const sp of savedPages) {
+          const pNum = Number(sp.page || 0);
+          if (!pNum || !sp.path) continue;
+          const fid = `rf_${batchId}_p${pNum}`;
+          insFileStmt.run(fid, taxYear, String(sp.fileName || `receipt_p${pNum}.pdf`), String(sp.mime || 'application/pdf'), String(sp.path), Number(sp.size || 0));
+          pageFileByNum.set(pNum, {
+            id: fid,
+            url: `/api/patent-ndfl?action=receipt_file&id=${encodeURIComponent(fid)}`,
+            fileName: String(sp.fileName || `receipt_p${pNum}.pdf`),
+          });
         }
 
         // Read Gemini API key from ai_provider_settings or env
@@ -781,9 +820,11 @@ export async function POST(request: Request) {
             }
             const suggestedComment = monthNames.join('-');
 
+            const pageNum = Number(x.page || idx + 1);
+            const pFile = pageFileByNum.get(pageNum);
             return {
               id: `rc_${Date.now()}_${idx}`,
-              page: Number(x.page || idx + 1),
+              page: pageNum,
               source_chunk: x.source_chunk || file.name,
               full_name: matched?.full_name || rawName,
               raw_name: rawName,
@@ -798,6 +839,8 @@ export async function POST(request: Request) {
               is_duplicate: isDuplicate,
               suggested_comment: suggestedComment,
               selected: !isDuplicate && amount > 0 && Boolean(matched || rawName),
+              receipt_file_id: pFile?.id || '',
+              receipt_file_url: pFile?.url || '',
             };
           });
 
@@ -907,6 +950,20 @@ export async function POST(request: Request) {
     }
 
     if (action === 'create_1c_receipt') {
+      const receiptFileId = String(body?.receiptFileId || '').trim();
+      let attachment: { fileName: string; mimeType: string; base64Data: string; sizeBytes: number } | undefined;
+      if (receiptFileId) {
+        const fRow = db.prepare('SELECT file_name, mime_type, file_path, file_size FROM patent_receipt_files WHERE id = ?').get(receiptFileId) as any;
+        if (fRow?.file_path && fs.existsSync(fRow.file_path)) {
+          const fBuf = fs.readFileSync(fRow.file_path);
+          attachment = {
+            fileName: String(fRow.file_name || 'receipt.pdf'),
+            mimeType: String(fRow.mime_type || 'application/pdf'),
+            base64Data: fBuf.toString('base64'),
+            sizeBytes: fBuf.length,
+          };
+        }
+      }
       const res = await create1cPatentReceipt(db, {
         fullName: String(body?.fullName || ''),
         taxYear: Number(body?.taxYear) || 2026,
@@ -915,7 +972,29 @@ export async function POST(request: Request) {
         docDate: body?.docDate ? String(body.docDate) : undefined,
         comment: String(body?.comment || ''),
         postDoc: body?.postDoc !== false,
+        attachment,
       });
+      if (receiptFileId && res.success) {
+        const nn = String(body?.fullName || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
+        try {
+          db.prepare(`
+            UPDATE patent_receipt_files
+            SET norm_name = ?, full_name = ?, op_date = ?, amount = ?, comment = ?, doc_number = ?, onec_ref_key = ?, attached_in_1c = ?, attach_1c_note = ?
+            WHERE id = ?
+          `).run(
+            nn,
+            String(body?.fullName || ''),
+            String(body?.opDate || ''),
+            Number(body?.amount) || 0,
+            String(body?.comment || ''),
+            String(res.number || ''),
+            String(res.refKey || ''),
+            res.attachedIn1C ? 1 : 0,
+            String(res.attachMessage || ''),
+            receiptFileId
+          );
+        } catch {}
+      }
       return NextResponse.json(res, { status: res.success ? 200 : 400 });
     }
 

@@ -211,6 +211,26 @@ export function ensurePatentNdflTables(db: DbLike): void {
       unexplained_amount REAL DEFAULT 0,
       action_note TEXT DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS patent_receipt_files (
+      id TEXT PRIMARY KEY,
+      tax_year INTEGER NOT NULL DEFAULT 2026,
+      norm_name TEXT NOT NULL DEFAULT '',
+      full_name TEXT NOT NULL DEFAULT '',
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      op_date TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      comment TEXT NOT NULL DEFAULT '',
+      doc_number TEXT NOT NULL DEFAULT '',
+      onec_ref_key TEXT NOT NULL DEFAULT '',
+      attached_in_1c INTEGER NOT NULL DEFAULT 0,
+      attach_1c_note TEXT NOT NULL DEFAULT '',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_patent_receipt_files_norm ON patent_receipt_files(tax_year, norm_name);
   `);
   try {
     db.exec('ALTER TABLE patent_ndfl_records ADD COLUMN excluded_region_change INTEGER DEFAULT 0');
@@ -1444,12 +1464,20 @@ export async function create1cPatentReceipt(
     docDate?: string; // YYYY-MM-DD
     comment: string;
     postDoc?: boolean;
+    attachment?: {
+      fileName: string;
+      mimeType: string;
+      base64Data: string;
+      sizeBytes: number;
+    };
   }
 ): Promise<{
   success: boolean;
   refKey?: string;
   number?: string;
   posted?: boolean;
+  attachedIn1C?: boolean;
+  attachMessage?: string;
   message: string;
 }> {
   const cfg = getPatentODataConfig(db);
@@ -1531,6 +1559,51 @@ export async function create1cPatentReceipt(
     const refKey = String(created?.Ref_Key || '');
     const docNum = String(created?.Number || '');
 
+    // 3b. Attach split receipt file to 1C Catalog_АвансовыйПлатежИностранцаПоНДФЛПрисоединенныеФайлы
+    let attachedIn1C = false;
+    let attachMessage = '';
+    if (refKey && params.attachment?.base64Data) {
+      try {
+        const extRaw = (params.attachment.fileName.split('.').pop() || '').toLowerCase();
+        const extClean = extRaw === 'png' || extRaw === 'jpg' || extRaw === 'jpeg' || extRaw === 'pdf'
+          ? (extRaw === 'jpeg' ? 'jpg' : extRaw)
+          : (params.attachment.mimeType.includes('png') ? 'png' : params.attachment.mimeType.includes('jpeg') ? 'jpg' : 'pdf');
+        const safeNamePart = String(params.fullName || 'Чек').trim().split(/\s+/).slice(0, 2).join('_').slice(0, 45);
+        const desc = `Чек_Патент_${(params.opDate || nowIso.slice(0, 10)).slice(0, 10)}_${safeNamePart}`.slice(0, 100);
+        const attachPayload = {
+          Description: desc,
+          ВладелецФайла_Key: refKey,
+          ДатаСоздания: nowIso,
+          ДатаМодификацииУниверсальная: nowIso,
+          Зашифрован: false,
+          ПодписанЭП: false,
+          Размер: Number(params.attachment.sizeBytes) || Math.floor((params.attachment.base64Data.length * 3) / 4),
+          Расширение: extClean,
+          ТипХраненияФайла: 'ВИнформационнойБазе',
+          ФайлХранилище_Type: 'application/octet-stream',
+          ФайлХранилище_Base64Data: params.attachment.base64Data,
+          ХранитьВерсии: false,
+        };
+        const attRes = await fetch(
+          `${base}/${encodeURI('Catalog_АвансовыйПлатежИностранцаПоНДФЛПрисоединенныеФайлы')}?$format=json`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(attachPayload),
+          }
+        );
+        if (attRes.ok) {
+          attachedIn1C = true;
+          attachMessage = `Fiş 1C belge ekine yüklendi (${desc}.${extClean})`;
+        } else {
+          const atTxt = await attRes.text().catch(() => '');
+          attachMessage = `1C ek yükleme uyarısı (HTTP ${attRes.status}): ${atTxt.slice(0, 160)}`;
+        }
+      } catch (attErr: any) {
+        attachMessage = `1C ek yükleme hatası: ${attErr?.message || String(attErr)}`;
+      }
+    }
+
     // 4. Post (Провести) the document if requested (default true)
     let posted = false;
     if (refKey && params.postDoc !== false) {
@@ -1547,9 +1620,11 @@ export async function create1cPatentReceipt(
           refKey,
           number: docNum,
           posted: false,
+          attachedIn1C,
+          attachMessage,
           message: isLock
-            ? `Taslak olarak 1C'ye kaydedildi (№ ${docNum}) · ${Number(params.amount).toLocaleString('ru-RU')} ₽ — Dönem kilidi nedeniyle muhasebe 1C'de «Провести» yapabilir.`
-            : `Taslak olarak 1C'ye kaydedildi (№ ${docNum}) — Post HTTP ${postRes.status}`,
+            ? `Taslak olarak 1C'ye kaydedildi (№ ${docNum})${attachedIn1C ? ' · 📎 Fiş 1C ekine eklendi' : ''} · ${Number(params.amount).toLocaleString('ru-RU')} ₽ — Dönem kilidi nedeniyle muhasebe 1C'de «Провести» yapabilir.`
+            : `Taslak olarak 1C'ye kaydedildi (№ ${docNum})${attachedIn1C ? ' · 📎 Fiş 1C ekine eklendi' : ''} — Post HTTP ${postRes.status}`,
         };
       }
     }
@@ -1559,7 +1634,9 @@ export async function create1cPatentReceipt(
       refKey,
       number: docNum,
       posted,
-      message: `1C'ye patent fişi başarıyla girildi${posted ? ' ve onaylandı (Проведён)' : ''}: № ${docNum} · ${Number(params.amount).toLocaleString('ru-RU')} ₽ (${params.comment})`,
+      attachedIn1C,
+      attachMessage,
+      message: `1C'ye patent fişi başarıyla girildi${posted ? ' ve onaylandı (Проведён)' : ''}${attachedIn1C ? ' · 📎 Fiş 1C ekine eklendi' : ''}: № ${docNum} · ${Number(params.amount).toLocaleString('ru-RU')} ₽ (${params.comment})`,
     };
   } catch (err: any) {
     return { success: false, message: `1C yazma hatası: ${err?.message || String(err)}` };

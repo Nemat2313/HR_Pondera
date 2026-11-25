@@ -390,6 +390,10 @@ export default function PatentNdflView() {
     push_message?: string;
     ref_key?: string;
     doc_number?: string;
+    receipt_file_id?: string;
+    receipt_file_url?: string;
+    attached_in_1c?: boolean;
+    attach_message?: string;
   }
   const [scannedReceipts, setScannedReceipts] = useState<ScannedReceiptItem[]>([]);
   const [scanModalOpen, setScanModalOpen] = useState(false);
@@ -459,6 +463,7 @@ export default function PatentNdflView() {
             opDate: item.op_date,
             comment: item.suggested_comment,
             postDoc: true,
+            receiptFileId: item.receipt_file_id || undefined,
           }),
         });
         const data = await res.json();
@@ -474,6 +479,8 @@ export default function PatentNdflView() {
                     push_message: data.message,
                     ref_key: data.refKey,
                     doc_number: data.number,
+                    attached_in_1c: Boolean(data.attachedIn1C),
+                    attach_message: data.attachMessage || '',
                   }
                 : x
             )
@@ -2700,7 +2707,21 @@ export default function PatentNdflView() {
                               }
                             />
                           </td>
-                          <td className="py-1.5 px-2 font-mono text-slate-500">#{item.page}</td>
+                          <td className="py-1.5 px-2 font-mono text-slate-500 whitespace-nowrap">
+                            {item.receipt_file_url ? (
+                              <a
+                                href={item.receipt_file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                                title={L('Parçalanmış fiş PDF sayfasını aç', 'Открыть страницу чека')}
+                              >
+                                📎 #{item.page}
+                              </a>
+                            ) : (
+                              <>#{item.page}</>
+                            )}
+                          </td>
                           <td className="py-1.5 px-2">
                             <input
                               value={item.full_name}
@@ -2759,8 +2780,18 @@ export default function PatentNdflView() {
                           </td>
                           <td className="py-1.5 px-2 whitespace-nowrap">
                             {item.push_status === 'pushing' && <span className="text-indigo-500">⏳ ...</span>}
-                            {item.push_status === 'posted' && <span className="text-emerald-600 font-semibold">✓ Проведён ({item.doc_number})</span>}
-                            {item.push_status === 'draft' && <span className="text-sky-600 font-semibold">📝 Taslak ({item.doc_number})</span>}
+                            {item.push_status === 'posted' && (
+                              <span className="text-emerald-600 font-semibold">
+                                ✓ Проведён ({item.doc_number})
+                                {item.attached_in_1c && <span className="ml-1 px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9px]">📎 1C eki</span>}
+                              </span>
+                            )}
+                            {item.push_status === 'draft' && (
+                              <span className="text-sky-600 font-semibold" title={item.attach_message || item.push_message}>
+                                📝 Taslak ({item.doc_number})
+                                {item.attached_in_1c && <span className="ml-1 px-1 py-0.5 rounded bg-sky-100 text-sky-700 text-[9px]">📎 1C eki</span>}
+                              </span>
+                            )}
                             {item.push_status === 'error' && <span className="text-rose-600" title={item.push_message}>✗ Hata</span>}
                           </td>
                         </tr>
