@@ -366,6 +366,140 @@ export default function PatentNdflView() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const notifPdfInputRef = useRef<HTMLInputElement>(null);
+  const bulkReceiptInputRef = useRef<HTMLInputElement>(null);
+
+  // Bulk Patent Receipt Scan (PDF/ZIP -> AI OCR -> Bulk Push to 1C as Draft/Posted)
+  interface ScannedReceiptItem {
+    id: string;
+    page: number;
+    source_chunk: string;
+    full_name: string;
+    raw_name: string;
+    matched_in_1c: boolean;
+    tabel_no: string;
+    inn: string;
+    op_date: string;
+    amount: number;
+    kbk: string;
+    kbk_ok: boolean;
+    suip: string;
+    is_duplicate: boolean;
+    suggested_comment: string;
+    selected: boolean;
+    push_status?: 'idle' | 'pushing' | 'posted' | 'draft' | 'error';
+    push_message?: string;
+    ref_key?: string;
+    doc_number?: string;
+  }
+  const [scannedReceipts, setScannedReceipts] = useState<ScannedReceiptItem[]>([]);
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [bulkPushBusy, setBulkPushBusy] = useState(false);
+
+  const handleBulkReceiptUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setScanBusy(true);
+    setScanModalOpen(true);
+    setScannedReceipts([]);
+    try {
+      const allItems: ScannedReceiptItem[] = [];
+      for (const f of Array.from(files)) {
+        const fd = new FormData();
+        fd.append('mode', 'scan_receipts');
+        fd.append('taxYear', String(taxYear));
+        fd.append('file', f);
+        const res = await fetch('/api/patent-ndfl', {
+          method: 'POST',
+          headers: { ...getAuthHeaders() },
+          body: fd,
+        });
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.receipts)) {
+          allItems.push(...data.receipts);
+        } else {
+          setFeedback({ type: 'error', text: data?.message || `${f.name} okunamadı.` });
+        }
+      }
+      setScannedReceipts(allItems);
+      if (allItems.length > 0) {
+        setFeedback({
+          type: 'success',
+          text: L(
+            `${allItems.length} patent ödeme fişi AI OCR ile okundu. Kontrol edip 1C'ye gönderebilirsiniz.`,
+            `Распознано чеков по патентам (AI OCR): ${allItems.length}. Проверьте и отправьте в 1С.`
+          ),
+        });
+      }
+    } catch {
+      setFeedback({ type: 'error', text: L('Fiş tarama hatası.', 'Ошибка распознавания чеков.') });
+    } finally {
+      setScanBusy(false);
+      if (bulkReceiptInputRef.current) bulkReceiptInputRef.current.value = '';
+    }
+  };
+
+  const handleBulkPushTo1c = async () => {
+    const targets = scannedReceipts.filter((r) => r.selected && r.push_status !== 'posted' && r.push_status !== 'draft');
+    if (targets.length === 0) return;
+    setBulkPushBusy(true);
+    let okCount = 0;
+    let draftCount = 0;
+    let errCount = 0;
+    for (const item of targets) {
+      setScannedReceipts((prev) => prev.map((x) => (x.id === item.id ? { ...x, push_status: 'pushing' } : x)));
+      try {
+        const res = await fetch('/api/patent-ndfl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({
+            action: 'create_1c_receipt',
+            fullName: item.full_name,
+            taxYear,
+            amount: Number(item.amount) || 0,
+            opDate: item.op_date,
+            comment: item.suggested_comment,
+            postDoc: true,
+          }),
+        });
+        const data = await res.json();
+        if (data?.success) {
+          if (data.posted) okCount++;
+          else draftCount++;
+          setScannedReceipts((prev) =>
+            prev.map((x) =>
+              x.id === item.id
+                ? {
+                    ...x,
+                    push_status: data.posted ? 'posted' : 'draft',
+                    push_message: data.message,
+                    ref_key: data.refKey,
+                    doc_number: data.number,
+                  }
+                : x
+            )
+          );
+        } else {
+          errCount++;
+          setScannedReceipts((prev) =>
+            prev.map((x) => (x.id === item.id ? { ...x, push_status: 'error', push_message: data?.message || 'Hata' } : x))
+          );
+        }
+      } catch {
+        errCount++;
+        setScannedReceipts((prev) =>
+          prev.map((x) => (x.id === item.id ? { ...x, push_status: 'error', push_message: 'Ağ hatası' } : x))
+        );
+      }
+    }
+    setBulkPushBusy(false);
+    setFeedback({
+      type: errCount === 0 ? 'success' : 'info',
+      text: L(
+        `1C aktarımı tamamlandı: ${okCount} onaylı (Проведён), ${draftCount} taslak (Черновик), ${errCount} hata.`,
+        `Отправка в 1С завершена: проведено ${okCount}, черновиков ${draftCount}, ошибок ${errCount}.`
+      ),
+    });
+  };
 
   // Official FNS XML (КНД 1110055) & Employee Statement (Заявление) company metadata
   const [xmlOrgName, setXmlOrgName] = useState('Общество с ограниченной ответственностью "МОНТАЖЭНЕРГОСТРОЙ"');
@@ -936,6 +1070,23 @@ export default function PatentNdflView() {
                 <option value={2027}>2027</option>
                 <option value={2025}>2025</option>
               </select>
+              <button
+                type="button"
+                onClick={() => bulkReceiptInputRef.current?.click()}
+                disabled={scanBusy}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer disabled:opacity-50"
+              >
+                <FileUp className="w-3.5 h-3.5" />
+                <span>{scanBusy ? L('Fişler Okunuyor...', 'Чтение чеков...') : L('Fiş Yükle (PDF / ZIP → 1C)', 'Загрузить чеки (PDF / ZIP → 1С)')}</span>
+              </button>
+              <input
+                ref={bulkReceiptInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.zip,.jpg,.jpeg,.png"
+                onChange={(e) => handleBulkReceiptUpload(e.target.files)}
+                className="hidden"
+              />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -2482,6 +2633,178 @@ export default function PatentNdflView() {
           )}
         </div>
       </div>
+
+      {/* BULK PATENT RECEIPT OCR & 1C PUSH MODAL */}
+      {scanModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="w-full max-w-6xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {L("Toplu Patent Ödeme Fişi AI OCR → 1C'ye Aktarım (Taslak / Onaylı)", 'Массовое распознавание чеков (AI OCR) → отправка в 1С')}
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {L(
+                    "ZIP / PDF içindeki tüm banka fişleri otomatik okunur. Dönem kilidi varsa 1C'ye Taslak (Черновик) olarak kaydedilir, muhasebe 1C'de tek tıkla «Провести» yapabilir.",
+                    'Все чеки из ZIP/PDF распознаются автоматически. При наличии даты запрета сохраняются в 1С как черновики для быстрого проведения бухгалтером.'
+                  )}
+                </p>
+              </div>
+              <button type="button" onClick={() => setScanModalOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 space-y-3">
+              {scanBusy ? (
+                <div className="py-12 text-center space-y-2">
+                  <RefreshCw className="w-8 h-8 animate-spin mx-auto text-indigo-500" />
+                  <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                    {L('PDF / ZIP sayfaları parçalanıp Gemini Vision AI OCR ile okunuyor (35 sayfa ~20-35 sn)...', 'Разбивка PDF/ZIP и распознавание чеков через AI OCR...')}
+                  </p>
+                </div>
+              ) : scannedReceipts.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-500">
+                  {L('Okunan patent fişi bulunamadı.', 'Чеки не найдены.')}
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 sticky top-0 border-b border-slate-200 dark:border-slate-700">
+                      <tr>
+                        <th className="py-2 px-2">
+                          <input
+                            type="checkbox"
+                            checked={scannedReceipts.every((r) => r.selected)}
+                            onChange={(e) => setScannedReceipts((prev) => prev.map((x) => ({ ...x, selected: e.target.checked })))}
+                          />
+                        </th>
+                        <th className="py-2 px-2">{L('Sayfa', 'Стр.')}</th>
+                        <th className="py-2 px-2">{L('Ad Soyad (ФИО)', 'ФИО плательщика')}</th>
+                        <th className="py-2 px-2">{L('Ödeme Tarihi', 'Дата операции')}</th>
+                        <th className="py-2 px-2 text-right">{L('Tutar (₽)', 'Сумма (₽)')}</th>
+                        <th className="py-2 px-2">{L('Комментарий (Aylar)', 'Комментарий (месяцы)')}</th>
+                        <th className="py-2 px-2">{L('Kontrol (1C / КБК)', 'Проверка')}</th>
+                        <th className="py-2 px-2">{L('1C Durumu', 'Статус 1С')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {scannedReceipts.map((item) => (
+                        <tr key={item.id} className={item.is_duplicate ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="checkbox"
+                              checked={item.selected}
+                              onChange={(e) =>
+                                setScannedReceipts((prev) => prev.map((x) => (x.id === item.id ? { ...x, selected: e.target.checked } : x)))
+                              }
+                            />
+                          </td>
+                          <td className="py-1.5 px-2 font-mono text-slate-500">#{item.page}</td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              value={item.full_name}
+                              onChange={(e) =>
+                                setScannedReceipts((prev) => prev.map((x) => (x.id === item.id ? { ...x, full_name: e.target.value } : x)))
+                              }
+                              className="w-56 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                            />
+                            {item.inn && <div className="text-[9.5px] font-mono text-slate-500">ИНН: {item.inn}</div>}
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="date"
+                              value={item.op_date}
+                              onChange={(e) =>
+                                setScannedReceipts((prev) => prev.map((x) => (x.id === item.id ? { ...x, op_date: e.target.value } : x)))
+                              }
+                              className="px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2 text-right">
+                            <input
+                              type="number"
+                              value={item.amount}
+                              onChange={(e) =>
+                                setScannedReceipts((prev) => prev.map((x) => (x.id === item.id ? { ...x, amount: Number(e.target.value) || 0 } : x)))
+                              }
+                              className="w-24 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-right"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              value={item.suggested_comment}
+                              onChange={(e) =>
+                                setScannedReceipts((prev) => prev.map((x) => (x.id === item.id ? { ...x, suggested_comment: e.target.value } : x)))
+                              }
+                              className="w-40 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2 whitespace-nowrap">
+                            <div className="flex flex-wrap gap-1">
+                              <span className={`px-1.5 py-0.5 rounded text-[9.5px] ${item.matched_in_1c ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                                {item.matched_in_1c ? '✓ 1C' : '? Yeni'}
+                              </span>
+                              {!item.kbk_ok && (
+                                <span className="px-1.5 py-0.5 rounded text-[9.5px] bg-rose-100 text-rose-700" title={`КБК: ${item.kbk}`}>
+                                  ⚠ КБК
+                                </span>
+                              )}
+                              {item.is_duplicate && (
+                                <span className="px-1.5 py-0.5 rounded text-[9.5px] bg-amber-200 text-amber-900">
+                                  {L('Mükerrer?', 'Дубль?')}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-1.5 px-2 whitespace-nowrap">
+                            {item.push_status === 'pushing' && <span className="text-indigo-500">⏳ ...</span>}
+                            {item.push_status === 'posted' && <span className="text-emerald-600 font-semibold">✓ Проведён ({item.doc_number})</span>}
+                            {item.push_status === 'draft' && <span className="text-sky-600 font-semibold">📝 Taslak ({item.doc_number})</span>}
+                            {item.push_status === 'error' && <span className="text-rose-600" title={item.push_message}>✗ Hata</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3.5 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-950/60">
+              <div className="text-xs text-slate-600 dark:text-slate-300">
+                {L('Seçili', 'Выбрано')}: <strong>{scannedReceipts.filter((r) => r.selected).length}</strong> / {scannedReceipts.length} ·{' '}
+                {L('Toplam Tutar', 'Итого')}:{' '}
+                <strong className="font-mono">
+                  {fmtRub(scannedReceipts.filter((r) => r.selected).reduce((s, r) => s + Number(r.amount || 0), 0))}
+                </strong>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScanModalOpen(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs border border-slate-300 dark:border-slate-600 cursor-pointer"
+                >
+                  {L('Kapat', 'Закрыть')}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkPushBusy || scanBusy || scannedReceipts.filter((r) => r.selected).length === 0}
+                  onClick={handleBulkPushTo1c}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>
+                    {bulkPushBusy
+                      ? L("1C'ye Gönderiliyor...", 'Отправка в 1С...')
+                      : L("Seçilenleri 1C'ye Gönder (Taslak / Onaylı)", 'Отправить выбранные в 1С (Черновик / Провести)')}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

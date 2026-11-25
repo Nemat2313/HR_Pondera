@@ -631,6 +631,185 @@ export async function POST(request: Request) {
       }
       const buf = Buffer.from(await file.arrayBuffer());
 
+      // Mode: Bulk AI OCR Scan of Patent Payment Receipts (.pdf / .zip / .jpg / .png) -> Ready to push to 1C
+      if (uploadMode === 'scan_receipts') {
+        const ext = path.extname(file.name || '').toLowerCase() || '.pdf';
+        const tmpPath = path.join(os.tmpdir(), `patent_rc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
+        fs.writeFileSync(tmpPath, buf);
+        const scriptPath = path.join(process.cwd(), 'scripts', 'split_receipt_uploads.py');
+        const bins = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
+        let splitRes: any = null;
+        for (const bin of bins) {
+          try {
+            const res = spawnSync(bin, [scriptPath, tmpPath, file.name], {
+              encoding: 'utf-8',
+              timeout: 45000,
+              maxBuffer: 64 * 1024 * 1024,
+            });
+            if (res.stdout && res.stdout.trim()) {
+              splitRes = JSON.parse(res.stdout.trim());
+              break;
+            }
+          } catch {}
+        }
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+
+        if (!splitRes?.success || !Array.isArray(splitRes.items) || splitRes.items.length === 0) {
+          return NextResponse.json(
+            { success: false, message: splitRes?.message || 'PDF/ZIP içinden okunabilir fiş bulunamadı.' },
+            { status: 400 }
+          );
+        }
+
+        // Read Gemini API key from ai_provider_settings or env
+        let geminiKey = process.env.GEMINI_API_KEY || '';
+        let geminiBase = 'https://generativelanguage.googleapis.com/v1beta';
+        let geminiModel = 'gemini-flash-latest';
+        try {
+          const aiRow = db
+            .prepare('SELECT gemini_api_key, gemini_base_url, gemini_model FROM ai_provider_settings WHERE id = 1')
+            .get() as any;
+          if (aiRow?.gemini_api_key) geminiKey = String(aiRow.gemini_api_key).trim();
+          if (aiRow?.gemini_base_url) geminiBase = String(aiRow.gemini_base_url).trim().replace(/\/+$/, '');
+          if (aiRow?.gemini_model) geminiModel = String(aiRow.gemini_model).trim();
+        } catch {}
+
+        if (!geminiKey) {
+          return NextResponse.json(
+            { success: false, message: 'Gemini API anahtarı bulunamadı (Ayarlar → AI Ayarları bölümünden tanımlayın).' },
+            { status: 400 }
+          );
+        }
+
+        const promptText =
+          'You are an expert Russian accounting OCR extractor. Extract EVERY patent NDFL payment receipt (чек по операции / оплата НДФЛ в виде авансового платежа по патенту) from ALL pages of this document.\n' +
+          'Return ONLY a valid JSON array (no markdown fences) where each element has:\n' +
+          '{"page": number, "full_name": "ФИО Плательщика in Cyrillic uppercase/titlecase", "inn": "12-digit INN or empty", "op_date": "YYYY-MM-DD", "amount": number, "kbk": "20-digit KBK or empty", "suip": "receipt/SUIP number or empty"}\n' +
+          'Important: extract every single page that contains a receipt. Convert Russian dates like "23 ноября 2026" to "2026-11-23".';
+
+        const extractedAll: any[] = [];
+        const chunks = splitRes.items as Array<{ name: string; mime: string; b64: string; pageStart: number; pageEnd: number }>;
+        for (let i = 0; i < chunks.length; i += 2) {
+          const batch = chunks.slice(i, i + 2);
+          const batchRes = await Promise.all(
+            batch.map(async (ch) => {
+              try {
+                const url = `${geminiBase}/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+                const gRes = await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contents: [
+                      {
+                        parts: [
+                          { text: promptText },
+                          { inline_data: { mime_type: ch.mime, data: ch.b64 } },
+                        ],
+                      },
+                    ],
+                    generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+                  }),
+                });
+                if (!gRes.ok) return [];
+                const gJson: any = await gRes.json().catch(() => null);
+                const rawText = gJson?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+                const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+                const parsedArr = JSON.parse(cleaned);
+                if (!Array.isArray(parsedArr)) return [];
+                return parsedArr.map((item: any, idx: number) => ({
+                  ...item,
+                  source_chunk: ch.name,
+                  page: (ch.pageStart || 1) + (Number(item.page) > 0 ? Number(item.page) - 1 : idx),
+                }));
+              } catch {
+                return [];
+              }
+            })
+          );
+          for (const arr of batchRes) extractedAll.push(...arr);
+        }
+
+        // Match against existing patent_ndfl_records in DB for smart suggestions & duplicate check
+        const existingRecs = db
+          .prepare('SELECT full_name, norm_name, tabel_no, ifns_code, is_active, receipts_json FROM patent_ndfl_records WHERE tax_year = ?')
+          .all(taxYear) as any[];
+        const recByNorm = new Map<string, any>();
+        for (const er of existingRecs) recByNorm.set(String(er.norm_name || ''), er);
+
+        const RU_MONTH_NAMES = ['', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+        const normKeyFn = (s: any) => String(s || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
+
+        const enriched = extractedAll
+          .filter((x) => x && (x.full_name || Number(x.amount) > 0))
+          .map((x, idx) => {
+            const rawName = String(x.full_name || '').trim();
+            const nn = normKeyFn(rawName);
+            let matched = recByNorm.get(nn);
+            if (!matched && nn) {
+              const firstTwo = nn.split(' ').slice(0, 2).join(' ');
+              if (firstTwo.length >= 6) {
+                for (const [k, v] of Array.from(recByNorm.entries())) {
+                  if (k.startsWith(firstTwo)) {
+                    matched = v;
+                    break;
+                  }
+                }
+              }
+            }
+            const amount = Math.round(Number(x.amount || 0));
+            const opDate = String(x.op_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+            const kbk = String(x.kbk || '').replace(/\D/g, '');
+            const kbkOk = !kbk || kbk === '18210102040011000110';
+            let existingReceipts: any[] = [];
+            try {
+              if (matched?.receipts_json) existingReceipts = JSON.parse(String(matched.receipts_json));
+            } catch {}
+            const isDuplicate = existingReceipts.some(
+              (rc) => String(rc.opDate || '').slice(0, 10) === opDate && Math.abs(Number(rc.amount || 0) - amount) <= 10
+            );
+            const rate = 8000;
+            const estMonths = Math.max(1, Math.min(6, Math.round(amount / rate)));
+            const coveredSoFar = existingReceipts.flatMap((rc) => (Array.isArray(rc.months) ? rc.months : []));
+            const lastCovered = coveredSoFar.length > 0 ? Math.max(...coveredSoFar) : 0;
+            const opMonth = parseInt(opDate.slice(5, 7), 10) || 1;
+            const startM = lastCovered > 0 && lastCovered < 12 ? lastCovered + 1 : opMonth;
+            const monthNames: string[] = [];
+            for (let m = 0; m < estMonths && startM + m <= 12; m++) {
+              monthNames.push(RU_MONTH_NAMES[startM + m]);
+            }
+            const suggestedComment = monthNames.join('-');
+
+            return {
+              id: `rc_${Date.now()}_${idx}`,
+              page: Number(x.page || idx + 1),
+              source_chunk: x.source_chunk || file.name,
+              full_name: matched?.full_name || rawName,
+              raw_name: rawName,
+              matched_in_1c: Boolean(matched),
+              tabel_no: matched?.tabel_no || '',
+              inn: String(x.inn || '').replace(/\D/g, ''),
+              op_date: opDate,
+              amount,
+              kbk,
+              kbk_ok: kbkOk,
+              suip: String(x.suip || '').trim(),
+              is_duplicate: isDuplicate,
+              suggested_comment: suggestedComment,
+              selected: !isDuplicate && amount > 0 && Boolean(matched || rawName),
+            };
+          });
+
+        return NextResponse.json({
+          success: true,
+          count: enriched.length,
+          chunksProcessed: chunks.length,
+          receipts: enriched,
+          message: `${file.name}: ${enriched.length} patent ödeme fişi AI OCR ile okundu (${chunks.length} parça).`,
+        });
+      }
+
       // Mode: Parse official FNS Notification PDF (КНД 1125023)
       if (uploadMode === 'notification_pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         const tmpPath = path.join(os.tmpdir(), `fns_notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pdf`);

@@ -1541,12 +1541,15 @@ export async function create1cPatentReceipt(
       posted = postRes.ok;
       if (!postRes.ok) {
         const pt = await postRes.text().catch(() => '');
+        const isLock = /ДатыЗапретаИзменения/i.test(pt);
         return {
           success: true,
           refKey,
           number: docNum,
           posted: false,
-          message: `1C belgesi oluşturuldu (№ ${docNum}) ancak onaylanamadı (Post HTTP ${postRes.status}): ${pt.slice(0, 200)}`,
+          message: isLock
+            ? `Taslak olarak 1C'ye kaydedildi (№ ${docNum}) · ${Number(params.amount).toLocaleString('ru-RU')} ₽ — Dönem kilidi nedeniyle muhasebe 1C'de «Провести» yapabilir.`
+            : `Taslak olarak 1C'ye kaydedildi (№ ${docNum}) — Post HTTP ${postRes.status}`,
         };
       }
     }
