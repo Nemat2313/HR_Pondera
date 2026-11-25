@@ -245,269 +245,15 @@ export default function HomeCommandView({
     },
   ];
 
-  /* 3 Compact 1C-Style Containers: (1) Otomasyonlar & Devlet, (2) Raporlar & Analitik, (3) Personel, Operasyon & Ayarlar */
+  /* 3 Compact 1C-Style Containers: (1 Left) Raporlar + Davetiye + Kota, (2 Center) Otomasyonlar & RPA (Patent at bottom), (3 Right) Personel, Operasyon & Ayarlar */
   const groups: GroupContainer[] = useMemo(
     () => [
-      {
-        id: 'automations',
-        titleTr: 'Otomasyonlar, RPA & Devlet Servisleri',
-        titleRu: 'Автоматизации, RPA и Госсервисы',
-        subtitleTr: '1C:ЗУП · Госуслуги · ФНС · Zoho Mail · ИРС',
-        subtitleRu: '1С:ЗУП · Госуслуги · ФНС · Zoho Mail · ИРС',
-        accentIcon: Cpu,
-        accentBgCls: 'bg-emerald-600 text-white',
-        sections: [
-          {
-            id: 'patent_ndfl',
-            pageId: 'patent_ndfl',
-            titleTr: 'SNG Patent & НДФЛ Mahsup',
-            titleRu: 'Патент и НДФЛ (1С • ФНС)',
-            icon: Receipt,
-            iconColorCls: 'bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60',
-            badgeTr: patentStats ? `%${patentStats.offsetRate}` : '1C',
-            badgeRu: patentStats ? `%${patentStats.offsetRate}` : '1С',
-            links: [
-              {
-                id: 'patent_ndfl:overview',
-                pageId: 'patent_ndfl',
-                subTabId: 'overview',
-                labelTr: '1. Patent İade Özeti & Proje/Bölge Analizi',
-                labelRu: '1. Сводка зачёта, объекты и ИФНС',
-                tooltipTr: 'Speedometer mahsup göstergesi, kök neden, şantiye ve İFNS bölge dağılımı.',
-                tooltipRu: 'Индикатор зачёта, причины потерь, разбивка по объектам и ИФНС.',
-                keywords: 'patent ndfl özet speedometer proje ifns',
-                badge: patentStats ? `%${patentStats.offsetRate}` : undefined,
-                badgeTone: 'emerald',
-              },
-              {
-                id: 'patent_ndfl:reconciliation',
-                pageId: 'patent_ndfl',
-                subTabId: 'reconciliation',
-                labelTr: '2. Kişi Bazlı 12 Aylık Detay & Fişler',
-                labelRu: '2. Детализация по сотрудникам (12 мес.)',
-                tooltipTr: '711 çalışan için ay-ay patent avansı, 1C fiş giriş tarihi ve mahsup analizi.',
-                tooltipRu: 'Помесячная сверка чеков, дат внесения в 1С и зачтённого НДФЛ.',
-                keywords: 'kişi detay aylık fiş mahsup 1c',
-              },
-              {
-                id: 'patent_ndfl:notifications',
-                pageId: 'patent_ndfl',
-                subTabId: 'notifications',
-                labelTr: '3. ФНС Bildirim Takip & КНД 1110055 XML',
-                labelRu: '3. Уведомления ФНС и XML КНД 1110055',
-                tooltipTr: 'ФНС izni eksik kişiler, toplu КНД 1110055 XML üretimi ve PDF okuma.',
-                tooltipRu: 'Сотрудники без уведомления, генерация XML КНД 1110055 и разбор PDF.',
-                keywords: 'fns bildirim уведомление xml knd 1110055',
-                badge: patentStats && patentStats.noNotifCount > 0 ? `${patentStats.noNotifCount}` : undefined,
-                badgeTone: 'rose',
-              },
-              {
-                id: 'patent_ndfl:vozvrat',
-                pageId: 'patent_ndfl',
-                subTabId: 'vozvrat',
-                labelTr: '4. Возврат НДФЛ (ст. 231) İade Dosyası',
-                labelRu: '4. Возврат НДФЛ (ст. 231 НК РФ)',
-                tooltipTr: 'Yıl sonu iade tutarı, ЕНС/6-НДФЛ 4 adım rehberi ve toplu dilekçe yazdırma.',
-                tooltipRu: 'Расчёт возврата, регламент ЕНС/6-НДФЛ и печать заявлений.',
-                keywords: 'vozvrat возврат iade 231 dilekçe 6-ndfl',
-                badge: patentStats && patentStats.vozvratCount > 0 ? `${patentStats.vozvratCount}` : undefined,
-                badgeTone: 'amber',
-              },
-              {
-                id: 'patent_ndfl:import_odata',
-                pageId: 'patent_ndfl',
-                subTabId: 'import_odata',
-                labelTr: '5. 1C OData Bağlantı & Toplu AI Fiş Yükle',
-                labelRu: '5. 1С OData и AI-загрузка чеков',
-                tooltipTr: '1C:ЗУП canlı senkronizasyon, ZIP/PDF fişleri okuyup 1C\'ye taslak/onaylı aktarma.',
-                tooltipRu: 'Настройка 1С OData и массовая загрузка сканов чеков в 1С.',
-                keywords: 'odata 1c fiş yükle zip pdf ai ocr',
-              },
-            ],
-          },
-          {
-            id: 'gosuslugi',
-            pageId: 'gosuslugi',
-            titleTr: 'Gosuslugi RPA Robotu (МВД)',
-            titleRu: 'Робот Госуслуги (МВД • RPA)',
-            icon: Bot,
-            iconColorCls: 'bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border-sky-200/80 dark:border-sky-800/60',
-            logoSrc: '/logos/gosuslugi.svg',
-            badgeTr: '5 Sekme',
-            badgeRu: '5 вкл.',
-            links: [
-              {
-                id: 'gosuslugi:vks',
-                pageId: 'gosuslugi',
-                subTabId: 'vks',
-                labelTr: '1. VKS Çeyreklik Maaş Bildirimi (RPA)',
-                labelRu: '1. ВКС Ежеквартальное уведомление (RPA)',
-                tooltipTr: 'Госуслуги portalından çeyreklik VKS maaş bildirimlerini robotla gönderme.',
-                tooltipRu: 'Роботизированная подача квартальных уведомлений ВКС и сбор PDF.',
-                keywords: 'gosuslugi госуслуги vks вкс rpa robot maaş',
-              },
-              {
-                id: 'gosuslugi:hiring',
-                pageId: 'gosuslugi',
-                subTabId: 'hiring',
-                labelTr: '2. İşe Alım Bildirimi (Приём · 600585/1)',
-                labelRu: '2. Приём на работу (600585/1)',
-                tooltipTr: 'Yabancı personel işe alımında МВД/Госуслуги otomatik 3 gün bildirimi.',
-                tooltipRu: 'Подача уведомления о заключении трудового договора в МВД.',
-                keywords: 'gosuslugi işe alım giriş приём mvd',
-              },
-              {
-                id: 'gosuslugi:dismissal',
-                pageId: 'gosuslugi',
-                subTabId: 'dismissal',
-                labelTr: '3. İşten Çıkış Bildirimi (Увольнение)',
-                labelRu: '3. Увольнение (Расторжение · 600585/1)',
-                tooltipTr: 'İşten ayrılan yabancı personellerin МВД fesih bildirimi ve robot gönderimi.',
-                tooltipRu: 'Подача уведомления о расторжении договора в МВД.',
-                keywords: 'gosuslugi çıkış увольнение fesih mvd',
-              },
-              {
-                id: 'gosuslugi:registration',
-                pageId: 'gosuslugi',
-                subTabId: 'registration',
-                labelTr: '4. Göçmenlik Kaydı (Registre · 600380/1)',
-                labelRu: '4. Регистрация (Миграционный учёт)',
-                tooltipTr: 'Lojman/kamp adresine göre Госуслуги üzerinden ikamet kayıt otomasyonu.',
-                tooltipRu: 'Постановка на миграционный учёт через Госуслуги.',
-                keywords: 'gosuslugi registre kayıt регистрация ikamet',
-              },
-              {
-                id: 'gosuslugi:analytics',
-                pageId: 'gosuslugi',
-                subTabId: 'analytics',
-                labelTr: '5. VKS İstatistik & МВД Onay Analizi',
-                labelRu: '5. ВКС Статистика и Аналитика МВД',
-                tooltipTr: 'Çeyreklik VKS gönderim oranları, onaylanan/reddedilen bildirim grafikleri.',
-                tooltipRu: 'Графики и статистика поданных, принятых и отклонённых уведомлений ВКС.',
-                keywords: 'vks istatistik analiz grafik mvd gosuslugi',
-              },
-            ],
-          },
-          {
-            id: 'inn_snils',
-            pageId: 'inn_snils',
-            titleTr: 'INN & SNILS Kontrol (ФНС • СФР)',
-            titleRu: 'ИНН и СНИЛС (ФНС • СФР)',
-            icon: ShieldCheck,
-            iconColorCls: 'bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/60',
-            logoSrc: '/logos/fns.svg',
-            links: [
-              {
-                id: 'inn_snils:verify',
-                pageId: 'inn_snils',
-                subTabId: 'verify',
-                labelTr: 'Toplu ФНС ИНН Doğrulama & Sorgu',
-                labelRu: 'Массовая проверка ИНН в ФНС России',
-                tooltipTr: 'Pasaport bilgilerinden ФНС veritabanında 12 haneli ИНН otomatik doğrulama.',
-                tooltipRu: 'Автоматический запрос ИНН через сервис ФНС России.',
-                keywords: 'inn инн fns фнс snils doğrulama',
-              },
-              {
-                id: 'inn_snils:apply',
-                pageId: 'inn_snils',
-                subTabId: 'apply',
-                labelTr: 'Eksik ИНН / СНИЛС Başvuru Listesi',
-                labelRu: 'Заявки на оформление ИНН и СНИЛС',
-                tooltipTr: 'ИНН veya СНИЛС kaydı eksik çalışanların başvuru takibi.',
-                tooltipRu: 'Очередь сотрудников на получение ИНН / СНИЛС.',
-                keywords: 'inn snils başvuru eksik sfr',
-              },
-              {
-                id: 'inn_snils:analytics',
-                pageId: 'inn_snils',
-                subTabId: 'analytics',
-                labelTr: 'Şantiye Bazlı ИНН/СНИЛС Kapsama Analitiği',
-                labelRu: 'Аналитика обеспеченности ИНН / СНИЛС',
-                tooltipTr: 'Proje bazında ИНН ve СНИЛС tamamlanma yüzdeleri.',
-                tooltipRu: 'Процент наличия ИНН и СНИЛС по объектам.',
-                keywords: 'inn snils analitik grafik',
-              },
-            ],
-          },
-          {
-            id: 'invitations',
-            pageId: 'invitations',
-            titleTr: 'Davetiye Takip (Zoho Mail • МВД)',
-            titleRu: 'Приглашения (Zoho Mail • МВД)',
-            icon: Mail,
-            iconColorCls: 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/60',
-            logoSrc: '/logos/zoho-mail.png',
-            links: [
-              {
-                id: 'invitations:applications',
-                pageId: 'invitations',
-                subTabId: 'applications',
-                labelTr: 'Zoho Mail Davetiye Eşleştirme',
-                labelRu: 'Заявки из Zoho Mail и сверка ФИО',
-                tooltipTr: 'Zoho Mail IMAP üzerinden gelen МВД davetiyelerini personelle eşleştirir.',
-                tooltipRu: 'Автоматический сбор электронных приглашений МВД из Zoho Mail.',
-                keywords: 'davetiye invitation zoho mail mvd vize',
-              },
-              {
-                id: 'invitations:mvd_pdfs',
-                pageId: 'invitations',
-                subTabId: 'mvd_pdfs',
-                labelTr: 'Arşivlenmiş МВД Davetiye PDF\'leri',
-                labelRu: 'Архив электронных PDF-приглашений МВД',
-                tooltipTr: 'İndirilmiş tüm МВД elektronik davetiye PDF\'leri ve toplu gönderim.',
-                tooltipRu: 'Сохранённые PDF-приглашения МВД и рассылка.',
-                keywords: 'davetiye pdf mvd arşiv',
-              },
-            ],
-          },
-          {
-            id: 'quotas',
-            pageId: 'quotas',
-            titleTr: 'Çalışma Kotaları (ИРС)',
-            titleRu: 'Квоты на работу (ИРС)',
-            icon: Briefcase,
-            iconColorCls: 'bg-teal-100 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border-teal-200/80 dark:border-teal-800/60',
-            links: [
-              {
-                id: 'quotas:region_irs',
-                pageId: 'quotas',
-                subTabId: 'region_irs',
-                labelTr: 'Bölge & ИРС Kota Kullanım Özeti',
-                labelRu: 'Использование квот по регионам и ИРС',
-                tooltipTr: 'Bölge bazlı toplam onaylı, kullanılan ve kalan kontenjanlar.',
-                tooltipRu: 'Выделенные, использованные и свободные квоты по регионам.',
-                keywords: 'kota irs bölge kontenjan',
-              },
-              {
-                id: 'quotas:ozet_pivot',
-                pageId: 'quotas',
-                subTabId: 'ozet_pivot',
-                labelTr: 'Ülke / Bölge Pivot & ИРС Sertifikaları',
-                labelRu: 'Сводный пивот и сертификаты ИРС',
-                tooltipTr: 'Uyruk ve bölge kırılımında kota pivot tablosu ve ИРС belgeleri.',
-                tooltipRu: 'Пивот по гражданству и реестр сертификатов ИРС.',
-                keywords: 'kota pivot sertifika irs',
-              },
-              {
-                id: 'quotas:codes_guide',
-                pageId: 'quotas',
-                subTabId: 'codes_guide',
-                labelTr: 'Dosya Verileri & Meslek Kodları Rehberi',
-                labelRu: 'Файлы квот и справочник кодов ОКПДТР',
-                tooltipTr: 'Resmi Rusça meslek kodları, ülke kodları ve Excel kota içe aktarma.',
-                tooltipRu: 'Коды профессий ОКПДТР, стран и импорт файлов.',
-                keywords: 'kota kod meslek okpdtr rehber',
-              },
-            ],
-          },
-        ],
-      },
       {
         id: 'reports',
         titleTr: 'Raporlar & İK Analitik',
         titleRu: 'Отчёты и HR-аналитика',
-        subtitleTr: 'KPI · Turnover · Harita · Evrak Süreleri · 1C↔eBA · 7 Yeni Rapor',
-        subtitleRu: 'KPI · Текучесть · Карта · Сроки документов · 1С↔eBA',
+        subtitleTr: 'KPI · Turnover · Harita · Evrak · Davetiye · Kotalar',
+        subtitleRu: 'KPI · Текучесть · Карта · Сроки · Приглашения · Квоты',
         accentIcon: Layers,
         accentBgCls: 'bg-teal-600 text-white',
         sections: [
@@ -665,6 +411,260 @@ export default function HomeCommandView({
                 tooltipTr: 'Şantiyeler arası transferler, vardiya dengesi ve veri kalitesi.',
                 tooltipRu: 'Перемещения между объектами, вахты и полнота данных.',
                 keywords: 'mobilite vardiya kalite',
+              },
+            ],
+          },
+          {
+            id: 'invitations',
+            pageId: 'invitations',
+            titleTr: 'Davetiye Takip (Zoho Mail • МВД)',
+            titleRu: 'Приглашения (Zoho Mail • МВД)',
+            icon: Mail,
+            iconColorCls: 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/60',
+            logoSrc: '/logos/zoho-mail.png',
+            links: [
+              {
+                id: 'invitations:applications',
+                pageId: 'invitations',
+                subTabId: 'applications',
+                labelTr: 'Zoho Mail Davetiye Eşleştirme',
+                labelRu: 'Заявки из Zoho Mail и сверка ФИО',
+                tooltipTr: 'Zoho Mail IMAP üzerinden gelen МВД davetiyelerini personelle eşleştirir.',
+                tooltipRu: 'Автоматический сбор электронных приглашений МВД из Zoho Mail.',
+                keywords: 'davetiye invitation zoho mail mvd vize',
+              },
+              {
+                id: 'invitations:mvd_pdfs',
+                pageId: 'invitations',
+                subTabId: 'mvd_pdfs',
+                labelTr: 'Arşivlenmiş МВД Davetiye PDF\'leri',
+                labelRu: 'Архив электронных PDF-приглашений МВД',
+                tooltipTr: 'İndirilmiş tüm МВД elektronik davetiye PDF\'leri ve toplu gönderim.',
+                tooltipRu: 'Сохранённые PDF-приглашения МВД и рассылка.',
+                keywords: 'davetiye pdf mvd arşiv',
+              },
+            ],
+          },
+          {
+            id: 'quotas',
+            pageId: 'quotas',
+            titleTr: 'Çalışma Kotaları (ИРС)',
+            titleRu: 'Квоты на работу (ИРС)',
+            icon: Briefcase,
+            iconColorCls: 'bg-teal-100 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border-teal-200/80 dark:border-teal-800/60',
+            links: [
+              {
+                id: 'quotas:region_irs',
+                pageId: 'quotas',
+                subTabId: 'region_irs',
+                labelTr: 'Bölge & ИРС Kota Kullanım Özeti',
+                labelRu: 'Использование квот по регионам и ИРС',
+                tooltipTr: 'Bölge bazlı toplam onaylı, kullanılan ve kalan kontenjanlar.',
+                tooltipRu: 'Выделенные, использованные и свободные квоты по регионам.',
+                keywords: 'kota irs bölge kontenjan',
+              },
+              {
+                id: 'quotas:ozet_pivot',
+                pageId: 'quotas',
+                subTabId: 'ozet_pivot',
+                labelTr: 'Ülke / Bölge Pivot & ИРС Sertifikaları',
+                labelRu: 'Сводный пивот и сертификаты ИРС',
+                tooltipTr: 'Uyruk ve bölge kırılımında kota pivot tablosu ve ИРС belgeleri.',
+                tooltipRu: 'Пивот по гражданству и реестр сертификатов ИРС.',
+                keywords: 'kota pivot sertifika irs',
+              },
+              {
+                id: 'quotas:codes_guide',
+                pageId: 'quotas',
+                subTabId: 'codes_guide',
+                labelTr: 'Dosya Verileri & Meslek Kodları Rehberi',
+                labelRu: 'Файлы квот и справочник кодов ОКПДТР',
+                tooltipTr: 'Resmi Rusça meslek kodları, ülke kodları ve Excel kota içe aktarma.',
+                tooltipRu: 'Коды профессий ОКПДТР, стран и импорт файлов.',
+                keywords: 'kota kod meslek okpdtr rehber',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'automations',
+        titleTr: 'Otomasyonlar, RPA & Devlet Servisleri',
+        titleRu: 'Автоматизации, RPA и Госсервисы',
+        subtitleTr: 'Госуслуги · ФНС · 1C:ЗУП Patent & НДФЛ',
+        subtitleRu: 'Госуслуги · ФНС · 1С:ЗУП Патент и НДФЛ',
+        accentIcon: Cpu,
+        accentBgCls: 'bg-emerald-600 text-white',
+        sections: [
+          {
+            id: 'gosuslugi',
+            pageId: 'gosuslugi',
+            titleTr: 'Gosuslugi RPA Robotu (МВД)',
+            titleRu: 'Робот Госуслуги (МВД • RPA)',
+            icon: Bot,
+            iconColorCls: 'bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border-sky-200/80 dark:border-sky-800/60',
+            logoSrc: '/logos/gosuslugi.svg',
+            badgeTr: '5 Sekme',
+            badgeRu: '5 вкл.',
+            links: [
+              {
+                id: 'gosuslugi:vks',
+                pageId: 'gosuslugi',
+                subTabId: 'vks',
+                labelTr: '1. VKS Çeyreklik Maaş Bildirimi (RPA)',
+                labelRu: '1. ВКС Ежеквартальное уведомление (RPA)',
+                tooltipTr: 'Госуслуги portalından çeyreklik VKS maaş bildirimlerini robotla gönderme.',
+                tooltipRu: 'Роботизированная подача квартальных уведомлений ВКС и сбор PDF.',
+                keywords: 'gosuslugi госуслуги vks вкс rpa robot maaş',
+              },
+              {
+                id: 'gosuslugi:hiring',
+                pageId: 'gosuslugi',
+                subTabId: 'hiring',
+                labelTr: '2. İşe Alım Bildirimi (Приём · 600585/1)',
+                labelRu: '2. Приём на работу (600585/1)',
+                tooltipTr: 'Yabancı personel işe alımında МВД/Госуслуги otomatik 3 gün bildirimi.',
+                tooltipRu: 'Подача уведомления о заключении трудового договора в МВД.',
+                keywords: 'gosuslugi işe alım giriş приём mvd',
+              },
+              {
+                id: 'gosuslugi:dismissal',
+                pageId: 'gosuslugi',
+                subTabId: 'dismissal',
+                labelTr: '3. İşten Çıkış Bildirimi (Увольнение)',
+                labelRu: '3. Увольнение (Расторжение · 600585/1)',
+                tooltipTr: 'İşten ayrılan yabancı personellerin МВД fesih bildirimi ve robot gönderimi.',
+                tooltipRu: 'Подача уведомления о расторжении договора в МВД.',
+                keywords: 'gosuslugi çıkış увольнение fesih mvd',
+              },
+              {
+                id: 'gosuslugi:registration',
+                pageId: 'gosuslugi',
+                subTabId: 'registration',
+                labelTr: '4. Göçmenlik Kaydı (Registre · 600380/1)',
+                labelRu: '4. Регистрация (Миграционный учёт)',
+                tooltipTr: 'Lojman/kamp adresine göre Госуслуги üzerinden ikamet kayıt otomasyonu.',
+                tooltipRu: 'Постановка на миграционный учёт через Госуслуги.',
+                keywords: 'gosuslugi registre kayıt регистрация ikamet',
+              },
+              {
+                id: 'gosuslugi:analytics',
+                pageId: 'gosuslugi',
+                subTabId: 'analytics',
+                labelTr: '5. VKS İstatistik & МВД Onay Analizi',
+                labelRu: '5. ВКС Статистика и Аналитика МВД',
+                tooltipTr: 'Çeyreklik VKS gönderim oranları, onaylanan/reddedilen bildirim grafikleri.',
+                tooltipRu: 'Графики и статистика поданных, принятых и отклонённых уведомлений ВКС.',
+                keywords: 'vks istatistik analiz grafik mvd gosuslugi',
+              },
+            ],
+          },
+          {
+            id: 'inn_snils',
+            pageId: 'inn_snils',
+            titleTr: 'INN & SNILS Kontrol (ФНС • СФР)',
+            titleRu: 'ИНН и СНИЛС (ФНС • СФР)',
+            icon: ShieldCheck,
+            iconColorCls: 'bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/60',
+            logoSrc: '/logos/fns.svg',
+            links: [
+              {
+                id: 'inn_snils:verify',
+                pageId: 'inn_snils',
+                subTabId: 'verify',
+                labelTr: 'Toplu ФНС ИНН Doğrulama & Sorgu',
+                labelRu: 'Массовая проверка ИНН в ФНС России',
+                tooltipTr: 'Pasaport bilgilerinden ФНС veritabanında 12 haneli ИНН otomatik doğrulama.',
+                tooltipRu: 'Автоматический запрос ИНН через сервис ФНС России.',
+                keywords: 'inn инн fns фнс snils doğrulama',
+              },
+              {
+                id: 'inn_snils:apply',
+                pageId: 'inn_snils',
+                subTabId: 'apply',
+                labelTr: 'Eksik ИНН / СНИЛС Başvuru Listesi',
+                labelRu: 'Заявки на оформление ИНН и СНИЛС',
+                tooltipTr: 'ИНН veya СНИЛС kaydı eksik çalışanların başvuru takibi.',
+                tooltipRu: 'Очередь сотрудников на получение ИНН / СНИЛС.',
+                keywords: 'inn snils başvuru eksik sfr',
+              },
+              {
+                id: 'inn_snils:analytics',
+                pageId: 'inn_snils',
+                subTabId: 'analytics',
+                labelTr: 'Şantiye Bazlı ИНН/СНИЛС Kapsama Analitiği',
+                labelRu: 'Аналитика обеспеченности ИНН / СНИЛС',
+                tooltipTr: 'Proje bazında ИНН ve СНИЛС tamamlanma yüzdeleri.',
+                tooltipRu: 'Процент наличия ИНН и СНИЛС по объектам.',
+                keywords: 'inn snils analitik grafik',
+              },
+            ],
+          },
+          {
+            id: 'patent_ndfl',
+            pageId: 'patent_ndfl',
+            titleTr: 'SNG Patent & НДФЛ Mahsup',
+            titleRu: 'Патент и НДФЛ (1С • ФНС)',
+            icon: Receipt,
+            iconColorCls: 'bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60',
+            badgeTr: patentStats ? `%${patentStats.offsetRate}` : '1C',
+            badgeRu: patentStats ? `%${patentStats.offsetRate}` : '1С',
+            links: [
+              {
+                id: 'patent_ndfl:overview',
+                pageId: 'patent_ndfl',
+                subTabId: 'overview',
+                labelTr: '1. Patent İade Özeti & Proje/Bölge Analizi',
+                labelRu: '1. Сводка зачёта, объекты и ИФНС',
+                tooltipTr: 'Speedometer mahsup göstergesi, kök neden, şantiye ve İFNS bölge dağılımı.',
+                tooltipRu: 'Индикатор зачёта, причины потерь, разбивка по объектам и ИФНС.',
+                keywords: 'patent ndfl özet speedometer proje ifns',
+                badge: patentStats ? `%${patentStats.offsetRate}` : undefined,
+                badgeTone: 'emerald',
+              },
+              {
+                id: 'patent_ndfl:reconciliation',
+                pageId: 'patent_ndfl',
+                subTabId: 'reconciliation',
+                labelTr: '2. Kişi Bazlı 12 Aylık Detay & Fişler',
+                labelRu: '2. Детализация по сотрудникам (12 мес.)',
+                tooltipTr: '711 çalışan için ay-ay patent avansı, 1C fiş giriş tarihi ve mahsup analizi.',
+                tooltipRu: 'Помесячная сверка чеков, дат внесения в 1С и зачтённого НДФЛ.',
+                keywords: 'kişi detay aylık fiş mahsup 1c',
+              },
+              {
+                id: 'patent_ndfl:notifications',
+                pageId: 'patent_ndfl',
+                subTabId: 'notifications',
+                labelTr: '3. ФНС Bildirim Takip & КНД 1110055 XML',
+                labelRu: '3. Уведомления ФНС и XML КНД 1110055',
+                tooltipTr: 'ФНС izni eksik kişiler, toplu КНД 1110055 XML üretimi ve PDF okuma.',
+                tooltipRu: 'Сотрудники без уведомления, генерация XML КНД 1110055 и разбор PDF.',
+                keywords: 'fns bildirim уведомление xml knd 1110055',
+                badge: patentStats && patentStats.noNotifCount > 0 ? `${patentStats.noNotifCount}` : undefined,
+                badgeTone: 'rose',
+              },
+              {
+                id: 'patent_ndfl:vozvrat',
+                pageId: 'patent_ndfl',
+                subTabId: 'vozvrat',
+                labelTr: '4. Возврат НДФЛ (ст. 231) İade Dosyası',
+                labelRu: '4. Возврат НДФЛ (ст. 231 НК РФ)',
+                tooltipTr: 'Yıl sonu iade tutarı, ЕНС/6-НДФЛ 4 adım rehberi ve toplu dilekçe yazdırma.',
+                tooltipRu: 'Расчёт возврата, регламент ЕНС/6-НДФЛ и печать заявлений.',
+                keywords: 'vozvrat возврат iade 231 dilekçe 6-ndfl',
+                badge: patentStats && patentStats.vozvratCount > 0 ? `${patentStats.vozvratCount}` : undefined,
+                badgeTone: 'amber',
+              },
+              {
+                id: 'patent_ndfl:import_odata',
+                pageId: 'patent_ndfl',
+                subTabId: 'import_odata',
+                labelTr: '5. 1C OData Bağlantı & Toplu AI Fiş Yükle',
+                labelRu: '5. 1С OData и AI-загрузка чеков',
+                tooltipTr: '1C:ЗУП canlı senkronizasyon, ZIP/PDF fişleri okuyup 1C\'ye taslak/onaylı aktarma.',
+                tooltipRu: 'Настройка 1С OData и массовая загрузка сканов чеков в 1С.',
+                keywords: 'odata 1c fiş yükle zip pdf ai ocr',
               },
             ],
           },
@@ -882,11 +882,23 @@ export default function HomeCommandView({
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-[#F3EEE4] dark:bg-[#0B1120] transition-colors duration-200">
       <div className="max-w-[1620px] mx-auto px-3 sm:px-5 lg:px-6 py-3.5 space-y-3.5">
-        {/* TOP COMPACT BAR: FOLDING / EXPANDING OFFICIAL LOGO DECK + INSET SEARCH + MINI KPIs */}
-        <div className={`${raisedCls} rounded-2xl px-4 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3`}>
-          {/* Left: Overlapping/Stacked Logo Cards — compact icons only, smoothly expand on hover! */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400 mr-1 hidden sm:inline">
+        {/* TOP COMPACT BAR: FADE-IN HERO ARTWORK + FOLDING OFFICIAL LOGO DECK + INSET SEARCH + ACTIVE PILL */}
+        <div className={`${raisedCls} relative rounded-2xl px-4 py-2.5 flex flex-col xl:flex-row xl:items-center justify-between gap-3 overflow-hidden`}>
+          {/* Left: Softly Fading Custom Hero Illustration + Overlapping/Stacked Official Logo Cards */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="hidden md:flex items-center shrink-0 -ml-4 -my-2.5 h-[74px] w-[172px] overflow-hidden select-none pointer-events-none">
+              <img
+                src="/logos/home-hero-art.jpg"
+                alt="Pondera HR Automation"
+                style={{
+                  WebkitMaskImage: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.38) 26%, rgba(0,0,0,0.96) 64%, rgba(0,0,0,0.92) 90%, transparent 100%)',
+                  maskImage: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.38) 26%, rgba(0,0,0,0.96) 64%, rgba(0,0,0,0.92) 90%, transparent 100%)',
+                }}
+                className="w-full h-full object-cover object-right opacity-95 dark:opacity-80 dark:brightness-90"
+              />
+            </div>
+
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400 mr-0.5 hidden sm:inline">
               {L('Canlı Otomasyonlar:', 'Интеграции:')}
             </span>
             <div className="flex items-center">
@@ -976,19 +988,6 @@ export default function HomeCommandView({
                 {(stats?.totalCount || 0).toLocaleString(isRu ? 'ru-RU' : 'tr-TR')}
               </div>
             </button>
-
-            {patentStats && (
-              <button
-                type="button"
-                onClick={() => onNavigate('patent_ndfl', 'overview')}
-                className="px-2.5 py-1.5 rounded-xl bg-[#F4EFE6] dark:bg-slate-800 border border-[#E2D9C9] dark:border-slate-700 hover:border-emerald-400 transition-all text-left shrink-0 cursor-pointer"
-              >
-                <div className="text-[9px] font-bold uppercase text-slate-500 leading-none">{L('Patent', 'Патент')}</div>
-                <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400 font-mono leading-tight mt-0.5">
-                  %{patentStats.offsetRate}
-                </div>
-              </button>
-            )}
 
             {onOpenCommandPalette && (
               <button
@@ -1158,8 +1157,8 @@ export default function HomeCommandView({
                                   </div>
 
                                   {showTip && (
-                                    <div className="pointer-events-none hidden sm:block absolute left-2 right-2 -top-1.5 -translate-y-full z-30">
-                                      <div className="inline-block max-w-full px-2.5 py-1 rounded-lg bg-[#1E2925] dark:bg-slate-950 text-[#F7F4ED] text-[10.5px] leading-snug shadow-[0_8px_20px_rgba(0,0,0,0.28)] border border-emerald-500/35">
+                                    <div className="pointer-events-none hidden sm:flex justify-end absolute right-1 top-full mt-1 z-40 max-w-[92%]">
+                                      <div className="px-2.5 py-1.5 rounded-xl bg-[#FFFDF9] dark:bg-slate-900 text-slate-700 dark:text-slate-100 text-[10.5px] leading-snug shadow-[0_8px_22px_rgba(90,78,60,0.18)] dark:shadow-[0_10px_24px_rgba(0,0,0,0.45)] border border-emerald-400/75 dark:border-emerald-500/45 text-right">
                                         {isRu ? lk.tooltipRu : lk.tooltipTr}
                                       </div>
                                     </div>
