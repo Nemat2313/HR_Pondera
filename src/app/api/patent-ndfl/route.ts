@@ -780,7 +780,9 @@ export async function POST(request: Request) {
             .prepare('SELECT gemini_api_key, gemini_base_url, gemini_model FROM ai_provider_settings WHERE id = 1')
             .get() as any;
           if (aiRow?.gemini_api_key) geminiKey = String(aiRow.gemini_api_key).trim();
-          if (aiRow?.gemini_base_url) geminiBase = String(aiRow.gemini_base_url).trim().replace(/\/+$/, '');
+          if (aiRow?.gemini_base_url) {
+            geminiBase = String(aiRow.gemini_base_url).trim().replace(/\/+$/, '').replace(/\/openai$/i, '');
+          }
           if (aiRow?.gemini_model) geminiModel = String(aiRow.gemini_model).trim();
         } catch {}
 
