@@ -1506,10 +1506,12 @@ export async function create1cPatentReceipt(
     const docDateIso = params.docDate ? `${params.docDate.slice(0, 10)}T12:00:00` : nowIso;
     const opDateIso = `${(params.opDate || nowIso.slice(0, 10)).slice(0, 10)}T00:00:00`;
 
+    const yr = Number(params.taxYear) || 2026;
     const payload = {
       Date: docDateIso,
       ДатаОперации: opDateIso,
-      НалоговыйПериод: Number(params.taxYear) || 2026,
+      ДатаЗапрета: `${yr}-12-31T00:00:00`,
+      НалоговыйПериод: yr,
       Организация_Key: orgKey,
       Сотрудник_Key: fizKey,
       Сумма: Number(params.amount),
