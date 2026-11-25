@@ -120,11 +120,18 @@ function hasValidInnNumber(r: InnSnilsRow): boolean {
   return digits.length === 12;
 }
 
-export default function InnSnilsView() {
+export default function InnSnilsView({
+  initialSubTab,
+}: {
+  initialSubTab?: 'verify' | 'apply' | 'analytics';
+} = {}) {
   const { user, getAuthHeaders } = useAuth();
   const { lang } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'verify' | 'apply' | 'analytics'>('verify');
+  const [activeTab, setActiveTab] = useState<'verify' | 'apply' | 'analytics'>(initialSubTab || 'verify');
+  useEffect(() => {
+    if (initialSubTab) setActiveTab(initialSubTab);
+  }, [initialSubTab]);
   const [items, setItems] = useState<InnSnilsRow[]>([]);
   const [summary, setSummary] = useState({ innVerified: 0, innNotFound: 0, innApplied: 0, snilsVerified: 0 });
   const [loading, setLoading] = useState(true);

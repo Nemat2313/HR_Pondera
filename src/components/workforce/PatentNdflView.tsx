@@ -223,13 +223,22 @@ function fmtRub(val: number): string {
   return `${Math.round(val || 0).toLocaleString('ru-RU')} ₽`;
 }
 
-export default function PatentNdflView() {
+export default function PatentNdflView({
+  initialSubTab,
+}: {
+  initialSubTab?: 'overview' | 'reconciliation' | 'notifications' | 'vozvrat' | 'import_odata';
+} = {}) {
   const { getAuthHeaders } = useAuth();
   const { lang } = useLanguage();
   const isRu = lang === 'ru';
   const L = (tr: string, ru: string) => (isRu ? ru : tr);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'reconciliation' | 'notifications' | 'vozvrat' | 'import_odata'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'reconciliation' | 'notifications' | 'vozvrat' | 'import_odata'>(
+    initialSubTab || 'overview'
+  );
+  useEffect(() => {
+    if (initialSubTab) setActiveTab(initialSubTab);
+  }, [initialSubTab]);
   const [vozvratOnlyGuaranteed, setVozvratOnlyGuaranteed] = useState(true);
   const [taxYear, setTaxYear] = useState<number>(2026);
   const [records, setRecords] = useState<PatentNdflRow[]>([]);

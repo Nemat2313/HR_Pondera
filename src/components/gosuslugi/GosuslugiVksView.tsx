@@ -962,10 +962,19 @@ function isWorkerOkazana(w: { gosuslugiStatus?: string }): boolean {
   return /оказан|исполнен|принят/i.test(normStatus);
 }
 
-export default function GosuslugiVksView() {
+export default function GosuslugiVksView({
+  initialSubTab,
+}: {
+  initialSubTab?: 'vks' | 'hiring' | 'dismissal' | 'registration';
+} = {}) {
   const { user, isAdmin, showPermissionDenied, showSalaryPdfPermissionDenied } = useAuth();
   const { lang } = useLanguage();
-  const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration'>('vks');
+  const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration'>(
+    initialSubTab || 'vks'
+  );
+  useEffect(() => {
+    if (initialSubTab) setServiceTab(initialSubTab);
+  }, [initialSubTab]);
 
   const requireWritePermission = (actionLabelTr: string, actionLabelRu?: string): boolean => {
     if (user?.role === 'viewer') {

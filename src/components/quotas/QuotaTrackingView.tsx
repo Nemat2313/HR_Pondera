@@ -143,14 +143,17 @@ function fmtNum(n: number): string {
   return (Number(n) || 0).toLocaleString('tr-TR');
 }
 
-export function QuotaTrackingView() {
+export function QuotaTrackingView({ initialSubTab }: { initialSubTab?: SubTabId } = {}) {
   const { user, showPermissionDenied } = useAuth();
   const isViewer = user?.role === 'viewer';
 
   const [data, setData] = useState<QuotaOverviewData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedYear, setSelectedYear] = useState<string>('2026');
-  const [activeTab, setActiveTab] = useState<SubTabId>('region_irs');
+  const [activeTab, setActiveTab] = useState<SubTabId>(initialSubTab || 'region_irs');
+  useEffect(() => {
+    if (initialSubTab) setActiveTab(initialSubTab);
+  }, [initialSubTab]);
 
   // Global Filters
   const [regionFilter, setRegionFilter] = useState<string>('ALL');

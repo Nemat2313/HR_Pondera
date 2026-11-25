@@ -28,6 +28,7 @@ import {
   GitFork,
   Sparkles,
   Receipt,
+  Home,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -107,6 +108,13 @@ export default function Sidebar({
       title: lang === 'ru' ? '1. ДЕЙСТВУЮЩИЕ МОДУЛИ' : '1. CANLI ÇALIŞAN SİSTEM',
       tag: lang === 'ru' ? 'В сети' : 'Canlı',
       items: [
+        {
+          id: 'home',
+          label: lang === 'ru' ? 'Главная (Рабочий стол)' : 'Ana Sayfa (Çalışma Masası)',
+          icon: Home,
+          badge: lang === 'ru' ? 'Хаб' : 'Hub',
+          badgeColor: 'bg-emerald-600 text-white border border-emerald-600',
+        },
         {
           id: 'overview',
           label: t('nav_overview'),

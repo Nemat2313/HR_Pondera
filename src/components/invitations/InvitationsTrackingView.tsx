@@ -100,7 +100,11 @@ interface SummaryInfo {
   lastSyncAt: string;
 }
 
-export default function InvitationsTrackingView() {
+export default function InvitationsTrackingView({
+  initialSubTab,
+}: {
+  initialSubTab?: 'applications' | 'mvd_pdfs';
+} = {}) {
   const { lang } = useLanguage();
   const { user, showPermissionDenied } = useAuth();
   const [rows, setRows] = useState<InvitationRow[]>([]);
@@ -119,7 +123,10 @@ export default function InvitationsTrackingView() {
 
   // Collapsible top explanation (hidden by default)
   const [showInfo, setShowInfo] = useState(false);
-  const [activeSection, setActiveSection] = useState<'applications' | 'mvd_pdfs'>('applications');
+  const [activeSection, setActiveSection] = useState<'applications' | 'mvd_pdfs'>(initialSubTab || 'applications');
+  useEffect(() => {
+    if (initialSubTab) setActiveSection(initialSubTab);
+  }, [initialSubTab]);
 
   // Table Filters
   const [search, setSearch] = useState('');

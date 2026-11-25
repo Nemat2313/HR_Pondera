@@ -61,7 +61,10 @@ interface CampsApiResponse extends CampAnalyticsPayload {
   message?: string;
 }
 
-export default function CampManagementView({ onNavigateToPersonnel }: CampManagementViewProps) {
+export default function CampManagementView({
+  onNavigateToPersonnel,
+  initialSubTab,
+}: CampManagementViewProps & { initialSubTab?: MainViewTab }) {
   const { lang } = useLanguage();
 
   const [filterRegion, setFilterRegion] = useState<string>('all');
@@ -72,7 +75,10 @@ export default function CampManagementView({ onNavigateToPersonnel }: CampManage
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const [mainTab, setMainTab] = useState<MainViewTab>('explorer_3d');
+  const [mainTab, setMainTab] = useState<MainViewTab>(initialSubTab || 'explorer_3d');
+  useEffect(() => {
+    if (initialSubTab) setMainTab(initialSubTab);
+  }, [initialSubTab]);
   const [listSubTab, setListSubTab] = useState<ListSubTab>('rooms');
   const [tableSearch, setTableSearch] = useState('');
   const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'active' | 'standby'>('all');

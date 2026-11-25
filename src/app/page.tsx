@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { Loader2, RefreshCw } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
+import HomeCommandView from '@/components/home/HomeCommandView';
 import OverviewView from '@/components/dashboard/OverviewView';
 import SettingsView from '@/components/settings/SettingsView';
 import LoginModal from '@/components/auth/LoginModal';
@@ -158,8 +159,8 @@ const ExcelUploadModal = dynamicWithRetry(
 
 export default function Home() {
   const { user, loading: authLoading, showPermissionDenied } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview');
-  const [collapsed, setCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
+  const [collapsed, setCollapsed] = useState(true);
   const wasOrgChartRef = useRef(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [includeExits, setIncludeExits] = useState(false);
@@ -201,6 +202,17 @@ export default function Home() {
   const [settingsInitialSubTab, setSettingsInitialSubTab] = useState<
     'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings'
   >('users_rls');
+  const [patentInitialSubTab, setPatentInitialSubTab] = useState<
+    'overview' | 'reconciliation' | 'notifications' | 'vozvrat' | 'import_odata'
+  >('overview');
+  const [quotaInitialSubTab, setQuotaInitialSubTab] = useState<
+    'region_irs' | 'ozet_pivot' | 'certificates' | 'workers' | 'files_veri' | 'codes_guide'
+  >('region_irs');
+  const [innSnilsInitialSubTab, setInnSnilsInitialSubTab] = useState<'verify' | 'apply' | 'analytics'>('verify');
+  const [gosuslugiInitialSubTab, setGosuslugiInitialSubTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration'>('vks');
+  const [invitationsInitialSubTab, setInvitationsInitialSubTab] = useState<'applications' | 'mvd_pdfs'>('applications');
+  const [campInitialSubTab, setCampInitialSubTab] = useState<'explorer_3d' | 'analytics' | 'tables'>('explorer_3d');
+  const [travelInitialSubTab, setTravelInitialSubTab] = useState<'showcase' | 'live_scanner'>('live_scanner');
 
   // Stats data
   const [stats, setStats] = useState<StatsData | null>(null);
@@ -271,7 +283,8 @@ export default function Home() {
         wasLoggedOutRef.current ||
         (prevUserIdRef.current !== null && prevUserIdRef.current !== user.id);
       if (isFreshLogin) {
-        setActiveTab('overview');
+        setActiveTab('home');
+        setCollapsed(true);
         try {
           sessionStorage.removeItem('pondera_active_tab');
         } catch {
@@ -283,7 +296,8 @@ export default function Home() {
     } else {
       wasLoggedOutRef.current = true;
       prevUserIdRef.current = null;
-      setActiveTab('overview');
+      setActiveTab('home');
+      setCollapsed(true);
       try {
         sessionStorage.removeItem('pondera_active_tab');
       } catch {
@@ -324,14 +338,37 @@ export default function Home() {
     } catch {
       // ignore
     }
-    if (activeTab === 'org_chart') {
+    if (activeTab === 'home' || activeTab === 'org_chart') {
       wasOrgChartRef.current = true;
       setCollapsed(true);
     } else if (wasOrgChartRef.current) {
       wasOrgChartRef.current = false;
-      setCollapsed(false);
     }
   }, [activeTab, settingsInitialSubTab]);
+
+  // Direct jump from Home Command Center to any page + exact sub-tab
+  const handleHomeNavigate = (pageId: string, subTabId?: string) => {
+    if (user?.role === 'viewer' && (pageId === 'settings' || pageId === 'database' || pageId === 'admin')) {
+      showPermissionDenied({
+        actionLabelTr: 'Ayarlar & Yönetim',
+        actionLabelRu: 'Настройки системы',
+      });
+      return;
+    }
+    if (pageId === 'personnel') setInitialFilterForPersonnel(null);
+    if (pageId === 'compliance' && subTabId) setComplianceInitialSubTab(subTabId as any);
+    if (pageId === 'settings' && subTabId) setSettingsInitialSubTab(subTabId as any);
+    if (pageId === 'report_proposals' && subTabId) setProposalInitialTab(subTabId as ProposalTabId);
+    if (pageId === 'patent_ndfl' && subTabId) setPatentInitialSubTab(subTabId as any);
+    if (pageId === 'quotas' && subTabId) setQuotaInitialSubTab(subTabId as any);
+    if (pageId === 'inn_snils' && subTabId) setInnSnilsInitialSubTab(subTabId as any);
+    if (pageId === 'gosuslugi' && subTabId) setGosuslugiInitialSubTab(subTabId as any);
+    if (pageId === 'invitations' && subTabId) setInvitationsInitialSubTab(subTabId as any);
+    if (pageId === 'camp_management' && subTabId) setCampInitialSubTab(subTabId as any);
+    if (pageId === 'travel_tickets' && subTabId) setTravelInitialSubTab(subTabId as any);
+    if (pageId === 'org_chart' || pageId === 'home') setCollapsed(true);
+    setActiveTab(pageId);
+  };
 
   // Global search submit -> switches to Personnel List with search
   const handleSearchSubmit = (query: string) => {
@@ -398,7 +435,9 @@ export default function Home() {
 
   const isIdariOnly = user?.role === 'idari_isler';
   const effectiveTab = isIdariOnly
-    ? activeTab === 'camp_management'
+    ? activeTab === 'home'
+      ? 'home'
+      : activeTab === 'camp_management'
       ? 'camp_management'
       : 'travel_tickets'
     : activeTab;
@@ -410,7 +449,7 @@ export default function Home() {
         activeTab={effectiveTab}
         setActiveTab={(tab) => {
           if (user?.role === 'idari_isler') {
-            setActiveTab(tab === 'camp_management' ? 'camp_management' : 'travel_tickets');
+            setActiveTab(tab === 'home' ? 'home' : tab === 'camp_management' ? 'camp_management' : 'travel_tickets');
             return;
           }
           if (user?.role === 'viewer' && (tab === 'settings' || tab === 'database' || tab === 'admin')) {
@@ -474,6 +513,14 @@ export default function Home() {
           collapsed ? 'lg:pl-20' : 'lg:pl-60'
         }`}
       >
+        {effectiveTab === 'home' && (
+          <HomeCommandView
+            stats={stats}
+            onNavigate={handleHomeNavigate}
+            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+          />
+        )}
+
         {(effectiveTab === 'overview' ||
           (user?.role === 'viewer' && effectiveTab === 'database')) && (
           <OverviewView
@@ -511,21 +558,22 @@ export default function Home() {
           />
         )}
 
-        {effectiveTab === 'gosuslugi' && <GosuslugiVksView />}
+        {effectiveTab === 'gosuslugi' && <GosuslugiVksView initialSubTab={gosuslugiInitialSubTab} />}
 
         {effectiveTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
-        {effectiveTab === 'inn_snils' && <InnSnilsView />}
+        {effectiveTab === 'inn_snils' && <InnSnilsView initialSubTab={innSnilsInitialSubTab} />}
 
         {effectiveTab === 'powerise_tech' && <PoweriseInnovationView />}
 
         {effectiveTab === 'official_real' && <OfficialVsRealView />}
 
-        {effectiveTab === 'quotas' && <QuotaTrackingView />}
+        {effectiveTab === 'quotas' && <QuotaTrackingView initialSubTab={quotaInitialSubTab} />}
 
-        {effectiveTab === 'invitations' && <InvitationsTrackingView />}
+        {effectiveTab === 'invitations' && <InvitationsTrackingView initialSubTab={invitationsInitialSubTab} />}
 
         {effectiveTab === 'travel_tickets' && (
           <TravelTicketsAdminView
+            initialSubTab={travelInitialSubTab}
             onOpenAiSettings={() => {
               if (user?.role === 'idari_isler') return;
               if (user?.role === 'viewer') {
@@ -544,11 +592,12 @@ export default function Home() {
 
         {effectiveTab === 'camp_management' && (
           <CampManagementView
+            initialSubTab={campInitialSubTab}
             onNavigateToPersonnel={isIdariOnly ? undefined : handleNavigateToPersonnel}
           />
         )}
 
-        {effectiveTab === 'patent_ndfl' && <PatentNdflView />}
+        {effectiveTab === 'patent_ndfl' && <PatentNdflView initialSubTab={patentInitialSubTab} />}
 
         {effectiveTab === 'compliance' && (
           <ComplianceAnalyticsView

@@ -149,11 +149,15 @@ const SAMPLE_TICKETS: TicketItem[] = [
 export default function TravelTicketsAdminView({
   onOpenAiSettings,
   onNavigateToPersonnel,
-}: TravelTicketsAdminViewProps) {
+  initialSubTab,
+}: TravelTicketsAdminViewProps & { initialSubTab?: 'showcase' | 'live_scanner' }) {
   const { lang } = useLanguage();
   const { user } = useAuth();
   const isIdariOnly = user?.role === 'idari_isler';
-  const [activeMainTab, setActiveMainTab] = useState<'showcase' | 'live_scanner'>('live_scanner');
+  const [activeMainTab, setActiveMainTab] = useState<'showcase' | 'live_scanner'>(initialSubTab || 'live_scanner');
+  React.useEffect(() => {
+    if (initialSubTab) setActiveMainTab(initialSubTab);
+  }, [initialSubTab]);
   const [showInlineAiSettings, setShowInlineAiSettings] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'flight' | 'train'>('all');
   const [search, setSearch] = useState('');
