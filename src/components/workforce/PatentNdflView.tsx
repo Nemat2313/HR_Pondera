@@ -722,11 +722,35 @@ export default function PatentNdflView() {
   };
 
   const analytics = useMemo(() => {
+    const IFNS_REGION_NAMES: Record<string, { tr: string; ru: string }> = {
+      '47': { tr: '47 · Leningrad Obl.', ru: '47 · Ленинградская обл.' },
+      '78': { tr: '78 · St. Petersburg', ru: '78 · Санкт-Петербург' },
+      '77': { tr: '77 · Moskova', ru: '77 · Москва' },
+      '50': { tr: '50 · Moskova Obl.', ru: '50 · Московская обл.' },
+      '16': { tr: '16 · Tatarstan', ru: '16 · Татарстан' },
+      '28': { tr: '28 · Amur Obl.', ru: '28 · Амурская обл.' },
+      '72': { tr: '72 · Tyumen Obl.', ru: '72 · Тюменская обл.' },
+      '38': { tr: '38 · İrkutsk Obl.', ru: '38 · Иркутская обл.' },
+      '51': { tr: '51 · Murmansk Obl.', ru: '51 · Мурманская обл.' },
+      '52': { tr: '52 · Nijniy Novgorod', ru: '52 · Нижегородская обл.' },
+    };
     const byCit = new Map<string, { name: string; count: number; advances: number; used: number; potential: number; noNotif: number }>();
     const bySite = new Map<string, { name: string; count: number; advances: number; used: number; potential: number; noNotif: number }>();
+    const byRegion = new Map<string, { code: string; name: string; count: number; advances: number; used: number; potential: number }>();
     for (const r of records) {
       const cit = (r.citizenship || 'Belirtilmemiş').trim();
       const site = (r.site_name || r.region || r.org_name || 'Genel').trim();
+      const ifnsPref = String(r.ifns_code || '').trim().slice(0, 2);
+      const regMeta = IFNS_REGION_NAMES[ifnsPref];
+      const regKey = ifnsPref || 'NONE';
+      const regLabel = regMeta
+        ? isRu
+          ? regMeta.ru
+          : regMeta.tr
+        : ifnsPref
+        ? `${ifnsPref} · İFNS ${r.ifns_code}`
+        : r.region || (isRu ? 'Без ИФНС' : 'Bildirimsiz');
+
       for (const [map, key] of [
         [byCit, cit],
         [bySite, site],
@@ -739,12 +763,20 @@ export default function PatentNdflView() {
         if (!r.has_notification) cur.noNotif++;
         map.set(key, cur);
       }
+
+      const rc = byRegion.get(regKey) || { code: ifnsPref, name: regLabel, count: 0, advances: 0, used: 0, potential: 0 };
+      rc.count++;
+      rc.advances += Number(r.patent_advances || 0);
+      rc.used += Number(r.patent_offset_used || 0);
+      rc.potential += Number(r.additional_offset_potential || 0);
+      byRegion.set(regKey, rc);
     }
     return {
       byCit: Array.from(byCit.values()).sort((a, b) => b.count - a.count).slice(0, 8),
       bySite: Array.from(bySite.values()).sort((a, b) => b.potential - a.potential || b.count - a.count).slice(0, 12),
+      byRegion: Array.from(byRegion.values()).sort((a, b) => b.advances - a.advances).slice(0, 10),
     };
-  }, [records]);
+  }, [records, isRu]);
 
   const handleExportExcel = () => {
     const rows = filteredRecords.map((r) => ({
@@ -1155,96 +1187,131 @@ export default function PatentNdflView() {
                     </div>
                   </div>
 
-                  {/* ROW 2: PROJECT / SITE-BASED OFFSET PERFORMANCE CHART (CLICK TO DRILL DOWN TO TAB 2) */}
-                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                          <TrendingUp className="w-4 h-4 text-emerald-500" />
-                          <span>
-                            {L(
-                              `Proje / Şantiye Bazlı Patent İade & Mahsup Oranı Analizi (${taxYear})`,
-                              `Анализ доли зачёта и возврата патентов по проектам / объектам (${taxYear})`
-                            )}
-                          </span>
-                        </h3>
-                        <p className="text-[10.5px] text-slate-500">
-                          {L(
-                            'Her şantiyenin ödenen patentten mahsup ettiği yüzde oranı — tıklayarak o şantiyenin personellerine gidin',
-                            'Процент зачёта патентов по каждому объекту — нажмите на проект для детализации по сотрудникам'
-                          )}
-                        </p>
+                  {/* ROW 2: PROJECT / SITE OFFSET % + PATENT REGION (IFNS) VERTICAL BAR CHART */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                    <div className="lg:col-span-7 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                            <TrendingUp className="w-4 h-4 text-emerald-500" />
+                            <span>
+                              {L(
+                                `Proje / Şantiye Bazlı Mahsup Oranı (${taxYear})`,
+                                `Доля зачёта по проектам / объектам (${taxYear})`
+                              )}
+                            </span>
+                          </h3>
+                          <p className="text-[10.5px] text-slate-500">
+                            {L('Tıklayarak o şantiyenin personellerine gidin', 'Нажмите для детализации по объекту')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2.5 text-[10px] text-slate-600 dark:text-slate-300">
+                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" /> ≥%80</span>
+                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-500" /> %50–79</span>
+                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500" /> &lt;%50</span>
+                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-indigo-400" /> {L('Potansiyel', 'Потенциал')}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 text-[10.5px] text-slate-600 dark:text-slate-300">
-                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> {L('≥ %80 İyi', '≥ 80% Отлично')}</span>
-                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> {L('%50–79 Orta', '50–79% Средне')}</span>
-                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" /> {L('< %50 Düşük', '< 50% Низко')}</span>
-                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-400" /> {L('Ek Potansiyel', 'Потенциал')}</span>
+
+                      <div className="space-y-2.5">
+                        {analytics.bySite.map((s) => {
+                          const pct = s.advances > 0 ? Math.round((s.used / s.advances) * 1000) / 10 : 0;
+                          const potPct = s.advances > 0 ? Math.min(100 - pct, Math.round((s.potential / s.advances) * 1000) / 10) : 0;
+                          const barCls = pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-rose-500';
+                          const badgeCls =
+                            pct >= 80
+                              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                              : pct >= 50
+                              ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                              : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+                          return (
+                            <button
+                              key={s.name}
+                              type="button"
+                              onClick={() => {
+                                setSearch(s.name === 'Genel' ? '' : s.name);
+                                setCauseFilter('all');
+                                setBandFilter('all');
+                                setActiveFilter('all');
+                                setActiveTab('reconciliation');
+                              }}
+                              className="w-full text-left p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800 hover:border-indigo-400 transition cursor-pointer space-y-1.5"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-semibold text-slate-900 dark:text-white truncate">{s.name}</span>
+                                  <span className="text-[10px] font-mono text-slate-500 shrink-0">({s.count})</span>
+                                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold border shrink-0 ${badgeCls}`}>
+                                    %{pct}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2.5 text-[10.5px] font-mono shrink-0">
+                                  <span className="text-slate-600 dark:text-slate-300">{fmtRub(s.advances)}</span>
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmtRub(s.used)}</span>
+                                </div>
+                              </div>
+                              <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
+                                <div style={{ width: `${Math.min(100, pct)}%` }} className={`h-full ${barCls}`} />
+                                {potPct > 0 && <div style={{ width: `${potPct}%` }} className="h-full bg-indigo-400/90" />}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
-                    <div className="space-y-2.5">
-                      {analytics.bySite.map((s) => {
-                        const pct = s.advances > 0 ? Math.round((s.used / s.advances) * 1000) / 10 : 0;
-                        const potPct = s.advances > 0 ? Math.min(100 - pct, Math.round((s.potential / s.advances) * 1000) / 10) : 0;
-                        const barCls = pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-rose-500';
-                        const badgeCls =
-                          pct >= 80
-                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                            : pct >= 50
-                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                            : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700';
+                    {/* Patent Region (IFNS) Vertical Bar Chart */}
+                    <div className="lg:col-span-5 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                          {L(`Patent Bölgesi (İFNS) Bazlı Dağılım (${taxYear})`, `Распределение по регионам патента / ИФНС (${taxYear})`)}
+                        </h3>
+                        <p className="text-[10.5px] text-slate-500">
+                          {L('İFNS bölge koduna göre ödenen patent ve mahsup %', 'Оплачено патентов и доля зачёта по коду региона ИФНС')}
+                        </p>
+                      </div>
+                      {(() => {
+                        const maxAdv = Math.max(1, ...analytics.byRegion.map((r) => r.advances));
                         return (
-                          <button
-                            key={s.name}
-                            type="button"
-                            onClick={() => {
-                              setSearch(s.name === 'Genel' ? '' : s.name);
-                              setCauseFilter('all');
-                              setActiveFilter('all');
-                              setActiveTab('reconciliation');
-                            }}
-                            className="w-full text-left p-3 rounded-xl bg-slate-50/70 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800 hover:border-indigo-400 transition cursor-pointer space-y-2"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-semibold text-slate-900 dark:text-white truncate">{s.name}</span>
-                                <span className="text-[10.5px] font-mono text-slate-500 shrink-0">
-                                  ({s.count} {L('kişi', 'чел.')})
-                                </span>
-                                <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-mono font-bold border shrink-0 ${badgeCls}`}>
-                                  %{pct}
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono shrink-0">
-                                <span className="text-slate-600 dark:text-slate-300">
-                                  {L('Avans', 'Аванс')}: <strong>{fmtRub(s.advances)}</strong>
-                                </span>
-                                <span className="text-emerald-600 dark:text-emerald-400">
-                                  {L('Mahsup', 'Зачтено')}: <strong>{fmtRub(s.used)}</strong>
-                                </span>
-                                <span className="text-indigo-600 dark:text-indigo-400">
-                                  {L('Potansiyel', 'Потенциал')}: <strong>{fmtRub(s.potential)}</strong>
-                                </span>
-                              </div>
-                            </div>
-                            <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
-                              <div
-                                style={{ width: `${Math.min(100, pct)}%` }}
-                                className={`h-full ${barCls} transition-all`}
-                                title={`${L('Mahsup Edilen', 'Зачтено')}: %${pct} (${fmtRub(s.used)})`}
-                              />
-                              {potPct > 0 && (
-                                <div
-                                  style={{ width: `${potPct}%` }}
-                                  className="h-full bg-indigo-400/90"
-                                  title={`${L('Ek Potansiyel', 'Потенциал')}: ${fmtRub(s.potential)}`}
-                                />
-                              )}
-                            </div>
-                          </button>
+                          <div className="flex items-end justify-around gap-3 h-44 pt-4 pb-2 px-3 rounded-xl bg-slate-50/70 dark:bg-slate-900/40 border border-slate-200/70 dark:border-slate-800">
+                            {analytics.byRegion.map((rg) => {
+                              const pct = rg.advances > 0 ? Math.round((rg.used / rg.advances) * 1000) / 10 : 0;
+                              const hAdv = Math.max(14, Math.round((rg.advances / maxAdv) * 100));
+                              const hUsed = Math.max(rg.used > 0 ? 10 : 0, Math.round((rg.used / maxAdv) * 100));
+                              return (
+                                <button
+                                  key={rg.code || rg.name}
+                                  type="button"
+                                  onClick={() => {
+                                    setSearch(rg.code || '');
+                                    setCauseFilter('all');
+                                    setBandFilter('all');
+                                    setActiveTab('reconciliation');
+                                  }}
+                                  className="flex flex-col items-center h-full justify-end gap-1 flex-1 max-w-[110px] cursor-pointer group"
+                                  title={`${rg.name} (${rg.count} ${L('kişi', 'чел.')}) · ${L('Avans', 'Аванс')}: ${fmtRub(rg.advances)} · ${L('Mahsup', 'Зачтено')}: ${fmtRub(rg.used)} (%${pct})`}
+                                >
+                                  <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">%{pct}</span>
+                                  <div className="flex items-end gap-1.5 h-28 w-full justify-center">
+                                    <div style={{ height: `${hAdv}%` }} className="w-5 rounded-t bg-sky-500/80 group-hover:bg-sky-500 transition" />
+                                    <div style={{ height: `${hUsed}%` }} className="w-5 rounded-t bg-emerald-500/90 group-hover:bg-emerald-500 transition" />
+                                  </div>
+                                  <span className="text-[10px] text-slate-700 dark:text-slate-300 font-medium truncate w-full text-center">
+                                    {rg.name}
+                                  </span>
+                                  <span className="text-[9.5px] font-mono text-slate-500">
+                                    {rg.count} {L('kişi', 'чел.')}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         );
-                      })}
+                      })()}
+                      <div className="flex items-center justify-center gap-4 text-[10px] text-slate-500">
+                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500/80" /> {L('Ödenen Patent', 'Оплачено патент')}</span>
+                        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> {L('Mahsup Edilen', 'Зачтено')}</span>
+                      </div>
                     </div>
                   </div>
 
