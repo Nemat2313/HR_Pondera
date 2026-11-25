@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 64" fill="none" role="img" aria-label="eBA">
+  <defs>
+    <linearGradient id="ebaBg" x1="0" y1="0" x2="120" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22372F"/>
+      <stop offset="55%" stop-color="#192A24"/>
+      <stop offset="100%" stop-color="#12201B"/>
+    </linearGradient>
+    <linearGradient id="ebaSheen" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.02"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="64" rx="14" fill="url(#ebaBg)"/>
+  <rect x="0.75" y="0.75" width="118.5" height="62.5" rx="13.25" fill="url(#ebaSheen)" stroke="#385449" stroke-width="1.5"/>
+  <!-- Crisp italic 'e' + bold geometric 'BA' matching eBA brand mark -->
+  <text x="14" y="47" fill="#FFFFFF" font-family="'Segoe UI', 'Inter', Arial, sans-serif" font-size="40" font-weight="800" font-style="italic" letter-spacing="-1.5">e</text>
+  <text x="38" y="47" fill="#FFFFFF" font-family="'Segoe UI', 'Inter', Arial, sans-serif" font-size="38" font-weight="900" letter-spacing="-0.8">BA</text>
+  <!-- Registered trademark symbol -->
+  <circle cx="101.5" cy="21" r="5" stroke="#D1FAE5" stroke-width="1.2" opacity="0.88"/>
+  <text x="101.5" y="23.3" text-anchor="middle" fill="#D1FAE5" font-family="Arial, sans-serif" font-size="6.4" font-weight="700" opacity="0.92">R</text>
+</svg>

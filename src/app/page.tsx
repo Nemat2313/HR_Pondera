@@ -209,7 +209,7 @@ export default function Home() {
     'region_irs' | 'ozet_pivot' | 'certificates' | 'workers' | 'files_veri' | 'codes_guide'
   >('region_irs');
   const [innSnilsInitialSubTab, setInnSnilsInitialSubTab] = useState<'verify' | 'apply' | 'analytics'>('verify');
-  const [gosuslugiInitialSubTab, setGosuslugiInitialSubTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration'>('vks');
+  const [gosuslugiInitialSubTab, setGosuslugiInitialSubTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration' | 'analytics'>('vks');
   const [invitationsInitialSubTab, setInvitationsInitialSubTab] = useState<'applications' | 'mvd_pdfs'>('applications');
   const [campInitialSubTab, setCampInitialSubTab] = useState<'explorer_3d' | 'analytics' | 'tables'>('explorer_3d');
   const [travelInitialSubTab, setTravelInitialSubTab] = useState<'showcase' | 'live_scanner'>('live_scanner');
@@ -343,6 +343,7 @@ export default function Home() {
       setCollapsed(true);
     } else if (wasOrgChartRef.current) {
       wasOrgChartRef.current = false;
+      setCollapsed(false);
     }
   }, [activeTab, settingsInitialSubTab]);
 
@@ -353,6 +354,11 @@ export default function Home() {
         actionLabelTr: 'Ayarlar & Yönetim',
         actionLabelRu: 'Настройки системы',
       });
+      return;
+    }
+    if (pageId === 'gosuslugi_analytics') {
+      setGosuslugiInitialSubTab('analytics');
+      setActiveTab('gosuslugi');
       return;
     }
     if (pageId === 'personnel') setInitialFilterForPersonnel(null);
@@ -560,7 +566,7 @@ export default function Home() {
 
         {effectiveTab === 'gosuslugi' && <GosuslugiVksView initialSubTab={gosuslugiInitialSubTab} />}
 
-        {effectiveTab === 'gosuslugi_analytics' && <GosuslugiAnalyticsView />}
+        {effectiveTab === 'gosuslugi_analytics' && <GosuslugiVksView initialSubTab="analytics" />}
         {effectiveTab === 'inn_snils' && <InnSnilsView initialSubTab={innSnilsInitialSubTab} />}
 
         {effectiveTab === 'powerise_tech' && <PoweriseInnovationView />}

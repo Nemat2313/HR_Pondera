@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Bot,
   FileSpreadsheet,
@@ -962,14 +963,16 @@ function isWorkerOkazana(w: { gosuslugiStatus?: string }): boolean {
   return /оказан|исполнен|принят/i.test(normStatus);
 }
 
+const GosuslugiAnalyticsPanel = dynamic(() => import('./GosuslugiAnalyticsView'), { ssr: false });
+
 export default function GosuslugiVksView({
   initialSubTab,
 }: {
-  initialSubTab?: 'vks' | 'hiring' | 'dismissal' | 'registration';
+  initialSubTab?: 'vks' | 'hiring' | 'dismissal' | 'registration' | 'analytics';
 } = {}) {
   const { user, isAdmin, showPermissionDenied, showSalaryPdfPermissionDenied } = useAuth();
   const { lang } = useLanguage();
-  const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration'>(
+  const [serviceTab, setServiceTab] = useState<'vks' | 'hiring' | 'dismissal' | 'registration' | 'analytics'>(
     initialSubTab || 'vks'
   );
   useEffect(() => {
@@ -4533,6 +4536,14 @@ export default function GosuslugiVksView({
               accent: 'emerald',
               title: '4. Registre — Göç Kaydı (600380/1)',
             },
+            {
+              id: 'analytics',
+              label: lang === 'ru' ? '5. ВКС Статистика' : '5. VKS İstatistik',
+              badge: lang === 'ru' ? 'Анализ' : 'Analiz',
+              icon: <Activity className="w-3.5 h-3.5" />,
+              accent: 'emerald',
+              title: lang === 'ru' ? '5. ВКС Статистика и Аналитика' : '5. VKS İstatistik & Analiz',
+            },
           ]}
           rightSlot={
             <div className="flex items-center gap-2">
@@ -4562,6 +4573,13 @@ export default function GosuslugiVksView({
             </div>
           }
         />
+
+        {/* TAB 5: VKS ANALYTICS & STATISTICS */}
+        {serviceTab === 'analytics' && (
+          <div className="mt-1">
+            <GosuslugiAnalyticsPanel />
+          </div>
+        )}
 
         {/* TAB 4: MIGRATION REGISTRATION (REGISTRE — GOSUSLUGI 600380/1) */}
         {serviceTab === 'registration' && (
