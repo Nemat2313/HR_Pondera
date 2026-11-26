@@ -123,6 +123,42 @@ export default function PowerBIHeroBar({
   const totalFlow = inLatest + outLatest || 1;
   const inPct = Math.round((inLatest / totalFlow) * 100);
   const outPct = Math.round((outLatest / totalFlow) * 100);
+  const netFlow = inLatest - outLatest;
+
+  // Dual-arc Speedometer geometry (180° semicircle, left = Giriş/Emerald, right = Çıkış/Rose, inner arc = VKS rates)
+  const spCx = 90;
+  const spCy = 84;
+  const outerR = 64;
+  const innerR = 47;
+  const outerCirc = Math.PI * outerR;
+  const innerCirc = Math.PI * innerR;
+  const inRatio = Math.min(0.96, Math.max(0.04, inLatest / totalFlow));
+  const outRatio = 1 - inRatio;
+  const outerGap = 2.5;
+  const outerInLen = Math.max(0, inRatio * outerCirc - outerGap / 2);
+  const outerOutLen = Math.max(0, outRatio * outerCirc - outerGap / 2);
+  const vksHalfCirc = innerCirc * 0.47;
+  const innerVksInLen = inVksLatest > 0 ? Math.max(6, (Math.min(100, inVksRate) / 100) * vksHalfCirc) : 0;
+  const innerVksOutLen = outVksLatest > 0 ? Math.max(6, (Math.min(100, outVksRate) / 100) * vksHalfCirc) : 0;
+  const needleRad = Math.PI * (1 - inRatio);
+  const needleTipX = spCx + (outerR + 8) * Math.cos(needleRad);
+  const needleTipY = spCy - (outerR + 8) * Math.sin(needleRad);
+  const needleBaseR = innerR + 5;
+  const perpX = Math.sin(needleRad) * 4.2;
+  const perpY = Math.cos(needleRad) * 4.2;
+  const needleB1X = spCx + needleBaseR * Math.cos(needleRad) - perpX;
+  const needleB1Y = spCy - needleBaseR * Math.sin(needleRad) - perpY;
+  const needleB2X = spCx + needleBaseR * Math.cos(needleRad) + perpX;
+  const needleB2Y = spCy - needleBaseR * Math.sin(needleRad) + perpY;
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => {
+    const a = Math.PI * (1 - t);
+    return {
+      x1: spCx + (outerR + 8) * Math.cos(a),
+      y1: spCy - (outerR + 8) * Math.sin(a),
+      x2: spCx + (outerR + 12) * Math.cos(a),
+      y2: spCy - (outerR + 12) * Math.sin(a),
+    };
+  });
 
   const malePct = totalCount > 0 ? Math.round((maleCount / totalCount) * 100) : 97;
   const femalePct = totalCount > 0 ? Math.max(femaleCount > 0 ? 1 : 0, Math.round((femaleCount / totalCount) * 100)) : 3;
@@ -223,32 +259,32 @@ export default function PowerBIHeroBar({
         </div>
       </div>
 
-      {/* METRICS ROW: 3 Compact KPIs + 7d Giriş/Çıkış + Gender Erkek/Kadın */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[0.82fr_0.92fr_0.98fr_1.95fr_2.35fr] gap-2.5 pt-0.5 relative z-10 items-stretch">
-        {/* Metric 1: Toplam Çalışan (Compact) */}
+      {/* METRICS ROW: 3 Narrow KPIs + 7d Giriş/Çıkış Speedometer (with inner VKS arc) + Gender Erkek/Kadın */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[0.66fr_0.72fr_0.76fr_2.56fr_2.05fr] gap-2.5 pt-0.5 relative z-10 items-stretch">
+        {/* Metric 1: Toplam Çalışan (Narrow Compact) */}
         <div className="px-2.5 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">{t('kpi_total_personnel')}</span>
+          <span className="text-[9.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">{t('kpi_total_personnel')}</span>
           <div className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-tight font-mono">
             {totalCount.toLocaleString('tr-TR')}
           </div>
           <span className="text-[10px] text-emerald-700 dark:text-teal-400 font-medium mt-0.5">{t('status_active')}</span>
         </div>
 
-        {/* Metric 2: Yaş Ortalaması (Compact) */}
+        {/* Metric 2: Yaş Ortalaması (Narrow Compact) */}
         <div className="px-2.5 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 transition-colors">
-          <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">{t('kpi_avg_age')}</span>
+          <span className="text-[9.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">{t('kpi_avg_age')}</span>
           <div className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5 leading-tight whitespace-nowrap">{avgAge} {t('unit_age')}</div>
           <span className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 truncate">{lang === 'ru' ? 'Молодой коллектив' : 'Genç & Dinamik'}</span>
         </div>
 
-        {/* Metric 3: Turnover (Sirkülasyon) Oranı (Compact, no bottom text, no İzlenmeli badge) */}
+        {/* Metric 3: Turnover (Sirkülasyon) Oranı (Narrow Compact) */}
         <div
           onClick={() => onNavigateToTurnover && onNavigateToTurnover()}
           title={lang === 'ru' ? 'Перейти к отчету по текучести и увольнениям' : 'Yönetim & Turnover Detay Sayfasına Git'}
           className="px-2.5 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 hover:bg-emerald-50/40 dark:hover:bg-slate-800 transition-all cursor-pointer"
         >
           <div className="flex items-center justify-between gap-1">
-            <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">
+            <span className="text-[9.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">
               {lang === 'ru' ? 'Ср. текучесть' : 'Ort. Turnover'}
             </span>
             <ArrowUpRight className="w-3 h-3 text-teal-500 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
@@ -261,49 +297,195 @@ export default function PowerBIHeroBar({
           </span>
         </div>
 
-        {/* Metric 4: Son 1 Hafta Giriş / Çıkış Akışı */}
+        {/* Metric 4: Son 1 Hafta Giriş / Çıkış Speedometer Gauge (with Nested VKS Arc Inside) */}
         <div
           onClick={() => onNavigateToTurnover && onNavigateToTurnover()}
           title={lang === 'ru' ? 'Перейти к деталям приемов и увольнений за последнюю неделю' : 'Son 1 Hafta Giriş & Çıkış Detayları İçin Tıklayın'}
-          className="px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-rose-400 dark:hover:border-teal-400 hover:bg-rose-50/30 dark:hover:bg-slate-800 transition-all cursor-pointer"
+          className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-teal-500/30 shadow-xs flex flex-col justify-between group hover:border-emerald-500 dark:hover:border-teal-400 hover:bg-emerald-50/25 dark:hover:bg-slate-800 transition-all cursor-pointer"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-              {lang === 'ru' ? 'Движение (Посл. 1 нед.)' : 'Giriş / Çıkış (Son 1 Hafta)'}
-            </span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-rose-500 dark:text-teal-400 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide truncate">
+                {lang === 'ru' ? 'Движение (Посл. 1 нед.)' : 'Giriş / Çıkış (Son 1 Hafta)'}
+              </span>
+              <span
+                className={`px-1.5 py-0 rounded-full text-[9.5px] font-bold font-mono border shrink-0 ${
+                  netFlow >= 0
+                    ? 'bg-emerald-100/90 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-300/80 dark:border-emerald-700'
+                    : 'bg-rose-100/90 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-300/80 dark:border-rose-700'
+                }`}
+              >
+                {netFlow >= 0 ? `+${netFlow}` : netFlow} Net
+              </span>
+            </div>
+            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 dark:text-teal-400 opacity-75 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
           </div>
-          <div className="mt-0.5 space-y-1">
-            <div className="flex items-center justify-between text-[11.5px]">
-              <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                +{inLatest.toLocaleString('tr-TR')} {lang === 'ru' ? 'Прием' : 'Giriş'}
+
+          <div className="flex items-center justify-between gap-1.5 -mt-0.5">
+            {/* Left Flank: Giriş + VKS Giriş */}
+            <div className="flex flex-col items-start justify-center min-w-[76px]">
+              <div className="flex items-baseline gap-1">
+                <span className="text-sm font-extrabold font-mono text-emerald-700 dark:text-emerald-400 leading-none">
+                  +{inLatest.toLocaleString('tr-TR')}
+                </span>
+                <span className="text-[9.5px] font-bold text-emerald-600/90 dark:text-emerald-300">%{inPct}</span>
+              </div>
+              <span className="text-[9.5px] font-medium text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                {lang === 'ru' ? 'Прием' : 'Giriş'}
               </span>
-              <span className="text-rose-700 dark:text-rose-400 font-bold">
-                -{outLatest.toLocaleString('tr-TR')} {lang === 'ru' ? 'Увольнение' : 'Çıkış'}
+              <span className="mt-1 px-1.5 py-0.2 rounded bg-teal-500/15 text-teal-800 dark:text-teal-300 border border-teal-500/35 text-[9px] font-bold whitespace-nowrap">
+                VKS +{inVksLatest} (%{inVksRate})
               </span>
             </div>
-            {/* Dual color flow bar matching Power BI */}
-            <div className="w-full h-2.5 rounded-full overflow-hidden flex text-[9.5px] font-bold text-slate-900">
-              <div
-                className="bg-emerald-400 h-full flex items-center justify-center transition-all"
-                style={{ width: `${Math.max(15, inPct)}%` }}
+
+            {/* Center Dual-Arc SVG Speedometer (Outer = Giriş/Çıkış, Inner = VKS Ratios) */}
+            <div className="shrink-0 flex flex-col items-center justify-center">
+              <svg
+                viewBox="0 0 180 96"
+                className="w-[144px] sm:w-[154px] h-[76px] overflow-visible"
+                aria-label="Giriş Çıkış Speedometer"
               >
-                %{inPct}
-              </div>
-              <div
-                className="bg-rose-400 h-full flex items-center justify-center transition-all"
-                style={{ width: `${Math.max(15, outPct)}%` }}
-              >
-                %{outPct}
-              </div>
+                <defs>
+                  <linearGradient id="spInGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#059669" />
+                    <stop offset="100%" stopColor="#34D399" />
+                  </linearGradient>
+                  <linearGradient id="spOutGrad" x1="100%" y1="100%" x2="0%" y2="0%">
+                    <stop offset="0%" stopColor="#E11D48" />
+                    <stop offset="100%" stopColor="#FB7185" />
+                  </linearGradient>
+                  <linearGradient id="spVksInGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#0D9488" />
+                    <stop offset="100%" stopColor="#2DD4BF" />
+                  </linearGradient>
+                  <linearGradient id="spVksOutGrad" x1="100%" y1="100%" x2="0%" y2="0%">
+                    <stop offset="0%" stopColor="#D97706" />
+                    <stop offset="100%" stopColor="#F59E0B" />
+                  </linearGradient>
+                </defs>
+
+                {/* Subtle Speedometer Scale Ticks */}
+                {ticks.map((tk, i) => (
+                  <line
+                    key={i}
+                    x1={tk.x1}
+                    y1={tk.y1}
+                    x2={tk.x2}
+                    y2={tk.y2}
+                    stroke="currentColor"
+                    className="text-slate-300 dark:text-slate-600"
+                    strokeWidth={i === 2 ? 1.8 : 1.2}
+                    strokeLinecap="round"
+                  />
+                ))}
+
+                {/* Outer Track */}
+                <path
+                  d={`M ${spCx - outerR} ${spCy} A ${outerR} ${outerR} 0 0 1 ${spCx + outerR} ${spCy}`}
+                  fill="none"
+                  stroke="currentColor"
+                  className="text-slate-200 dark:text-slate-700/70"
+                  strokeWidth={11}
+                  strokeLinecap="round"
+                />
+
+                {/* Outer Arc Left: Giriş (Emerald) */}
+                <path
+                  d={`M ${spCx - outerR} ${spCy} A ${outerR} ${outerR} 0 0 1 ${spCx + outerR} ${spCy}`}
+                  fill="none"
+                  stroke="url(#spInGrad)"
+                  strokeWidth={11}
+                  strokeLinecap="butt"
+                  strokeDasharray={`${outerInLen} ${outerCirc}`}
+                />
+
+                {/* Outer Arc Right: Çıkış (Rose) */}
+                <path
+                  d={`M ${spCx + outerR} ${spCy} A ${outerR} ${outerR} 0 0 0 ${spCx - outerR} ${spCy}`}
+                  fill="none"
+                  stroke="url(#spOutGrad)"
+                  strokeWidth={11}
+                  strokeLinecap="butt"
+                  strokeDasharray={`${outerOutLen} ${outerCirc}`}
+                />
+
+                {/* Inner VKS Track (Nested inside Speedometer) */}
+                <path
+                  d={`M ${spCx - innerR} ${spCy} A ${innerR} ${innerR} 0 0 1 ${spCx + innerR} ${spCy}`}
+                  fill="none"
+                  stroke="currentColor"
+                  className="text-slate-200/90 dark:text-slate-700/60"
+                  strokeWidth={5.5}
+                  strokeLinecap="round"
+                />
+
+                {/* Inner VKS Left: VKS Giriş Ratio (Teal) */}
+                {innerVksInLen > 0 && (
+                  <path
+                    d={`M ${spCx - innerR} ${spCy} A ${innerR} ${innerR} 0 0 1 ${spCx + innerR} ${spCy}`}
+                    fill="none"
+                    stroke="url(#spVksInGrad)"
+                    strokeWidth={5.5}
+                    strokeLinecap="round"
+                    strokeDasharray={`${innerVksInLen} ${innerCirc}`}
+                  />
+                )}
+
+                {/* Inner VKS Right: VKS Çıkış Ratio (Amber) */}
+                {innerVksOutLen > 0 && (
+                  <path
+                    d={`M ${spCx + innerR} ${spCy} A ${innerR} ${innerR} 0 0 0 ${spCx - innerR} ${spCy}`}
+                    fill="none"
+                    stroke="url(#spVksOutGrad)"
+                    strokeWidth={5.5}
+                    strokeLinecap="round"
+                    strokeDasharray={`${innerVksOutLen} ${innerCirc}`}
+                  />
+                )}
+
+                {/* Inner Center VKS Summary Readout (100% unobstructed inside the gauge arch) */}
+                <text
+                  x={spCx}
+                  y={spCy - 21}
+                  textAnchor="middle"
+                  className="fill-slate-500 dark:fill-slate-400 text-[7.5px] font-bold tracking-wider"
+                >
+                  {lang === 'ru' ? 'ДОЛЯ ВКС' : 'VKS ORANI'}
+                </text>
+                <text
+                  x={spCx}
+                  y={spCy - 6}
+                  textAnchor="middle"
+                  className="fill-slate-800 dark:fill-slate-100 text-[11px] font-extrabold font-mono"
+                >
+                  <tspan className="fill-teal-700 dark:fill-teal-300">%{inVksRate}</tspan>
+                  <tspan className="fill-slate-400"> / </tspan>
+                  <tspan className="fill-amber-600 dark:fill-amber-400">%{outVksRate}</tspan>
+                </text>
+
+                {/* Precision Rim-Mounted Speedometer Pointer (sits cleanly across the split without covering center text) */}
+                <polygon
+                  points={`${needleTipX},${needleTipY} ${needleB1X},${needleB1Y} ${needleB2X},${needleB2Y}`}
+                  className="fill-slate-900 dark:fill-white stroke-white dark:stroke-slate-900 transition-all duration-500"
+                  strokeWidth={1.3}
+                  strokeLinejoin="round"
+                />
+              </svg>
             </div>
-            {/* VKS count & ratio row inside Giriş / Çıkış Akışı */}
-            <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-[10px] font-bold">
-              <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                VKS: +{inVksLatest} (%{inVksRate})
+
+            {/* Right Flank: Çıkış + VKS Çıkış */}
+            <div className="flex flex-col items-end justify-center min-w-[76px] text-right">
+              <div className="flex items-baseline gap-1">
+                <span className="text-[9.5px] font-bold text-rose-600/90 dark:text-rose-300">%{outPct}</span>
+                <span className="text-sm font-extrabold font-mono text-rose-700 dark:text-rose-400 leading-none">
+                  -{outLatest.toLocaleString('tr-TR')}
+                </span>
+              </div>
+              <span className="text-[9.5px] font-medium text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                {lang === 'ru' ? 'Увольнение' : 'Çıkış'}
               </span>
-              <span className="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
-                VKS: -{outVksLatest} (%{outVksRate})
+              <span className="mt-1 px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/35 text-[9px] font-bold whitespace-nowrap">
+                VKS -{outVksLatest} (%{outVksRate})
               </span>
             </div>
           </div>
