@@ -162,4 +162,6 @@ export interface User {
   scope_type: 'all' | 'region' | 'project';
   scope_value: string;
   created_at: string;
+  last_login_at?: string | null;
+  login_count?: number;
 }

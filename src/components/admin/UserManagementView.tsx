@@ -406,6 +406,7 @@ export default function UserManagementView() {
                 <th className="py-3 px-4">{lang === 'ru' ? 'Роль' : 'Rol'}</th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Область доступа RLS' : 'RLS Erişim Kapsamı'}</th>
                 <th className="py-3 px-4">{lang === 'ru' ? 'Дата регистрации' : 'Kayıt Tarihi'}</th>
+                <th className="py-3 px-4">{lang === 'ru' ? 'Последний вход' : 'Son Giriş'}</th>
                 <th className="py-3 px-4 text-right">{lang === 'ru' ? 'Действия' : 'İşlemler'}</th>
               </tr>
             </thead>
@@ -490,7 +491,25 @@ export default function UserManagementView() {
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300">{u.created_at || '-'}</td>
+                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">{u.created_at || '-'}</td>
+                    <td className="py-3 px-4">
+                      {u.last_login_at ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                            {u.last_login_at}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center px-1.5 py-0 rounded-full text-[9.5px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800">
+                              {Number(u.login_count || 0)} {lang === 'ru' ? 'вх.' : 'giriş'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                          {lang === 'ru' ? 'Ещё не входил' : 'Henüz giriş yok'}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {u.id !== 1 && (

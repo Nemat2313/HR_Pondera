@@ -83,12 +83,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const stored = localStorage.getItem('pondera_hr_user');
+      const origAdmin = sessionStorage.getItem('pondera_admin_impersonator');
       if (stored) {
         setUser(JSON.parse(stored));
+        if (!origAdmin) {
+          fetch('/api/auth/login?ping=1', { cache: 'no-store' }).catch(() => {});
+        }
       } else {
         setUser(null);
       }
-      const origAdmin = sessionStorage.getItem('pondera_admin_impersonator');
       if (origAdmin) {
         setAdminOrigin(JSON.parse(origAdmin));
       }

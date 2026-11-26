@@ -29,9 +29,38 @@ function ensureUsersTable(db: any) {
         role TEXT NOT NULL DEFAULT 'user',
         scope_type TEXT NOT NULL DEFAULT 'all',
         scope_value TEXT NOT NULL DEFAULT 'all',
-        created_at TEXT
+        created_at TEXT,
+        last_login_at TEXT DEFAULT NULL,
+        login_count INTEGER NOT NULL DEFAULT 0
       );
+
+      CREATE TABLE IF NOT EXISTS user_login_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        scope_value TEXT NOT NULL DEFAULT 'all',
+        event_type TEXT NOT NULL DEFAULT 'login',
+        login_at TEXT NOT NULL,
+        login_date TEXT NOT NULL,
+        login_hour INTEGER NOT NULL DEFAULT 0,
+        day_of_week INTEGER NOT NULL DEFAULT 0,
+        ip_address TEXT DEFAULT '',
+        device_label TEXT DEFAULT '',
+        user_agent TEXT DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_login_logs_user ON user_login_logs(user_id, login_at);
+      CREATE INDEX IF NOT EXISTS idx_login_logs_date ON user_login_logs(login_date);
+      CREATE INDEX IF NOT EXISTS idx_login_logs_at ON user_login_logs(login_at);
     `);
+
+    try {
+      db.exec('ALTER TABLE users ADD COLUMN last_login_at TEXT DEFAULT NULL');
+    } catch {}
+    try {
+      db.exec('ALTER TABLE users ADD COLUMN login_count INTEGER NOT NULL DEFAULT 0');
+    } catch {}
 
     // Remove legacy demo accounts
     db.exec(`

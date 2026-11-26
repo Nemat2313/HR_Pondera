@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Activity,
 } from 'lucide-react';
 import { StatsData } from '@/types';
 import { useAuth } from '@/context/AuthContext';
@@ -32,12 +33,13 @@ import UserManagementView from '@/components/admin/UserManagementView';
 import WindowsTabBar from '@/components/common/WindowsTabBar';
 import DatabaseManagementView from '@/components/database/DatabaseManagementView';
 import AISettingsTab from '@/components/settings/AISettingsTab';
+import LoginAnalyticsTab from '@/components/settings/LoginAnalyticsTab';
 
 interface SettingsViewProps {
   stats: StatsData | null;
   onOpenUpload: () => void;
   onRefreshData: () => void;
-  initialSubTab?: 'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings';
+  initialSubTab?: 'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings' | 'login_analytics';
 }
 
 interface SmtpSettingsState {
@@ -182,12 +184,12 @@ export default function SettingsView({
   const isAdmin = user?.role === 'admin';
 
   const [activeSubTab, setActiveSubTab] = useState<
-    'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings'
-  >(initialSubTab);
+    'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings' | 'login_analytics'
+  >(initialSubTab === 'login_analytics' && !isAdmin ? 'users_rls' : initialSubTab);
 
   useEffect(() => {
-    setActiveSubTab(initialSubTab);
-  }, [initialSubTab]);
+    setActiveSubTab(initialSubTab === 'login_analytics' && !isAdmin ? 'users_rls' : initialSubTab);
+  }, [initialSubTab, isAdmin]);
 
   useEffect(() => {
     try {
@@ -534,12 +536,12 @@ export default function SettingsView({
           </div>
         </div>
 
-        {/* Windows-Style Equal-Width 4-Tab Bar */}
+        {/* Windows-Style Equal-Width Tab Bar (Tab 5 Login Analytics is Admin-ONLY) */}
         <WindowsTabBar
           activeId={activeSubTab}
           onChange={(id) =>
             setActiveSubTab(
-              id as 'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings'
+              id as 'users_rls' | 'database_excel' | 'mail_notifications' | 'ai_settings' | 'login_analytics'
             )
           }
           className="mt-3"
@@ -568,6 +570,16 @@ export default function SettingsView({
               icon: <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
               accent: 'amber',
             },
+            ...(isAdmin
+              ? [
+                  {
+                    id: 'login_analytics',
+                    label: lang === 'ru' ? '5. Аналитика входов' : '5. Giriş Analitiği',
+                    icon: <Activity className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />,
+                    accent: 'indigo' as const,
+                  },
+                ]
+              : []),
           ]}
         />
       </div>
@@ -1410,6 +1422,9 @@ export default function SettingsView({
 
       {/* TAB 4: YAPAY ZEKA (AI) & EVRAK / BİLET OKUMA BAĞLANTILARI */}
       {activeSubTab === 'ai_settings' && <AISettingsTab />}
+
+      {/* TAB 5 (ADMIN-ONLY): KULLANICI GİRİŞ & KULLANIM SIKLIĞI ANALİTİĞİ */}
+      {activeSubTab === 'login_analytics' && isAdmin && <LoginAnalyticsTab />}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   buildClearSessionCookieHeader,
   getSessionUserFromRequest,
 } from '@/lib/auth';
+import { recordUserLoginEvent } from '@/lib/loginActivity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,13 @@ export async function GET(request: Request) {
   if (!sessionUser) {
     return NextResponse.json({ authenticated: false, user: null }, { status: 401 });
   }
+  try {
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get('ping') === '1') {
+      const db = getDb();
+      recordUserLoginEvent(db, sessionUser, request, 'session_visit');
+    }
+  } catch {}
   return NextResponse.json({
     authenticated: true,
     user: {
@@ -123,6 +131,11 @@ export async function POST(request: Request) {
       ) as 'all' | 'region' | 'project',
       scope_value: String(user.scope_value || 'all'),
     };
+
+    // Record login event & update users.last_login_at
+    if (db) {
+      recordUserLoginEvent(db, safeUser, request, 'login');
+    }
 
     const maxAgeSeconds = rememberMe === false ? 60 * 60 * 24 : 60 * 60 * 24 * 90;
     const token = createSessionToken(safeUser, maxAgeSeconds);

@@ -23,7 +23,14 @@ export async function GET(request: Request) {
       );
     }
     const db = getDb();
-    const stmt = db.prepare('SELECT id, name, email, role, scope_type, scope_value, created_at FROM users ORDER BY id ASC');
+    const stmt = db.prepare(`
+      SELECT
+        u.id, u.name, u.email, u.role, u.scope_type, u.scope_value, u.created_at,
+        COALESCE(u.last_login_at, (SELECT MAX(l.login_at) FROM user_login_logs l WHERE l.user_id = u.id)) AS last_login_at,
+        MAX(COALESCE(u.login_count, 0), COALESCE((SELECT COUNT(*) FROM user_login_logs l WHERE l.user_id = u.id), 0)) AS login_count
+      FROM users u
+      ORDER BY u.id ASC
+    `);
     const users = stmt.all();
 
     return NextResponse.json({
