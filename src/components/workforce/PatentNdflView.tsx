@@ -386,11 +386,29 @@ export default function PatentNdflView({
     raw_name: string;
     matched_in_1c: boolean;
     tabel_no: string;
+    ifns_code?: string;
     inn: string;
+    employee_inn_1c?: string;
+    inn_status?: 'match' | 'mismatch' | 'missing_receipt_inn' | 'missing_1c_inn';
     op_date: string;
     amount: number;
+    original_amount?: number;
+    amount_current_year?: number;
+    amount_next_year?: number;
+    period_status?: 'current_year' | 'split_transition' | 'next_year_only';
+    last_covered_month?: number;
+    monthly_rate?: number;
+    next_year_comment?: string;
     kbk: string;
     kbk_ok: boolean;
+    recipient_inn?: string;
+    recipient_kpp?: string;
+    recipient_name?: string;
+    recipient_ok?: boolean;
+    oktmo?: string;
+    oktmo_ok?: boolean;
+    requisites_ok?: boolean;
+    requisites_issues?: string[];
     suip: string;
     is_duplicate: boolean;
     suggested_comment: string;
@@ -477,6 +495,13 @@ export default function PatentNdflView({
             comment: item.suggested_comment,
             postDoc: true,
             receiptFileId: item.receipt_file_id || undefined,
+            expectedInn: item.inn || undefined,
+            originalAmount: item.original_amount || item.amount,
+            deferredNextYearAmount: item.amount_next_year || 0,
+            nextYearComment: item.next_year_comment || '',
+            kbk: item.kbk || '',
+            recipientInn: item.recipient_inn || '',
+            oktmo: item.oktmo || '',
           }),
         });
         const data = await res.json();
@@ -517,6 +542,55 @@ export default function PatentNdflView({
       text: L(
         `1C aktarımı tamamlandı: ${okCount} onaylı (Проведён), ${draftCount} taslak (Черновик), ${errCount} hata.`,
         `Отправка в 1С завершена: проведено ${okCount}, черновиков ${draftCount}, ошибок ${errCount}.`
+      ),
+    });
+  };
+
+  const handleSaveAndExportNextYearQueue = async () => {
+    const deferredItems = scannedReceipts.filter(
+      (r) => (r.period_status === 'next_year_only' || r.period_status === 'split_transition') && Number(r.amount_next_year || 0) > 0
+    );
+    if (deferredItems.length === 0) return;
+    try {
+      await fetch('/api/patent-ndfl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ action: 'save_next_year_queue', taxYear, items: deferredItems }),
+      });
+    } catch {}
+    const nextYr = taxYear + 1;
+    const rows = deferredItems.map((r, i) => ({
+      '№': i + 1,
+      'ФИО': r.full_name,
+      'ИНН (чек)': r.inn || '',
+      'ИНН (1С)': r.employee_inn_1c || '',
+      'Дата оплаты': r.op_date,
+      'Сумма чека всего (₽)': r.original_amount || r.amount_next_year || 0,
+      [`Учтено в ${taxYear} (₽)`]: r.amount_current_year || 0,
+      [`Перенесено на ${nextYr} (₽)`]: r.amount_next_year || 0,
+      'Статус периода': r.period_status === 'next_year_only' ? `Полностью ${nextYr}` : `Переходный ${taxYear}/${nextYr}`,
+      [`Комментарий для ${nextYr}`]: r.next_year_comment || '',
+      'КБК': r.kbk || '',
+      'ИНН получателя': r.recipient_inn || '',
+      'ОКТМО': r.oktmo || '',
+    }));
+    const header = Object.keys(rows[0] || {});
+    const csvLines = [
+      '\uFEFF' + header.join(';'),
+      ...rows.map((row) => header.map((h) => `"${String((row as any)[h] ?? '').replace(/"/g, '""')}"`).join(';')),
+    ];
+    const blob = new Blob([csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Patent_Reestr_${nextYr}_Ozhidanie_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setFeedback({
+      type: 'success',
+      text: L(
+        `${deferredItems.length} fiş ${nextYr} bekleme havuzuna kaydedildi ve Excel/CSV olarak indirildi.`,
+        `Сохранено в реестр ожидания ${nextYr} г. (${deferredItems.length} чек.) и выгружено в CSV/Excel.`
       ),
     });
   };
@@ -2693,29 +2767,72 @@ export default function PatentNdflView({
                   )}
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                <>
+                  {/* Executive Validation Summary Bar (INN, Requisites, 2026->2027 Split) */}
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-semibold">
+                      ✓ {L('Hazır', 'Готово')}: {scannedReceipts.filter((r) => r.selected).length}
+                    </span>
+                    {scannedReceipts.some((r) => r.period_status === 'split_transition') && (
+                      <span className="px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 font-semibold">
+                        ✂️ {L(`${taxYear}/${taxYear + 1} Bölünen`, `Разделено ${taxYear}/${taxYear + 1}`)}:{' '}
+                        {scannedReceipts.filter((r) => r.period_status === 'split_transition').length}
+                      </span>
+                    )}
+                    {scannedReceipts.some((r) => r.period_status === 'next_year_only') && (
+                      <span className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-semibold">
+                        ⛔ {L(`Sadece ${taxYear + 1} (Engellendi)`, `Только ${taxYear + 1} г. (заблок.)`)}:{' '}
+                        {scannedReceipts.filter((r) => r.period_status === 'next_year_only').length}
+                      </span>
+                    )}
+                    {scannedReceipts.some((r) => r.inn_status === 'mismatch' || r.requisites_ok === false) && (
+                      <span className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 font-semibold">
+                        ⚠ {L('ИНН / Rekvizit Uyarısı', 'Ошибки ИНН / реквизитов')}:{' '}
+                        {scannedReceipts.filter((r) => r.inn_status === 'mismatch' || r.requisites_ok === false).length}
+                      </span>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
                   <table className="w-full text-left text-[11px]">
                     <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 sticky top-0 border-b border-slate-200 dark:border-slate-700">
                       <tr>
                         <th className="py-2 px-2">
                           <input
                             type="checkbox"
-                            checked={scannedReceipts.every((r) => r.selected)}
-                            onChange={(e) => setScannedReceipts((prev) => prev.map((x) => ({ ...x, selected: e.target.checked })))}
+                            checked={scannedReceipts.length > 0 && scannedReceipts.every((r) => r.selected)}
+                            onChange={(e) =>
+                              setScannedReceipts((prev) =>
+                                prev.map((x) => ({
+                                  ...x,
+                                  selected: e.target.checked ? x.period_status !== 'next_year_only' && x.inn_status !== 'mismatch' : false,
+                                }))
+                              )
+                            }
                           />
                         </th>
                         <th className="py-2 px-2">{L('Sayfa', 'Стр.')}</th>
-                        <th className="py-2 px-2">{L('Ad Soyad (ФИО)', 'ФИО плательщика')}</th>
+                        <th className="py-2 px-2">{L('Ad Soyad (ФИО) & ИНН', 'ФИО и ИНН')}</th>
                         <th className="py-2 px-2">{L('Ödeme Tarihi', 'Дата операции')}</th>
-                        <th className="py-2 px-2 text-right">{L('Tutar (₽)', 'Сумма (₽)')}</th>
+                        <th className="py-2 px-2 text-right">{L(`Tutar ${taxYear} (₽)`, `Сумма ${taxYear} (₽)`)}</th>
                         <th className="py-2 px-2">{L('Комментарий (Aylar)', 'Комментарий (месяцы)')}</th>
-                        <th className="py-2 px-2">{L('Kontrol (1C / КБК)', 'Проверка')}</th>
+                        <th className="py-2 px-2">{L('ИНН / Rekvizit / Dönem', 'ИНН / Реквизиты / Период')}</th>
                         <th className="py-2 px-2">{L('1C Durumu', 'Статус 1С')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {scannedReceipts.map((item) => (
-                        <tr key={item.id} className={item.is_duplicate ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}>
+                        <tr
+                          key={item.id}
+                          className={
+                            item.period_status === 'next_year_only' || item.inn_status === 'mismatch' || item.requisites_ok === false
+                              ? 'bg-rose-50/60 dark:bg-rose-950/20'
+                              : item.period_status === 'split_transition'
+                              ? 'bg-violet-50/60 dark:bg-violet-950/20'
+                              : item.is_duplicate
+                              ? 'bg-amber-50/60 dark:bg-amber-950/20'
+                              : ''
+                          }
+                        >
                           <td className="py-1.5 px-2">
                             <input
                               type="checkbox"
@@ -2748,7 +2865,12 @@ export default function PatentNdflView({
                               }
                               className="w-56 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
                             />
-                            {item.inn && <div className="text-[9.5px] font-mono text-slate-500">ИНН: {item.inn}</div>}
+                            <div className="text-[9.5px] font-mono text-slate-500 flex flex-wrap gap-x-2">
+                              {item.inn && <span>{L('Fiş ИНН', 'Чек ИНН')}: {item.inn}</span>}
+                              {item.employee_inn_1c && item.inn_status === 'mismatch' && (
+                                <span className="text-rose-600 font-bold">≠ 1С: {item.employee_inn_1c}</span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-1.5 px-2">
                             <input
@@ -2769,6 +2891,16 @@ export default function PatentNdflView({
                               }
                               className="w-24 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-right"
                             />
+                            {item.period_status === 'split_transition' && (
+                              <div className="text-[9px] text-violet-700 dark:text-violet-300 font-semibold mt-0.5 whitespace-nowrap">
+                                {L('Toplam', 'Чек')}: {fmtRub(item.original_amount || 0)} · {taxYear + 1}: {fmtRub(item.amount_next_year || 0)}
+                              </div>
+                            )}
+                            {item.period_status === 'next_year_only' && (
+                              <div className="text-[9px] text-rose-700 dark:text-rose-300 font-semibold mt-0.5 whitespace-nowrap">
+                                → {taxYear + 1}: {fmtRub(item.amount_next_year || 0)}
+                              </div>
+                            )}
                           </td>
                           <td className="py-1.5 px-2">
                             <input
@@ -2776,17 +2908,56 @@ export default function PatentNdflView({
                               onChange={(e) =>
                                 setScannedReceipts((prev) => prev.map((x) => (x.id === item.id ? { ...x, suggested_comment: e.target.value } : x)))
                               }
-                              className="w-40 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                              className="w-44 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                             />
                           </td>
-                          <td className="py-1.5 px-2 whitespace-nowrap">
-                            <div className="flex flex-wrap gap-1">
+                          <td className="py-1.5 px-2">
+                            <div className="flex flex-wrap gap-1 max-w-[230px]">
                               <span className={`px-1.5 py-0.5 rounded text-[9.5px] ${item.matched_in_1c ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
                                 {item.matched_in_1c ? '✓ 1C' : '? Yeni'}
                               </span>
-                              {!item.kbk_ok && (
-                                <span className="px-1.5 py-0.5 rounded text-[9.5px] bg-rose-100 text-rose-700" title={`КБК: ${item.kbk}`}>
-                                  ⚠ КБК
+                              {item.inn_status === 'match' && (
+                                <span className="px-1.5 py-0.5 rounded text-[9.5px] bg-emerald-100 text-emerald-700 font-semibold" title={`ИНН 1С = ${item.employee_inn_1c}`}>
+                                  ✓ ИНН
+                                </span>
+                              )}
+                              {item.inn_status === 'mismatch' && (
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[9.5px] bg-rose-600 text-white font-bold"
+                                  title={`Чек ИНН: ${item.inn} ≠ 1С ИНН: ${item.employee_inn_1c}`}
+                                >
+                                  ⛔ ИНН ≠ 1С
+                                </span>
+                              )}
+                              {item.requisites_ok === false ? (
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[9.5px] bg-rose-100 text-rose-800 border border-rose-300 font-semibold"
+                                  title={(item.requisites_issues || []).join('\n')}
+                                >
+                                  ⛔ {L('Rekvizit', 'Реквизиты')}
+                                </span>
+                              ) : (item.kbk || item.recipient_inn) ? (
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[9.5px] bg-sky-100 text-sky-700"
+                                  title={`КБК: ${item.kbk || '-'} | ИНН пол.: ${item.recipient_inn || '-'} | ОКТМО: ${item.oktmo || '-'}`}
+                                >
+                                  ✓ КБК/ФНС
+                                </span>
+                              ) : null}
+                              {item.period_status === 'next_year_only' && (
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[9.5px] bg-rose-600 text-white font-bold"
+                                  title={L(`${taxYear} Aralık'a kadar ödenmiş! ${taxYear + 1} İFNS bildirimi sonrası girilmelidir.`, `По ${taxYear} г. уже оплачено по декабрь! Вносить только в ${taxYear + 1} г. после уведомления ИФНС.`)}
+                                >
+                                  ⛔ {L(`Только ${taxYear + 1}`, `Только ${taxYear + 1} г.`)}
+                                </span>
+                              )}
+                              {item.period_status === 'split_transition' && (
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[9.5px] bg-violet-600 text-white font-bold"
+                                  title={`${taxYear}: ${fmtRub(item.amount_current_year || 0)} | ${taxYear + 1}: ${fmtRub(item.amount_next_year || 0)} (${item.next_year_comment || ''})`}
+                                >
+                                  ✂️ {taxYear}/{taxYear + 1}
                                 </span>
                               )}
                               {item.is_duplicate && (
@@ -2816,7 +2987,8 @@ export default function PatentNdflView({
                       ))}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -2828,7 +3000,23 @@ export default function PatentNdflView({
                   {fmtRub(scannedReceipts.filter((r) => r.selected).reduce((s, r) => s + Number(r.amount || 0), 0))}
                 </strong>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {scannedReceipts.some((r) => Number(r.amount_next_year || 0) > 0) && (
+                  <button
+                    type="button"
+                    onClick={handleSaveAndExportNextYearQueue}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white cursor-pointer"
+                    title={L(`Tamamen ${taxYear + 1} veya bölünen fişlerin ${taxYear + 1} payını kaydet ve Excel/CSV indir`, `Сохранить и скачать реестр чеков на ${taxYear + 1} год`)}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>
+                      {L(
+                        `${taxYear + 1} Havuzu (${scannedReceipts.filter((r) => Number(r.amount_next_year || 0) > 0).length})`,
+                        `Реестр ${taxYear + 1} г. (${scannedReceipts.filter((r) => Number(r.amount_next_year || 0) > 0).length})`
+                      )}
+                    </span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setScanModalOpen(false)}

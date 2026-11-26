@@ -140,10 +140,204 @@ const IFNS_PREFIX_MONTHLY_RATE_2026: Record<string, number> = {
   '52': 8200, // Нижегородская область
 };
 
-function getMonthlyPatentRate(ifnsCode: string, taxYear: number): number {
+export function getMonthlyPatentRate(ifnsCode: string, taxYear: number): number {
   const prefix = String(ifnsCode || '').trim().slice(0, 2);
   if (taxYear <= 2025 && (prefix === '47' || prefix === '78')) return 6000;
   return IFNS_PREFIX_MONTHLY_RATE_2026[prefix] || 8000;
+}
+
+const IFNS_TO_OKTMO_PREFIX: Record<string, string[]> = {
+  '47': ['41'], // Ленинградская область
+  '78': ['40'], // Санкт-Петербург
+  '77': ['45'], // Москва
+  '50': ['46'], // Московская область
+  '16': ['92'], // Республика Татарстан
+  '28': ['10'], // Амурская область
+  '72': ['71'], // Тюменская область
+  '38': ['25'], // Иркутская область
+  '51': ['47'], // Мурманская область
+  '52': ['22'], // Нижегородская область
+};
+
+const VALID_PATENT_KBKS = new Set([
+  '18210102040011000110', // НДФЛ в виде фиксированных авансовых платежей (патент)
+  '18201061201010000510', // ЕНС — Единый налоговый платёж ФНС
+]);
+
+export function validatePatentReceiptRequisites(params: {
+  kbk?: string;
+  recipientInn?: string;
+  recipientName?: string;
+  oktmo?: string;
+  employeeIfns?: string;
+}): {
+  kbkOk: boolean;
+  recipientOk: boolean;
+  oktmoOk: boolean;
+  requisitesOk: boolean;
+  issues: string[];
+} {
+  const kbk = String(params.kbk || '').replace(/\D/g, '');
+  const recInn = String(params.recipientInn || '').replace(/\D/g, '');
+  const recName = String(params.recipientName || '').trim();
+  const oktmo = String(params.oktmo || '').replace(/\D/g, '');
+  const ifnsPrefix = String(params.employeeIfns || '').trim().slice(0, 2);
+  const issues: string[] = [];
+
+  const kbkOk = !kbk || kbk.length < 15 || VALID_PATENT_KBKS.has(kbk);
+  if (!kbkOk) {
+    issues.push(`Неверный КБК (${kbk}) — ожидается 18210102040011000110 или ЕНС 18201061201010000510`);
+  }
+
+  const isTaxRecipientName = /казначейств|фнс|ифнс|уфк|налог|енс|мифнс/i.test(recName);
+  const recipientOk = !recInn || recInn.length < 10 || recInn === '7727406020' || isTaxRecipientName;
+  if (!recipientOk) {
+    issues.push(`Неверный получатель (ИНН ${recInn}${recName ? `: ${recName}` : ''}) — ожидается Казначейство ФНС (7727406020)`);
+  }
+
+  const isEns = kbk === '18201061201010000510';
+  let oktmoOk = true;
+  if (oktmo.length >= 2 && !/^0+$/.test(oktmo) && !isEns && ifnsPrefix && IFNS_TO_OKTMO_PREFIX[ifnsPrefix]) {
+    const allowed = IFNS_TO_OKTMO_PREFIX[ifnsPrefix];
+    if (!allowed.includes(oktmo.slice(0, 2))) {
+      oktmoOk = false;
+      issues.push(`ОКТМО (${oktmo}) не соответствует региону ИФНС ${ifnsPrefix}* (ожидается ${allowed.join('/')}*)`);
+    }
+  }
+
+  return {
+    kbkOk,
+    recipientOk,
+    oktmoOk,
+    requisitesOk: kbkOk && recipientOk && oktmoOk,
+    issues,
+  };
+}
+
+const RU_MONTH_NAMES_HELPER = [
+  '',
+  'январь',
+  'февраль',
+  'март',
+  'апрель',
+  'май',
+  'июнь',
+  'июль',
+  'август',
+  'сентябрь',
+  'октябрь',
+  'ноябрь',
+  'декабрь',
+];
+
+export function analyzePatentPeriodSplit(params: {
+  taxYear: number;
+  amount: number;
+  opDate: string;
+  ifnsCode?: string;
+  existingReceipts: Array<{ opDate?: string; amount?: number; months?: number[] }>;
+  existingPaidMonths?: number[];
+}): {
+  period_status: 'current_year' | 'split_transition' | 'next_year_only';
+  monthly_rate: number;
+  last_covered_month: number;
+  original_amount: number;
+  amount_current_year: number;
+  amount_next_year: number;
+  months_current_year: number[];
+  months_next_year: number[];
+  suggested_comment: string;
+  next_year_comment: string;
+} {
+  const taxYear = Number(params.taxYear) || 2026;
+  const nextYear = taxYear + 1;
+  const originalAmount = Math.max(0, Math.round(Number(params.amount || 0)));
+  const rate = getMonthlyPatentRate(params.ifnsCode || '', taxYear);
+  const coveredSet = new Set<number>();
+  for (const rc of params.existingReceipts || []) {
+    if (Array.isArray(rc.months)) {
+      for (const m of rc.months) {
+        if (m >= 1 && m <= 12) coveredSet.add(m);
+      }
+    }
+  }
+  for (const m of params.existingPaidMonths || []) {
+    if (m >= 1 && m <= 12) coveredSet.add(m);
+  }
+  const lastCovered = coveredSet.size > 0 ? Math.max(...Array.from(coveredSet)) : 0;
+  const estMonths = originalAmount > 0 ? Math.max(1, Math.min(12, Math.round(originalAmount / rate))) : 1;
+  const opYear = parseInt(String(params.opDate || '').slice(0, 4), 10) || taxYear;
+  const opMonth = parseInt(String(params.opDate || '').slice(5, 7), 10) || 1;
+
+  let startSlot: number;
+  if (opYear > taxYear) {
+    startSlot = 13 + (opMonth - 1);
+  } else if (lastCovered >= 12) {
+    startSlot = 13;
+  } else if (lastCovered > 0) {
+    startSlot = lastCovered + 1;
+  } else {
+    startSlot = opMonth;
+  }
+
+  const monthsCurrent: number[] = [];
+  const monthsNext: number[] = [];
+  for (let i = 0; i < estMonths; i++) {
+    const slot = startSlot + i;
+    if (slot <= 12) monthsCurrent.push(slot);
+    else monthsNext.push(((slot - 13) % 12) + 1);
+  }
+
+  const curNames = monthsCurrent.map((m) => RU_MONTH_NAMES_HELPER[m]).filter(Boolean);
+  const nextNames = monthsNext.map((m) => RU_MONTH_NAMES_HELPER[m]).filter(Boolean);
+
+  if (monthsCurrent.length === 0 && monthsNext.length > 0) {
+    const nextComment = `${nextNames.join('-')} ${nextYear}`;
+    return {
+      period_status: 'next_year_only',
+      monthly_rate: rate,
+      last_covered_month: lastCovered,
+      original_amount: originalAmount,
+      amount_current_year: 0,
+      amount_next_year: originalAmount,
+      months_current_year: [],
+      months_next_year: monthsNext,
+      suggested_comment: `${nextNames.join('-')} ${nextYear} (не вносить в ${taxYear}!)`,
+      next_year_comment: nextComment,
+    };
+  }
+
+  if (monthsCurrent.length > 0 && monthsNext.length > 0) {
+    const curAmt = Math.min(originalAmount, monthsCurrent.length * rate);
+    const nxtAmt = Math.max(0, originalAmount - curAmt);
+    const curLabel = curNames.join('-');
+    const nxtLabel = nextNames.join('-');
+    return {
+      period_status: 'split_transition',
+      monthly_rate: rate,
+      last_covered_month: lastCovered,
+      original_amount: originalAmount,
+      amount_current_year: curAmt,
+      amount_next_year: nxtAmt,
+      months_current_year: monthsCurrent,
+      months_next_year: monthsNext,
+      suggested_comment: `${curLabel} (часть чека ${originalAmount.toLocaleString('ru-RU')} ₽; ${nxtAmt.toLocaleString('ru-RU')} ₽ → ${nxtLabel} ${nextYear})`,
+      next_year_comment: `${nxtLabel} ${nextYear} (остаток от чека ${originalAmount.toLocaleString('ru-RU')} ₽ от ${params.opDate})`,
+    };
+  }
+
+  return {
+    period_status: 'current_year',
+    monthly_rate: rate,
+    last_covered_month: lastCovered,
+    original_amount: originalAmount,
+    amount_current_year: originalAmount,
+    amount_next_year: 0,
+    months_current_year: monthsCurrent,
+    months_next_year: [],
+    suggested_comment: curNames.join('-'),
+    next_year_comment: '',
+  };
 }
 
 export function ensurePatentNdflTables(db: DbLike): void {
@@ -231,12 +425,37 @@ export function ensurePatentNdflTables(db: DbLike): void {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_patent_receipt_files_norm ON patent_receipt_files(tax_year, norm_name);
+
+    CREATE TABLE IF NOT EXISTS patent_next_year_queue (
+      id TEXT PRIMARY KEY,
+      target_year INTEGER NOT NULL DEFAULT 2027,
+      source_year INTEGER NOT NULL DEFAULT 2026,
+      norm_name TEXT NOT NULL DEFAULT '',
+      full_name TEXT NOT NULL DEFAULT '',
+      inn TEXT NOT NULL DEFAULT '',
+      op_date TEXT NOT NULL DEFAULT '',
+      original_amount REAL NOT NULL DEFAULT 0,
+      current_year_amount REAL NOT NULL DEFAULT 0,
+      deferred_amount REAL NOT NULL DEFAULT 0,
+      period_status TEXT NOT NULL DEFAULT 'next_year_only',
+      comment_next_year TEXT NOT NULL DEFAULT '',
+      kbk TEXT NOT NULL DEFAULT '',
+      recipient_inn TEXT NOT NULL DEFAULT '',
+      oktmo TEXT NOT NULL DEFAULT '',
+      receipt_file_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending_2027_ifns',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_patent_next_year_queue_yr ON patent_next_year_queue(target_year, norm_name);
   `);
   try {
     db.exec('ALTER TABLE patent_ndfl_records ADD COLUMN excluded_region_change INTEGER DEFAULT 0');
   } catch { }
   try {
     db.exec("ALTER TABLE patent_ndfl_records ADD COLUMN receipts_json TEXT DEFAULT '[]'");
+  } catch { }
+  try {
+    db.exec("ALTER TABLE patent_ndfl_records ADD COLUMN inn TEXT DEFAULT ''");
   } catch { }
   // Clean up any duplicate Latin-suffixed OData rows created before stripTrailingLatin()
   try {
@@ -971,13 +1190,19 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
     const hasEntity = (name: string) => entityNames.includes(name);
     const findEntity = (re: RegExp) => entityNames.find((n) => re.test(n)) || '';
 
-    // 2. Fetch Employees (Catalog_Сотрудники) — fetch up to 35,000 rows so all historical & 2026 Сотрудник_Key map cleanly
-    const empRows = await fetchODataPaged(
-      base,
-      'Catalog_Сотрудники?$select=Ref_Key,Code,Description,ФизическоеЛицо_Key,ВАрхиве',
-      headers,
-      35
-    );
+    // 2. Fetch Employees (Catalog_Сотрудники) + Official 12-digit INN (Catalog_ФизическиеЛица)
+    const [empRows, fizInnRows] = await Promise.all([
+      fetchODataPaged(base, 'Catalog_Сотрудники?$select=Ref_Key,Code,Description,ФизическоеЛицо_Key,ВАрхиве', headers, 35),
+      hasEntity('Catalog_ФизическиеЛица')
+        ? fetchODataPaged(base, 'Catalog_ФизическиеЛица?$select=Ref_Key,ИНН', headers, 35)
+        : Promise.resolve([]),
+    ]);
+    const innByFiz = new Map<string, string>();
+    for (const f of fizInnRows) {
+      const fk = String(f.Ref_Key || '').trim();
+      const innVal = String(f.ИНН || '').replace(/\D/g, '');
+      if (fk && innVal) innByFiz.set(fk, innVal);
+    }
     const empByFiz = new Map<string, { code: string; name: string; active: boolean; hireDate: string; exitDate: string; siteName: string }>();
     const fizByEmpRef = new Map<string, string>();
     for (const e of empRows) {
@@ -1410,6 +1635,10 @@ export async function syncPatentNdflFromOData(db: DbLike): Promise<{ success: bo
         });
 
         const nn = normName(emp.name);
+        const fizInn = innByFiz.get(fk) || '';
+        if (fizInn) {
+          db.prepare('UPDATE patent_ndfl_records SET inn = ? WHERE tax_year = ? AND norm_name = ?').run(fizInn, year, nn);
+        }
         const recs = receiptsByFiz.get(fk) || [];
         if (recs.length > 0) {
           recs.sort((a, b) => (a.opDate || a.date).localeCompare(b.opDate || b.date));
@@ -1464,6 +1693,8 @@ export async function create1cPatentReceipt(
     docDate?: string; // YYYY-MM-DD
     comment: string;
     postDoc?: boolean;
+    expectedInn?: string;
+    forceIgnoreInnMismatch?: boolean;
     attachment?: {
       fileName: string;
       mimeType: string;
@@ -1478,6 +1709,7 @@ export async function create1cPatentReceipt(
   posted?: boolean;
   attachedIn1C?: boolean;
   attachMessage?: string;
+  inn1c?: string;
   message: string;
 }> {
   const cfg = getPatentODataConfig(db);
@@ -1489,25 +1721,53 @@ export async function create1cPatentReceipt(
   const base = cfg.odataUrl.replace(/\/+$/, '');
 
   try {
-    // 1. Resolve ФизическоеЛицо_Key from Catalog_ФизическиеЛица by fullName
+    // 1. Resolve ФизическоеЛицо_Key + official ИНН from Catalog_ФизическиеЛица
+    const cleanExpectedInn = String(params.expectedInn || '').replace(/\D/g, '');
     const cleanName = stripTrailingLatin(params.fullName).replace(/'/g, "''");
-    const fizUrl = `${base}/${encodeURI(`Catalog_ФизическиеЛица?$filter=Description eq '${cleanName}'&$select=Ref_Key,Description&$top=5`)}&$format=json`;
+    const fizUrl = `${base}/${encodeURI(`Catalog_ФизическиеЛица?$filter=Description eq '${cleanName}'&$select=Ref_Key,Description,ИНН&$top=5`)}&$format=json`;
     const fizRes = await fetch(fizUrl, { headers });
     if (!fizRes.ok) {
       return { success: false, message: `1C kişi arama hatası (HTTP ${fizRes.status})` };
     }
     const fizJson: any = await fizRes.json().catch(() => ({}));
-    let fizKey = fizJson?.value?.[0]?.Ref_Key || '';
-    if (!fizKey) {
+    let fizObj = fizJson?.value?.[0] || null;
+    if (!fizObj?.Ref_Key && cleanExpectedInn.length === 12) {
+      // Try exact INN match in 1C when name has OCR noise
+      const innRes = await fetch(
+        `${base}/${encodeURI(`Catalog_ФизическиеЛица?$filter=ИНН eq '${cleanExpectedInn}'&$select=Ref_Key,Description,ИНН&$top=3`)}&$format=json`,
+        { headers }
+      ).catch(() => null);
+      if (innRes && innRes.ok) {
+        const ij: any = await innRes.json().catch(() => ({}));
+        fizObj = ij?.value?.[0] || null;
+      }
+    }
+    if (!fizObj?.Ref_Key) {
       // Fallback substringof
-      const subUrl = `${base}/${encodeURI(`Catalog_ФизическиеЛица?$filter=substringof('${cleanName.split(/\s+/).slice(0, 2).join(' ')}', Description)&$select=Ref_Key,Description&$top=5`)}&$format=json`;
+      const subUrl = `${base}/${encodeURI(`Catalog_ФизическиеЛица?$filter=substringof('${cleanName.split(/\s+/).slice(0, 2).join(' ')}', Description)&$select=Ref_Key,Description,ИНН&$top=5`)}&$format=json`;
       const subRes = await fetch(subUrl, { headers });
       const subJson: any = await subRes.json().catch(() => ({}));
-      const match = (subJson?.value || []).find((x: any) => normName(stripTrailingLatin(x.Description)) === normName(params.fullName)) || subJson?.value?.[0];
-      fizKey = match?.Ref_Key || '';
+      fizObj =
+        (subJson?.value || []).find((x: any) => normName(stripTrailingLatin(x.Description)) === normName(params.fullName)) ||
+        subJson?.value?.[0] ||
+        null;
     }
+    const fizKey = String(fizObj?.Ref_Key || '');
+    const inn1c = String(fizObj?.ИНН || '').replace(/\D/g, '');
     if (!fizKey) {
       return { success: false, message: `1C'de "${params.fullName}" kişisi bulunamadı.` };
+    }
+    if (
+      cleanExpectedInn.length === 12 &&
+      inn1c.length === 12 &&
+      cleanExpectedInn !== inn1c &&
+      !params.forceIgnoreInnMismatch
+    ) {
+      return {
+        success: false,
+        inn1c,
+        message: `⛔ ИНН uyuşmazlığı! Fiş ИНН (${cleanExpectedInn}) ≠ 1C ИНН (${inn1c}) — vergi riski nedeniyle gönderim engellendi.`,
+      };
     }
 
     // 2. Resolve Организация_Key from existing receipt or Catalog_Организации
@@ -1578,9 +1838,11 @@ export async function create1cPatentReceipt(
           ДатаСоздания: nowIso,
           ДатаМодификацииУниверсальная: nowIso,
           Зашифрован: false,
+          ИндексКартинки: extClean === 'pdf' ? 3 : 42,
           ПодписанЭП: false,
           Размер: Number(params.attachment.sizeBytes) || Math.floor((params.attachment.base64Data.length * 3) / 4),
           Расширение: extClean,
+          СтатусИзвлеченияТекста: 'НеИзвлечен',
           ТипХраненияФайла: 'ВИнформационнойБазе',
           ФайлХранилище_Type: 'application/xml+xdto',
           ФайлХранилище_Base64Data: xdtoB64,

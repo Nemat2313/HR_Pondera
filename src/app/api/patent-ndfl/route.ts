@@ -8,6 +8,7 @@ import { PDFDocument } from 'pdf-lib';
 import { getDb } from '@/lib/db';
 import { getSessionUserFromRequest } from '@/lib/auth';
 import {
+  analyzePatentPeriodSplit,
   buildFnsKnd1110055Xml,
   classifyPatentRootCause,
   create1cPatentReceipt,
@@ -20,6 +21,7 @@ import {
   savePatentODataConfig,
   syncPatentNdflFromOData,
   upsertPatentNdflRecord,
+  validatePatentReceiptRequisites,
 } from '@/lib/patentNdflManager';
 
 export const runtime = 'nodejs';
@@ -561,12 +563,17 @@ export async function GET(request: Request) {
         causeRub.DISMISSED_UNRECOVERED
     );
 
+    const nextYearQueue = db
+      .prepare('SELECT * FROM patent_next_year_queue WHERE target_year = ? ORDER BY created_at DESC')
+      .all(taxYear + 1) as any[];
+
     return NextResponse.json({
       success: true,
       taxYear,
       records,
       monthlyTotals: companyMonths,
       discrepancies,
+      nextYearQueue,
       patentRates2026: PATENT_RATES_2026,
       odataConfig: {
         ...odata,
@@ -796,7 +803,7 @@ export async function POST(request: Request) {
         const promptText =
           'You are an expert Russian accounting OCR extractor. Extract EVERY patent NDFL payment receipt (чек по операции / оплата НДФЛ в виде авансового платежа по патенту) from ALL pages of this document.\n' +
           'Return ONLY a valid JSON array (no markdown fences) where each element has:\n' +
-          '{"page": number, "full_name": "ФИО Плательщика in Cyrillic uppercase/titlecase", "inn": "12-digit INN or empty", "op_date": "YYYY-MM-DD", "amount": number, "kbk": "20-digit KBK or empty", "suip": "receipt/SUIP number or empty"}\n' +
+          '{"page": number, "full_name": "ФИО Плательщика / владельца патента in Cyrillic", "inn": "12-digit payer/patent-owner INN (ИНН плательщика) or empty", "op_date": "YYYY-MM-DD", "amount": number, "kbk": "20-digit KBK (КБК) or empty", "recipient_inn": "10-digit tax recipient INN (ИНН получателя, e.g. 7727406020) or empty", "recipient_kpp": "9-digit recipient KPP or empty", "recipient_name": "Получатель (e.g. Казначейство России (ФНС России)) or empty", "oktmo": "8-digit OKTMO (ОКТМО) or empty", "suip": "receipt/UIN/SUIP number or empty"}\n' +
           'Important: extract every single page that contains a receipt. Convert Russian dates like "23 ноября 2026" to "2026-11-23".';
 
         const modelCandidates = Array.from(new Set([geminiModel, 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'].filter(Boolean)));
@@ -860,22 +867,61 @@ export async function POST(request: Request) {
           );
         }
 
-        // Match against existing patent_ndfl_records in DB for smart suggestions & duplicate check
+        // Match against existing patent_ndfl_records + monthly paid months + official INN (1C + personnel DB)
         const existingRecs = db
-          .prepare('SELECT full_name, norm_name, tabel_no, ifns_code, is_active, receipts_json FROM patent_ndfl_records WHERE tax_year = ?')
+          .prepare('SELECT full_name, norm_name, tabel_no, ifns_code, is_active, inn, receipts_json FROM patent_ndfl_records WHERE tax_year = ?')
           .all(taxYear) as any[];
-        const recByNorm = new Map<string, any>();
-        for (const er of existingRecs) recByNorm.set(String(er.norm_name || ''), er);
+        const paidMonthsRows = db
+          .prepare('SELECT norm_name, month_num FROM patent_ndfl_monthly WHERE tax_year = ? AND patent_paid > 0')
+          .all(taxYear) as any[];
+        const paidMonthsByNorm = new Map<string, number[]>();
+        for (const pm of paidMonthsRows) {
+          const nn = String(pm.norm_name || '');
+          const m = Number(pm.month_num || 0);
+          if (!nn || m < 1 || m > 12) continue;
+          const arr = paidMonthsByNorm.get(nn) || [];
+          arr.push(m);
+          paidMonthsByNorm.set(nn, arr);
+        }
 
-        const RU_MONTH_NAMES = ['', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
         const normKeyFn = (s: any) => String(s || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
+        const personnelInnByNorm = new Map<string, string>();
+        try {
+          const pInns = db
+            .prepare(
+              `SELECT p.ad_soyad, p.tam_adi_kiril, p.inn_no, v.verified_inn
+               FROM personnel p
+               LEFT JOIN inn_snils_verifications v ON TRIM(v.sicil_no) = TRIM(p.sicil_no)`
+            )
+            .all() as any[];
+          for (const pi of pInns) {
+            const cleanInn = String(pi.verified_inn || pi.inn_no || '').replace(/\D/g, '');
+            if (cleanInn.length < 10) continue;
+            if (pi.tam_adi_kiril) personnelInnByNorm.set(normKeyFn(pi.tam_adi_kiril), cleanInn);
+            if (pi.ad_soyad) personnelInnByNorm.set(normKeyFn(pi.ad_soyad), cleanInn);
+          }
+        } catch {}
+
+        const recByNorm = new Map<string, any>();
+        const recByInn = new Map<string, any>();
+        for (const er of existingRecs) {
+          const nn = String(er.norm_name || '');
+          const empInn = String(er.inn || '').replace(/\D/g, '') || personnelInnByNorm.get(nn) || '';
+          const enrichedEr = { ...er, resolved_inn: empInn };
+          recByNorm.set(nn, enrichedEr);
+          if (empInn.length === 12) recByInn.set(empInn, enrichedEr);
+        }
 
         const enriched = extractedAll
           .filter((x) => x && (x.full_name || Number(x.amount) > 0))
           .map((x, idx) => {
             const rawName = String(x.full_name || '').trim();
+            const receiptInn = String(x.inn || '').replace(/\D/g, '');
             const nn = normKeyFn(rawName);
             let matched = recByNorm.get(nn);
+            if (!matched && receiptInn.length === 12) {
+              matched = recByInn.get(receiptInn);
+            }
             if (!matched && nn) {
               const firstTwo = nn.split(' ').slice(0, 2).join(' ');
               if (firstTwo.length >= 6) {
@@ -887,28 +933,65 @@ export async function POST(request: Request) {
                 }
               }
             }
-            const amount = Math.round(Number(x.amount || 0));
+            const rawAmount = Math.round(Number(x.amount || 0));
             const opDate = String(x.op_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
             const kbk = String(x.kbk || '').replace(/\D/g, '');
-            const kbkOk = !kbk || kbk === '18210102040011000110';
+            const recipientInn = String(x.recipient_inn || '').replace(/\D/g, '');
+            const recipientKpp = String(x.recipient_kpp || '').replace(/\D/g, '');
+            const recipientName = String(x.recipient_name || '').trim();
+            const oktmo = String(x.oktmo || '').replace(/\D/g, '');
+
+            // 1. Strict INN verification (Receipt INN vs 1C / HR Employee INN)
+            const employeeInn1c = String(matched?.resolved_inn || '').replace(/\D/g, '');
+            let innStatus: 'match' | 'mismatch' | 'missing_receipt_inn' | 'missing_1c_inn' = 'missing_1c_inn';
+            if (receiptInn.length === 12 && employeeInn1c.length === 12) {
+              innStatus = receiptInn === employeeInn1c ? 'match' : 'mismatch';
+            } else if (receiptInn.length < 12) {
+              innStatus = 'missing_receipt_inn';
+            } else {
+              innStatus = 'missing_1c_inn';
+            }
+
+            // 2. Payment requisites validation (КБК, ИНН получателя ФНС, ОКТМО region)
+            const reqCheck = validatePatentReceiptRequisites({
+              kbk,
+              recipientInn,
+              recipientName,
+              oktmo,
+              employeeIfns: matched?.ifns_code || '',
+            });
+
+            // 3. Duplicate & 2026 -> 2027 transition period analysis
             let existingReceipts: any[] = [];
             try {
               if (matched?.receipts_json) existingReceipts = JSON.parse(String(matched.receipts_json));
             } catch {}
             const isDuplicate = existingReceipts.some(
-              (rc) => String(rc.opDate || '').slice(0, 10) === opDate && Math.abs(Number(rc.amount || 0) - amount) <= 10
+              (rc) => String(rc.opDate || '').slice(0, 10) === opDate && Math.abs(Number(rc.amount || 0) - rawAmount) <= 10
             );
-            const rate = 8000;
-            const estMonths = Math.max(1, Math.min(6, Math.round(amount / rate)));
-            const coveredSoFar = existingReceipts.flatMap((rc) => (Array.isArray(rc.months) ? rc.months : []));
-            const lastCovered = coveredSoFar.length > 0 ? Math.max(...coveredSoFar) : 0;
-            const opMonth = parseInt(opDate.slice(5, 7), 10) || 1;
-            const startM = lastCovered > 0 && lastCovered < 12 ? lastCovered + 1 : opMonth;
-            const monthNames: string[] = [];
-            for (let m = 0; m < estMonths && startM + m <= 12; m++) {
-              monthNames.push(RU_MONTH_NAMES[startM + m]);
-            }
-            const suggestedComment = monthNames.join('-');
+            const periodInfo = analyzePatentPeriodSplit({
+              taxYear,
+              amount: rawAmount,
+              opDate,
+              ifnsCode: matched?.ifns_code || '',
+              existingReceipts,
+              existingPaidMonths: matched ? paidMonthsByNorm.get(String(matched.norm_name || '')) || [] : [],
+            });
+
+            const effectiveAmount =
+              periodInfo.period_status === 'split_transition'
+                ? periodInfo.amount_current_year
+                : periodInfo.period_status === 'next_year_only'
+                ? 0
+                : rawAmount;
+
+            const canAutoSelect =
+              !isDuplicate &&
+              innStatus !== 'mismatch' &&
+              reqCheck.requisitesOk &&
+              periodInfo.period_status !== 'next_year_only' &&
+              effectiveAmount > 0 &&
+              Boolean(matched || rawName);
 
             const pageNum = Number(x.page || idx + 1);
             const pFile = pageFileByNum.get(pageNum);
@@ -920,15 +1003,33 @@ export async function POST(request: Request) {
               raw_name: rawName,
               matched_in_1c: Boolean(matched),
               tabel_no: matched?.tabel_no || '',
-              inn: String(x.inn || '').replace(/\D/g, ''),
+              ifns_code: matched?.ifns_code || '',
+              inn: receiptInn,
+              employee_inn_1c: employeeInn1c,
+              inn_status: innStatus,
               op_date: opDate,
-              amount,
+              amount: effectiveAmount,
+              original_amount: rawAmount,
+              amount_current_year: periodInfo.amount_current_year,
+              amount_next_year: periodInfo.amount_next_year,
+              period_status: periodInfo.period_status,
+              last_covered_month: periodInfo.last_covered_month,
+              monthly_rate: periodInfo.monthly_rate,
+              next_year_comment: periodInfo.next_year_comment,
               kbk,
-              kbk_ok: kbkOk,
+              kbk_ok: reqCheck.kbkOk,
+              recipient_inn: recipientInn,
+              recipient_kpp: recipientKpp,
+              recipient_name: recipientName,
+              recipient_ok: reqCheck.recipientOk,
+              oktmo,
+              oktmo_ok: reqCheck.oktmoOk,
+              requisites_ok: reqCheck.requisitesOk,
+              requisites_issues: reqCheck.issues,
               suip: String(x.suip || '').trim(),
               is_duplicate: isDuplicate,
-              suggested_comment: suggestedComment,
-              selected: !isDuplicate && amount > 0 && Boolean(matched || rawName),
+              suggested_comment: periodInfo.suggested_comment,
+              selected: canAutoSelect,
               receipt_file_id: pFile?.id || '',
               receipt_file_url: pFile?.url || '',
             };
@@ -1062,8 +1163,40 @@ export async function POST(request: Request) {
         docDate: body?.docDate ? String(body.docDate) : undefined,
         comment: String(body?.comment || ''),
         postDoc: body?.postDoc !== false,
+        expectedInn: body?.expectedInn ? String(body.expectedInn) : undefined,
+        forceIgnoreInnMismatch: Boolean(body?.forceIgnoreInnMismatch),
         attachment,
       });
+      if (res.success && Number(body?.deferredNextYearAmount || 0) > 0) {
+        const nn = String(body?.fullName || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
+        const qId = `q_${(Number(body?.taxYear) || 2026) + 1}_${nn.slice(0, 24)}_${String(body?.opDate || '').replace(/\D/g, '')}_${Math.round(Number(body?.deferredNextYearAmount || 0))}`;
+        try {
+          db.prepare(`
+            INSERT OR REPLACE INTO patent_next_year_queue (
+              id, target_year, source_year, norm_name, full_name, inn, op_date,
+              original_amount, current_year_amount, deferred_amount, period_status,
+              comment_next_year, kbk, recipient_inn, oktmo, receipt_file_id, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_next_year_ifns')
+          `).run(
+            qId,
+            (Number(body?.taxYear) || 2026) + 1,
+            Number(body?.taxYear) || 2026,
+            nn,
+            String(body?.fullName || ''),
+            String(body?.expectedInn || res.inn1c || ''),
+            String(body?.opDate || ''),
+            Number(body?.originalAmount || body?.amount || 0),
+            Number(body?.amount || 0),
+            Number(body?.deferredNextYearAmount || 0),
+            'split_transition',
+            String(body?.nextYearComment || ''),
+            String(body?.kbk || ''),
+            String(body?.recipientInn || ''),
+            String(body?.oktmo || ''),
+            receiptFileId
+          );
+        } catch {}
+      }
       if (receiptFileId && res.success) {
         const nn = String(body?.fullName || '').trim().toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
         try {
@@ -1086,6 +1219,57 @@ export async function POST(request: Request) {
         } catch {}
       }
       return NextResponse.json(res, { status: res.success ? 200 : 400 });
+    }
+
+    if (action === 'save_next_year_queue') {
+      const items = Array.isArray(body?.items) ? body.items : [];
+      const sourceYear = Number(body?.taxYear) || 2026;
+      const targetYear = sourceYear + 1;
+      const ins = db.prepare(`
+        INSERT OR REPLACE INTO patent_next_year_queue (
+          id, target_year, source_year, norm_name, full_name, inn, op_date,
+          original_amount, current_year_amount, deferred_amount, period_status,
+          comment_next_year, kbk, recipient_inn, oktmo, receipt_file_id, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_next_year_ifns')
+      `);
+      let saved = 0;
+      for (const it of items) {
+        const defAmt = Math.round(Number(it?.amount_next_year || it?.deferred_amount || 0));
+        if (defAmt <= 0) continue;
+        const fn = String(it?.full_name || '').trim();
+        const nn = fn.toUpperCase().replace(/Ё/g, 'Е').replace(/\s+/g, ' ');
+        const qId = `q_${targetYear}_${nn.slice(0, 24)}_${String(it?.op_date || '').replace(/\D/g, '')}_${defAmt}`;
+        ins.run(
+          qId,
+          targetYear,
+          sourceYear,
+          nn,
+          fn,
+          String(it?.inn || it?.employee_inn_1c || ''),
+          String(it?.op_date || ''),
+          Math.round(Number(it?.original_amount || defAmt)),
+          Math.round(Number(it?.amount_current_year || 0)),
+          defAmt,
+          String(it?.period_status || 'next_year_only'),
+          String(it?.next_year_comment || ''),
+          String(it?.kbk || ''),
+          String(it?.recipient_inn || ''),
+          String(it?.oktmo || ''),
+          String(it?.receipt_file_id || '')
+        );
+        saved++;
+      }
+      return NextResponse.json({
+        success: true,
+        saved,
+        message: `${saved} fiş ${targetYear} yılı bekleme havuzuna kaydedildi.`,
+      });
+    }
+
+    if (action === 'delete_next_year_queue') {
+      const id = String(body?.id || '').trim();
+      if (id) db.prepare('DELETE FROM patent_next_year_queue WHERE id = ?').run(id);
+      return NextResponse.json({ success: true });
     }
 
     if (action === 'delete_1c_receipt') {
