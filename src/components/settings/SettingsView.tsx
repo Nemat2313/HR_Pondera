@@ -251,6 +251,8 @@ export default function SettingsView({
   // Temporary input state for adding To / CC emails per rule
   const [newToInput, setNewToInput] = useState<Record<string, string>>({});
   const [newCcInput, setNewCcInput] = useState<Record<string, string>>({});
+  const [bulkCcInput, setBulkCcInput] = useState('');
+  const [rulesInlineMsg, setRulesInlineMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (initialSubTab) {
@@ -309,34 +311,91 @@ export default function SettingsView({
     }
   };
 
-  const handleSaveRules = async () => {
-    if (!isAdmin) return;
+  const mergePendingInputsIntoRules = (baseRules: EmailRuleItem[]): { merged: EmailRuleItem[]; hadPending: boolean } => {
+    let hadPending = false;
+    const merged = baseRules.map((r) => {
+      const pendingTo = String(newToInput[r.id] || '')
+        .split(/[,;\s]+/)
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.includes('@'));
+      const pendingCc = String(newCcInput[r.id] || '')
+        .split(/[,;\s]+/)
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.includes('@'));
+      if (pendingTo.length === 0 && pendingCc.length === 0) return r;
+      hadPending = true;
+      return {
+        ...r,
+        toEmails: Array.from(new Set([...r.toEmails, ...pendingTo])),
+        ccEmails: Array.from(new Set([...r.ccEmails, ...pendingCc])),
+      };
+    });
+    return { merged, hadPending };
+  };
+
+  const persistRulesToServer = async (rulesToSave: EmailRuleItem[], customSuccessMsg?: string): Promise<boolean> => {
+    if (!isAdmin) return false;
     setSavingRules(true);
-    setFeedback(null);
+    setRulesInlineMsg(null);
     try {
       const res = await fetch('/api/settings/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save_rules', rules }),
+        body: JSON.stringify({ action: 'save_rules', rules: rulesToSave }),
       });
       const json = await res.json();
-      if (json?.success) {
+      if (res.ok && json?.success && Array.isArray(json.rules)) {
         setRules(json.rules);
-        setFeedback({ type: 'success', text: json.message });
+        const msg = customSuccessMsg || json.message || 'Rapor kuralları kaydedildi.';
+        setFeedback({ type: 'success', text: msg });
+        setRulesInlineMsg({ type: 'success', text: msg });
+        return true;
       } else {
-        setFeedback({ type: 'error', text: json?.message || 'Rapor kuralları kaydedilemedi.' });
+        const msg = json?.message || `Rapor kuralları kaydedilemedi (HTTP ${res.status}).`;
+        setFeedback({ type: 'error', text: msg });
+        setRulesInlineMsg({ type: 'error', text: msg });
+        return false;
       }
     } catch {
-      setFeedback({ type: 'error', text: 'Kayıt sırasında hata oluştu.' });
+      const msg = 'Kayıt sırasında sunucu bağlantı hatası oluştu.';
+      setFeedback({ type: 'error', text: msg });
+      setRulesInlineMsg({ type: 'error', text: msg });
+      return false;
     } finally {
       setSavingRules(false);
     }
+  };
+
+  const handleSaveRules = async () => {
+    if (!isAdmin) return;
+    setFeedback(null);
+    const { merged, hadPending } = mergePendingInputsIntoRules(rules);
+    if (hadPending) {
+      setRules(merged);
+      setNewToInput({});
+      setNewCcInput({});
+    }
+    await persistRulesToServer(merged);
   };
 
   const handleTriggerReportEmail = async (reportId: string) => {
     setSendingReportId(reportId);
     setFeedback(null);
     try {
+      // Flush & persist any unsaved recipient changes BEFORE sending so send_report uses latest To/CC and never wipes edits
+      const { merged, hadPending } = mergePendingInputsIntoRules(rules);
+      if (hadPending) {
+        setNewToInput({});
+        setNewCcInput({});
+      }
+      if (isAdmin && merged.length > 0) {
+        await fetch('/api/settings/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save_rules', rules: merged }),
+        }).catch(() => {});
+      }
+
       const res = await fetch('/api/settings/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -380,31 +439,59 @@ export default function SettingsView({
   const addRecipient = (ruleId: string, field: 'toEmails' | 'ccEmails', rawVal: string) => {
     const parts = rawVal
       .split(/[,;\s]+/)
-      .map((s) => s.trim())
+      .map((s) => s.trim().toLowerCase())
       .filter((s) => s.includes('@'));
     if (parts.length === 0) return;
 
-    setRules((prev) =>
-      prev.map((r) => {
-        if (r.id !== ruleId) return r;
-        const existing = new Set(r[field]);
-        parts.forEach((p) => existing.add(p));
-        return { ...r, [field]: Array.from(existing) };
-      })
-    );
+    const nextRules = rules.map((r) => {
+      if (r.id !== ruleId) return r;
+      const existing = new Set(r[field].map((e) => e.trim().toLowerCase()));
+      parts.forEach((p) => existing.add(p));
+      return { ...r, [field]: Array.from(existing) };
+    });
+    setRules(nextRules);
 
     if (field === 'toEmails') {
       setNewToInput((p) => ({ ...p, [ruleId]: '' }));
     } else {
       setNewCcInput((p) => ({ ...p, [ruleId]: '' }));
     }
+
+    // Auto-save immediately to SQLite so added recipients are NEVER lost
+    void persistRulesToServer(
+      nextRules,
+      `${parts.join(', ')} (${field === 'ccEmails' ? 'CC' : 'TO'}) eklendi ve veritabanına kaydedildi.`
+    );
+  };
+
+  const addCcToAllRules = () => {
+    const parts = bulkCcInput
+      .split(/[,;\s]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.includes('@'));
+    if (parts.length === 0) return;
+
+    const nextRules = rules.map((r) => {
+      const existing = new Set(r.ccEmails.map((e) => e.trim().toLowerCase()));
+      parts.forEach((p) => existing.add(p));
+      return { ...r, ccEmails: Array.from(existing) };
+    });
+    setRules(nextRules);
+    setBulkCcInput('');
+    void persistRulesToServer(
+      nextRules,
+      `${parts.join(', ')} tüm ${nextRules.length} raporun CC listesine eklendi ve kaydedildi.`
+    );
   };
 
   const removeRecipient = (ruleId: string, field: 'toEmails' | 'ccEmails', emailToRemove: string) => {
-    setRules((prev) =>
-      prev.map((r) =>
-        r.id === ruleId ? { ...r, [field]: r[field].filter((e) => e !== emailToRemove) } : r
-      )
+    const nextRules = rules.map((r) =>
+      r.id === ruleId ? { ...r, [field]: r[field].filter((e) => e !== emailToRemove) } : r
+    );
+    setRules(nextRules);
+    void persistRulesToServer(
+      nextRules,
+      `${emailToRemove} (${field === 'ccEmails' ? 'CC' : 'TO'}) kaldırıldı ve kaydedildi.`
     );
   };
 
@@ -1112,6 +1199,55 @@ export default function SettingsView({
                 <span>Tüm Rapor Kurallarını Kaydet</span>
               </button>
             </div>
+
+            {/* Inline Save Feedback + One-Click Bulk CC to All 4 Reports */}
+            {rulesInlineMsg && (
+              <div
+                className={`px-3.5 py-2 rounded-xl border text-xs flex items-center justify-between ${
+                  rulesInlineMsg.type === 'success'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                    : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{rulesInlineMsg.text}</span>
+                </div>
+                <button type="button" onClick={() => setRulesInlineMsg(null)} className="text-[11px] underline ml-3 cursor-pointer">
+                  Kapat
+                </button>
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                  {lang === 'ru' ? 'Быстро добавить CC ко всем отчётам:' : 'Tüm 4 Rapora Tek Tıkla CC Ekle (Anında Kaydeder):'}
+                </span>
+                <input
+                  type="email"
+                  value={bulkCcInput}
+                  onChange={(e) => setBulkCcInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCcToAllRules();
+                    }
+                  }}
+                  placeholder="örn: sinan.sen@pondera.ru"
+                  className="flex-1 min-w-[200px] px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200"
+                />
+                <button
+                  type="button"
+                  disabled={savingRules || !bulkCcInput.includes('@')}
+                  onClick={addCcToAllRules}
+                  className="px-3 py-1 rounded-lg border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/90 hover:bg-emerald-200/80 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-950 dark:text-emerald-100 font-semibold text-xs inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{lang === 'ru' ? 'Добавить во все CC' : 'Tümüne CC Ekle'}</span>
+                </button>
+              </div>
+            )}
 
             {loadingMail ? (
               <div className="py-8 text-center text-xs text-slate-400">Yükleniyor...</div>

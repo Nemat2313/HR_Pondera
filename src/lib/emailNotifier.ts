@@ -1863,7 +1863,8 @@ export async function sendReportEmailById(
 
     if (rule) {
       const msk = getMoscowClock();
-      const updated = rules.map((r) =>
+      const latestRules = getEmailReportRules(db);
+      const updated = latestRules.map((r) =>
         r.id === reportId
           ? {
               ...r,
@@ -1884,7 +1885,8 @@ export async function sendReportEmailById(
 
   if (rule && !overrideRecipients?.to) {
     const msk = getMoscowClock();
-    const updated = rules.map((r) =>
+    const latestRules = getEmailReportRules(db);
+    const updated = latestRules.map((r) =>
       r.id === reportId
         ? {
             ...r,
